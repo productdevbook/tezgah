@@ -2154,13 +2154,12 @@ impl Step for ChargeStoredMethod {
 
         match authorized {
             Authorized::Payment(paid) => {
-                order::record_transaction(
+                order::record_authorization(
                     tx,
                     ctx,
-                    order_id,
+                    paid.payment_collection_id,
+                    paid.id,
                     Money::new(paid.amount, owed.currency),
-                    "payment",
-                    paid.id.as_uuid(),
                 )
                 .await
                 .map_err(Failure::Final)?;
