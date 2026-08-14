@@ -649,7 +649,12 @@ async fn complete_cart_is_undone_when_something_after_it_fails() -> Result<()> {
     )
     .await?;
 
-    assert_eq!(run.state, State::Reverted);
+    assert_eq!(
+        run.state,
+        State::Reverted,
+        "the run did not unwind: {:?}",
+        run.failure
+    );
     assert_eq!(*bank.authorized.lock(), 1);
 
     nothing_left_behind(&shop, here.cart_id).await;
