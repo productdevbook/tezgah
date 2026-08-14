@@ -649,10 +649,18 @@ async fn complete_cart_is_undone_when_something_after_it_fails() -> Result<()> {
     )
     .await?;
 
+    let mut look = shop.begin().await;
+    let stuck: Vec<(String, String)> =
+        sqlx::query_as("select step_name, failure from workflow_dead_letter where run_id = $1")
+            .bind(run.id.as_uuid())
+            .fetch_all(&mut *look)
+            .await?;
+    look.commit().await?;
+
     assert_eq!(
         run.state,
         State::Reverted,
-        "the run did not unwind: {:?}",
+        "the run did not unwind: {:?}; compensations that failed: {stuck:?}",
         run.failure
     );
     assert_eq!(*bank.authorized.lock(), 1);
