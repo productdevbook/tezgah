@@ -21,6 +21,9 @@ use tezgah::ports::{
 };
 use uuid::Uuid;
 
+/// One job that was queued, and when it asked to be run.
+type QueuedJob = (&'static str, Option<DateTime<Utc>>);
+
 /// A host that permits everything and remembers what it was told, so a test
 /// can ask whether an audit row was written without a table to read.
 #[derive(Debug, Default)]
@@ -31,7 +34,7 @@ pub struct Recorder {
     pub jobs: parking_lot::Mutex<Vec<&'static str>>,
     /// The jobs with when each asked to be run, for anything that queues a
     /// retry rather than doing it now.
-    pub job_runs: parking_lot::Mutex<Vec<(&'static str, Option<DateTime<Utc>>)>>,
+    pub job_runs: parking_lot::Mutex<Vec<QueuedJob>>,
     now: Option<DateTime<Utc>>,
 }
 
