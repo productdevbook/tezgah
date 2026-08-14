@@ -83,6 +83,82 @@
         "x-tezgah-permission": "write"
       }
     },
+    "/admin/campaigns/{id}": {
+      "get": {
+        "operationId": "getAdminCampaignsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Fetch one campaign",
+        "tags": [
+          "promotion"
+        ],
+        "x-tezgah-permission": "view"
+      },
+      "patch": {
+        "operationId": "patchAdminCampaignsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Change a campaign's name, identifier or dates",
+        "tags": [
+          "promotion"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
     "/admin/campaigns/{id}/budget": {
       "post": {
         "operationId": "postAdminCampaignsByIdBudget",
@@ -116,6 +192,92 @@
           }
         ],
         "summary": "Set a campaign's spend or usage budget",
+        "tags": [
+          "promotion"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/campaigns/{id}/promotions": {
+      "post": {
+        "operationId": "postAdminCampaignsByIdPromotions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Put a promotion under a campaign",
+        "tags": [
+          "promotion"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/campaigns/{id}/promotions/{promotion_id}": {
+      "delete": {
+        "operationId": "deleteAdminCampaignsByIdPromotionsByPromotionId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "promotion_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Take a promotion off a campaign",
         "tags": [
           "promotion"
         ],
@@ -7326,6 +7488,43 @@
           "promotion"
         ],
         "x-tezgah-permission": "view"
+      },
+      "patch": {
+        "operationId": "patchAdminPromotionsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Change a promotion's code, automation or usage limits",
+        "tags": [
+          "promotion"
+        ],
+        "x-tezgah-permission": "write"
       }
     },
     "/admin/promotions/{id}/application-method": {
@@ -7553,6 +7752,226 @@
         "x-tezgah-permission": "delete"
       }
     },
+    "/admin/publishable-api-keys": {
+      "get": {
+        "operationId": "getAdminPublishableApiKeys",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "List the storefront keys, live and revoked",
+        "tags": [
+          "store"
+        ],
+        "x-tezgah-permission": "view"
+      },
+      "post": {
+        "operationId": "postAdminPublishableApiKeys",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Issue a storefront key, whose token is returned once",
+        "tags": [
+          "store"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/publishable-api-keys/{id}/revoke": {
+      "post": {
+        "operationId": "postAdminPublishableApiKeysByIdRevoke",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Revoke a storefront key without forgetting it",
+        "tags": [
+          "store"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/publishable-api-keys/{id}/sales-channels": {
+      "get": {
+        "operationId": "getAdminPublishableApiKeysByIdSalesChannels",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "The channels one storefront key may see",
+        "tags": [
+          "store"
+        ],
+        "x-tezgah-permission": "view"
+      },
+      "post": {
+        "operationId": "postAdminPublishableApiKeysByIdSalesChannels",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Let a storefront key see a channel",
+        "tags": [
+          "store"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/publishable-api-keys/{id}/sales-channels/{channel_id}": {
+      "delete": {
+        "operationId": "deleteAdminPublishableApiKeysByIdSalesChannelsByChannelId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "channel_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Stop a storefront key seeing a channel",
+        "tags": [
+          "store"
+        ],
+        "x-tezgah-permission": "delete"
+      }
+    },
     "/admin/refund-reasons": {
       "get": {
         "operationId": "getAdminRefundReasons",
@@ -7663,6 +8082,82 @@
           }
         ],
         "summary": "Create a region",
+        "tags": [
+          "store"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/regions/{id}": {
+      "get": {
+        "operationId": "getAdminRegionsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Fetch one region",
+        "tags": [
+          "store"
+        ],
+        "x-tezgah-permission": "view"
+      },
+      "patch": {
+        "operationId": "patchAdminRegionsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Change a region's name, currency or tax inclusiveness",
         "tags": [
           "store"
         ],
@@ -8441,6 +8936,110 @@
           "store"
         ],
         "x-tezgah-permission": "view"
+      },
+      "post": {
+        "operationId": "postAdminSalesChannels",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Create a sales channel",
+        "tags": [
+          "store"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/sales-channels/{id}": {
+      "delete": {
+        "operationId": "deleteAdminSalesChannelsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Delete a sales channel",
+        "tags": [
+          "store"
+        ],
+        "x-tezgah-permission": "delete"
+      },
+      "patch": {
+        "operationId": "patchAdminSalesChannelsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Edit a sales channel",
+        "tags": [
+          "store"
+        ],
+        "x-tezgah-permission": "write"
       }
     },
     "/admin/shipping-option-types": {
@@ -8559,6 +9158,82 @@
         "x-tezgah-permission": "write"
       }
     },
+    "/admin/shipping-options/{id}": {
+      "get": {
+        "operationId": "getAdminShippingOptionsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Fetch one shipping option",
+        "tags": [
+          "fulfilment"
+        ],
+        "x-tezgah-permission": "view"
+      },
+      "patch": {
+        "operationId": "patchAdminShippingOptionsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Change a shipping option's name, price type or carrier",
+        "tags": [
+          "fulfilment"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
     "/admin/shipping-options/{id}/rules": {
       "post": {
         "operationId": "postAdminShippingOptionsByIdRules",
@@ -8650,6 +9325,82 @@
           }
         ],
         "summary": "Add a shipping profile",
+        "tags": [
+          "fulfilment"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/shipping-profiles/{id}": {
+      "get": {
+        "operationId": "getAdminShippingProfilesById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Fetch one shipping profile",
+        "tags": [
+          "fulfilment"
+        ],
+        "x-tezgah-permission": "view"
+      },
+      "patch": {
+        "operationId": "patchAdminShippingProfilesById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Change a shipping profile",
         "tags": [
           "fulfilment"
         ],
@@ -9066,6 +9817,80 @@
           "tax"
         ],
         "x-tezgah-permission": "delete"
+      },
+      "get": {
+        "operationId": "getAdminTaxRatesById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Fetch one tax rate",
+        "tags": [
+          "tax"
+        ],
+        "x-tezgah-permission": "view"
+      },
+      "patch": {
+        "operationId": "patchAdminTaxRatesById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Change a tax rate",
+        "tags": [
+          "tax"
+        ],
+        "x-tezgah-permission": "write"
       }
     },
     "/admin/tax-rates/{id}/rules": {
@@ -9323,6 +10148,43 @@
           "tax"
         ],
         "x-tezgah-permission": "view"
+      },
+      "patch": {
+        "operationId": "patchAdminTaxRegionsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Change a tax region's country, province or provider",
+        "tags": [
+          "tax"
+        ],
+        "x-tezgah-permission": "write"
       }
     },
     "/admin/workflow-dead-letters": {

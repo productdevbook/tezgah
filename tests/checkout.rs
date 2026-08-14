@@ -1070,7 +1070,12 @@ async fn the_order_copies_the_cart_s_adjustments_and_rates() -> Result<()> {
     let placed = checkout
         .place(&shop.pool, &shop.ctx(), here.cart_id)
         .await?;
-    let order_id = placed.order_id.expect("an order");
+    let order_id = placed.order_id.unwrap_or_else(|| {
+        panic!(
+            "the checkout did not place an order: {:?} {:?}",
+            placed.run.state, placed.run.failure
+        )
+    });
 
     let mut tx = shop.begin().await;
 
