@@ -120,6 +120,7 @@ fn an_order(amount: Decimal) -> CreateOrder {
             is_tax_inclusive: false,
             discount: Decimal::ZERO,
             tax_rate: Decimal::ZERO,
+            withdrawal_exclusion: None,
         }],
         shipping: Vec::new(),
         metadata: None,
