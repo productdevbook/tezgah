@@ -1244,10 +1244,11 @@ pub async fn transactions(
                 metadata, created_at
          from order_transaction
          where scope = $1 and order_id = $2
-         order by created_at, id",
+         order by created_at, id limit $3",
     )
     .bind(ctx.scope.0)
     .bind(order_id.as_uuid())
+    .bind(MAX_LINES)
     .fetch_all(&mut **tx)
     .await?)
 }
@@ -1740,10 +1741,11 @@ pub async fn change_actions(
     Ok(sqlx::query_as::<_, OrderChangeAction>(&format!(
         "select {ACTION_COLUMNS} from order_change_action
          where scope = $1 and order_change_id = $2
-         order by ordering"
+         order by ordering limit $3"
     ))
     .bind(ctx.scope.0)
     .bind(change_id.as_uuid())
+    .bind(MAX_LINES)
     .fetch_all(&mut **tx)
     .await?)
 }
@@ -2121,10 +2123,11 @@ pub async fn return_items(
                 received_quantity, damaged_quantity, note
          from order_return_item
          where scope = $1 and order_return_id = $2
-         order by created_at, id",
+         order by created_at, id limit $3",
     )
     .bind(ctx.scope.0)
     .bind(return_id.as_uuid())
+    .bind(MAX_LINES)
     .fetch_all(&mut **tx)
     .await?)
 }
