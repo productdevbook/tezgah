@@ -262,6 +262,16 @@ fn implication(def: &str) -> Option<(&str, &str, &str)> {
     Some((column, literal, needed))
 }
 
+/// `location_id IS NOT NULL OR requires_shipping = false` — the column that is
+/// only required sometimes, and the flag that excuses it.
+fn excused_by_flag(def: &str) -> Option<(&str, &str)> {
+    let at = def.find(" = false")?;
+    let flag = ident_before(&def[..at])?;
+    let needs = def.find(" IS NOT NULL")?;
+    let needed = ident_before(&def[..needs])?;
+    Some((needed, flag))
+}
+
 /// The last identifier in a fragment, past whatever parentheses surround it.
 fn ident_before(fragment: &str) -> Option<&str> {
     let trimmed = fragment.trim_end_matches([')', ' ']);
@@ -381,6 +391,12 @@ fn satisfy_checks(
                     array,
                     format!("array[{inside}]::{}[]", column.element),
                 );
+            }
+        }
+
+        if let Some((needed, flag)) = excused_by_flag(def) {
+            if held(chosen, needed).is_none() && table.columns.iter().any(|c| c.name == flag) {
+                put(chosen, flag, "false".into());
             }
         }
 
