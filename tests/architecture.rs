@@ -71,27 +71,135 @@ fn source(module: &str) -> String {
         .join("\n")
 }
 
+/// The word characters an identifier is made of.
+fn read_ident(s: &str) -> &str {
+    let end = s
+        .char_indices()
+        .find(|(_, c)| !(c.is_alphanumeric() || *c == '_'))
+        .map_or(s.len(), |(i, _)| i);
+    &s[..end]
+}
+
+/// The index of the `}` matching the `{` at `s`'s start, counting nesting.
+fn matching_brace(s: &str) -> Option<usize> {
+    let mut depth = 0i32;
+    for (i, c) in s.char_indices() {
+        match c {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Splits a brace group's contents on its top-level commas, so a nested
+/// group's own commas — `credit::{Kind, Reason}` inside a bigger group —
+/// are not mistaken for separators between siblings.
+fn split_top_level(s: &str) -> Vec<&str> {
+    let mut items = Vec::new();
+    let mut depth = 0i32;
+    let mut start = 0;
+    for (i, c) in s.char_indices() {
+        match c {
+            '{' => depth += 1,
+            '}' => depth -= 1,
+            ',' if depth == 0 => {
+                items.push(&s[start..i]);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    items.push(&s[start..]);
+    items
+}
+
+/// The module named right after one `crate::` — `crate::name::rest`,
+/// `crate::name;` and, for a braced group, every direct child:
+/// `crate::{a, b::{c, d}}` names `a` and `b`, not `c` or `d`, because a
+/// nested path's own tail is not a further module of `crate` itself.
+fn modules_after(rest: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    if let Some(stripped) = rest.strip_prefix('{') {
+        let Some(close) = matching_brace(rest) else {
+            return found;
+        };
+        let inner = &stripped[..close - 1];
+        for item in split_top_level(inner) {
+            let ident = read_ident(item.trim_start());
+            if !ident.is_empty() && ident != "self" {
+                found.push(ident.to_owned());
+            }
+        }
+    } else {
+        let ident = read_ident(rest);
+        if !ident.is_empty() && ident != "self" {
+            found.push(ident.to_owned());
+        }
+    }
+    found
+}
+
+/// Every module `text` reaches `crate::` into, restricted to `names` and with
+/// self-references dropped. Split out of [`graph`] so a test can feed it a
+/// literal string and ask what the latch would have seen, with no file
+/// written and no `src/` involved.
+fn used_in(names: &[String], module: &str, text: &str) -> BTreeSet<String> {
+    let mut used = BTreeSet::new();
+    for (start, _) in text.match_indices("crate::") {
+        let rest = &text[start + "crate::".len()..];
+        for found in modules_after(rest) {
+            if names.contains(&found) && found != module {
+                used.insert(found);
+            }
+        }
+    }
+    used
+}
+
 fn graph() -> BTreeMap<String, BTreeSet<String>> {
     let names = modules();
     let mut edges = BTreeMap::new();
 
     for module in &names {
         let text = source(module);
-        let mut used = BTreeSet::new();
-        for other in &names {
-            if other == module {
-                continue;
-            }
-            // `crate::other::` or `use crate::other;`
-            let path = format!("crate::{other}");
-            if text.contains(&format!("{path}::")) || text.contains(&format!("{path};")) {
-                used.insert(other.clone());
-            }
-        }
-        edges.insert(module.clone(), used);
+        edges.insert(module.clone(), used_in(&names, module, &text));
     }
 
     edges
+}
+
+/// Every edge in `edges` that `allowed` does not admit — the kernel and
+/// `SHARED` aside. Split out of the test below so a synthetic graph can be
+/// checked with the exact rule the real one is, rather than a restatement of
+/// it.
+fn violations(
+    edges: &BTreeMap<String, BTreeSet<String>>,
+    allowed: &BTreeMap<&str, &[&str]>,
+) -> Vec<String> {
+    let mut wrong = Vec::new();
+    for (module, used) in edges {
+        if KERNEL.contains(&module.as_str()) {
+            continue;
+        }
+        for other in used {
+            let fine = KERNEL.contains(&other.as_str())
+                || SHARED.contains(&other.as_str())
+                || allowed
+                    .get(module.as_str())
+                    .is_some_and(|list| list.contains(&other.as_str()));
+            if !fine {
+                wrong.push(format!("{module} -> {other}"));
+            }
+        }
+    }
+    wrong
 }
 
 #[test]
@@ -196,10 +304,15 @@ fn a_domain_reaches_only_for_the_kernel_and_what_is_declared_shared() {
         // to, the shared part moves to the kernel rather than the arrow
         // reversing.
         ("fulfilment", &["inventory"][..]),
+        // checkout::run reads a sold line's facts — withdrawal exemption
+        // among them — before it lets an order be placed, so it reaches
+        // catalogue for the same reason cart's totals do. Nothing reaches
+        // back: catalogue's only edge is to order, never to checkout.
         (
             "checkout",
             &[
                 "cart",
+                "catalogue",
                 "credit",
                 "inventory",
                 "order",
@@ -239,22 +352,7 @@ fn a_domain_reaches_only_for_the_kernel_and_what_is_declared_shared() {
         ("promotion", &["cart"][..]),
     ]);
 
-    let mut wrong = Vec::new();
-    for (module, used) in &edges {
-        if KERNEL.contains(&module.as_str()) {
-            continue;
-        }
-        for other in used {
-            let fine = KERNEL.contains(&other.as_str())
-                || SHARED.contains(&other.as_str())
-                || allowed
-                    .get(module.as_str())
-                    .is_some_and(|list| list.contains(&other.as_str()));
-            if !fine {
-                wrong.push(format!("{module} -> {other}"));
-            }
-        }
-    }
+    let wrong = violations(&edges, &allowed);
 
     assert!(
         wrong.is_empty(),
@@ -283,5 +381,113 @@ fn nothing_depends_on_settlement() {
         wrong.is_empty(),
         "settlement is the top of the graph — nothing calls it but a route, and no \
          domain reaches for it: {wrong:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// The latch's own parsing — no file written, no `src/` read.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_single_module_import_is_seen() {
+    let names = vec!["order".to_string()];
+    assert_eq!(
+        used_in(&names, "cart", "use crate::order::NewOrder;\n"),
+        BTreeSet::from(["order".to_string()])
+    );
+    assert_eq!(
+        used_in(&names, "cart", "use crate::order;\n"),
+        BTreeSet::from(["order".to_string()])
+    );
+}
+
+/// The form #130 was written about: `use crate::{a, b};` names both `a` and
+/// `b`, even though neither is followed by `::` or `;`.
+#[test]
+fn a_braced_group_of_bare_modules_is_seen() {
+    let names = vec![
+        "cart".to_string(),
+        "catalogue".to_string(),
+        "credit".to_string(),
+    ];
+    let used = used_in(
+        &names,
+        "checkout",
+        "use crate::{cart, catalogue, credit, inventory, promotion};\n",
+    );
+    assert_eq!(
+        used,
+        BTreeSet::from([
+            "cart".to_string(),
+            "catalogue".to_string(),
+            "credit".to_string()
+        ])
+    );
+}
+
+/// A group can mix a bare module with one carrying its own path, and nest
+/// another group inside — `checkout.rs` and `api/store.rs` both do. Only the
+/// direct children name a module; `Kind` and `Reason` are items of `credit`,
+/// not further modules of `crate`.
+#[test]
+fn a_nested_and_multiline_group_is_seen() {
+    let names = vec![
+        "cart".to_string(),
+        "credit".to_string(),
+        "order".to_string(),
+    ];
+    let text = "use crate::{\n    cart::{CartTotals, TotalsLine},\n    credit::{Kind, Reason},\n    order,\n};\n";
+    let used = used_in(&names, "checkout", text);
+    assert_eq!(
+        used,
+        BTreeSet::from([
+            "cart".to_string(),
+            "credit".to_string(),
+            "order".to_string()
+        ])
+    );
+}
+
+/// A doc link is not an import: `[link](crate::other)` must not be counted,
+/// which is [`source`]'s job upstream of `used_in` — this only guards that
+/// `used_in` itself does not need the comment stripped to behave, so a
+/// caller who forgets to strip is not silently safe.
+#[test]
+fn a_self_import_inside_a_group_is_not_a_self_edge() {
+    let names = vec!["workflow".to_string(), "error".to_string()];
+    let used = used_in(
+        &names,
+        "workflow",
+        "use crate::{error::{Error, Result}, workflow::run};\n",
+    );
+    assert_eq!(used, BTreeSet::from(["error".to_string()]));
+}
+
+/// The point of #130: a forbidden edge written with braces is not merely
+/// parsed, it is what turns `a_domain_reaches_only_for_the_kernel_and_what_is_declared_shared`
+/// red. This runs the same `violations` the real test does, against a
+/// synthetic graph built only from `used_in` on a literal string, so nothing
+/// here depends on `src/` still containing the offending line.
+#[test]
+fn a_forbidden_edge_written_as_a_braced_import_fails_the_domain_check() {
+    let names = vec!["payment".to_string(), "credit".to_string()];
+
+    let mut edges = BTreeMap::new();
+    edges.insert(
+        "payment".to_string(),
+        used_in(&names, "payment", "use crate::{credit};\n"),
+    );
+    edges.insert("credit".to_string(), BTreeSet::new());
+
+    // Nothing is declared for `payment` to reach — the real allowed list
+    // does not grant it `credit` either, for the reason `README.md` gives:
+    // teaching `payment` about `credit` is the cycle `settlement` exists to
+    // avoid.
+    let allowed: BTreeMap<&str, &[&str]> = BTreeMap::new();
+
+    assert_eq!(
+        violations(&edges, &allowed),
+        vec!["payment -> credit".to_string()],
+        "a forbidden edge written with a braced import did not turn the latch red"
     );
 }
