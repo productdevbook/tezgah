@@ -60,7 +60,12 @@ use uuid::Uuid;
 
 use crate::error::{Error, Result};
 use crate::id::WorkflowRunId;
-use crate::ports::{Ctx, Tx};
+use crate::page::{Cursor, Page, Paging};
+use crate::ports::{Action, Ctx, Permit, Resource, Tx};
+
+/// Most steps one run may be read back with. A workflow is written down in
+/// source, so this is a ceiling on a mistake rather than on a shop's data.
+const MAX_STEPS: i64 = 500;
 
 /// How long a claim on a step is good for. A step still working extends it.
 pub const LEASE: Duration = Duration::seconds(300);
@@ -871,6 +876,168 @@ pub async fn get(pool: &PgPool, ctx: &Ctx<'_>, id: WorkflowRunId) -> Result<Run>
         output: head.output,
         failure: head.failure,
     })
+}
+
+/// One run as a back office sees it, without the input a step was handed.
+#[derive(Debug, Clone)]
+pub struct RunSummary {
+    pub id: WorkflowRunId,
+    pub name: String,
+    pub transaction_key: String,
+    pub state: State,
+    pub failure: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub finished_at: Option<DateTime<Utc>>,
+}
+
+#[derive(sqlx::FromRow)]
+struct RunSummaryRow {
+    id: WorkflowRunId,
+    name: String,
+    transaction_key: String,
+    state: String,
+    failure: Option<String>,
+    created_at: DateTime<Utc>,
+    finished_at: Option<DateTime<Utc>>,
+}
+
+impl RunSummaryRow {
+    fn into_summary(self) -> Result<RunSummary> {
+        Ok(RunSummary {
+            id: self.id,
+            name: self.name,
+            transaction_key: self.transaction_key,
+            state: State::parse(&self.state)?,
+            failure: self.failure,
+            created_at: self.created_at,
+            finished_at: self.finished_at,
+        })
+    }
+}
+
+/// One step of a run. `compensate_input` is deliberately not here: it is what
+/// undoing needs, not what anybody looking at a run does.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct StepSummary {
+    pub id: Uuid,
+    pub name: String,
+    pub ordering: i32,
+    pub group_ordering: i32,
+    pub state: String,
+    pub attempts: i32,
+    pub max_attempts: i32,
+    pub output: Option<Value>,
+    pub failure: Option<String>,
+    pub run_after: DateTime<Utc>,
+    pub lease_until: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// A step whose compensation itself failed, so nothing else will retry it.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct DeadLetter {
+    pub id: Uuid,
+    pub run_id: WorkflowRunId,
+    pub step_name: String,
+    pub failure: String,
+    pub state: Value,
+    pub created_at: DateTime<Utc>,
+}
+
+/// The runs in this scope, newest last, optionally narrowed to one state.
+pub async fn runs(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    paging: Paging,
+    state: Option<State>,
+) -> Result<Page<RunSummary>> {
+    let _: Permit = ctx.permit(Action::View, Resource::Workflow { id: None })?;
+
+    let rows = sqlx::query_as::<_, RunSummaryRow>(
+        "select id, name, transaction_key, state, failure, created_at, finished_at
+         from workflow_run
+         where scope = $1
+           and ($2::text is null or state = $2)
+           and ($3::timestamptz is null or (created_at, id) > ($3, $4))
+         order by created_at, id
+         limit $5",
+    )
+    .bind(ctx.scope.0)
+    .bind(state.map(State::as_str))
+    .bind(paging.after.map(|c| c.at))
+    .bind(paging.after.map(|c| c.id))
+    .bind(paging.probe())
+    .fetch_all(&mut **tx)
+    .await?;
+
+    let summaries = rows
+        .into_iter()
+        .map(RunSummaryRow::into_summary)
+        .collect::<Result<Vec<_>>>()?;
+
+    Ok(Page::build(summaries, paging, |row| Cursor {
+        at: row.created_at,
+        id: row.id.as_uuid(),
+    }))
+}
+
+/// The steps of one run, in the order they run.
+pub async fn steps(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    run_id: WorkflowRunId,
+) -> Result<Vec<StepSummary>> {
+    let _: Permit = ctx.permit(
+        Action::View,
+        Resource::Workflow {
+            id: Some(run_id.as_uuid()),
+        },
+    )?;
+
+    let rows = sqlx::query_as::<_, StepSummary>(
+        "select id, name, ordering, group_ordering, state, attempts, max_attempts,
+                output, failure, run_after, lease_until, created_at
+         from workflow_step
+         where scope = $1 and run_id = $2
+         order by ordering
+         limit $3",
+    )
+    .bind(ctx.scope.0)
+    .bind(run_id.as_uuid())
+    .bind(MAX_STEPS)
+    .fetch_all(&mut **tx)
+    .await?;
+
+    Ok(rows)
+}
+
+/// What could not be undone. A row here is somebody's morning.
+pub async fn dead_letters(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    paging: Paging,
+) -> Result<Page<DeadLetter>> {
+    let _: Permit = ctx.permit(Action::View, Resource::Workflow { id: None })?;
+
+    let rows = sqlx::query_as::<_, DeadLetter>(
+        "select id, run_id, step_name, failure, state, created_at
+         from workflow_dead_letter
+         where scope = $1
+           and ($2::timestamptz is null or (created_at, id) > ($2, $3))
+         order by created_at, id
+         limit $4",
+    )
+    .bind(ctx.scope.0)
+    .bind(paging.after.map(|c| c.at))
+    .bind(paging.after.map(|c| c.id))
+    .bind(paging.probe())
+    .fetch_all(&mut **tx)
+    .await?;
+
+    Ok(Page::build(rows, paging, |row| Cursor {
+        at: row.created_at,
+        id: row.id,
+    }))
 }
 
 /// Puts back steps whose worker died holding them, so another may take over.

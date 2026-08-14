@@ -18,7 +18,7 @@ use crate::customer;
 use crate::error::{Error, Result};
 use crate::id::{
     AddressId, CampaignId, CustomerGroupId, CustomerId, PromotionId, RegionId, SalesChannelId,
-    TaxRateId, TaxRegionId, WorkflowRunId,
+    StoreId, TaxRateId, TaxRegionId, WorkflowRunId,
 };
 use crate::money::Currency;
 use crate::page::{Page, Paging};
@@ -656,6 +656,31 @@ pub async fn add_promotion_rule(
     ))
 }
 
+/// Bounded by how many rules one promotion carries, which is configuration
+/// rather than a customer's data.
+pub async fn list_promotion_rules(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: PromotionId,
+    rule_type: &str,
+) -> Result<Vec<RuleView>> {
+    Ok(promotion::rules(tx, ctx, id, rule_kind(rule_type)?)
+        .await?
+        .into_iter()
+        .map(RuleView::from)
+        .collect())
+}
+
+pub async fn delete_promotion_rule(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: PromotionId,
+    rule_type: &str,
+    rule_id: Uuid,
+) -> Result<()> {
+    promotion::remove_rule(tx, ctx, id, rule_kind(rule_type)?, rule_id).await
+}
+
 // ---------------------------------------------------------------- campaigns
 
 #[derive(Debug, Clone, Serialize)]
@@ -1104,6 +1129,97 @@ pub async fn get_currency(tx: &mut Tx<'_>, ctx: &Ctx<'_>, code: &str) -> Result<
     ))
 }
 
+// ------------------------------------------------------------------- store
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StoreView {
+    pub id: StoreId,
+    pub name: String,
+    pub default_currency_code: String,
+    pub supported_currency_codes: Vec<String>,
+    pub supported_locales: Vec<String>,
+    pub default_region_id: Option<RegionId>,
+    pub default_sales_channel_id: Option<SalesChannelId>,
+    pub metadata: Option<serde_json::Value>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl From<store::Store> for StoreView {
+    fn from(row: store::Store) -> Self {
+        StoreView {
+            id: row.id,
+            name: row.name,
+            default_currency_code: row.default_currency_code,
+            supported_currency_codes: row.supported_currency_codes,
+            supported_locales: row.supported_locales,
+            default_region_id: row.default_region_id,
+            default_sales_channel_id: row.default_sales_channel_id,
+            metadata: row.metadata,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateStore {
+    pub name: Option<String>,
+    pub default_currency_code: Option<String>,
+    pub supported_currency_codes: Option<Vec<String>>,
+    pub supported_locales: Option<Vec<String>>,
+    pub default_region_id: Option<RegionId>,
+    pub default_sales_channel_id: Option<SalesChannelId>,
+    pub metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SetLocales {
+    pub supported_locales: Vec<String>,
+}
+
+fn currency_list(codes: Option<Vec<String>>) -> Result<Option<Vec<Currency>>> {
+    codes
+        .map(|codes| codes.iter().map(|code| Currency::parse(code)).collect())
+        .transpose()
+}
+
+pub async fn get_store(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<StoreView> {
+    Ok(StoreView::from(store::store(tx, ctx).await?))
+}
+
+pub async fn update_store(tx: &mut Tx<'_>, ctx: &Ctx<'_>, body: UpdateStore) -> Result<StoreView> {
+    let patch = store::StorePatch {
+        name: body.name,
+        default_currency_code: body
+            .default_currency_code
+            .as_deref()
+            .map(Currency::parse)
+            .transpose()?,
+        supported_currency_codes: currency_list(body.supported_currency_codes)?,
+        supported_locales: body.supported_locales,
+        default_region_id: body.default_region_id,
+        default_sales_channel_id: body.default_sales_channel_id,
+        metadata: body.metadata,
+    };
+    Ok(StoreView::from(store::update_store(tx, ctx, patch).await?))
+}
+
+/// Bounded by how many languages one shop is served in.
+pub async fn list_locales(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<Vec<String>> {
+    store::locales(tx, ctx).await
+}
+
+pub async fn set_locales(tx: &mut Tx<'_>, ctx: &Ctx<'_>, body: SetLocales) -> Result<Vec<String>> {
+    let patch = store::StorePatch {
+        supported_locales: Some(body.supported_locales),
+        ..store::StorePatch::default()
+    };
+    Ok(store::update_store(tx, ctx, patch).await?.supported_locales)
+}
+
 // ---------------------------------------------------------- workflow runs
 
 #[derive(Debug, Clone, Serialize)]
@@ -1145,6 +1261,148 @@ pub async fn get_workflow_run(
         output: run.output,
         failure: run.failure,
     })
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WorkflowRunSummaryView {
+    pub id: WorkflowRunId,
+    pub name: String,
+    pub transaction_key: String,
+    pub state: String,
+    pub failure: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub finished_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+impl From<workflow::RunSummary> for WorkflowRunSummaryView {
+    fn from(row: workflow::RunSummary) -> Self {
+        WorkflowRunSummaryView {
+            id: row.id,
+            name: row.name,
+            transaction_key: row.transaction_key,
+            state: run_state(row.state).to_owned(),
+            failure: row.failure,
+            created_at: row.created_at,
+            finished_at: row.finished_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WorkflowStepView {
+    pub id: Uuid,
+    pub name: String,
+    pub ordering: i32,
+    pub group_ordering: i32,
+    pub state: String,
+    pub attempts: i32,
+    pub max_attempts: i32,
+    pub output: Option<serde_json::Value>,
+    pub failure: Option<String>,
+    pub run_after: chrono::DateTime<chrono::Utc>,
+    pub lease_until: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+impl From<workflow::StepSummary> for WorkflowStepView {
+    fn from(row: workflow::StepSummary) -> Self {
+        WorkflowStepView {
+            id: row.id,
+            name: row.name,
+            ordering: row.ordering,
+            group_ordering: row.group_ordering,
+            state: row.state,
+            attempts: row.attempts,
+            max_attempts: row.max_attempts,
+            output: row.output,
+            failure: row.failure,
+            run_after: row.run_after,
+            lease_until: row.lease_until,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WorkflowDeadLetterView {
+    pub id: Uuid,
+    pub run_id: WorkflowRunId,
+    pub step_name: String,
+    pub failure: String,
+    pub state: serde_json::Value,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl From<workflow::DeadLetter> for WorkflowDeadLetterView {
+    fn from(row: workflow::DeadLetter) -> Self {
+        WorkflowDeadLetterView {
+            id: row.id,
+            run_id: row.run_id,
+            step_name: row.step_name,
+            failure: row.failure,
+            state: row.state,
+            created_at: row.created_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ListWorkflowRuns {
+    pub after: Option<String>,
+    pub limit: Option<u32>,
+    pub state: Option<String>,
+}
+
+fn parse_run_state(text: &str) -> Result<workflow::State> {
+    Ok(match text {
+        "running" => workflow::State::Running,
+        "compensating" => workflow::State::Compensating,
+        "done" => workflow::State::Done,
+        "reverted" => workflow::State::Reverted,
+        "failed" => workflow::State::Failed,
+        other => return Err(Error::invalid(format!("{other:?} is not a run state"))),
+    })
+}
+
+pub async fn list_workflow_runs(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    query: ListWorkflowRuns,
+) -> Result<Page<WorkflowRunSummaryView>> {
+    let state = query.state.as_deref().map(parse_run_state).transpose()?;
+    let paging = List {
+        after: query.after,
+        limit: query.limit,
+    }
+    .paging()?;
+
+    Ok(map(
+        workflow::runs(tx, ctx, paging, state).await?,
+        WorkflowRunSummaryView::from,
+    ))
+}
+
+/// Bounded by how many steps the workflow that ran was written with.
+pub async fn list_workflow_run_steps(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: WorkflowRunId,
+) -> Result<Vec<WorkflowStepView>> {
+    Ok(workflow::steps(tx, ctx, id)
+        .await?
+        .into_iter()
+        .map(WorkflowStepView::from)
+        .collect())
+}
+
+pub async fn list_workflow_dead_letters(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    query: List,
+) -> Result<Page<WorkflowDeadLetterView>> {
+    Ok(map(
+        workflow::dead_letters(tx, ctx, query.paging()?).await?,
+        WorkflowDeadLetterView::from,
+    ))
 }
 
 pub(super) static ROUTES: &[Route] = &[
@@ -1351,6 +1609,22 @@ pub(super) static ROUTES: &[Route] = &[
     Route {
         surface: Surface::Admin,
         method: Method::Get,
+        path: "/admin/promotions/{id}/{rule_type}",
+        action: Action::View,
+        domain: "promotion",
+        summary: "List a promotion's eligibility, target or buy rules",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Delete,
+        path: "/admin/promotions/{id}/{rule_type}/{rule_id}",
+        action: Action::Delete,
+        domain: "promotion",
+        summary: "Take a rule off a promotion",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Get,
         path: "/admin/campaigns",
         action: Action::View,
         domain: "promotion",
@@ -1495,9 +1769,65 @@ pub(super) static ROUTES: &[Route] = &[
     Route {
         surface: Surface::Admin,
         method: Method::Get,
+        path: "/admin/stores",
+        action: Action::View,
+        domain: "store",
+        summary: "The shop's own settings",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Post,
+        path: "/admin/stores",
+        action: Action::Write,
+        domain: "store",
+        summary: "Edit the shop's own settings",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Get,
+        path: "/admin/locales",
+        action: Action::View,
+        domain: "store",
+        summary: "List the languages the shop is served in",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Post,
+        path: "/admin/locales",
+        action: Action::Write,
+        domain: "store",
+        summary: "Set the languages the shop is served in",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Get,
+        path: "/admin/workflows-executions",
+        action: Action::View,
+        domain: "workflow",
+        summary: "List workflow runs, optionally in one state",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Get,
         path: "/admin/workflows-executions/{id}",
         action: Action::View,
         domain: "workflow",
         summary: "How a workflow run ended, and what it returned",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Get,
+        path: "/admin/workflows-executions/{id}/steps",
+        action: Action::View,
+        domain: "workflow",
+        summary: "The steps of one workflow run, and how each ended",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Get,
+        path: "/admin/workflow-dead-letters",
+        action: Action::View,
+        domain: "workflow",
+        summary: "Runs whose compensation failed, which nothing will retry",
     },
 ];

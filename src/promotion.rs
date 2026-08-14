@@ -24,6 +24,9 @@ use crate::page::{Cursor, Page, Paging};
 use crate::ports::{Action, AuditEntry, Ctx, Event, Permit, Resource, Tx};
 use crate::store;
 
+/// Most rules one set of one promotion may be read back with.
+const MAX_RULES: i64 = 500;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PromotionKind {
     Standard,
@@ -673,6 +676,123 @@ pub async fn add_rule(
         .fetch_optional(&mut **tx)
         .await?
         .ok_or_else(|| Error::not_found("application method"))
+}
+
+/// The rules in one of the three sets. Configuration rather than a customer's
+/// data, so it is capped rather than paged.
+pub async fn rules(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    promotion_id: PromotionId,
+    kind: RuleKind,
+) -> Result<Vec<Rule>> {
+    let _: Permit = ctx.permit(
+        Action::View,
+        Resource::Promotion {
+            id: Some(promotion_id.as_uuid()),
+        },
+    )?;
+
+    let statement = match kind {
+        RuleKind::Eligibility => {
+            "select id, attribute, operator, allowed_values, description
+             from promotion_rule
+             where scope = $1 and promotion_id = $2
+             order by id
+             limit $3"
+        }
+        RuleKind::Target => {
+            "select r.id, r.attribute, r.operator, r.allowed_values, r.description
+             from promotion_target_rule r
+             join application_method m on m.id = r.application_method_id and m.scope = r.scope
+             where r.scope = $1 and m.promotion_id = $2
+             order by r.id
+             limit $3"
+        }
+        RuleKind::Buy => {
+            "select r.id, r.attribute, r.operator, r.allowed_values, r.description
+             from promotion_buy_rule r
+             join application_method m on m.id = r.application_method_id and m.scope = r.scope
+             where r.scope = $1 and m.promotion_id = $2
+             order by r.id
+             limit $3"
+        }
+    };
+
+    let rows = sqlx::query_as::<_, Rule>(statement)
+        .bind(ctx.scope.0)
+        .bind(promotion_id.as_uuid())
+        .bind(MAX_RULES)
+        .fetch_all(&mut **tx)
+        .await?;
+
+    Ok(rows)
+}
+
+/// Takes a rule out of one of the three sets.
+pub async fn remove_rule(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    promotion_id: PromotionId,
+    kind: RuleKind,
+    rule_id: Uuid,
+) -> Result<()> {
+    let _: Permit = ctx.permit(
+        Action::Delete,
+        Resource::Promotion {
+            id: Some(promotion_id.as_uuid()),
+        },
+    )?;
+
+    let statement = match kind {
+        RuleKind::Eligibility => {
+            "delete from promotion_rule
+             where scope = $1 and promotion_id = $2 and id = $3"
+        }
+        RuleKind::Target => {
+            "delete from promotion_target_rule r
+             using application_method m
+             where r.scope = $1
+               and m.scope = $1
+               and m.id = r.application_method_id
+               and m.promotion_id = $2
+               and r.id = $3"
+        }
+        RuleKind::Buy => {
+            "delete from promotion_buy_rule r
+             using application_method m
+             where r.scope = $1
+               and m.scope = $1
+               and m.id = r.application_method_id
+               and m.promotion_id = $2
+               and r.id = $3"
+        }
+    };
+
+    let done = sqlx::query(statement)
+        .bind(ctx.scope.0)
+        .bind(promotion_id.as_uuid())
+        .bind(rule_id)
+        .execute(&mut **tx)
+        .await?;
+
+    if done.rows_affected() == 0 {
+        return Err(Error::not_found("rule"));
+    }
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Delete,
+            entity: "promotion rule",
+            entity_id: rule_id,
+            summary: serde_json::json!({ "promotion_id": promotion_id }),
+        },
+    )
+    .await?;
+
+    Ok(())
 }
 
 /// Takes one claim of a promotion, and one of its campaign's usage budget.

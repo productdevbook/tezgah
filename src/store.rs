@@ -17,13 +17,16 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
 use crate::error::{Error, Result};
-use crate::id::{RegionId, SalesChannelId};
+use crate::id::{RegionId, SalesChannelId, StoreId};
 use crate::money::Currency;
 use crate::page::{Cursor, Page, Paging};
 use crate::ports::{Action, AuditEntry, Ctx, Permit, Resource, Tx};
 
 /// Most languages one shop is served in.
 const MAX_LOCALES: i32 = 100;
+
+/// Most currencies one shop trades in.
+const MAX_SUPPORTED_CURRENCIES: i32 = 100;
 
 /// A currency the shop trades in, and how many decimal places it rounds to.
 ///
@@ -75,6 +78,133 @@ pub struct SalesChannel {
     pub description: Option<String>,
     pub is_disabled: bool,
     pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// The shop itself. One row per scope, so it is read without an id.
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct Store {
+    pub id: StoreId,
+    pub name: String,
+    pub default_currency_code: String,
+    pub supported_currency_codes: Vec<String>,
+    pub supported_locales: Vec<String>,
+    pub default_region_id: Option<RegionId>,
+    pub default_sales_channel_id: Option<SalesChannelId>,
+    pub metadata: Option<serde_json::Value>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// A field left `None` is left alone. Nothing here can be unset back to null;
+/// a default region is changed rather than removed.
+#[derive(Debug, Clone, Default)]
+pub struct StorePatch {
+    pub name: Option<String>,
+    pub default_currency_code: Option<Currency>,
+    pub supported_currency_codes: Option<Vec<Currency>>,
+    pub supported_locales: Option<Vec<String>>,
+    pub default_region_id: Option<RegionId>,
+    pub default_sales_channel_id: Option<SalesChannelId>,
+    pub metadata: Option<serde_json::Value>,
+}
+
+async fn read_store(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<Store> {
+    sqlx::query_as::<_, Store>(
+        "select id, name, default_currency_code::text as default_currency_code,
+                supported_currency_codes[1:$2::int]::text[] as supported_currency_codes,
+                supported_locales[1:$3::int] as supported_locales,
+                default_region_id, default_sales_channel_id, metadata, created_at, updated_at
+         from store
+         where scope = $1",
+    )
+    .bind(ctx.scope.0)
+    .bind(MAX_SUPPORTED_CURRENCIES)
+    .bind(MAX_LOCALES)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("store"))
+}
+
+pub async fn store(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<Store> {
+    let _: Permit = ctx.permit(Action::View, Resource::Pricing)?;
+
+    read_store(tx, ctx).await
+}
+
+pub async fn update_store(tx: &mut Tx<'_>, ctx: &Ctx<'_>, patch: StorePatch) -> Result<Store> {
+    let _: Permit = ctx.permit(Action::Write, Resource::Pricing)?;
+
+    if patch
+        .name
+        .as_ref()
+        .is_some_and(|name| name.trim().is_empty())
+    {
+        return Err(Error::invalid("a shop needs a name"));
+    }
+    if patch
+        .supported_locales
+        .as_ref()
+        .is_some_and(|locales| locales.len() > MAX_LOCALES as usize)
+    {
+        return Err(Error::invalid("that is more locales than a shop may have"));
+    }
+    if patch
+        .supported_currency_codes
+        .as_ref()
+        .is_some_and(|codes| codes.len() > MAX_SUPPORTED_CURRENCIES as usize)
+    {
+        return Err(Error::invalid(
+            "that is more currencies than a shop may have",
+        ));
+    }
+
+    let currencies: Option<Vec<String>> = patch
+        .supported_currency_codes
+        .as_ref()
+        .map(|codes| codes.iter().map(|c| c.as_str().to_owned()).collect());
+
+    let done = sqlx::query(
+        "update store set
+             name = coalesce($2::text, name),
+             default_currency_code = coalesce($3::text, default_currency_code),
+             supported_currency_codes =
+                 coalesce($4::text[], supported_currency_codes::text[])::char(3)[],
+             supported_locales = coalesce($5::text[], supported_locales),
+             default_region_id = coalesce($6::uuid, default_region_id),
+             default_sales_channel_id = coalesce($7::uuid, default_sales_channel_id),
+             metadata = coalesce($8::jsonb, metadata)
+         where scope = $1",
+    )
+    .bind(ctx.scope.0)
+    .bind(patch.name.as_deref().map(str::trim))
+    .bind(patch.default_currency_code.map(|c| c.as_str().to_owned()))
+    .bind(currencies)
+    .bind(patch.supported_locales.clone())
+    .bind(patch.default_region_id.map(|id| id.as_uuid()))
+    .bind(patch.default_sales_channel_id.map(|id| id.as_uuid()))
+    .bind(patch.metadata.as_ref())
+    .execute(&mut **tx)
+    .await?;
+
+    if done.rows_affected() == 0 {
+        return Err(Error::not_found("store"));
+    }
+
+    let store = read_store(tx, ctx).await?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "store",
+            entity_id: store.id.as_uuid(),
+            summary: serde_json::json!({ "name": store.name }),
+        },
+    )
+    .await?;
+
+    Ok(store)
 }
 
 pub async fn currencies(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<Vec<CurrencyRow>> {
