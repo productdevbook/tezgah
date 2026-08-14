@@ -277,7 +277,7 @@ impl PaymentProvider for Iyzico {
 
         match payment_status {
             "SUCCESS" => {
-                let paid = decimal(detail, "paidPrice")
+                let paid = decimal(&detail, "paidPrice")
                     .map(|amount| Money::new(amount, req.amount.currency));
                 Ok(Authorization {
                     status: AuthorizationStatus::Authorized,
@@ -285,7 +285,7 @@ impl PaymentProvider for Iyzico {
                     data,
                     redirect: None,
                     message: None,
-                    installment: plan(detail, req.amount.currency),
+                    installment: plan(&detail, req.amount.currency),
                 })
             }
             "INIT_THREEDS" | "CALLBACK_THREEDS" | "PENDING_CREDIT" | "" => Ok(Authorization {
