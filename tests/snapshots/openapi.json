@@ -2998,6 +2998,36 @@
         "x-tezgah-permission": "write"
       }
     },
+    "/admin/inventory-items/batch": {
+      "post": {
+        "operationId": "postAdminInventoryItemsBatch",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Set the counted stock of many items at many locations",
+        "tags": [
+          "inventory"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
     "/admin/inventory-items/{id}": {
       "delete": {
         "operationId": "deleteAdminInventoryItemsById",
@@ -5347,6 +5377,36 @@
         "x-tezgah-permission": "write"
       }
     },
+    "/admin/prices/batch": {
+      "post": {
+        "operationId": "postAdminPricesBatch",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Move many prices at once, one currency to a call",
+        "tags": [
+          "pricing"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
     "/admin/prices/{id}": {
       "delete": {
         "operationId": "deleteAdminPricesById",
@@ -6431,6 +6491,96 @@
           }
         ],
         "summary": "Create a product",
+        "tags": [
+          "catalogue"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/products/batch": {
+      "post": {
+        "operationId": "postAdminProductsBatch",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Write and delete many products in one call",
+        "tags": [
+          "catalogue"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/products/export": {
+      "get": {
+        "operationId": "getAdminProductsExport",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "A page of variants, flat enough to write as CSV",
+        "tags": [
+          "catalogue"
+        ],
+        "x-tezgah-permission": "view"
+      }
+    },
+    "/admin/products/import": {
+      "post": {
+        "operationId": "postAdminProductsImport",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Create or update many products from flat rows",
         "tags": [
           "catalogue"
         ],
