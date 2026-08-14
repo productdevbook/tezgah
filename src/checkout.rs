@@ -601,6 +601,7 @@ impl Step for CreateOrder {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct HeldMoney {
     payment_id: Option<PaymentId>,
+    order_id: Option<OrderId>,
 }
 
 struct AuthorizePayment {
@@ -697,6 +698,7 @@ impl Step for AuthorizePayment {
 
                 let undo = HeldMoney {
                     payment_id: Some(paid.id),
+                    order_id: Some(order_id),
                 };
 
                 Ok(Outcome::new(carried.value()?, kept(&undo)))
@@ -725,6 +727,23 @@ impl Step for AuthorizePayment {
         };
 
         payment::cancel(tx, ctx, payment_id).await?;
+
+        // The ledger row this step wrote goes with it. An order's children are
+        // `on delete restrict`, so leaving it here stops the earlier step from
+        // undoing itself and the run fails rather than unwinding.
+        if let Some(order_id) = undo.order_id {
+            sqlx::query(
+                "delete from order_transaction
+                 where scope = $1 and order_id = $2 and reference = 'payment'
+                   and reference_id = $3",
+            )
+            .bind(ctx.scope.0)
+            .bind(order_id.as_uuid())
+            .bind(payment_id.as_uuid())
+            .execute(&mut **tx)
+            .await?;
+        }
+
         Ok(())
     }
 }
