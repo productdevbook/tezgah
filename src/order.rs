@@ -3129,13 +3129,6 @@ fn digest(token: &str) -> String {
     hex::encode(hasher.finalize())
 }
 
-fn actor_name(ctx: &Ctx<'_>) -> Option<String> {
-    match ctx.actor {
-        Actor::Staff { id } | Actor::Customer { id } => Some(id.to_string()),
-        Actor::Guest { .. } | Actor::System => None,
-    }
-}
-
 // ---------------------------------------------------------------------------
 // The small shared parts
 // ---------------------------------------------------------------------------
@@ -3477,13 +3470,15 @@ async fn exponent_of(tx: &mut Tx<'_>, ctx: &Ctx<'_>, code: &str) -> Result<u32> 
     Ok(u32::try_from(exponent.unwrap_or(2)).unwrap_or(2))
 }
 
+/// Who to write down as having done something.
+///
+/// A guest is named by the cart they are holding: it is the only handle they
+/// have, and "nobody" in an audit row is worse than a handle that expires.
 fn actor_name(ctx: &Ctx<'_>) -> Option<String> {
     match &ctx.actor {
-        crate::ports::Actor::Staff { id } | crate::ports::Actor::Customer { id } => {
-            Some(id.to_string())
-        }
-        crate::ports::Actor::Guest { cart } => Some(cart.to_string()),
-        crate::ports::Actor::System => None,
+        Actor::Staff { id } | Actor::Customer { id } => Some(id.to_string()),
+        Actor::Guest { cart } => Some(cart.to_string()),
+        Actor::System => None,
     }
 }
 
