@@ -12,7 +12,9 @@
 //! **Money owed is a ledger.** `order_transaction` is signed — a capture is
 //! positive, a refund negative — and the payment state is the sum rather than a
 //! column somebody remembered to set. [`ledger`] is the only place it is added
-//! up.
+//! up; `order.payment_status` and `order.fulfillment_status` are written by
+//! triggers from those same rows, so a back office can filter on a column that
+//! no caller is able to set wrong.
 //!
 //! **One mechanism changes an order.** [`request_change`], [`add_action`] and
 //! [`confirm_change`] are it. Returns, exchanges and claims each open their own
@@ -44,8 +46,8 @@ use crate::ports::{Action, Actor, AuditEntry, Ctx, Event, Permit, Resource, Tx};
 
 const ORDER_COLUMNS: &str = "id, display_id, region_id, sales_channel_id, customer_id, \
                              shipping_address_id, billing_address_id, payment_collection_id, \
-                             email, currency_code, locale, version, status, fulfillment_status, \
-                             is_draft, no_notification, metadata, completed_at, canceled_at, \
+                             email, currency_code, locale, version, status, payment_status, \
+                             fulfillment_status, is_draft, no_notification, metadata, completed_at, canceled_at, \
                              created_at, updated_at";
 
 const LINE_COLUMNS: &str = "id, order_id, variant_id, product_id, title, subtitle, thumbnail, \
@@ -209,6 +211,9 @@ pub struct Order {
     pub locale: Option<String>,
     pub version: i32,
     pub status: String,
+    /// Maintained by the database from `order_transaction`; [`ledger`] is the
+    /// arithmetic and this is the same answer, indexable.
+    pub payment_status: String,
     pub fulfillment_status: String,
     pub is_draft: bool,
     pub no_notification: Option<bool>,
@@ -1508,9 +1513,9 @@ pub async fn transactions(
     .await?)
 }
 
-/// The payment state, added up from the ledger. There is no column holding it:
-/// two writers and a webhook would each have their own idea of what it should
-/// say, and the sum has only one.
+/// The payment state, added up from the ledger. `order.payment_status` holds
+/// the same answer for a list to filter on, and a database trigger is what
+/// writes it — no caller may, so the two cannot disagree.
 pub async fn ledger(tx: &mut Tx<'_>, ctx: &Ctx<'_>, order_id: OrderId) -> Result<Ledger> {
     let _: Permit = ctx.permit(
         Action::View,
@@ -2105,7 +2110,10 @@ pub async fn receive_return(
         },
     )?;
 
-    if order_return.status == "received" || order_return.canceled_at.is_some() {
+    if order_return.status == "received"
+        || order_return.status == "canceled"
+        || order_return.canceled_at.is_some()
+    {
         return Err(Error::conflict("that return is already settled"));
     }
     if lines.is_empty() {
@@ -2227,7 +2235,7 @@ pub async fn dismiss_return(
         },
     )?;
 
-    if order_return.canceled_at.is_some() {
+    if order_return.status == "canceled" || order_return.canceled_at.is_some() {
         return Err(Error::conflict("that return was cancelled"));
     }
     if lines.is_empty() {

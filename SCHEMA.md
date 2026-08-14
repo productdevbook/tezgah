@@ -83,6 +83,7 @@ Each domain owns a number, so parallel work does not collide.
 | `0017_workflow_parallel` | the group a workflow step runs in, for steps that run at once |
 | `0019_order_transfer` | handing an order to another customer: the claim, its token hash and its expiry |
 | `0021_order_line_money` | an order line's and a shipping method's adjustments and tax lines, a row per promotion and per rate |
+| `0022_order_operator_status` | triggers that keep `order.payment_status` and `order.fulfillment_status`, and the constraint pairing a cancelled return with its timestamp |
 
 Migrations are append-only once merged. A change to a shipped table is a new
 file, and it expands before it contracts: add and backfill in one release, read

@@ -16,7 +16,9 @@ mod common;
 use common::Shop;
 use rust_decimal_macros::dec;
 use tezgah::fulfilment::{self, NewFulfillment, NewFulfillmentItem};
-use tezgah::id::{FulfillmentId, OrderId, OrderItemId, ReturnId, StockLocationId};
+use tezgah::id::{
+    CaptureId, FulfillmentId, OrderId, OrderItemId, RefundId, ReturnId, StockLocationId,
+};
 use tezgah::money::{Currency, Money};
 use tezgah::order::{
     self, ChangeType, NewOrder, NewOrderLine, OrderStatus, ReceivedLine, ReturnLine, can_transition,
@@ -838,11 +840,15 @@ async fn a_return_holds_only_the_statuses_the_code_knows() {
 
     for status in RETURN_STATUSES {
         let mut tx = shop.begin().await;
-        let written = sqlx::query("update order_return set status = $1 where id = $2")
-            .bind(status)
-            .bind(asked.as_uuid())
-            .execute(&mut *tx)
-            .await;
+        let written = sqlx::query(
+            "update order_return
+             set status = $1, canceled_at = case when $1 = 'canceled' then now() end
+             where id = $2",
+        )
+        .bind(status)
+        .bind(asked.as_uuid())
+        .execute(&mut *tx)
+        .await;
         tx.rollback().await.expect("to roll back");
         assert!(
             written.is_ok(),
@@ -867,12 +873,12 @@ async fn a_return_holds_only_the_statuses_the_code_knows() {
     shop.close().await;
 }
 
-/// The schema holds less than the code does here, and this says so rather than
-/// implying the two agree: `order_return` has no constraint pairing `canceled`
-/// with `canceled_at`, and the code refuses a receipt on the timestamp alone.
-/// A row cancelled by a writer that only set the word is still receivable.
+/// Receiving a return puts stock back for goods somebody sent, so a return that
+/// says `canceled` must not be receivable however it came to say it. Both
+/// halves hold now: the schema will not let the word be written without the
+/// moment, and the code reads the word as well as the moment.
 #[tokio::test]
-async fn a_return_cancelled_in_word_only_is_still_received() {
+async fn a_return_cancelled_in_word_only_cannot_be_received() {
     let shop = Shop::open().await;
     let ctx = shop.ctx();
     let (asked, order) = a_return_in(&shop, &ctx, "requested").await;
@@ -885,12 +891,31 @@ async fn a_return_cancelled_in_word_only_is_still_received() {
     .bind(asked.as_uuid())
     .execute(&mut *tx)
     .await;
+    tx.rollback().await.expect("to roll back");
     assert!(
-        written.is_ok(),
-        "the schema now pairs a cancelled return with its timestamp; tighten this test"
+        is_a_check_violation(&written),
+        "the schema took a cancelled return with no moment of cancelling"
     );
 
+    let mut tx = shop.begin().await;
+    sqlx::query("update order_return set status = 'canceled', canceled_at = now() where id = $1")
+        .bind(asked.as_uuid())
+        .execute(&mut *tx)
+        .await
+        .expect("to cancel the return");
+
     let received = order::receive_return(
+        &mut tx,
+        &ctx,
+        asked,
+        vec![ReceivedLine {
+            order_line_item_id: line,
+            quantity: 1,
+            damaged: 0,
+        }],
+    )
+    .await;
+    let dismissed = order::dismiss_return(
         &mut tx,
         &ctx,
         asked,
@@ -904,8 +929,12 @@ async fn a_return_cancelled_in_word_only_is_still_received() {
     tx.rollback().await.expect("to roll back");
 
     assert!(
-        received.is_ok(),
-        "the code now reads the status as well as the timestamp; tighten this test"
+        received.expect_err("a cancelled return").is_conflict(),
+        "a cancelled return took a parcel in"
+    );
+    assert!(
+        dismissed.expect_err("a cancelled return").is_conflict(),
+        "a cancelled return dismissed a line"
     );
 
     shop.close().await;
@@ -1097,12 +1126,11 @@ async fn the_schema_holds_the_order_the_timestamps_are_written_in() {
 // The two statuses an operator reads
 // ---------------------------------------------------------------------------
 //
-// `order.payment_status` and `order.fulfillment_status` are not state machines
-// and are not derived either: nothing in this crate ever writes them. They sit
-// at their defaults for the whole life of an order, whatever happens to the
-// money or the parcel. What can be proven of them today is the schema's list
-// and the fact that they do not move; both are below, and the second is the
-// bug rather than the rule.
+// `order.payment_status` and `order.fulfillment_status` are not state machines:
+// there is no walk from one to another, only the answer the ledger and the item
+// counters give. Database triggers write them and nothing else does, so what is
+// proven below is the schema's list of words, and that each column says what
+// the rows it is computed from say.
 
 const NOT_ONE_OF_THOSE: [&str; 4] = ["nope", "", "NOT_PAID", "part_paid"];
 
@@ -1149,11 +1177,139 @@ async fn an_order_holds_only_the_payment_and_fulfilment_statuses_the_schema_list
     shop.close().await;
 }
 
-/// A parcel goes out and the order still says nothing was fulfilled. This is
-/// written down as a test rather than a comment so that the day somebody makes
-/// the column mean something, this fails and says where to look.
+/// A parcel goes out and the order says so. The column is written by a trigger
+/// off `order_item`'s counters, so it moves whoever moved the goods.
 #[tokio::test]
-async fn neither_status_moves_when_the_parcel_does() {
+async fn fulfillment_status_moves_when_the_parcel_does() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let (order, made, _) = a_fulfilment_in(&shop, &ctx, "new").await;
+
+    let mut tx = shop.begin().await;
+    let packed = order::get(&mut tx, &ctx, order).await.expect("the order");
+    assert_eq!(packed.fulfillment_status, "fulfilled");
+    assert_eq!(packed.payment_status, "not_paid");
+
+    fulfilment::mark_shipped(&mut tx, &ctx, order, made, None)
+        .await
+        .expect("the parcel to leave");
+    let gone = order::get(&mut tx, &ctx, order).await.expect("the order");
+    assert_eq!(gone.fulfillment_status, "shipped");
+
+    fulfilment::mark_delivered(&mut tx, &ctx, order, made)
+        .await
+        .expect("the parcel to arrive");
+    let arrived = order::get(&mut tx, &ctx, order).await.expect("the order");
+    assert_eq!(arrived.fulfillment_status, "delivered");
+    tx.rollback().await.expect("to roll back");
+
+    shop.close().await;
+}
+
+/// And falls back when the fulfilment is called off: the counters go down and
+/// the column is only ever their answer.
+#[tokio::test]
+async fn fulfillment_status_falls_back_when_the_fulfilment_is_cancelled() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let (order, made, _) = a_fulfilment_in(&shop, &ctx, "new").await;
+
+    let mut tx = shop.begin().await;
+    fulfilment::cancel_fulfillment(&mut tx, &ctx, order, made)
+        .await
+        .expect("the fulfilment to be called off");
+    let seen = order::get(&mut tx, &ctx, order).await.expect("the order");
+    tx.rollback().await.expect("to roll back");
+
+    assert_eq!(
+        seen.fulfillment_status, "not_fulfilled",
+        "the order still claims goods went out"
+    );
+
+    shop.close().await;
+}
+
+/// `payment_status` is the ledger's answer, written by a trigger off
+/// `order_transaction`. The two are asserted equal rather than separately:
+/// a column that could disagree with `ledger` is the whole bug.
+#[tokio::test]
+async fn payment_status_follows_the_ledger() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let order = an_order_in(&shop, &ctx, OrderStatus::Pending).await;
+
+    let mut tx = shop.begin().await;
+    let placed = order::get(&mut tx, &ctx, order).await.expect("the order");
+    assert_eq!(placed.payment_status, "not_paid");
+
+    order::record_transaction(
+        &mut tx,
+        &ctx,
+        order,
+        Money::new(dec!(20), lira()),
+        "payment",
+        CaptureId::new().as_uuid(),
+    )
+    .await
+    .expect("the hold");
+    let held = order::get(&mut tx, &ctx, order).await.expect("the order");
+    assert_eq!(held.payment_status, "authorized");
+
+    order::record_transaction(
+        &mut tx,
+        &ctx,
+        order,
+        Money::new(dec!(8), lira()),
+        "capture",
+        CaptureId::new().as_uuid(),
+    )
+    .await
+    .expect("part of the money");
+    let part = order::get(&mut tx, &ctx, order).await.expect("the order");
+    assert_eq!(part.payment_status, "partially_captured");
+
+    order::record_transaction(
+        &mut tx,
+        &ctx,
+        order,
+        Money::new(dec!(12), lira()),
+        "capture",
+        CaptureId::new().as_uuid(),
+    )
+    .await
+    .expect("the rest of the money");
+    let whole = order::get(&mut tx, &ctx, order).await.expect("the order");
+    assert_eq!(whole.payment_status, "captured");
+
+    order::record_transaction(
+        &mut tx,
+        &ctx,
+        order,
+        Money::new(dec!(-5), lira()),
+        "refund",
+        RefundId::new().as_uuid(),
+    )
+    .await
+    .expect("some of it back");
+    let back = order::get(&mut tx, &ctx, order).await.expect("the order");
+    let counted = order::ledger(&mut tx, &ctx, order)
+        .await
+        .expect("the ledger");
+    tx.rollback().await.expect("to roll back");
+
+    assert_eq!(back.payment_status, "partially_refunded");
+    assert_eq!(
+        back.payment_status,
+        counted.state.as_str(),
+        "the column and the ledger disagree"
+    );
+
+    shop.close().await;
+}
+
+/// Neither column is anybody else's to read.
+#[tokio::test]
+async fn another_scope_sees_neither_status() {
     let shop = Shop::open().await;
     let ctx = shop.ctx();
     let (order, made, _) = a_fulfilment_in(&shop, &ctx, "new").await;
@@ -1162,23 +1318,24 @@ async fn neither_status_moves_when_the_parcel_does() {
     fulfilment::mark_shipped(&mut tx, &ctx, order, made, None)
         .await
         .expect("the parcel to leave");
-    let seen = order::get(&mut tx, &ctx, order).await.expect("the order");
-    // `payment_status` is not on `Order` at all; the crate never selects it.
-    let paid: String = sqlx::query_scalar(r#"select payment_status from "order" where id = $1"#)
-        .bind(order.as_uuid())
-        .fetch_one(&mut *tx)
-        .await
-        .expect("the column");
     tx.commit().await.expect("to commit");
 
-    assert_eq!(
-        seen.fulfillment_status, "not_fulfilled",
-        "fulfillment_status moved; it is maintained now and this test is stale"
+    let theirs = shop.theirs();
+    let mut tx = shop.begin_as(shop.elsewhere).await;
+    let looked = order::get(&mut tx, &theirs, order).await;
+    let counted: i64 = sqlx::query_scalar(
+        r#"select count(*) from "order" where fulfillment_status <> 'not_fulfilled'"#,
+    )
+    .fetch_one(&mut *tx)
+    .await
+    .expect("a count");
+    tx.rollback().await.expect("to roll back");
+
+    assert!(
+        looked.expect_err("somebody else's order").is_not_found(),
+        "another scope read the order"
     );
-    assert_eq!(
-        paid, "not_paid",
-        "payment_status moved; it is maintained now and this test is stale"
-    );
+    assert_eq!(counted, 0, "another scope saw a shipped order");
 
     shop.close().await;
 }
