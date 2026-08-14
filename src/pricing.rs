@@ -223,7 +223,7 @@ impl PriceContext {
     pub fn pairs(&self) -> Vec<(String, String)> {
         let mut pairs = vec![(
             CURRENCY_ATTRIBUTE.to_string(),
-            self.currency.as_str().to_lowercase(),
+            self.currency.as_str().to_string(),
         )];
         if let Some(region) = self.region_id {
             pairs.push((REGION_ATTRIBUTE.to_string(), region.to_string()));
@@ -443,7 +443,7 @@ pub async fn add_price(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewPrice) -> Result<
     .bind(new.price_list_id.map(PriceListId::as_uuid))
     .bind(new.title.as_deref())
     .bind(new.amount.amount)
-    .bind(new.amount.currency.as_str().to_lowercase())
+    .bind(new.amount.currency.as_str())
     .bind(new.min_quantity)
     .bind(new.max_quantity)
     .bind(rules_count)
@@ -505,7 +505,7 @@ pub async fn update_price(
     .bind(
         change
             .amount
-            .map(|money| money.currency.as_str().to_lowercase()),
+            .map(|money| money.currency.as_str().to_string()),
     )
     .bind(change.min_quantity.is_some())
     .bind(change.min_quantity.flatten())
@@ -1027,7 +1027,7 @@ pub async fn resolve(
         .bind(&attributes)
         .bind(&values)
         .bind(ctx.now())
-        .bind(at.currency.as_str().to_lowercase())
+        .bind(at.currency.as_str())
         .bind(at.quantity)
         .fetch_optional(&mut **tx)
         .await?;
