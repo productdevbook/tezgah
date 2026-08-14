@@ -97,9 +97,17 @@ pub enum Resource {
         /// not "anybody may".
         customer: Option<Uuid>,
     },
+    /// A parcel: something that exists because an order is being sent out.
     Fulfillment {
         id: Uuid,
         order: Uuid,
+    },
+    /// How a shop ships at all — providers, fulfilment sets, service zones,
+    /// geo zones, shipping profiles and options. It belongs to no order, and
+    /// granting a back office the right to edit it is not granting it the
+    /// right to touch a customer's parcel.
+    Shipping {
+        id: Option<Uuid>,
     },
     Inventory {
         id: Option<Uuid>,

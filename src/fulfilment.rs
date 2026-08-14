@@ -37,13 +37,8 @@ const MAX_OPTION_RULES: i64 = 2_000;
 /// Labels are read inside a fulfilment's detail, not browsed on their own.
 const MAX_LABELS: i64 = 200;
 
-/// Configuration belongs to the shop rather than to any one order, so the
-/// order it is judged against is nil.
-fn config(id: Uuid) -> Resource {
-    Resource::Fulfillment {
-        id,
-        order: Uuid::nil(),
-    }
+fn config(id: Option<Uuid>) -> Resource {
+    Resource::Shipping { id }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -394,7 +389,7 @@ pub async fn register_provider(
     ctx: &Ctx<'_>,
     name: &str,
 ) -> Result<FulfillmentProviderRow> {
-    let _: Permit = ctx.permit(Action::Write, config(Uuid::nil()))?;
+    let _: Permit = ctx.permit(Action::Write, config(None))?;
 
     if name.trim().is_empty() {
         return Err(Error::invalid("a provider needs a name"));
@@ -416,7 +411,7 @@ pub async fn register_provider(
 }
 
 pub async fn providers(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<Vec<FulfillmentProviderRow>> {
-    let _: Permit = ctx.permit(Action::View, config(Uuid::nil()))?;
+    let _: Permit = ctx.permit(Action::View, config(None))?;
 
     let rows = sqlx::query_as::<_, FulfillmentProviderRow>(
         "select id, name, is_enabled from fulfillment_provider
@@ -436,7 +431,7 @@ pub async fn create_shipping_profile(
     name: &str,
     kind: &str,
 ) -> Result<ShippingProfileId> {
-    let _: Permit = ctx.permit(Action::Write, config(Uuid::nil()))?;
+    let _: Permit = ctx.permit(Action::Write, config(None))?;
 
     if name.trim().is_empty() {
         return Err(Error::invalid("a shipping profile needs a name"));
@@ -468,7 +463,7 @@ pub async fn shipping_profile(
     ctx: &Ctx<'_>,
     id: ShippingProfileId,
 ) -> Result<ShippingProfile> {
-    let _: Permit = ctx.permit(Action::View, config(Uuid::nil()))?;
+    let _: Permit = ctx.permit(Action::View, config(None))?;
 
     sqlx::query_as::<_, ShippingProfile>(
         "select id, name, type, created_at from shipping_profile
@@ -494,7 +489,7 @@ pub async fn update_shipping_profile(
     id: ShippingProfileId,
     patch: ShippingProfilePatch,
 ) -> Result<ShippingProfile> {
-    let _: Permit = ctx.permit(Action::Write, config(Uuid::nil()))?;
+    let _: Permit = ctx.permit(Action::Write, config(None))?;
 
     if patch
         .name
@@ -526,7 +521,7 @@ pub async fn create_set(
     new: NewFulfillmentSet,
 ) -> Result<FulfillmentSet> {
     let id = FulfillmentSetId::new();
-    let _: Permit = ctx.permit(Action::Write, config(id.as_uuid()))?;
+    let _: Permit = ctx.permit(Action::Write, config(Some(id.as_uuid())))?;
 
     if new.name.trim().is_empty() {
         return Err(Error::invalid("a fulfilment set needs a name"));
@@ -560,7 +555,7 @@ pub async fn create_set(
 }
 
 pub async fn sets(tx: &mut Tx<'_>, ctx: &Ctx<'_>, paging: Paging) -> Result<Page<FulfillmentSet>> {
-    let _: Permit = ctx.permit(Action::View, config(Uuid::nil()))?;
+    let _: Permit = ctx.permit(Action::View, config(None))?;
 
     let rows = sqlx::query_as::<_, FulfillmentSet>(
         "select id, name, type, created_at
@@ -584,7 +579,7 @@ pub async fn sets(tx: &mut Tx<'_>, ctx: &Ctx<'_>, paging: Paging) -> Result<Page
 }
 
 pub async fn delete_set(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: FulfillmentSetId) -> Result<()> {
-    let _: Permit = ctx.permit(Action::Delete, config(id.as_uuid()))?;
+    let _: Permit = ctx.permit(Action::Delete, config(Some(id.as_uuid())))?;
 
     let done = sqlx::query("delete from fulfillment_set where scope = $1 and id = $2")
         .bind(ctx.scope.0)
@@ -605,7 +600,7 @@ pub async fn create_service_zone(
     new: NewServiceZone,
 ) -> Result<ServiceZone> {
     let id = ServiceZoneId::new();
-    let _: Permit = ctx.permit(Action::Write, config(id.as_uuid()))?;
+    let _: Permit = ctx.permit(Action::Write, config(Some(id.as_uuid())))?;
 
     if new.name.trim().is_empty() {
         return Err(Error::invalid("a service zone needs a name"));
@@ -631,7 +626,7 @@ pub async fn service_zones(
     ctx: &Ctx<'_>,
     set: FulfillmentSetId,
 ) -> Result<Vec<ServiceZone>> {
-    let _: Permit = ctx.permit(Action::View, config(set.as_uuid()))?;
+    let _: Permit = ctx.permit(Action::View, config(Some(set.as_uuid())))?;
 
     let rows = sqlx::query_as::<_, ServiceZone>(
         "select id, name, fulfillment_set_id, created_at
@@ -651,7 +646,7 @@ pub async fn service_zones(
 
 pub async fn create_geo_zone(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewGeoZone) -> Result<GeoZone> {
     let id = GeoZoneId::new();
-    let _: Permit = ctx.permit(Action::Write, config(id.as_uuid()))?;
+    let _: Permit = ctx.permit(Action::Write, config(Some(id.as_uuid())))?;
 
     let country = country_code(&new.country_code)?;
     if new.kind != ZoneKind::Country && new.province_code.is_none() {
@@ -694,7 +689,7 @@ pub async fn zones_for(
     ctx: &Ctx<'_>,
     address: &DeliveryAddress,
 ) -> Result<Vec<GeoZone>> {
-    let _: Permit = ctx.permit(Action::View, config(Uuid::nil()))?;
+    let _: Permit = ctx.permit(Action::View, config(None))?;
 
     let country = country_code(&address.country_code)?;
     let rows = sqlx::query_as::<_, GeoZone>(
@@ -734,7 +729,7 @@ pub async fn create_shipping_option(
     new: NewShippingOption,
 ) -> Result<ShippingOption> {
     let id = ShippingOptionId::new();
-    let _: Permit = ctx.permit(Action::Write, config(id.as_uuid()))?;
+    let _: Permit = ctx.permit(Action::Write, config(Some(id.as_uuid())))?;
 
     if new.name.trim().is_empty() {
         return Err(Error::invalid("a shipping option needs a name"));
@@ -792,7 +787,7 @@ pub async fn update_shipping_option(
     id: ShippingOptionId,
     patch: ShippingOptionPatch,
 ) -> Result<ShippingOption> {
-    let _: Permit = ctx.permit(Action::Write, config(id.as_uuid()))?;
+    let _: Permit = ctx.permit(Action::Write, config(Some(id.as_uuid())))?;
 
     if patch
         .name
@@ -844,7 +839,10 @@ pub async fn create_shipping_option_rule(
     ctx: &Ctx<'_>,
     new: NewShippingOptionRule,
 ) -> Result<ShippingOptionRule> {
-    let _: Permit = ctx.permit(Action::Write, config(new.shipping_option_id.as_uuid()))?;
+    let _: Permit = ctx.permit(
+        Action::Write,
+        config(Some(new.shipping_option_id.as_uuid())),
+    )?;
 
     if new.attribute.trim().is_empty() {
         return Err(Error::invalid("a rule needs an attribute"));
@@ -878,7 +876,7 @@ pub async fn shipping_option(
     ctx: &Ctx<'_>,
     id: ShippingOptionId,
 ) -> Result<ShippingOption> {
-    let _: Permit = ctx.permit(Action::View, Resource::Pricing)?;
+    let _: Permit = ctx.permit(Action::View, config(Some(id.as_uuid())))?;
 
     sqlx::query_as::<_, ShippingOption>(
         "select id, name, price_type, service_zone_id, shipping_profile_id, provider_id,
@@ -900,7 +898,7 @@ pub async fn options_for(
     sales_channel_id: Option<SalesChannelId>,
     items: &[Shippable],
 ) -> Result<Vec<ShippingOption>> {
-    let _: Permit = ctx.permit(Action::View, config(Uuid::nil()))?;
+    let _: Permit = ctx.permit(Action::View, config(None))?;
 
     let zones = zones_for(tx, ctx, address).await?;
     if zones.is_empty() {

@@ -1887,10 +1887,13 @@ const INVOICE_COLUMNS: &str = "id, order_id, order_version, kind, number, extern
 
 /// Records that an invoice was issued for the order.
 ///
-/// The unique keys are the point: a second call carrying the same serial, or
-/// the same identifier from the authority, is refused rather than allowed to
-/// become a second invoice for one sale. Unwinding that is a tax problem, not
-/// a software one.
+/// One issued invoice per order per version. A second call is refused whatever
+/// serial and whatever identifier from the authority it carries, including at
+/// `requested`, before the authority has answered and there is no identifier to
+/// key on — which is the stage a retry actually happens at. Correcting an
+/// invoice that stands is a credit note; a cancelled or rejected one may be
+/// reissued. Unwinding two invoices for one sale is a tax problem, not a
+/// software one.
 pub async fn record_invoice(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -1993,8 +1996,33 @@ async fn write_invoice(
     .bind(replaces.map(OrderInvoiceId::as_uuid))
     .bind(new.metadata)
     .fetch_optional(&mut **tx)
-    .await?
-    .ok_or_else(|| Error::conflict("that document is already recorded against this order"))?;
+    .await?;
+
+    let Some(written) = written else {
+        if kind == InvoiceKind::Invoice {
+            let live: Option<uuid::Uuid> = sqlx::query_scalar(
+                "select id from order_invoice
+                 where scope = $1 and order_id = $2 and order_version = $3
+                   and kind = 'invoice' and status not in ('cancelled', 'rejected')",
+            )
+            .bind(ctx.scope.0)
+            .bind(order_id.as_uuid())
+            .bind(order.version)
+            .fetch_optional(&mut **tx)
+            .await?;
+
+            if live.is_some() {
+                return Err(Error::conflict(
+                    "this order already has an invoice; what corrects one is a credit note, \
+                     not a second invoice",
+                ));
+            }
+        }
+
+        return Err(Error::conflict(
+            "that document is already recorded against this order",
+        ));
+    };
 
     ctx.audit(
         tx,

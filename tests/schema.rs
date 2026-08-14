@@ -540,3 +540,214 @@ async fn a_row_cannot_be_written_into_somebody_elses_scope() {
 
     shop.close().await;
 }
+
+/// A parent in one shop, a child in another, written straight past the domain
+/// code. Postgres checks a foreign key with row security bypassed, so a
+/// single-column key is a hole nothing else can close: it is real to the
+/// constraint and invisible to every read.
+#[tokio::test]
+async fn a_key_cannot_name_another_shops_row() {
+    let shop = Shop::open().await;
+
+    let campaign = uuid::Uuid::now_v7();
+    let customer = uuid::Uuid::now_v7();
+    let region = uuid::Uuid::now_v7();
+    let set = uuid::Uuid::now_v7();
+    let location = uuid::Uuid::now_v7();
+    let parcel = uuid::Uuid::now_v7();
+
+    let mut theirs = shop.begin_as(shop.elsewhere).await;
+    for (sql, id) in [
+        (
+            "insert into campaign (id, scope, identifier, name) values ($1, $2, 'c', 'a campaign')",
+            campaign,
+        ),
+        ("insert into customer (id, scope) values ($1, $2)", customer),
+        (
+            "insert into tax_region (id, scope, country_code) values ($1, $2, 'TR')",
+            region,
+        ),
+        (
+            "insert into fulfillment_set (id, scope, name, type) values ($1, $2, 'delivery', 'shipping')",
+            set,
+        ),
+        (
+            "insert into stock_location (id, scope, name) values ($1, $2, 'a warehouse')",
+            location,
+        ),
+    ] {
+        sqlx::query(sql)
+            .bind(id)
+            .bind(shop.elsewhere.0)
+            .execute(&mut *theirs)
+            .await
+            .expect("the other shop to seed its own rows");
+    }
+    sqlx::query("insert into fulfillment (id, scope, location_id) values ($1, $2, $3)")
+        .bind(parcel)
+        .bind(shop.elsewhere.0)
+        .bind(location)
+        .execute(&mut *theirs)
+        .await
+        .expect("the other shop to open a parcel");
+    theirs.commit().await.expect("to commit");
+
+    // The two already on `tezgah_evidence_table` come first: the schema
+    // already says these rows must survive a delete, and a bare key there let
+    // a protected row point across a tenant boundary anyway.
+    for (what, sql, parent) in [
+        (
+            "fulfillment_label.fulfillment_id",
+            "insert into fulfillment_label (id, scope, fulfillment_id, tracking_number)
+             values ($1, $2, $3, 'TRACK-1')",
+            parcel,
+        ),
+        (
+            "campaign_budget.campaign_id",
+            "insert into campaign_budget (id, scope, campaign_id, type)
+             values ($1, $2, $3, 'usage')",
+            campaign,
+        ),
+        (
+            "customer_address.customer_id",
+            "insert into customer_address (id, scope, customer_id) values ($1, $2, $3)",
+            customer,
+        ),
+        (
+            "tax_rate.tax_region_id",
+            "insert into tax_rate (id, scope, tax_region_id, rate, name)
+             values ($1, $2, $3, 20, 'vat')",
+            region,
+        ),
+        (
+            "service_zone.fulfillment_set_id",
+            "insert into service_zone (id, scope, name, fulfillment_set_id)
+             values ($1, $2, 'a zone', $3)",
+            set,
+        ),
+        (
+            "fulfillment.location_id",
+            "insert into fulfillment (id, scope, location_id) values ($1, $2, $3)",
+            location,
+        ),
+    ] {
+        let mut mine = shop.begin().await;
+        let refused = sqlx::query(sql)
+            .bind(uuid::Uuid::now_v7())
+            .bind(shop.here.0)
+            .bind(parent)
+            .execute(&mut *mine)
+            .await;
+        mine.rollback().await.expect("to give the connection back");
+
+        let code = refused
+            .as_ref()
+            .err()
+            .and_then(|e| e.as_database_error())
+            .and_then(|e| e.code())
+            .map(|c| c.to_string());
+
+        assert_eq!(
+            code.as_deref(),
+            Some("23503"),
+            "{what} accepted a parent in another shop: {refused:?}"
+        );
+    }
+
+    shop.close().await;
+}
+
+/// Which physical lot went into which parcel is the row a recall is answered
+/// through, so deleting what it hangs off has to be said out loud.
+#[tokio::test]
+async fn a_shipped_lot_cannot_be_deleted_out_from_under_its_parcel() {
+    let shop = Shop::open().await;
+
+    let location = uuid::Uuid::now_v7();
+    let item = uuid::Uuid::now_v7();
+    let parcel = uuid::Uuid::now_v7();
+    let packed = uuid::Uuid::now_v7();
+    let lot = uuid::Uuid::now_v7();
+
+    let mut mine = shop.begin().await;
+    for (sql, id) in [
+        (
+            "insert into stock_location (id, scope, name) values ($1, $2, 'a warehouse')",
+            location,
+        ),
+        (
+            "insert into inventory_item (id, scope, sku) values ($1, $2, 'SKU-1')",
+            item,
+        ),
+    ] {
+        sqlx::query(sql)
+            .bind(id)
+            .bind(shop.here.0)
+            .execute(&mut *mine)
+            .await
+            .expect("a shelf to ship off");
+    }
+
+    sqlx::query("insert into fulfillment (id, scope, location_id) values ($1, $2, $3)")
+        .bind(parcel)
+        .bind(shop.here.0)
+        .bind(location)
+        .execute(&mut *mine)
+        .await
+        .expect("a parcel");
+    sqlx::query(
+        "insert into fulfillment_item (id, scope, fulfillment_id, title, quantity)
+         values ($1, $2, $3, 'a thing', 1)",
+    )
+    .bind(packed)
+    .bind(shop.here.0)
+    .bind(parcel)
+    .execute(&mut *mine)
+    .await
+    .expect("something in the box");
+    sqlx::query(
+        "insert into inventory_lot (id, scope, inventory_item_id, location_id, lot_code)
+         values ($1, $2, $3, $4, 'LOT-1')",
+    )
+    .bind(lot)
+    .bind(shop.here.0)
+    .bind(item)
+    .bind(location)
+    .execute(&mut *mine)
+    .await
+    .expect("a lot");
+    sqlx::query(
+        "insert into fulfillment_lot
+             (id, scope, fulfillment_item_id, inventory_lot_id, lot_code, quantity)
+         values ($1, $2, $3, $4, 'LOT-1', 1)",
+    )
+    .bind(uuid::Uuid::now_v7())
+    .bind(shop.here.0)
+    .bind(packed)
+    .bind(lot)
+    .execute(&mut *mine)
+    .await
+    .expect("the lot to go in the box");
+
+    let swept = sqlx::query("delete from fulfillment_item where scope = $1 and id = $2")
+        .bind(shop.here.0)
+        .bind(packed)
+        .execute(&mut *mine)
+        .await;
+    mine.rollback().await.expect("to give the connection back");
+
+    let code = swept
+        .as_ref()
+        .err()
+        .and_then(|e| e.as_database_error())
+        .and_then(|e| e.code())
+        .map(|c| c.to_string());
+
+    assert_eq!(
+        code.as_deref(),
+        Some("23503"),
+        "deleting the item took the answer to \"who received this batch\" with it: {swept:?}"
+    );
+
+    shop.close().await;
+}

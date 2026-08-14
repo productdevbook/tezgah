@@ -470,3 +470,119 @@ async fn the_carrier_ships_the_parcel_and_its_tracking_number_is_kept() {
     tx.rollback().await.expect("to roll back");
     shop.close().await;
 }
+
+/// A host that can grant shipping settings and parcels apart, which is the
+/// whole point of them being different resources.
+#[derive(Debug)]
+struct Grants {
+    settings: bool,
+    parcels: bool,
+}
+
+impl tezgah::ports::Authorizer for Grants {
+    fn authorize(
+        &self,
+        _: &tezgah::ports::Actor,
+        _: tezgah::ports::Action,
+        resource: &tezgah::ports::Resource,
+    ) -> tezgah::Result<tezgah::ports::Permit> {
+        let allowed = match resource {
+            tezgah::ports::Resource::Shipping { .. } => self.settings,
+            tezgah::ports::Resource::Fulfillment { .. } => self.parcels,
+            _ => true,
+        };
+
+        if allowed {
+            Ok(tezgah::ports::Permit::granted())
+        } else {
+            Err(tezgah::Error::denied())
+        }
+    }
+}
+
+impl tezgah::ports::Clock for Grants {
+    fn now(&self) -> chrono::DateTime<chrono::Utc> {
+        chrono::Utc::now()
+    }
+}
+
+#[async_trait]
+impl tezgah::ports::AuditSink for Grants {
+    async fn record(&self, _: &mut Tx<'_>, _: tezgah::ports::AuditEntry) -> tezgah::Result<()> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl tezgah::ports::EventSink for Grants {
+    async fn emit(&self, _: &mut Tx<'_>, _: tezgah::ports::Event) -> tezgah::Result<()> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl tezgah::ports::Jobs for Grants {
+    async fn enqueue(&self, _: &mut Tx<'_>, _: tezgah::ports::JobSpec) -> tezgah::Result<()> {
+        Ok(())
+    }
+}
+
+/// A shipping option belongs to no order. Asking about one as a parcel with a
+/// nil order handed an authorizer two questions it could not tell apart, so
+/// "may edit shipping settings" quietly granted something else.
+#[tokio::test]
+async fn shipping_settings_are_not_asked_for_as_a_parcel() {
+    let shop = Shop::open().await;
+
+    let parcels = Grants {
+        settings: false,
+        parcels: true,
+    };
+    let ctx = shop.ctx_as(
+        tezgah::ports::Actor::System,
+        &parcels as &dyn tezgah::ports::Host,
+    );
+    let mut tx = shop.begin().await;
+    let refused = fulfilment::create_set(
+        &mut tx,
+        &ctx,
+        NewFulfillmentSet {
+            name: "delivery".into(),
+            kind: SetKind::Shipping,
+        },
+    )
+    .await;
+    tx.rollback().await.expect("to give the connection back");
+
+    assert!(
+        refused.is_err(),
+        "a host granted parcels and nothing else reached the shop's shipping settings"
+    );
+
+    let settings = Grants {
+        settings: true,
+        parcels: false,
+    };
+    let ctx = shop.ctx_as(
+        tezgah::ports::Actor::System,
+        &settings as &dyn tezgah::ports::Host,
+    );
+    let mut tx = shop.begin().await;
+    let allowed = fulfilment::create_set(
+        &mut tx,
+        &ctx,
+        NewFulfillmentSet {
+            name: "delivery".into(),
+            kind: SetKind::Shipping,
+        },
+    )
+    .await;
+    tx.rollback().await.expect("to give the connection back");
+
+    assert!(
+        allowed.is_ok(),
+        "the question was not put as a shipping one: {allowed:?}"
+    );
+
+    shop.close().await;
+}

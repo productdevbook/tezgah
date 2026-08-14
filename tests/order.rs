@@ -1634,6 +1634,121 @@ async fn one_invoice_cannot_be_recorded_against_an_order_twice() -> tezgah::Resu
     Ok(())
 }
 
+/// The rule is about the sale, not about the document. An integrator asked
+/// twice allocates a fresh serial and a fresh identifier, so keying uniqueness
+/// on either refuses nothing.
+#[tokio::test]
+async fn an_order_carries_one_invoice_whatever_serial_it_arrives_under() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    seed_currency(&mut tx, shop.here).await;
+
+    let placed = order::create(&mut tx, &ctx, an_order(vec![a_line(1, dec!(100))])).await?;
+
+    order::record_invoice(
+        &mut tx,
+        &ctx,
+        placed.id,
+        an_invoice(
+            "ABC2026000000100",
+            "1b0f4a6e-0000-4000-8000-000000000100",
+            dec!(100.00),
+        ),
+    )
+    .await?;
+
+    let fresh_pair = order::record_invoice(
+        &mut tx,
+        &ctx,
+        placed.id,
+        an_invoice(
+            "XYZ2026000000999",
+            "1b0f4a6e-0000-4000-8000-000000000999",
+            dec!(100.00),
+        ),
+    )
+    .await;
+    assert!(
+        fresh_pair.is_err(),
+        "a second serial and a second identifier are still a second invoice for one sale"
+    );
+
+    // The stage a retry actually happens at: the authority has not answered,
+    // so there is no identifier for the old partial index to key on.
+    let retried = order::record_invoice(
+        &mut tx,
+        &ctx,
+        placed.id,
+        order::NewInvoice {
+            number: "XYZ2026000001000".into(),
+            external_id: None,
+            provider: Some("an-integrator".into()),
+            status: order::InvoiceStatus::Requested,
+            total: money(dec!(100.00)),
+            issued_at: None,
+            document_url: None,
+            metadata: None,
+        },
+    )
+    .await;
+    assert!(
+        retried.is_err(),
+        "asking again before the authority answered opened a second invoice"
+    );
+
+    assert_eq!(order::invoices(&mut tx, &ctx, placed.id).await?.len(), 1);
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
+}
+
+/// Correcting an invoice that stands is a credit note; a cancelled one leaves
+/// the sale with no document, so its replacement has to be admitted.
+#[tokio::test]
+async fn a_cancelled_invoice_can_be_reissued() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    seed_currency(&mut tx, shop.here).await;
+
+    let placed = order::create(&mut tx, &ctx, an_order(vec![a_line(1, dec!(100))])).await?;
+
+    let first = order::record_invoice(
+        &mut tx,
+        &ctx,
+        placed.id,
+        an_invoice(
+            "ABC2026000000200",
+            "1b0f4a6e-0000-4000-8000-000000000200",
+            dec!(100.00),
+        ),
+    )
+    .await?;
+
+    order::set_invoice_status(&mut tx, &ctx, first.id, order::InvoiceStatus::Cancelled).await?;
+
+    let reissued = order::record_invoice(
+        &mut tx,
+        &ctx,
+        placed.id,
+        an_invoice(
+            "ABC2026000000201",
+            "1b0f4a6e-0000-4000-8000-000000000201",
+            dec!(100.00),
+        ),
+    )
+    .await?;
+    assert_eq!(reissued.status()?, order::InvoiceStatus::Issued);
+
+    assert_eq!(order::invoices(&mut tx, &ctx, placed.id).await?.len(), 2);
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
+}
+
 #[tokio::test]
 async fn a_credit_note_names_the_invoice_it_reverses() -> tezgah::Result<()> {
     let shop = Shop::open().await;
