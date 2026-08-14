@@ -70,6 +70,18 @@ const ORDER_MOVES: [(OrderStatus, &[OrderStatus]); 6] = [
     (OrderStatus::Archived, &[]),
 ];
 
+fn parse_status(text: &str) -> OrderStatus {
+    match text {
+        "draft" => OrderStatus::Draft,
+        "pending" => OrderStatus::Pending,
+        "requires_action" => OrderStatus::RequiresAction,
+        "completed" => OrderStatus::Completed,
+        "canceled" => OrderStatus::Canceled,
+        "archived" => OrderStatus::Archived,
+        other => panic!("{other} is not a status this test knows"),
+    }
+}
+
 fn is_allowed(from: OrderStatus, to: OrderStatus) -> bool {
     if from == to {
         return true;
@@ -244,13 +256,17 @@ async fn every_move_an_order_cannot_make_is_refused() {
     shop.close().await;
 }
 
+/// The schema holds the walk as well as the values now, so a legal move from
+/// `pending` is taken and an illegal one is refused whoever is writing —
+/// including a writer that never went near this crate.
 #[tokio::test]
-async fn a_status_nothing_writes_is_refused_by_the_schema_as_well() {
+async fn the_schema_takes_the_moves_the_code_would_make_and_no_others() {
     let shop = Shop::open().await;
     let ctx = shop.ctx();
     let order = an_order_in(&shop, &ctx, OrderStatus::Pending).await;
 
     for status in ORDER_STATUSES {
+        let to = parse_status(status);
         let mut tx = shop.begin().await;
         let written = sqlx::query(r#"update "order" set status = $1 where id = $2"#)
             .bind(status)
@@ -258,24 +274,18 @@ async fn a_status_nothing_writes_is_refused_by_the_schema_as_well() {
             .execute(&mut *tx)
             .await;
         tx.rollback().await.expect("to roll back");
-        assert!(
-            written.is_ok(),
-            "the schema refused {status}, which the code writes"
-        );
-    }
 
-    for status in NOT_A_STATUS {
-        let mut tx = shop.begin().await;
-        let refused = sqlx::query(r#"update "order" set status = $1 where id = $2"#)
-            .bind(status)
-            .bind(order.as_uuid())
-            .execute(&mut *tx)
-            .await;
-        tx.rollback().await.expect("to roll back");
-        assert!(
-            is_a_check_violation(&refused),
-            "the schema accepted {status:?} as an order's status"
-        );
+        if is_allowed(OrderStatus::Pending, to) {
+            assert!(
+                written.is_ok(),
+                "the schema refused {status}, which pending is allowed to become"
+            );
+        } else {
+            assert!(
+                written.is_err(),
+                "the schema let an order go from pending to {status} behind the code"
+            );
+        }
     }
 
     shop.close().await;
