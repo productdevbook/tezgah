@@ -160,6 +160,7 @@ fn a_domain_reaches_only_for_the_kernel_and_what_is_declared_shared() {
         (
             "api",
             &[
+                "batch",
                 "cart",
                 "catalogue",
                 "checkout",
@@ -173,6 +174,9 @@ fn a_domain_reaches_only_for_the_kernel_and_what_is_declared_shared() {
                 "tax",
             ][..],
         ),
+        // An import writes products, their prices and their stock, which is what
+        // makes it an import rather than three of them.
+        ("batch", &["catalogue", "inventory", "pricing"][..]),
         (
             "order",
             &["cart", "fulfilment", "inventory", "payment", "promotion"][..],

@@ -8,6 +8,7 @@
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
+use crate::batch;
 use crate::catalogue;
 use crate::error::{Error, Result};
 use crate::id::{
@@ -2076,6 +2077,259 @@ pub async fn fulfil_reservation(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ReservationI
 }
 
 // ---------------------------------------------------------------------------
+// Many rows at once
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ImportRow {
+    pub handle: String,
+    pub title: String,
+    pub subtitle: Option<String>,
+    pub description: Option<String>,
+    pub status: Option<catalogue::ProductStatus>,
+    pub variant_title: Option<String>,
+    pub sku: Option<String>,
+    pub price_amount: Option<Decimal>,
+    pub price_currency: Option<String>,
+}
+
+impl From<ImportRow> for batch::ProductRow {
+    fn from(row: ImportRow) -> Self {
+        batch::ProductRow {
+            handle: row.handle,
+            title: row.title,
+            subtitle: row.subtitle,
+            description: row.description,
+            status: row.status,
+            variant_title: row.variant_title,
+            sku: row.sku,
+            price_amount: row.price_amount,
+            price_currency: row.price_currency,
+        }
+    }
+}
+
+/// The rows themselves, never a URL to fetch them from: where the file lives is
+/// the host's business, and tezgah does not read one.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ImportProductsBody {
+    pub rows: Vec<ImportRow>,
+    #[serde(default)]
+    pub delete: Vec<ProductId>,
+}
+
+impl From<ImportProductsBody> for batch::ImportProducts {
+    fn from(body: ImportProductsBody) -> Self {
+        batch::ImportProducts {
+            rows: body.rows.into_iter().map(batch::ProductRow::from).collect(),
+            delete: body.delete,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RejectionView {
+    pub row: usize,
+    pub reason: String,
+}
+
+impl From<batch::Rejection> for RejectionView {
+    fn from(one: batch::Rejection) -> Self {
+        RejectionView {
+            row: one.row,
+            reason: one.reason,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImportResultView {
+    pub created: usize,
+    pub updated: usize,
+    pub deleted: usize,
+    pub rejected: Vec<RejectionView>,
+}
+
+impl From<batch::ImportResult> for ImportResultView {
+    fn from(result: batch::ImportResult) -> Self {
+        ImportResultView {
+            created: result.created,
+            updated: result.updated,
+            deleted: result.deleted,
+            rejected: result
+                .rejected
+                .into_iter()
+                .map(RejectionView::from)
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchResultView {
+    pub applied: usize,
+    pub rejected: Vec<RejectionView>,
+}
+
+impl From<batch::BatchResult> for BatchResultView {
+    fn from(result: batch::BatchResult) -> Self {
+        BatchResultView {
+            applied: result.applied,
+            rejected: result
+                .rejected
+                .into_iter()
+                .map(RejectionView::from)
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProductExportView {
+    pub product_id: ProductId,
+    pub handle: String,
+    pub product_title: String,
+    pub status: catalogue::ProductStatus,
+    pub variant_id: VariantId,
+    pub variant_title: String,
+    pub sku: Option<String>,
+    pub price_amount: Option<Decimal>,
+    pub price_currency: Option<String>,
+}
+
+impl From<batch::ProductExport> for ProductExportView {
+    fn from(row: batch::ProductExport) -> Self {
+        ProductExportView {
+            product_id: row.product_id,
+            handle: row.handle,
+            product_title: row.product_title,
+            status: row.status,
+            variant_id: row.variant_id,
+            variant_title: row.variant_title,
+            sku: row.sku,
+            price_amount: row.price_amount,
+            price_currency: row.price_currency,
+        }
+    }
+}
+
+pub async fn import_products(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    body: ImportProductsBody,
+) -> Result<ImportResultView> {
+    let result = batch::import_products(tx, ctx, body.into()).await?;
+    Ok(ImportResultView::from(result))
+}
+
+/// The same engine as the import, with the deletions Medusa's `products/batch`
+/// carries beside its writes.
+pub async fn batch_products(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    body: ImportProductsBody,
+) -> Result<ImportResultView> {
+    import_products(tx, ctx, body).await
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExportQuery {
+    pub after: Option<String>,
+    pub limit: Option<u32>,
+    pub currency_code: Option<String>,
+}
+
+/// A page of rows, not a file. Rendering them into CSV and putting that
+/// somewhere is the host's, which is where its media already lives.
+pub async fn export_products(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    query: ExportQuery,
+) -> Result<Page<ProductExportView>> {
+    let currency = match query.currency_code.as_deref() {
+        Some(code) => Some(Currency::parse(code)?),
+        None => None,
+    };
+    let page = batch::export_products(
+        tx,
+        ctx,
+        currency,
+        paging(query.after.as_deref(), query.limit)?,
+    )
+    .await?;
+    Ok(map_page(page))
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PriceChangeRow {
+    pub id: PriceId,
+    pub amount: Decimal,
+    pub currency_code: String,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdatePricesBody {
+    pub prices: Vec<PriceChangeRow>,
+}
+
+pub async fn batch_prices(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    body: UpdatePricesBody,
+) -> Result<BatchResultView> {
+    let mut changes = Vec::with_capacity(body.prices.len());
+    for row in body.prices {
+        changes.push(batch::PriceChange {
+            price_id: row.id,
+            amount: Money::new(row.amount, Currency::parse(&row.currency_code)?),
+        });
+    }
+    Ok(BatchResultView::from(
+        batch::update_prices(tx, ctx, changes).await?,
+    ))
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StockLevelRowBody {
+    pub inventory_item_id: InventoryItemId,
+    pub location_id: StockLocationId,
+    pub stocked_quantity: i32,
+    pub incoming_quantity: Option<i32>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SetStockLevelsBody {
+    pub levels: Vec<StockLevelRowBody>,
+}
+
+pub async fn batch_stock_levels(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    body: SetStockLevelsBody,
+) -> Result<BatchResultView> {
+    let rows = body
+        .levels
+        .into_iter()
+        .map(|row| batch::StockLevelRow {
+            inventory_item_id: row.inventory_item_id,
+            location_id: row.location_id,
+            stocked_quantity: row.stocked_quantity,
+            incoming_quantity: row.incoming_quantity,
+        })
+        .collect();
+    Ok(BatchResultView::from(
+        batch::set_stock_levels(tx, ctx, rows).await?,
+    ))
+}
+
+// ---------------------------------------------------------------------------
 // The table
 // ---------------------------------------------------------------------------
 
@@ -2099,6 +2353,30 @@ pub(super) static ROUTES: &[Route] = &[
         action: Action::Write,
         domain: CATALOGUE,
         summary: "Create a product",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Post,
+        path: "/admin/products/import",
+        action: Action::Write,
+        domain: CATALOGUE,
+        summary: "Create or update many products from flat rows",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Post,
+        path: "/admin/products/batch",
+        action: Action::Write,
+        domain: CATALOGUE,
+        summary: "Write and delete many products in one call",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Get,
+        path: "/admin/products/export",
+        action: Action::View,
+        domain: CATALOGUE,
+        summary: "A page of variants, flat enough to write as CSV",
     },
     Route {
         surface: Surface::Admin,
@@ -2518,6 +2796,14 @@ pub(super) static ROUTES: &[Route] = &[
     },
     Route {
         surface: Surface::Admin,
+        method: Method::Post,
+        path: "/admin/prices/batch",
+        action: Action::Write,
+        domain: PRICING,
+        summary: "Move many prices at once, one currency to a call",
+    },
+    Route {
+        surface: Surface::Admin,
         method: Method::Patch,
         path: "/admin/prices/{id}",
         action: Action::Write,
@@ -2683,6 +2969,14 @@ pub(super) static ROUTES: &[Route] = &[
         action: Action::Write,
         domain: INVENTORY,
         summary: "Create an inventory item",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Post,
+        path: "/admin/inventory-items/batch",
+        action: Action::Write,
+        domain: INVENTORY,
+        summary: "Set the counted stock of many items at many locations",
     },
     Route {
         surface: Surface::Admin,
