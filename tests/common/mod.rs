@@ -252,6 +252,18 @@ impl Shop {
                      end loop;
                    end $$"#
             ),
+            // The functions and procedures too: a migration replacing one is
+            // refused outright unless the role running it owns it.
+            format!(
+                r#"do $$ declare r record; begin
+                     for r in select p.oid::regprocedure as signature
+                              from pg_proc p
+                              join pg_namespace n on n.oid = p.pronamespace
+                              where n.nspname = 'public' loop
+                       execute format('alter routine %s owner to "{owner}"', r.signature);
+                     end loop;
+                   end $$"#
+            ),
         ] {
             let admin = PgPoolOptions::new()
                 .max_connections(1)
