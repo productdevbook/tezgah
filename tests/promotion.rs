@@ -10,13 +10,17 @@ use common::Shop;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use tezgah::id::{CartId, PromotionId};
-use tezgah::money::Currency;
+use tezgah::money::{Currency, Money};
 use tezgah::ports::{Ctx, Tx};
 use tezgah::promotion::{
-    self, Allocation, MethodKind, NewApplicationMethod, NewPromotion, PromotionKind, Status,
-    TargetKind,
+    self, Allocation, BudgetKind, MethodKind, NewApplicationMethod, NewCampaign, NewCampaignBudget,
+    NewPromotion, PromotionKind, Status, TargetKind,
 };
 use uuid::Uuid;
+
+fn nothing() -> Money {
+    Money::new(Decimal::ZERO, lira())
+}
 
 fn lira() -> Currency {
     Currency::parse("TRY").expect("a currency code")
@@ -189,7 +193,7 @@ async fn two_people_reaching_for_the_last_use_of_a_coupon_and_one_of_them_gettin
 
     let claim = || async {
         let mut tx = shop.begin().await;
-        let taken = promotion::claim(&mut tx, &shop.ctx(), id, None).await;
+        let taken = promotion::claim(&mut tx, &shop.ctx(), id, None, nothing()).await;
         match taken {
             Ok(()) => {
                 tx.commit().await.expect("to keep the claim");
@@ -247,11 +251,11 @@ async fn a_customer_with_one_claim_each_cannot_take_a_second() {
     .await
     .expect("a promotion");
 
-    promotion::claim(&mut tx, &ctx, promotion.id, Some(customer))
+    promotion::claim(&mut tx, &ctx, promotion.id, Some(customer), nothing())
         .await
         .expect("the first claim");
 
-    let refused = promotion::claim(&mut tx, &ctx, promotion.id, Some(customer))
+    let refused = promotion::claim(&mut tx, &ctx, promotion.id, Some(customer), nothing())
         .await
         .expect_err("the second claim");
     assert!(refused.is_conflict());
@@ -282,5 +286,211 @@ async fn one_shops_promotions_are_invisible_to_another() {
     assert!(missing.is_not_found());
 
     theirs.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+/// A campaign whose budget is money, not uses: the claim charges what it gave
+/// away, and the cap binds.
+async fn a_campaign_spending(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    identifier: &str,
+    cap: Decimal,
+) -> tezgah::id::CampaignId {
+    let campaign = promotion::create_campaign(
+        tx,
+        ctx,
+        NewCampaign {
+            identifier: identifier.into(),
+            name: identifier.into(),
+            description: None,
+            starts_at: None,
+            ends_at: None,
+        },
+    )
+    .await
+    .expect("a campaign");
+
+    promotion::set_campaign_budget(
+        tx,
+        ctx,
+        NewCampaignBudget {
+            campaign_id: campaign.id,
+            kind: BudgetKind::Spend,
+            cap: Some(cap),
+            currency_code: Some(lira()),
+        },
+    )
+    .await
+    .expect("a spend budget");
+
+    campaign.id
+}
+
+async fn on_campaign(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    code: &str,
+    campaign: tezgah::id::CampaignId,
+) -> PromotionId {
+    promotion::create_promotion(
+        tx,
+        ctx,
+        NewPromotion {
+            code: code.into(),
+            kind: PromotionKind::Standard,
+            status: Status::Active,
+            is_automatic: false,
+            campaign_id: Some(campaign),
+            usage_limit: None,
+            customer_usage_limit: None,
+        },
+    )
+    .await
+    .expect("a promotion")
+    .id
+}
+
+async fn spent(tx: &mut Tx<'_>, scope: uuid::Uuid, campaign: tezgah::id::CampaignId) -> Decimal {
+    sqlx::query_scalar("select used from campaign_budget where scope = $1 and campaign_id = $2")
+        .bind(scope)
+        .bind(campaign.as_uuid())
+        .fetch_one(&mut **tx)
+        .await
+        .expect("the budget")
+}
+
+#[tokio::test]
+async fn a_campaigns_money_is_charged_by_what_a_claim_gave_away() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    seed_currency(&mut tx, shop.here.0).await;
+    let campaign = a_campaign_spending(&mut tx, &ctx, "SPEND50", dec!(50.00)).await;
+    let id = on_campaign(&mut tx, &ctx, "SPENDER", campaign).await;
+
+    promotion::claim(&mut tx, &ctx, id, None, Money::new(dec!(30.00), lira()))
+        .await
+        .expect("the first claim");
+    assert_eq!(spent(&mut tx, shop.here.0, campaign).await, dec!(30.00));
+
+    let refused = promotion::claim(&mut tx, &ctx, id, None, Money::new(dec!(30.00), lira()))
+        .await
+        .expect_err("a claim that would overspend the campaign");
+    assert!(refused.is_conflict());
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+#[tokio::test]
+async fn releasing_a_claim_gives_the_money_back_to_the_campaign() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    seed_currency(&mut tx, shop.here.0).await;
+    let campaign = a_campaign_spending(&mut tx, &ctx, "SPEND20", dec!(20.00)).await;
+    let id = on_campaign(&mut tx, &ctx, "GIVEBACK", campaign).await;
+
+    promotion::claim(&mut tx, &ctx, id, None, Money::new(dec!(20.00), lira()))
+        .await
+        .expect("a claim");
+    assert_eq!(spent(&mut tx, shop.here.0, campaign).await, dec!(20.00));
+
+    promotion::release(&mut tx, &ctx, id, None, Money::new(dec!(20.00), lira()))
+        .await
+        .expect("the release");
+    assert_eq!(spent(&mut tx, shop.here.0, campaign).await, Decimal::ZERO);
+
+    promotion::claim(&mut tx, &ctx, id, None, Money::new(dec!(20.00), lira()))
+        .await
+        .expect("the budget to be spendable again");
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+#[tokio::test]
+async fn a_campaign_counting_uses_ignores_what_a_claim_gave_away() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    seed_currency(&mut tx, shop.here.0).await;
+    let campaign = promotion::create_campaign(
+        &mut tx,
+        &ctx,
+        NewCampaign {
+            identifier: "TWICE".into(),
+            name: "Twice".into(),
+            description: None,
+            starts_at: None,
+            ends_at: None,
+        },
+    )
+    .await
+    .expect("a campaign");
+
+    promotion::set_campaign_budget(
+        &mut tx,
+        &ctx,
+        NewCampaignBudget {
+            campaign_id: campaign.id,
+            kind: BudgetKind::Usage,
+            cap: Some(dec!(1)),
+            currency_code: None,
+        },
+    )
+    .await
+    .expect("a usage budget");
+
+    let id = on_campaign(&mut tx, &ctx, "COUNTED", campaign.id).await;
+
+    promotion::claim(&mut tx, &ctx, id, None, Money::new(dec!(99.00), lira()))
+        .await
+        .expect("the one use");
+    assert_eq!(spent(&mut tx, shop.here.0, campaign.id).await, dec!(1));
+
+    let refused = promotion::claim(&mut tx, &ctx, id, None, Money::new(dec!(1.00), lira()))
+        .await
+        .expect_err("the second use");
+    assert!(refused.is_conflict());
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+#[tokio::test]
+async fn another_shop_cannot_spend_this_ones_campaign() {
+    let shop = Shop::open().await;
+
+    let mut mine = shop.begin().await;
+    seed_currency(&mut mine, shop.here.0).await;
+    let campaign = a_campaign_spending(&mut mine, &shop.ctx(), "MINE", dec!(50.00)).await;
+    let id = on_campaign(&mut mine, &shop.ctx(), "MINEONLY", campaign).await;
+    mine.commit().await.expect("to keep them");
+
+    let mut theirs = shop.begin_as(shop.elsewhere).await;
+    let refused = promotion::claim(
+        &mut theirs,
+        &shop.theirs(),
+        id,
+        None,
+        Money::new(dec!(10.00), lira()),
+    )
+    .await
+    .expect_err("another shop's promotion");
+    assert!(refused.is_conflict() || refused.is_not_found());
+    theirs.rollback().await.expect("to roll back");
+
+    let mut after = shop.begin().await;
+    assert_eq!(
+        spent(&mut after, shop.here.0, campaign).await,
+        Decimal::ZERO
+    );
+    after.rollback().await.expect("to roll back");
+
     shop.close().await;
 }

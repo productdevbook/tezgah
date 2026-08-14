@@ -429,7 +429,7 @@ async fn one_step(
             };
             cart::remove_line(tx, ctx, walk.cart, line).await
         }
-        3 => promotion::claim(tx, ctx, shelf.promotion, None).await,
+        3 => promotion::claim(tx, ctx, shelf.promotion, None, try_(Decimal::ZERO)).await,
         4 => {
             if walk.order.is_some() {
                 return Ok(());

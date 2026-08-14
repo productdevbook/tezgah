@@ -18,8 +18,8 @@ use uuid::Uuid;
 
 use crate::error::{Error, Result};
 use crate::id::{
-    FulfillmentId, FulfillmentSetId, GeoZoneId, InventoryItemId, OrderId, OrderItemId,
-    SalesChannelId, ServiceZoneId, ShippingOptionId, ShippingProfileId, StockLocationId,
+    FulfillmentId, FulfillmentSetId, GeoZoneId, InventoryItemId, LineItemId, OrderId, OrderItemId,
+    SalesChannelId, ServiceZoneId, ShippingOptionId, ShippingProfileId, StockLocationId, VariantId,
 };
 use crate::money::Money;
 use crate::page::{Cursor, Page, Paging};
@@ -882,6 +882,13 @@ pub async fn create_fulfillment(
             ));
         }
 
+        for (line, inventory_item, units) in
+            consumption(tx, ctx, item.order_item_id, item.quantity).await?
+        {
+            crate::inventory::fulfil_units(tx, ctx, line, inventory_item, new.location_id, units)
+                .await?;
+        }
+
         sqlx::query(
             "insert into fulfillment_item
                  (id, scope, fulfillment_id, inventory_item_id, line_item_id, title, sku,
@@ -1165,6 +1172,21 @@ pub async fn cancel_fulfillment(
         .bind(item.quantity)
         .execute(&mut **tx)
         .await?;
+
+        let order_item_id = OrderItemId::from_uuid(order_item_id);
+        for (line, inventory_item, units) in
+            consumption(tx, ctx, order_item_id, item.quantity).await?
+        {
+            crate::inventory::unfulfil_units(
+                tx,
+                ctx,
+                line,
+                inventory_item,
+                current.location_id,
+                units,
+            )
+            .await?;
+        }
     }
 
     audit_move(tx, ctx, id, "cancelled").await?;
@@ -1284,6 +1306,100 @@ async fn items_of(
     .await?;
 
     Ok(rows)
+}
+
+/// What shipping `units` of one order item takes off the shelves: the order's
+/// line, an inventory item, and how much of it one line unit consumes.
+///
+/// An order item whose line names no variant — a custom line typed in the back
+/// office — consumes nothing, and this is empty for it.
+async fn consumption(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order_item_id: OrderItemId,
+    units: i32,
+) -> Result<Vec<(LineItemId, InventoryItemId, i32)>> {
+    let line: Option<(Uuid, Option<Uuid>)> = sqlx::query_as(
+        "select oi.order_line_item_id, li.variant_id
+         from order_item oi
+         join order_line_item li on li.scope = oi.scope and li.id = oi.order_line_item_id
+         where oi.scope = $1 and oi.id = $2",
+    )
+    .bind(ctx.scope.0)
+    .bind(order_item_id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    let Some((line_item_id, Some(variant_id))) = line else {
+        return Ok(Vec::new());
+    };
+
+    let items =
+        crate::inventory::inventory_items_for_variant(tx, ctx, VariantId::from_uuid(variant_id))
+            .await?;
+
+    Ok(items
+        .into_iter()
+        .map(|item| {
+            (
+                LineItemId::from_uuid(line_item_id),
+                item.inventory_item_id,
+                units * item.required_quantity,
+            )
+        })
+        .collect())
+}
+
+/// Whether any of an order's parcels has left. A fulfilment has no `order_id`
+/// of its own; the order is reached through what is in the box.
+pub async fn anything_shipped(tx: &mut Tx<'_>, ctx: &Ctx<'_>, order: OrderId) -> Result<bool> {
+    let _: Permit = ctx.permit(
+        Action::View,
+        Resource::Fulfillment {
+            id: Uuid::nil(),
+            order: order.as_uuid(),
+        },
+    )?;
+
+    let shipped: Option<i32> = sqlx::query_scalar(
+        "select 1 from fulfillment f
+         join fulfillment_item fi on fi.scope = f.scope and fi.fulfillment_id = f.id
+         join order_item oi on oi.scope = fi.scope and oi.id = fi.line_item_id
+         where f.scope = $1 and oi.order_id = $2 and f.shipped_at is not null
+         limit 1",
+    )
+    .bind(ctx.scope.0)
+    .bind(order.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    Ok(shipped.is_some())
+}
+
+/// Cancels every parcel of an order that has not left, putting the stock back.
+/// Returns how many there were, so nothing here hands back a list.
+pub async fn cancel_open_fulfillments(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order: OrderId,
+) -> Result<u64> {
+    let open: Vec<FulfillmentId> = sqlx::query_scalar(
+        "select distinct f.id from fulfillment f
+         join fulfillment_item fi on fi.scope = f.scope and fi.fulfillment_id = f.id
+         join order_item oi on oi.scope = fi.scope and oi.id = fi.line_item_id
+         where f.scope = $1 and oi.order_id = $2
+           and f.shipped_at is null and f.canceled_at is null",
+    )
+    .bind(ctx.scope.0)
+    .bind(order.as_uuid())
+    .fetch_all(&mut **tx)
+    .await?;
+
+    for id in &open {
+        cancel_fulfillment(tx, ctx, order, *id).await?;
+    }
+
+    Ok(open.len() as u64)
 }
 
 /// Moves one of the order item's counters up by what this parcel holds, never

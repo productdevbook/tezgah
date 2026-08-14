@@ -256,3 +256,34 @@ async fn one_shops_rates_are_invisible_to_another() {
     theirs.rollback().await.expect("to roll back");
     shop.close().await;
 }
+
+#[tokio::test]
+async fn two_currencies_in_one_calculation_are_refused() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    seed_currency(&mut tx, shop.here.0).await;
+    a_flat_eighteen(&mut tx, &ctx).await;
+
+    let mixed = vec![
+        TaxableLine {
+            id: Uuid::now_v7(),
+            amount: Money::new(dec!(100), lira()),
+            targets: Vec::new(),
+        },
+        TaxableLine {
+            id: Uuid::now_v7(),
+            amount: Money::new(dec!(100), Currency::parse("USD").expect("a currency code")),
+            targets: Vec::new(),
+        },
+    ];
+
+    let refused = tax::calculate(&mut tx, &ctx, &mixed, &to_turkey(), false)
+        .await
+        .expect_err("two currencies taxed as one");
+    assert!(refused.is_internal(), "a mixed calculation was not a bug");
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}

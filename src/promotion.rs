@@ -796,26 +796,19 @@ pub async fn remove_rule(
     Ok(())
 }
 
-/// Takes one claim of a promotion, and one of its campaign's usage budget.
+/// Takes one claim of a promotion, and what it costs off its campaign's budget:
+/// one use of a `usage` budget, `spend` of a `spend` one.
 ///
-/// Two statements, each of them an update that either moves a counter or
-/// affects no row. Nothing is read first: a read followed by a write is two
-/// checkouts both seeing the last one.
+/// `spend` is the discount this claim actually gave away. There is one entry
+/// point rather than two, because a caller that could pick the cheaper one
+/// eventually does and a spend budget is then never charged.
+///
+/// Statements that either move a counter or affect no row. Nothing is read
+/// first: a read followed by a write is two checkouts both seeing the last one.
 ///
 /// A refusal leaves the counter it already moved to be undone by the caller's
 /// rollback, which is why both live in the caller's transaction.
 pub async fn claim(
-    tx: &mut Tx<'_>,
-    ctx: &Ctx<'_>,
-    promotion_id: PromotionId,
-    customer_id: Option<CustomerId>,
-) -> Result<()> {
-    take(tx, ctx, promotion_id, customer_id, None).await
-}
-
-/// The same claim, and the money it gives away taken off the campaign's spend
-/// budget in the same breath.
-pub async fn claim_spend(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
     promotion_id: PromotionId,
@@ -828,7 +821,7 @@ pub async fn claim_spend(
         ));
     }
 
-    take(tx, ctx, promotion_id, customer_id, Some(spend)).await
+    take(tx, ctx, promotion_id, customer_id, spend).await
 }
 
 /// Gives a claim back, for a checkout that did not become an order.
@@ -841,7 +834,7 @@ pub async fn release(
     ctx: &Ctx<'_>,
     promotion_id: PromotionId,
     customer_id: Option<CustomerId>,
-    spend: Option<Money>,
+    spend: Money,
 ) -> Result<()> {
     let _: Permit = ctx.permit(
         Action::Write,
@@ -879,28 +872,17 @@ pub async fn release(
     }
 
     if let Some(campaign_id) = campaign_id {
-        let (kind, amount, currency) = match spend {
-            Some(money) => (
-                BudgetKind::Spend,
-                money.amount,
-                Some(money.currency.as_str().to_string()),
-            ),
-            None => (BudgetKind::Usage, Decimal::ONE, None),
-        };
-
         sqlx::query(
-            "update campaign_budget
-             set used = greatest(used - $4, 0)
-             where scope = $1
-               and campaign_id = $2
-               and type = $3
-               and ($5::text is null or currency_code = $5)",
+            r#"update campaign_budget
+               set used = greatest(used - case when type = 'spend' then $3 else 1 end, 0)
+               where scope = $1
+                 and campaign_id = $2
+                 and (type <> 'spend' or currency_code = $4)"#,
         )
         .bind(ctx.scope.0)
         .bind(campaign_id)
-        .bind(kind.as_str())
-        .bind(amount)
-        .bind(currency)
+        .bind(spend.amount)
+        .bind(spend.currency.as_str())
         .execute(&mut **tx)
         .await?;
     }
@@ -925,7 +907,7 @@ async fn take(
     ctx: &Ctx<'_>,
     promotion_id: PromotionId,
     customer_id: Option<CustomerId>,
-    spend: Option<Money>,
+    spend: Money,
 ) -> Result<()> {
     let _: Permit = ctx.permit(
         Action::Write,
@@ -1000,46 +982,52 @@ async fn take(
 
 /// Whether a budget exists and whether it moved, answered by one statement, so
 /// a campaign with no budget is not mistaken for one that is spent.
+///
+/// The budget's own kind decides what is charged — one use, or the money the
+/// claim gave away — because a caller allowed to choose eventually charges the
+/// cheaper of the two.
 async fn charge_budget(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
     campaign_id: CampaignId,
-    spend: Option<Money>,
+    spend: Money,
 ) -> Result<()> {
-    let (kind, amount, currency) = match spend {
-        Some(money) => (
-            BudgetKind::Spend,
-            money.amount,
-            Some(money.currency.as_str().to_string()),
-        ),
-        None => (BudgetKind::Usage, Decimal::ONE, None),
-    };
-
-    let (present, moved): (i64, i64) = sqlx::query_as(
-        r#"with moved as (
-               update campaign_budget
-               set used = used + $4
-               where scope = $1
-                 and campaign_id = $2
-                 and type = $3
-                 and ($5::text is null or currency_code = $5)
-                 and ("limit" is null or used + $4 <= "limit")
+    let (present, chargeable, moved): (i64, i64, i64) = sqlx::query_as(
+        r#"with budget as (
+               select id,
+                      case when type = 'spend' then $3::numeric else 1 end as charge,
+                      (type <> 'spend' or currency_code = $4) as chargeable
+               from campaign_budget
+               where scope = $1 and campaign_id = $2
+           ),
+           moved as (
+               update campaign_budget b
+               set used = b.used + g.charge
+               from budget g
+               where b.scope = $1
+                 and b.id = g.id
+                 and g.chargeable
+                 and (b."limit" is null or b.used + g.charge <= b."limit")
                returning 1
            )
            select
-             (select count(*) from campaign_budget
-              where scope = $1 and campaign_id = $2 and type = $3),
+             (select count(*) from budget),
+             (select count(*) from budget where chargeable),
              (select count(*) from moved)"#,
     )
     .bind(ctx.scope.0)
     .bind(campaign_id.as_uuid())
-    .bind(kind.as_str())
-    .bind(amount)
-    .bind(currency)
+    .bind(spend.amount)
+    .bind(spend.currency.as_str())
     .fetch_one(&mut **tx)
     .await?;
 
-    if present > 0 && moved == 0 {
+    if present > 0 && chargeable == 0 {
+        return Err(Error::bug(
+            "a campaign's budget is kept in another currency",
+        ));
+    }
+    if chargeable > 0 && moved == 0 {
         return Err(Error::conflict("that campaign's budget is spent"));
     }
 

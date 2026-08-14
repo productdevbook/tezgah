@@ -15,8 +15,9 @@ use serde_json::json;
 use tezgah::api::admin_order::{
     self, CapturePayment, CreateOrder, ListOrders, Listing, MoneyIn, NewLineIn, RefundPayment,
 };
-use tezgah::id::{OrderId, PaymentId};
+use tezgah::id::{CaptureId, OrderId, PaymentCollectionId, PaymentId};
 use tezgah::money::{Currency, Money};
+use tezgah::order::{self, PaymentState};
 use tezgah::payment::{
     self, Authorization, AuthorizationStatus, NewCollection, NewSession, SessionResponse,
     SessionStatus,
@@ -384,6 +385,186 @@ async fn an_order_that_is_not_there_is_not_found() -> Result<()> {
         .await
         .expect_err("no such order");
     assert!(missing.is_not_found());
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
+}
+
+/// The collection a payment belongs to, made the order's own, which is how a
+/// capture finds the ledger it has to move.
+async fn pay_for(
+    tx: &mut Tx<'_>,
+    scope: Scope,
+    order_id: OrderId,
+    payment: PaymentId,
+) -> PaymentCollectionId {
+    let collection: Uuid = sqlx::query_scalar(
+        "select payment_collection_id from payment where scope = $1 and id = $2",
+    )
+    .bind(scope.0)
+    .bind(payment.as_uuid())
+    .fetch_one(&mut **tx)
+    .await
+    .expect("the collection");
+
+    sqlx::query(r#"update "order" set payment_collection_id = $3 where scope = $1 and id = $2"#)
+        .bind(scope.0)
+        .bind(order_id.as_uuid())
+        .bind(collection)
+        .execute(&mut **tx)
+        .await
+        .expect("the order to be paying through it");
+
+    PaymentCollectionId::from_uuid(collection)
+}
+
+#[tokio::test]
+async fn a_capture_reaches_the_orders_ledger_and_a_refund_takes_it_back() -> Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+    seed_currency(&mut tx, shop.here).await;
+
+    let placed = admin_order::create_order(&mut tx, &ctx, an_order(dec!(100.00))).await?;
+    let held = a_held_payment(&mut tx, &ctx, money(dec!(100.00))).await;
+    pay_for(&mut tx, shop.here, placed.id, held).await;
+
+    let before = order::ledger(&mut tx, &ctx, placed.id).await?;
+    assert_eq!(before.captured.amount, Decimal::ZERO);
+
+    admin_order::capture_payment(
+        &mut tx,
+        &ctx,
+        held,
+        CapturePayment {
+            amount: try_(dec!(60.00)),
+            metadata: None,
+        },
+    )
+    .await?;
+
+    let after = order::ledger(&mut tx, &ctx, placed.id).await?;
+    assert_eq!(after.captured.amount, dec!(60.00));
+    assert_eq!(after.paid.amount, dec!(60.00));
+    assert_eq!(after.state, PaymentState::PartiallyCaptured);
+
+    admin_order::refund_payment(
+        &mut tx,
+        &ctx,
+        held,
+        RefundPayment {
+            amount: try_(dec!(25.00)),
+            reason_id: None,
+            note: None,
+        },
+    )
+    .await?;
+
+    let back = order::ledger(&mut tx, &ctx, placed.id).await?;
+    assert_eq!(back.captured.amount, dec!(60.00));
+    assert_eq!(back.refunded.amount, dec!(25.00));
+    assert_eq!(back.paid.amount, dec!(35.00));
+    assert_eq!(back.state, PaymentState::PartiallyRefunded);
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
+}
+
+/// A redelivered webhook is the same capture arriving twice, and the ledger
+/// takes it once.
+#[tokio::test]
+async fn the_same_capture_cannot_be_written_to_the_ledger_twice() -> Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+    seed_currency(&mut tx, shop.here).await;
+
+    let placed = admin_order::create_order(&mut tx, &ctx, an_order(dec!(100.00))).await?;
+    let held = a_held_payment(&mut tx, &ctx, money(dec!(100.00))).await;
+    let collection = pay_for(&mut tx, shop.here, placed.id, held).await;
+
+    let capture = CaptureId::new();
+    let _ = order::record_capture(&mut tx, &ctx, collection, capture, money(dec!(10.00))).await?;
+
+    let again = order::record_capture(&mut tx, &ctx, collection, capture, money(dec!(10.00)))
+        .await
+        .expect_err("the same capture landing twice");
+    assert!(again.is_conflict());
+
+    let ledger = order::ledger(&mut tx, &ctx, placed.id).await?;
+    assert_eq!(ledger.captured.amount, dec!(10.00));
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
+}
+
+/// A collection no order is paying through has no ledger to move, and that is
+/// not an error.
+#[tokio::test]
+async fn a_capture_for_no_order_moves_no_ledger() -> Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+    seed_currency(&mut tx, shop.here).await;
+
+    let held = a_held_payment(&mut tx, &ctx, money(dec!(15.00))).await;
+    let collection: Uuid = sqlx::query_scalar(
+        "select payment_collection_id from payment where scope = $1 and id = $2",
+    )
+    .bind(shop.here.0)
+    .bind(held.as_uuid())
+    .fetch_one(&mut *tx)
+    .await
+    .expect("the collection");
+
+    let written = order::record_capture(
+        &mut tx,
+        &ctx,
+        PaymentCollectionId::from_uuid(collection),
+        CaptureId::new(),
+        money(dec!(15.00)),
+    )
+    .await?;
+    assert!(written.is_none());
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
+}
+
+/// The ledger is scoped like everything else.
+#[tokio::test]
+async fn another_shop_cannot_read_or_move_this_ones_ledger() -> Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+    seed_currency(&mut tx, shop.here).await;
+
+    let placed = admin_order::create_order(&mut tx, &ctx, an_order(dec!(50.00))).await?;
+    let held = a_held_payment(&mut tx, &ctx, money(dec!(50.00))).await;
+    let collection = pay_for(&mut tx, shop.here, placed.id, held).await;
+    tx.commit().await.expect("to commit");
+
+    let theirs = shop.theirs();
+    let mut tx = shop.begin_as(shop.elsewhere).await;
+
+    let missing = order::ledger(&mut tx, &theirs, placed.id)
+        .await
+        .expect_err("somebody else's ledger was readable");
+    assert!(missing.is_not_found());
+
+    let written = order::record_capture(
+        &mut tx,
+        &theirs,
+        collection,
+        CaptureId::new(),
+        money(dec!(50.00)),
+    )
+    .await?;
+    assert!(written.is_none(), "somebody else's ledger took a capture");
 
     tx.rollback().await.expect("to roll back");
     shop.close().await;

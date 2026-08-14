@@ -704,3 +704,550 @@ async fn a_page_of_orders_carries_a_cursor() -> tezgah::Result<()> {
     shop.close().await;
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// What an order is holding, and what happens to it
+// ---------------------------------------------------------------------------
+
+/// An order the way a checkout leaves one: stock reserved against a cart line,
+/// and the order created carrying those reservations forward onto its own.
+async fn a_held_order(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    scope: Scope,
+    stocked: i32,
+    quantity: i32,
+) -> (
+    InventoryItemId,
+    StockLocationId,
+    tezgah::id::OrderId,
+    LineItemId,
+) {
+    let (item, location, variant) = a_shelf(tx, ctx, scope, stocked).await;
+
+    let cart_line = LineItemId::new();
+    inventory::reserve(
+        tx,
+        ctx,
+        item,
+        location,
+        quantity,
+        Some(cart_line),
+        false,
+        None,
+    )
+    .await
+    .expect("the checkout to hold the stock");
+
+    let mut line = a_line(quantity, dec!(10));
+    line.variant_id = Some(variant);
+    line.reserved_for = Some(cart_line);
+
+    let placed = order::create(tx, ctx, an_order(vec![line]))
+        .await
+        .expect("an order");
+    let line_id = first_line(tx, ctx, placed.id).await;
+
+    (item, location, placed.id, line_id)
+}
+
+#[tokio::test]
+async fn a_cancelled_order_gives_the_stock_it_held_back() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    seed_currency(&mut tx, shop.here).await;
+
+    let (item, location, placed, _) = a_held_order(&mut tx, &ctx, shop.here, 10, 3).await;
+
+    let held = inventory::level(&mut tx, &ctx, item, location).await?;
+    assert_eq!(
+        held.reserved_quantity, 3,
+        "the order did not inherit a hold"
+    );
+    assert_eq!(held.available_quantity, 7);
+
+    let canceled = order::cancel(&mut tx, &ctx, placed).await?;
+    assert_eq!(canceled.status()?, OrderStatus::Canceled);
+
+    let after = inventory::level(&mut tx, &ctx, item, location).await?;
+    assert_eq!(after.reserved_quantity, 0, "a cancelled order still holds");
+    assert_eq!(after.stocked_quantity, 10, "nothing left the shelf");
+    assert_eq!(after.available_quantity, 10);
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
+}
+
+/// The cheap path has to do the whole thing too: a host that moves the status
+/// is cancelling, whatever it called the call.
+#[tokio::test]
+async fn setting_the_status_to_cancelled_unwinds_the_same_way() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    seed_currency(&mut tx, shop.here).await;
+
+    let (item, location, placed, _) = a_held_order(&mut tx, &ctx, shop.here, 10, 2).await;
+
+    order::set_status(&mut tx, &ctx, placed, OrderStatus::Canceled).await?;
+
+    let after = inventory::level(&mut tx, &ctx, item, location).await?;
+    assert_eq!(after.reserved_quantity, 0);
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_cancelled_order_gives_the_promotion_use_back() -> tezgah::Result<()> {
+    use tezgah::promotion::{self, NewPromotion, PromotionKind, Status};
+
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    seed_currency(&mut tx, shop.here).await;
+
+    let promo = promotion::create_promotion(
+        &mut tx,
+        &ctx,
+        NewPromotion {
+            code: format!("TEN-{}", Uuid::now_v7().simple()),
+            kind: PromotionKind::Standard,
+            status: Status::Active,
+            campaign_id: None,
+            is_automatic: false,
+            usage_limit: None,
+            customer_usage_limit: None,
+        },
+    )
+    .await?;
+
+    // A cart with the promotion recorded against its line, which is where an
+    // order's discounts come from and the only place the promotion is named.
+    let cart = Uuid::now_v7();
+    sqlx::query("insert into cart (id, scope, currency_code) values ($1, $2, 'TRY')")
+        .bind(cart)
+        .bind(shop.here.0)
+        .execute(&mut *tx)
+        .await
+        .expect("a cart");
+
+    let cart_line = Uuid::now_v7();
+    sqlx::query(
+        "insert into cart_line_item
+             (id, scope, cart_id, product_title, quantity, unit_price, currency_code)
+         values ($1, $2, $3, 'A thing', 1, 10, 'TRY')",
+    )
+    .bind(cart_line)
+    .bind(shop.here.0)
+    .bind(cart)
+    .execute(&mut *tx)
+    .await
+    .expect("a cart line");
+
+    sqlx::query(
+        "insert into cart_line_item_adjustment
+             (id, scope, cart_line_item_id, promotion_id, amount, currency_code)
+         values ($1, $2, $3, $4, 1, 'TRY')",
+    )
+    .bind(Uuid::now_v7())
+    .bind(shop.here.0)
+    .bind(cart_line)
+    .bind(promo.id.as_uuid())
+    .execute(&mut *tx)
+    .await
+    .expect("an adjustment");
+
+    promotion::claim(&mut tx, &ctx, promo.id, None).await?;
+    let claimed = promotion::promotion(&mut tx, &ctx, promo.id).await?;
+    assert_eq!(claimed.used, 1);
+
+    let placed = order::create(
+        &mut tx,
+        &ctx,
+        NewOrder {
+            metadata: Some(serde_json::json!({ "cart_id": cart })),
+            ..an_order(vec![a_line(1, dec!(10))])
+        },
+    )
+    .await?;
+
+    order::cancel(&mut tx, &ctx, placed.id).await?;
+
+    let given_back = promotion::promotion(&mut tx, &ctx, promo.id).await?;
+    assert_eq!(
+        given_back.used, 0,
+        "a cancelled order kept the promotion's use"
+    );
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn an_order_that_has_shipped_cannot_be_cancelled() -> tezgah::Result<()> {
+    use tezgah::fulfilment::{self, NewFulfillment, NewFulfillmentItem};
+
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    seed_currency(&mut tx, shop.here).await;
+
+    let (_, location, placed, _) = a_held_order(&mut tx, &ctx, shop.here, 10, 2).await;
+    let order_now = order::get(&mut tx, &ctx, placed).await?;
+    let items = order::items(&mut tx, &ctx, placed, order_now.version).await?;
+    let item = items.first().expect("an item").id;
+
+    let parcel = fulfilment::create_fulfillment(
+        &mut tx,
+        &ctx,
+        placed,
+        NewFulfillment {
+            location_id: location,
+            shipping_option_id: None,
+            provider_id: None,
+            requires_shipping: true,
+            created_by: None,
+            data: None,
+            items: vec![NewFulfillmentItem {
+                order_item_id: item,
+                inventory_item_id: None,
+                title: "A thing".into(),
+                sku: None,
+                barcode: None,
+                quantity: 2,
+            }],
+        },
+    )
+    .await?;
+
+    fulfilment::mark_packed(&mut tx, &ctx, placed, parcel.id).await?;
+    fulfilment::mark_shipped(&mut tx, &ctx, placed, parcel.id, None).await?;
+
+    let refused = order::cancel(&mut tx, &ctx, placed)
+        .await
+        .expect_err("a shipped order is returned, not cancelled");
+    assert!(refused.is_conflict());
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_fulfilment_takes_the_stock_off_the_shelf_and_cancelling_puts_it_back()
+-> tezgah::Result<()> {
+    use tezgah::fulfilment::{self, NewFulfillment, NewFulfillmentItem};
+
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    seed_currency(&mut tx, shop.here).await;
+
+    let (stock_item, location, placed, _) = a_held_order(&mut tx, &ctx, shop.here, 10, 2).await;
+    let order_now = order::get(&mut tx, &ctx, placed).await?;
+    let items = order::items(&mut tx, &ctx, placed, order_now.version).await?;
+    let item = items.first().expect("an item").id;
+
+    let parcel = fulfilment::create_fulfillment(
+        &mut tx,
+        &ctx,
+        placed,
+        NewFulfillment {
+            location_id: location,
+            shipping_option_id: None,
+            provider_id: None,
+            requires_shipping: true,
+            created_by: None,
+            data: None,
+            items: vec![NewFulfillmentItem {
+                order_item_id: item,
+                inventory_item_id: None,
+                title: "A thing".into(),
+                sku: None,
+                barcode: None,
+                quantity: 2,
+            }],
+        },
+    )
+    .await?;
+
+    let shipped = inventory::level(&mut tx, &ctx, stock_item, location).await?;
+    assert_eq!(
+        shipped.stocked_quantity, 8,
+        "the goods never left the count"
+    );
+    assert_eq!(shipped.reserved_quantity, 0, "the hold outlived the parcel");
+    assert_eq!(shipped.available_quantity, 8);
+
+    fulfilment::cancel_fulfillment(&mut tx, &ctx, placed, parcel.id).await?;
+
+    let back = inventory::level(&mut tx, &ctx, stock_item, location).await?;
+    assert_eq!(back.stocked_quantity, 10, "the goods came back uncounted");
+    assert_eq!(back.reserved_quantity, 2, "the order stopped holding them");
+    assert_eq!(back.available_quantity, 8);
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn an_edit_that_moves_a_quantity_moves_the_reservation_with_it() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    seed_currency(&mut tx, shop.here).await;
+
+    let (item, location, placed, line) = a_held_order(&mut tx, &ctx, shop.here, 10, 2).await;
+
+    let up = order::request_change(&mut tx, &ctx, placed, ChangeType::Edit, None).await?;
+    order::add_action(
+        &mut tx,
+        &ctx,
+        up.id,
+        NewAction::on(ChangeAction::ItemUpdate, line, 5),
+    )
+    .await?;
+    order::confirm_change(&mut tx, &ctx, up.id).await?;
+
+    let raised = inventory::level(&mut tx, &ctx, item, location).await?;
+    assert_eq!(raised.reserved_quantity, 5, "the edit reserved nothing");
+    assert_eq!(raised.available_quantity, 5);
+
+    let down = order::request_change(&mut tx, &ctx, placed, ChangeType::Edit, None).await?;
+    order::add_action(
+        &mut tx,
+        &ctx,
+        down.id,
+        NewAction::on(ChangeAction::ItemUpdate, line, 1),
+    )
+    .await?;
+    order::confirm_change(&mut tx, &ctx, down.id).await?;
+
+    let lowered = inventory::level(&mut tx, &ctx, item, location).await?;
+    assert_eq!(
+        lowered.reserved_quantity, 1,
+        "the edit held units nobody buys"
+    );
+    assert_eq!(lowered.available_quantity, 9);
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn an_edit_the_shelf_cannot_meet_is_refused() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    seed_currency(&mut tx, shop.here).await;
+
+    let (item, location, placed, line) = a_held_order(&mut tx, &ctx, shop.here, 4, 2).await;
+
+    let change = order::request_change(&mut tx, &ctx, placed, ChangeType::Edit, None).await?;
+    order::add_action(
+        &mut tx,
+        &ctx,
+        change.id,
+        NewAction::on(ChangeAction::ItemUpdate, line, 9),
+    )
+    .await?;
+
+    let refused = order::confirm_change(&mut tx, &ctx, change.id)
+        .await
+        .expect_err("an edit past the shelf writes an order nobody can ship");
+    assert!(
+        refused.out_of_stock().is_some() || refused.is_conflict(),
+        "an unmeetable edit came back as {}",
+        refused.code()
+    );
+
+    let still = inventory::level(&mut tx, &ctx, item, location).await?;
+    assert_eq!(still.reserved_quantity, 2);
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn more_cannot_be_received_than_the_return_asked_for() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    seed_currency(&mut tx, shop.here).await;
+
+    let (_, location, variant) = a_shelf(&mut tx, &ctx, shop.here, 10).await;
+
+    let mut line = a_line(3, dec!(10));
+    line.variant_id = Some(variant);
+    let placed = order::create(&mut tx, &ctx, an_order(vec![line])).await?;
+    let line_id = first_line(&mut tx, &ctx, placed.id).await;
+
+    let asked = order::request_return(
+        &mut tx,
+        &ctx,
+        placed.id,
+        Some(location),
+        vec![ReturnLine {
+            order_line_item_id: line_id,
+            quantity: 1,
+            return_reason_id: None,
+            note: None,
+        }],
+    )
+    .await?;
+
+    let refused = order::receive_return(
+        &mut tx,
+        &ctx,
+        asked.id,
+        vec![ReceivedLine {
+            order_line_item_id: line_id,
+            quantity: 2,
+            damaged: 0,
+        }],
+    )
+    .await
+    .expect_err("two came back for a return that asked for one");
+    assert!(
+        refused.is_conflict(),
+        "over-receipt surfaced as {} rather than a conflict",
+        refused.code()
+    );
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_dismissal_is_checked_the_way_a_receipt_is() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    seed_currency(&mut tx, shop.here).await;
+
+    let (_, location, variant) = a_shelf(&mut tx, &ctx, shop.here, 10).await;
+
+    let mut line = a_line(3, dec!(10));
+    line.variant_id = Some(variant);
+    let placed = order::create(&mut tx, &ctx, an_order(vec![line])).await?;
+    let line_id = first_line(&mut tx, &ctx, placed.id).await;
+
+    let asked = order::request_return(
+        &mut tx,
+        &ctx,
+        placed.id,
+        Some(location),
+        vec![ReturnLine {
+            order_line_item_id: line_id,
+            quantity: 2,
+            return_reason_id: None,
+            note: None,
+        }],
+    )
+    .await?;
+
+    let nothing = order::dismiss_return(&mut tx, &ctx, asked.id, vec![])
+        .await
+        .expect_err("a dismissal of nothing");
+    assert_eq!(nothing.code(), "invalid");
+
+    let negative = order::dismiss_return(
+        &mut tx,
+        &ctx,
+        asked.id,
+        vec![ReceivedLine {
+            order_line_item_id: line_id,
+            quantity: -1,
+            damaged: 0,
+        }],
+    )
+    .await
+    .expect_err("a dismissal of less than nothing");
+    assert_eq!(negative.code(), "invalid");
+
+    // Nothing has come in, so there is nothing to turn away yet.
+    let early = order::dismiss_return(
+        &mut tx,
+        &ctx,
+        asked.id,
+        vec![ReceivedLine {
+            order_line_item_id: line_id,
+            quantity: 1,
+            damaged: 0,
+        }],
+    )
+    .await
+    .expect_err("a dismissal of what was never received");
+    assert!(early.is_conflict());
+
+    order::receive_return(
+        &mut tx,
+        &ctx,
+        asked.id,
+        vec![ReceivedLine {
+            order_line_item_id: line_id,
+            quantity: 2,
+            damaged: 0,
+        }],
+    )
+    .await?;
+
+    let dismissed = order::dismiss_return(
+        &mut tx,
+        &ctx,
+        asked.id,
+        vec![ReceivedLine {
+            order_line_item_id: line_id,
+            quantity: 1,
+            damaged: 0,
+        }],
+    )
+    .await?;
+    assert_eq!(dismissed.id, asked.id);
+
+    let now = order::get(&mut tx, &ctx, placed.id).await?;
+    let items = order::items(&mut tx, &ctx, placed.id, now.version).await?;
+    assert_eq!(
+        items.first().map(|row| row.return_dismissed_quantity),
+        Some(1)
+    );
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn another_scope_cannot_cancel_this_one_s_order() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+
+    let mut tx = shop.begin().await;
+    seed_currency(&mut tx, shop.here).await;
+    let (item, location, placed, _) = a_held_order(&mut tx, &ctx, shop.here, 10, 2).await;
+    tx.commit().await.expect("to commit");
+
+    let mut theirs = shop.begin_as(shop.elsewhere).await;
+    let refused = order::cancel(&mut theirs, &shop.theirs(), placed)
+        .await
+        .expect_err("another scope reached this order");
+    assert!(refused.is_not_found());
+    theirs.rollback().await.expect("to roll back");
+
+    let mut tx = shop.begin().await;
+    let still = inventory::level(&mut tx, &ctx, item, location).await?;
+    assert_eq!(still.reserved_quantity, 2, "somebody else let the stock go");
+    tx.rollback().await.expect("to roll back");
+
+    shop.close().await;
+    Ok(())
+}

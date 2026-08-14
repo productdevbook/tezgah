@@ -1066,7 +1066,8 @@ pub async fn update_cart(
         cart::set_email(tx, ctx, id, email).await?;
     }
 
-    let changed = if input.shipping_address.is_some() || input.billing_address.is_some() {
+    let moved = input.shipping_address.is_some() || input.billing_address.is_some();
+    let changed = if moved {
         cart::set_addresses(
             tx,
             ctx,
@@ -1079,6 +1080,11 @@ pub async fn update_cart(
         cart::get(tx, ctx, id).await?
     };
 
+    // An address is where tax comes from, so a new one is a new answer.
+    if moved {
+        reprice(tx, ctx, id).await?;
+    }
+
     Ok(CartView::from(changed))
 }
 
@@ -1087,9 +1093,10 @@ pub async fn set_cart_customer(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: CartId) -> Re
     let me = signed_in(ctx)?;
     own_cart(tx, ctx, id, Action::Write).await?;
 
-    Ok(CartView::from(
-        cart::transfer_to_customer(tx, ctx, id, me).await?,
-    ))
+    let kept = cart::transfer_to_customer(tx, ctx, id, me).await?;
+    reprice(tx, ctx, kept.id).await?;
+
+    Ok(CartView::from(kept))
 }
 
 pub async fn list_line_items(
@@ -1152,6 +1159,8 @@ pub async fn add_line_item(
     )
     .await?;
 
+    reprice(tx, ctx, id).await?;
+
     LineItemView::of(item)
 }
 
@@ -1170,7 +1179,10 @@ pub async fn update_line_item(
 ) -> Result<Option<LineItemView>> {
     own_cart(tx, ctx, id, Action::Write).await?;
 
-    match cart::update_line(tx, ctx, id, line_id, input.quantity).await? {
+    let changed = cart::update_line(tx, ctx, id, line_id, input.quantity).await?;
+    reprice(tx, ctx, id).await?;
+
+    match changed {
         Some(item) => LineItemView::of(item).map(Some),
         None => Ok(None),
     }
@@ -1183,13 +1195,84 @@ pub async fn remove_line_item(
     line_id: LineItemId,
 ) -> Result<()> {
     own_cart(tx, ctx, id, Action::Write).await?;
-    cart::remove_line(tx, ctx, id, line_id).await
+    cart::remove_line(tx, ctx, id, line_id).await?;
+    reprice(tx, ctx, id).await
+}
+
+/// Works the cart out again from what it now holds: the discounts, then the
+/// tax on what is left.
+///
+/// It lives on this surface rather than in `cart` because it is the one layer
+/// allowed to reach for `promotion` and `tax` at once; putting it in `cart`
+/// would make the crate's module graph a cycle.
+pub async fn reprice(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: CartId) -> Result<()> {
+    crate::promotion::apply(tx, ctx, id).await?;
+    retax(tx, ctx, id).await
+}
+
+/// No address, no jurisdiction: the tax lines go and the cart is untaxed until
+/// somebody says where it is going. Checkout is what refuses to take money
+/// without an address, not this.
+async fn retax(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: CartId) -> Result<()> {
+    let holding = cart::get(tx, ctx, id).await?;
+    let currency = cart_currency(&holding)?;
+
+    let Some(to) = cart::delivery(tx, ctx, id).await? else {
+        return tax::set_cart_tax_lines(tx, ctx, id, &[], &[]).await;
+    };
+
+    let address = tax::TaxableAddress {
+        country_code: to.country_code,
+        province_code: to.province_code,
+    };
+
+    let items: Vec<tax::TaxableLine> = cart::lines(tx, ctx, id)
+        .await?
+        .into_iter()
+        .map(|line| tax::TaxableLine {
+            id: line.id.as_uuid(),
+            amount: line_total(line.quantity, line.unit_price, currency),
+            targets: line
+                .product_id
+                .map(|product| {
+                    vec![tax::TaxTarget {
+                        reference: tax::TaxReference::Product,
+                        id: product,
+                    }]
+                })
+                .unwrap_or_default(),
+        })
+        .collect();
+
+    let methods: Vec<tax::TaxableLine> = cart::shipping_methods(tx, ctx, id)
+        .await?
+        .into_iter()
+        .map(|method| tax::TaxableLine {
+            id: method.id.as_uuid(),
+            amount: Money::new(method.amount, currency),
+            targets: method
+                .shipping_option_id
+                .map(|option| {
+                    vec![tax::TaxTarget {
+                        reference: tax::TaxReference::ShippingOption,
+                        id: option.as_uuid(),
+                    }]
+                })
+                .unwrap_or_default(),
+        })
+        .collect();
+
+    let inclusive = pricing::is_tax_inclusive(tx, ctx, &price_context(&holding, currency)).await?;
+    let on_items = tax::calculate(tx, ctx, &items, &address, inclusive).await?;
+    let on_methods = tax::calculate(tx, ctx, &methods, &address, inclusive).await?;
+
+    tax::set_cart_tax_lines(tx, ctx, id, &on_items, &on_methods).await
 }
 
 /// Applies whatever this cart now qualifies for and hands back what it costs.
 pub async fn apply_promotions(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: CartId) -> Result<TotalsView> {
     own_cart(tx, ctx, id, Action::Write).await?;
-    crate::promotion::apply(tx, ctx, id).await?;
+    reprice(tx, ctx, id).await?;
     Ok(TotalsView::from(cart::totals(tx, ctx, id).await?))
 }
 
@@ -1230,6 +1313,8 @@ pub async fn set_shipping_method(
         },
     )
     .await?;
+
+    reprice(tx, ctx, id).await?;
 
     ShippingMethodView::of(chosen)
 }

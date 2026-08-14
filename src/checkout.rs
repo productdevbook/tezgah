@@ -48,7 +48,7 @@ use crate::id::{
     CartId, CustomerId, LineItemId, OrderId, PaymentCollectionId, PaymentId, PaymentSessionId,
     PromotionId, ReservationId, ShippingOptionId, StockLocationId, VariantId,
 };
-use crate::money::Money;
+use crate::money::{Currency, Money};
 use crate::order::{self, NewOrder, NewOrderLine, NewOrderShipping, OrderAddress, OrderStatus};
 use crate::payment::{
     self, AuthorizationStatus, AuthorizeRequest, Authorized, NewCollection, NewSession,
@@ -65,7 +65,7 @@ struct Carried {
     cart_id: Option<CartId>,
     customer_id: Option<CustomerId>,
     #[serde(default)]
-    promotions: Vec<PromotionId>,
+    promotions: Vec<Claimed>,
     #[serde(default)]
     reservations: Vec<ReservationId>,
     order_id: Option<OrderId>,
@@ -290,9 +290,24 @@ impl Step for ValidateCart {
 // 2. Take the uses the promotions on this cart are owed
 // ---------------------------------------------------------------------------
 
+/// A promotion claimed, and the discount it gave away — a campaign with a
+/// spend budget is charged that, and one counting uses ignores it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Claimed {
+    promotion: PromotionId,
+    spend: Decimal,
+    currency: String,
+}
+
+impl Claimed {
+    fn money(&self) -> Result<Money> {
+        Ok(Money::new(self.spend, Currency::parse(&self.currency)?))
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct ClaimedPromotions {
-    promotions: Vec<PromotionId>,
+    promotions: Vec<Claimed>,
     customer_id: Option<CustomerId>,
 }
 
@@ -313,16 +328,29 @@ impl Step for ClaimPromotions {
         let mut carried = Carried::of(input)?;
         let cart_id = carried.cart()?;
 
-        let ids: Vec<Uuid> = sqlx::query_scalar(
-            "select distinct a.promotion_id
-             from cart_line_item_adjustment a
-             join cart_line_item l on l.scope = a.scope and l.id = a.cart_line_item_id
-             where a.scope = $1 and l.cart_id = $2 and a.promotion_id is not null
-             union
-             select distinct a.promotion_id
-             from cart_shipping_method_adjustment a
-             join cart_shipping_method m on m.scope = a.scope and m.id = a.cart_shipping_method_id
-             where a.scope = $1 and m.cart_id = $2 and a.promotion_id is not null",
+        let currency: String =
+            sqlx::query_scalar("select currency_code from cart where scope = $1 and id = $2")
+                .bind(ctx.scope.0)
+                .bind(cart_id.as_uuid())
+                .fetch_optional(&mut **tx)
+                .await
+                .map_err(|err| Failure::Retry(Error::from(err)))?
+                .ok_or_else(|| Failure::Final(Error::not_found("cart")))?;
+
+        let taken: Vec<(Uuid, Decimal)> = sqlx::query_as(
+            "with taken as (
+                 select a.promotion_id as id, a.amount as amount
+                 from cart_line_item_adjustment a
+                 join cart_line_item l on l.scope = a.scope and l.id = a.cart_line_item_id
+                 where a.scope = $1 and l.cart_id = $2 and a.promotion_id is not null
+                 union all
+                 select a.promotion_id, a.amount
+                 from cart_shipping_method_adjustment a
+                 join cart_shipping_method m
+                   on m.scope = a.scope and m.id = a.cart_shipping_method_id
+                 where a.scope = $1 and m.cart_id = $2 and a.promotion_id is not null
+             )
+             select id, sum(amount) from taken group by id order by id",
         )
         .bind(ctx.scope.0)
         .bind(cart_id.as_uuid())
@@ -330,12 +358,18 @@ impl Step for ClaimPromotions {
         .await
         .map_err(|err| Failure::Retry(Error::from(err)))?;
 
-        for id in ids {
-            let id = PromotionId::from_uuid(id);
-            promotion::claim(tx, ctx, id, carried.customer_id)
+        for (id, spend) in taken {
+            let claimed = Claimed {
+                promotion: PromotionId::from_uuid(id),
+                spend,
+                currency: currency.clone(),
+            };
+            let money = claimed.money().map_err(Failure::Final)?;
+
+            promotion::claim(tx, ctx, claimed.promotion, carried.customer_id, money)
                 .await
                 .map_err(Failure::Final)?;
-            carried.promotions.push(id);
+            carried.promotions.push(claimed);
         }
 
         let undo = ClaimedPromotions {
@@ -349,8 +383,9 @@ impl Step for ClaimPromotions {
     async fn compensate(&self, tx: &mut Tx<'_>, ctx: &Ctx<'_>, keep: &Value) -> Result<()> {
         let undo: ClaimedPromotions = recall(keep);
 
-        for id in undo.promotions {
-            promotion::release(tx, ctx, id, undo.customer_id, None).await?;
+        for claimed in undo.promotions {
+            let money = claimed.money()?;
+            promotion::release(tx, ctx, claimed.promotion, undo.customer_id, money).await?;
         }
 
         Ok(())
@@ -532,6 +567,7 @@ impl Step for CreateOrder {
             lines: lines
                 .into_iter()
                 .map(|line| NewOrderLine {
+                    reserved_for: Some(line.id),
                     variant_id: line.variant_id.map(VariantId::from_uuid),
                     product_id: line.product_id,
                     title: line.product_title.clone(),

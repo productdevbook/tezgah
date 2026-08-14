@@ -34,9 +34,9 @@ use uuid::Uuid;
 use crate::cart::{CartTotals, TotalsLine, TotalsShipping, compute};
 use crate::error::{Error, Result};
 use crate::id::{
-    AddressId, ClaimId, CustomerId, ExchangeId, LineItemId, OrderChangeId, OrderId, OrderItemId,
-    OrderTransactionId, OrderTransferId, PaymentCollectionId, RegionId, ReturnId, SalesChannelId,
-    ShippingOptionId, StockLocationId, VariantId,
+    AddressId, CaptureId, ClaimId, CustomerId, ExchangeId, LineItemId, OrderChangeId, OrderId,
+    OrderItemId, OrderTransactionId, OrderTransferId, PaymentCollectionId, PromotionId, RefundId,
+    RegionId, ReturnId, SalesChannelId, ShippingOptionId, StockLocationId, VariantId,
 };
 use crate::money::{Currency, Money};
 use crate::page::{Cursor, Page, Paging};
@@ -512,6 +512,9 @@ pub struct NewOrderLine {
     pub discount: Decimal,
     /// The sum of the line's tax rates as a percentage: 18 is eighteen percent.
     pub tax_rate: Decimal,
+    /// The cart line whose reservations this line inherits. Without it the
+    /// stock a checkout held is unreachable from the order that holds it.
+    pub reserved_for: Option<LineItemId>,
 }
 
 impl NewOrderLine {
@@ -535,6 +538,7 @@ impl NewOrderLine {
             requires_shipping: true,
             discount: Decimal::ZERO,
             tax_rate: Decimal::ZERO,
+            reserved_for: None,
         }
     }
 }
@@ -738,6 +742,10 @@ async fn place(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewOrder, draft: bool) -> Re
             charges(line.discount, line.tax_rate),
         )
         .await?;
+
+        if let Some(cart_line) = line.reserved_for {
+            crate::inventory::rebind_reservations(tx, ctx, cart_line, line_id).await?;
+        }
     }
 
     for method in new.shipping {
@@ -1080,7 +1088,110 @@ pub async fn set_status(
     if from == to {
         return Ok(order);
     }
+    if to == OrderStatus::Canceled {
+        return unwind(tx, ctx, &order, from).await;
+    }
 
+    move_status(tx, ctx, order_id, from, to).await
+}
+
+/// Cancelling, which is the operation and not the status: an order gives back
+/// everything it is holding on the way out.
+///
+/// Once a parcel has left the building there is nothing to give back, and the
+/// customer is owed a return rather than a cancellation. That is refused here
+/// rather than half-done.
+pub async fn cancel(tx: &mut Tx<'_>, ctx: &Ctx<'_>, order_id: OrderId) -> Result<Order> {
+    let order = read(tx, ctx, order_id).await?;
+
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Order {
+            id: order_id.as_uuid(),
+            customer: order.customer_id.map(CustomerId::as_uuid),
+        },
+    )?;
+
+    let from = order.status()?;
+    if from == OrderStatus::Canceled {
+        return Ok(order);
+    }
+    if !can_transition(from, OrderStatus::Canceled) {
+        return Err(Error::conflict(format!(
+            "an order cannot go from {} to canceled",
+            from.as_str()
+        )));
+    }
+
+    unwind(tx, ctx, &order, from).await
+}
+
+/// The undoing itself, with the permit already taken and the move already
+/// known to be allowed.
+async fn unwind(tx: &mut Tx<'_>, ctx: &Ctx<'_>, order: &Order, from: OrderStatus) -> Result<Order> {
+    if crate::fulfilment::anything_shipped(tx, ctx, order.id).await? {
+        return Err(Error::conflict(
+            "that order has shipped, so it is returned rather than cancelled",
+        ));
+    }
+
+    crate::fulfilment::cancel_open_fulfillments(tx, ctx, order.id).await?;
+
+    for line in line_items(tx, ctx, order.id).await? {
+        crate::inventory::release_line(tx, ctx, line.id).await?;
+    }
+
+    release_promotions(tx, ctx, order).await?;
+
+    move_status(tx, ctx, order.id, from, OrderStatus::Canceled).await
+}
+
+/// Gives back the uses the checkout claimed. The promotions are read from the
+/// cart the order came out of: an order records what a discount was worth, not
+/// which campaign gave it.
+async fn release_promotions(tx: &mut Tx<'_>, ctx: &Ctx<'_>, order: &Order) -> Result<()> {
+    let cart_id = order
+        .metadata
+        .as_ref()
+        .and_then(|data| data.get("cart_id"))
+        .and_then(Value::as_str)
+        .and_then(|raw| Uuid::parse_str(raw).ok());
+
+    let Some(cart_id) = cart_id else {
+        return Ok(());
+    };
+
+    let ids: Vec<Uuid> = sqlx::query_scalar(
+        "select distinct a.promotion_id
+         from cart_line_item_adjustment a
+         join cart_line_item l on l.scope = a.scope and l.id = a.cart_line_item_id
+         where a.scope = $1 and l.cart_id = $2 and a.promotion_id is not null
+         union
+         select distinct a.promotion_id
+         from cart_shipping_method_adjustment a
+         join cart_shipping_method m on m.scope = a.scope and m.id = a.cart_shipping_method_id
+         where a.scope = $1 and m.cart_id = $2 and a.promotion_id is not null",
+    )
+    .bind(ctx.scope.0)
+    .bind(cart_id)
+    .fetch_all(&mut **tx)
+    .await?;
+
+    for id in ids {
+        crate::promotion::release(tx, ctx, PromotionId::from_uuid(id), order.customer_id, None)
+            .await?;
+    }
+
+    Ok(())
+}
+
+async fn move_status(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order_id: OrderId,
+    from: OrderStatus,
+    to: OrderStatus,
+) -> Result<Order> {
     let now = ctx.now();
     let moved = sqlx::query_as::<_, Order>(&format!(
         r#"update "order" set
@@ -1226,6 +1337,70 @@ pub async fn record_transaction(
     .await?;
 
     Ok(written)
+}
+
+/// Puts money a provider actually took into the order's ledger.
+///
+/// The ledger is written here rather than in `payment` because `order` already
+/// depends on `payment`, and the arrow back would be a cycle. `capture` names
+/// the capture row, so a redelivered webhook meets the unique index instead of
+/// paying the order twice.
+pub async fn record_capture(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    collection: PaymentCollectionId,
+    capture: CaptureId,
+    amount: Money,
+) -> Result<Option<OrderTransaction>> {
+    record_settlement(tx, ctx, collection, "capture", capture.as_uuid(), amount).await
+}
+
+/// The same, for money given back: a negative movement, which is how
+/// [`ledger`] reads a refund.
+pub async fn record_refund(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    collection: PaymentCollectionId,
+    refund: RefundId,
+    amount: Money,
+) -> Result<Option<OrderTransaction>> {
+    let back = Money::new(-amount.amount, amount.currency);
+    record_settlement(tx, ctx, collection, "refund", refund.as_uuid(), back).await
+}
+
+/// The lookup answers nothing to the caller; the permission is taken by
+/// [`record_transaction`] against the order it found.
+async fn record_settlement(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    collection: PaymentCollectionId,
+    reference: &str,
+    reference_id: Uuid,
+    amount: Money,
+) -> Result<Option<OrderTransaction>> {
+    let order_id: Option<Uuid> = sqlx::query_scalar(
+        r#"select id from "order" where scope = $1 and payment_collection_id = $2"#,
+    )
+    .bind(ctx.scope.0)
+    .bind(collection.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    let Some(order_id) = order_id else {
+        return Ok(None);
+    };
+
+    let written = record_transaction(
+        tx,
+        ctx,
+        OrderId::from_uuid(order_id),
+        amount,
+        reference,
+        reference_id,
+    )
+    .await?;
+
+    Ok(Some(written))
 }
 
 pub async fn transactions(
@@ -1874,6 +2049,7 @@ pub async fn receive_return(
              where scope = $1 and id = (
                  select id from order_return_item
                  where scope = $1 and order_return_id = $2 and order_line_item_id = $5
+                   and received_quantity + $3 <= quantity
              )",
         )
         .bind(ctx.scope.0)
@@ -1885,7 +2061,12 @@ pub async fn receive_return(
         .await?;
 
         if moved.rows_affected() == 0 {
-            return Err(Error::conflict("that is more than the return asked for"));
+            return Err(
+                line_missing_or(tx, ctx, return_id, line.order_line_item_id, || {
+                    Error::conflict("that is more than the return asked for")
+                })
+                .await,
+            );
         }
 
         add_action(
@@ -1968,8 +2149,25 @@ pub async fn dismiss_return(
         },
     )?;
 
+    if order_return.canceled_at.is_some() {
+        return Err(Error::conflict("that return was cancelled"));
+    }
     if lines.is_empty() {
         return Err(Error::invalid("nothing was dismissed"));
+    }
+
+    // Everything is judged before a change is opened: a refusal that had
+    // already opened one leaves the order unable to open another.
+    for line in &lines {
+        if line.quantity <= 0 {
+            return Err(Error::invalid("that is not a quantity dismissed"));
+        }
+        if !return_line_exists(tx, ctx, return_id, line.order_line_item_id).await? {
+            return Err(Error::not_found("return item"));
+        }
+        if !enough_received(tx, ctx, return_id, line.order_line_item_id, line.quantity).await? {
+            return Err(Error::conflict("that is more than the return has taken in"));
+        }
     }
 
     let change = request_change(tx, ctx, order.id, ChangeType::Return, None).await?;
@@ -2513,6 +2711,19 @@ async fn apply_action(
         .map(LineItemId::from_uuid)
         .ok_or_else(|| Error::invalid("that action names no line"));
 
+    // An edit that moves a quantity has to move what the warehouse is holding
+    // with it, and the only honest measure of that is the row either side.
+    let counted = match what {
+        ChangeAction::ItemAdd | ChangeAction::ItemUpdate | ChangeAction::ItemRemove => {
+            action.reference_id.map(LineItemId::from_uuid)
+        }
+        _ => None,
+    };
+    let before = match counted {
+        Some(line) => item_quantity(tx, ctx, order.id, version, line).await?,
+        None => 0,
+    };
+
     match what {
         ChangeAction::ItemAdd => {
             let line = line?;
@@ -2586,6 +2797,7 @@ async fn apply_action(
                 version,
                 line?,
                 "return_requested_quantity",
+                "quantity",
                 quantity_of(&action.details)?,
             )
             .await?;
@@ -2598,6 +2810,7 @@ async fn apply_action(
                 version,
                 line?,
                 "return_received_quantity",
+                "quantity",
                 quantity_of(&action.details)?,
             )
             .await?;
@@ -2610,6 +2823,7 @@ async fn apply_action(
                 version,
                 line?,
                 "return_dismissed_quantity",
+                "return_received_quantity",
                 quantity_of(&action.details)?,
             )
             .await?;
@@ -2622,6 +2836,7 @@ async fn apply_action(
                 version,
                 line?,
                 "written_off_quantity",
+                "quantity",
                 quantity_of(&action.details)?,
             )
             .await?;
@@ -2695,7 +2910,37 @@ async fn apply_action(
         }
     }
 
+    if let Some(line) = counted {
+        if before > 0 {
+            let after = item_quantity(tx, ctx, order.id, version, line).await?;
+            crate::inventory::rescale_line(tx, ctx, line, before, after).await?;
+        }
+    }
+
     Ok(())
+}
+
+/// How much of one line an order holds at a version, and none when the line is
+/// not on it.
+async fn item_quantity(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order_id: OrderId,
+    version: i32,
+    line: LineItemId,
+) -> Result<i32> {
+    let quantity: Option<i32> = sqlx::query_scalar(
+        "select quantity from order_item
+         where scope = $1 and order_id = $2 and version = $3 and order_line_item_id = $4",
+    )
+    .bind(ctx.scope.0)
+    .bind(order_id.as_uuid())
+    .bind(version)
+    .bind(line.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    Ok(quantity.unwrap_or(0))
 }
 
 /// Copies a version's items and shipping forward. The old rows stay exactly as
@@ -3365,6 +3610,74 @@ fn charges(discount: Decimal, tax_rate: Decimal) -> Value {
     })
 }
 
+/// Whether a line is on a return at all. A read, and only ever to tell a
+/// missing line from a quantity that is too large; what bounds the quantity is
+/// the conditional update that writes it.
+async fn return_line_exists(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    return_id: ReturnId,
+    line_id: LineItemId,
+) -> Result<bool> {
+    let found: Option<i32> = sqlx::query_scalar(
+        "select 1 from order_return_item
+         where scope = $1 and order_return_id = $2 and order_line_item_id = $3",
+    )
+    .bind(ctx.scope.0)
+    .bind(return_id.as_uuid())
+    .bind(line_id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    Ok(found.is_some())
+}
+
+/// Whether enough of a line has come in to turn that much of it away. The
+/// binding guard is the conditional update in [`bump`]; this is what turns it
+/// into a refusal before an order change is opened.
+async fn enough_received(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    return_id: ReturnId,
+    line_id: LineItemId,
+    quantity: i32,
+) -> Result<bool> {
+    let found: Option<i32> = sqlx::query_scalar(
+        "select 1 from order_return_item
+         where scope = $1 and order_return_id = $2 and order_line_item_id = $3
+           and received_quantity >= $4",
+    )
+    .bind(ctx.scope.0)
+    .bind(return_id.as_uuid())
+    .bind(line_id.as_uuid())
+    .bind(quantity)
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    Ok(found.is_some())
+}
+
+/// Only on the failure path, so the happy one stays a single statement.
+async fn line_missing_or(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    return_id: ReturnId,
+    line_id: LineItemId,
+    otherwise: impl Fn() -> Error,
+) -> Error {
+    match return_line_exists(tx, ctx, return_id, line_id).await {
+        Ok(true) => otherwise(),
+        Ok(false) => Error::not_found("return item"),
+        Err(err) => err,
+    }
+}
+
+/// Raises one of an item's counters, never past the counter that bounds it.
+///
+/// The ceiling is in the `where`, not read first and checked after: a database
+/// check constraint underneath would refuse the same write, but as a raw
+/// violation rather than the conflict a caller can act on.
+#[allow(clippy::too_many_arguments)]
 async fn bump(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -3372,17 +3685,19 @@ async fn bump(
     version: i32,
     line_id: LineItemId,
     column: &str,
+    ceiling: &str,
     by: i32,
 ) -> Result<()> {
     if by <= 0 {
         return Err(Error::invalid("that is not a quantity"));
     }
 
-    // The column name is one of a fixed set chosen by this module, never by a
+    // The column names are a fixed set chosen by this module, never by a
     // caller: there is nothing here for a value to escape into.
     let moved = sqlx::query(&format!(
         "update order_item set {column} = {column} + $4
-         where scope = $1 and order_id = $2 and version = $3 and order_line_item_id = $5"
+         where scope = $1 and order_id = $2 and version = $3 and order_line_item_id = $5
+           and {column} + $4 <= {ceiling}"
     ))
     .bind(ctx.scope.0)
     .bind(order_id.as_uuid())
@@ -3393,7 +3708,9 @@ async fn bump(
     .await?;
 
     if moved.rows_affected() == 0 {
-        return Err(Error::conflict("that line is not on this version"));
+        return Err(Error::conflict(
+            "that line is not on this version, or that is more of it than it has left",
+        ));
     }
 
     Ok(())

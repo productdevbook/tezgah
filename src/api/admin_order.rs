@@ -1004,6 +1004,7 @@ impl NewLineIn {
             requires_shipping: self.requires_shipping,
             discount: self.discount,
             tax_rate: self.tax_rate,
+            reserved_for: None,
         })
     }
 }
@@ -2454,11 +2455,13 @@ pub async fn capture_payment(
     id: PaymentId,
     input: CapturePayment,
 ) -> Result<CaptureView> {
-    Ok(
-        payment::capture(tx, ctx, id, input.amount.money()?, input.metadata)
-            .await?
-            .into(),
-    )
+    let amount = input.amount.money()?;
+    let collection = payment::payment(tx, ctx, id).await?.payment_collection_id;
+    let capture = payment::capture(tx, ctx, id, amount, input.metadata).await?;
+
+    let _ = order::record_capture(tx, ctx, collection, capture.id, amount).await?;
+
+    Ok(capture.into())
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -2477,16 +2480,13 @@ pub async fn refund_payment(
     id: PaymentId,
     input: RefundPayment,
 ) -> Result<RefundView> {
-    Ok(payment::refund(
-        tx,
-        ctx,
-        id,
-        input.amount.money()?,
-        input.reason_id,
-        input.note,
-    )
-    .await?
-    .into())
+    let amount = input.amount.money()?;
+    let collection = payment::payment(tx, ctx, id).await?.payment_collection_id;
+    let refund = payment::refund(tx, ctx, id, amount, input.reason_id, input.note).await?;
+
+    let _ = order::record_refund(tx, ctx, collection, refund.id, amount).await?;
+
+    Ok(refund.into())
 }
 
 pub async fn payment_providers(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<Vec<ProviderView>> {

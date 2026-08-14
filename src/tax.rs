@@ -9,8 +9,6 @@
 //! and whoever asked stores them beside the cart or the order they belong to —
 //! a tax line on a cart is a snapshot of an answer, not a view of this table.
 
-use std::collections::HashMap;
-
 use async_trait::async_trait;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -18,8 +16,8 @@ use sqlx::FromRow;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
-use crate::id::{TaxRateId, TaxRegionId};
-use crate::money::{Currency, Money, allocate};
+use crate::id::{CartId, TaxRateId, TaxRegionId};
+use crate::money::{Money, allocate};
 use crate::page::{Cursor, Page, Paging};
 use crate::ports::{Action, AuditEntry, Ctx, Permit, Resource, Tx};
 use crate::store;
@@ -552,14 +550,22 @@ pub async fn calculate(
 ) -> Result<Vec<TaxLine>> {
     let _: Permit = ctx.permit(Action::View, Resource::Tax)?;
 
-    if lines.is_empty() {
+    let Some(first) = lines.first() else {
         return Ok(Vec::new());
+    };
+
+    let currency = first.amount.currency;
+    if lines.iter().any(|line| line.amount.currency != currency) {
+        return Err(Error::bug("tax was asked for two currencies at once"));
     }
 
     let chain = rates_for(tx, ctx, address).await?;
     if chain.is_empty() {
         return Ok(Vec::new());
     }
+
+    let exponent = u32::try_from(store::currency(tx, ctx, currency).await?.exponent)
+        .map_err(|_| Error::bug("a currency's exponent is not a count of decimal places"))?;
 
     let rate_ids: Vec<Uuid> = chain
         .iter()
@@ -578,24 +584,125 @@ pub async fn calculate(
     .fetch_all(&mut **tx)
     .await?;
 
-    let mut exponents: HashMap<Currency, u32> = HashMap::new();
-    for line in lines {
-        if let std::collections::hash_map::Entry::Vacant(slot) =
-            exponents.entry(line.amount.currency)
-        {
-            let row = store::currency(tx, ctx, line.amount.currency).await?;
-            slot.insert(u32::try_from(row.exponent).unwrap_or(2));
-        }
-    }
-
     let mut out = Vec::new();
     for line in lines {
         let applicable = applicable_rates(&chain, &rules, line);
-        let exponent = exponents.get(&line.amount.currency).copied().unwrap_or(2);
         out.extend(amounts_for(line, &applicable, is_tax_inclusive, exponent)?);
     }
 
     Ok(out)
+}
+
+/// Puts what [`calculate`] worked out on the cart, replacing whatever was
+/// there.
+///
+/// A cart's tax lines are a snapshot of one answer, so they are rewritten
+/// whole: a leftover line from the last address is what makes a total wrong.
+/// `items` are keyed by `cart_line_item.id` and `shipping` by
+/// `cart_shipping_method.id`; a line for anything else is not this cart's and
+/// lands nowhere.
+pub async fn set_cart_tax_lines(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    cart_id: CartId,
+    items: &[TaxLine],
+    shipping: &[TaxLine],
+) -> Result<()> {
+    #[derive(FromRow)]
+    struct CartRow {
+        customer_id: Option<Uuid>,
+        completed_at: Option<chrono::DateTime<chrono::Utc>>,
+    }
+
+    let cart = sqlx::query_as::<_, CartRow>(
+        "select customer_id, completed_at from cart where scope = $1 and id = $2",
+    )
+    .bind(ctx.scope.0)
+    .bind(cart_id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("cart"))?;
+
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Cart {
+            id: cart_id.as_uuid(),
+            customer: cart.customer_id,
+        },
+    )?;
+
+    if cart.completed_at.is_some() {
+        return Err(Error::conflict("that cart is already an order"));
+    }
+
+    sqlx::query(
+        "delete from cart_line_item_tax_line t
+         using cart_line_item l
+         where t.scope = $1
+           and l.scope = $1
+           and t.cart_line_item_id = l.id
+           and l.cart_id = $2",
+    )
+    .bind(ctx.scope.0)
+    .bind(cart_id.as_uuid())
+    .execute(&mut **tx)
+    .await?;
+
+    sqlx::query(
+        "delete from cart_shipping_method_tax_line t
+         using cart_shipping_method m
+         where t.scope = $1
+           and m.scope = $1
+           and t.cart_shipping_method_id = m.id
+           and m.cart_id = $2",
+    )
+    .bind(ctx.scope.0)
+    .bind(cart_id.as_uuid())
+    .execute(&mut **tx)
+    .await?;
+
+    for line in items {
+        sqlx::query(
+            "insert into cart_line_item_tax_line (id, scope, cart_line_item_id, rate, code, name)
+             select $1, $2, l.id, $4, $5, $6
+             from cart_line_item l
+             where l.scope = $2 and l.id = $3 and l.cart_id = $7
+             on conflict (scope, cart_line_item_id, code)
+             do update set rate = excluded.rate, name = excluded.name",
+        )
+        .bind(Uuid::now_v7())
+        .bind(ctx.scope.0)
+        .bind(line.line_id)
+        .bind(line.rate)
+        .bind(&line.code)
+        .bind(&line.name)
+        .bind(cart_id.as_uuid())
+        .execute(&mut **tx)
+        .await?;
+    }
+
+    for line in shipping {
+        sqlx::query(
+            "insert into cart_shipping_method_tax_line
+                 (id, scope, cart_shipping_method_id, rate, code, name)
+             select $1, $2, m.id, $4, $5, $6
+             from cart_shipping_method m
+             where m.scope = $2 and m.id = $3 and m.cart_id = $7
+             on conflict (scope, cart_shipping_method_id, code)
+             do update set rate = excluded.rate, name = excluded.name",
+        )
+        .bind(Uuid::now_v7())
+        .bind(ctx.scope.0)
+        .bind(line.line_id)
+        .bind(line.rate)
+        .bind(&line.code)
+        .bind(&line.name)
+        .bind(cart_id.as_uuid())
+        .execute(&mut **tx)
+        .await?;
+    }
+
+    Ok(())
 }
 
 /// The same question asked of somebody else's engine, for a shop whose tax is
@@ -715,8 +822,10 @@ fn country_code(text: &str) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use rust_decimal_macros::dec;
+
+    use super::*;
+    use crate::money::Currency;
 
     fn currency() -> Currency {
         Currency::parse("TRY").expect("a currency code")

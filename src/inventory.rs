@@ -1062,6 +1062,392 @@ pub async fn fulfil(tx: &mut Tx<'_>, ctx: &Ctx<'_>, reservation_id: ReservationI
     Ok(())
 }
 
+/// Every hold taken for one line, oldest first. Private on purpose: a line
+/// holds as many reservations as the variant has inventory items, which is a
+/// handful, not a page.
+async fn line_reservations(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    line_item_id: LineItemId,
+) -> Result<Vec<Reservation>> {
+    Ok(sqlx::query_as::<_, Reservation>(&format!(
+        "select {RESERVATION_COLUMNS} from reservation_item
+         where scope = $1 and line_item_id = $2
+         order by created_at, id"
+    ))
+    .bind(ctx.scope.0)
+    .bind(line_item_id.as_uuid())
+    .fetch_all(&mut **tx)
+    .await?)
+}
+
+/// Moves a line's holds onto another line without touching a level.
+///
+/// A checkout reserves against the cart's line and then writes an order with
+/// lines of its own; without this the stock an order holds is unreachable from
+/// the order, which is how a cancellation came to give nothing back.
+pub async fn rebind_reservations(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    from: LineItemId,
+    to: LineItemId,
+) -> Result<u64> {
+    let _: Permit = ctx.permit(Action::Write, Resource::Inventory { id: None })?;
+
+    let moved = sqlx::query(
+        "update reservation_item set line_item_id = $3
+         where scope = $1 and line_item_id = $2",
+    )
+    .bind(ctx.scope.0)
+    .bind(from.as_uuid())
+    .bind(to.as_uuid())
+    .execute(&mut **tx)
+    .await?;
+
+    Ok(moved.rows_affected())
+}
+
+/// Gives back every hold a line has. Nothing left the shelf, so `stocked`
+/// does not move.
+pub async fn release_line(tx: &mut Tx<'_>, ctx: &Ctx<'_>, line_item_id: LineItemId) -> Result<u64> {
+    let _: Permit = ctx.permit(Action::Write, Resource::Inventory { id: None })?;
+
+    let held = line_reservations(tx, ctx, line_item_id).await?;
+    for reservation in &held {
+        take_reservation(tx, ctx, reservation.id).await?;
+        unreserve(tx, ctx, reservation).await?;
+
+        ctx.emit(
+            tx,
+            Event {
+                name: "stock.released",
+                entity_id: reservation.id.as_uuid(),
+                payload: released_payload(reservation),
+            },
+        )
+        .await?;
+    }
+
+    Ok(held.len() as u64)
+}
+
+/// Re-sizes what a line holds when the line's quantity changes.
+///
+/// Each hold is scaled by the same ratio it was taken at, so a bundle keeps
+/// its proportions. A raise is a conditional update on the level: if the stock
+/// is not there and the hold does not allow a backorder, the whole edit fails
+/// rather than writing an order the shop cannot ship.
+pub async fn rescale_line(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    line_item_id: LineItemId,
+    from: i32,
+    to: i32,
+) -> Result<()> {
+    let _: Permit = ctx.permit(Action::Write, Resource::Inventory { id: None })?;
+
+    if from <= 0 {
+        return Err(Error::invalid("a line held stock for no quantity"));
+    }
+    if to < 0 {
+        return Err(Error::invalid("a line cannot be taken below nothing"));
+    }
+    if from == to {
+        return Ok(());
+    }
+    if to == 0 {
+        release_line(tx, ctx, line_item_id).await?;
+        return Ok(());
+    }
+
+    for reservation in line_reservations(tx, ctx, line_item_id).await? {
+        let per_unit = reservation.quantity / from;
+        let target = per_unit * to;
+        let delta = target - reservation.quantity;
+        if delta == 0 {
+            continue;
+        }
+
+        let moved = sqlx::query(
+            "update inventory_level
+             set reserved_quantity = greatest(reserved_quantity + $4, 0)
+             where scope = $1
+               and inventory_item_id = $2
+               and location_id = $3
+               and ($4 <= 0 or available_quantity >= $4 or $5)",
+        )
+        .bind(ctx.scope.0)
+        .bind(reservation.inventory_item_id.as_uuid())
+        .bind(reservation.location_id.as_uuid())
+        .bind(delta)
+        .bind(reservation.allows_backorder)
+        .execute(&mut **tx)
+        .await?;
+
+        if moved.rows_affected() == 0 {
+            return Err(level_missing_or(
+                tx,
+                ctx,
+                reservation.inventory_item_id,
+                reservation.location_id,
+                Error::out_of_stock_for(reservation.inventory_item_id.as_uuid()),
+            )
+            .await);
+        }
+
+        sqlx::query("update reservation_item set quantity = $3 where scope = $1 and id = $2")
+            .bind(ctx.scope.0)
+            .bind(reservation.id.as_uuid())
+            .bind(target)
+            .execute(&mut **tx)
+            .await?;
+    }
+
+    ctx.emit(
+        tx,
+        Event {
+            name: "stock.rescaled",
+            entity_id: line_item_id.as_uuid(),
+            payload: serde_json::json!({
+                "line_item_id": line_item_id,
+                "from": from,
+                "to": to,
+            }),
+        },
+    )
+    .await?;
+
+    Ok(())
+}
+
+/// The stock a line held actually leaves, for the part of it in one parcel.
+///
+/// One conditional update carries both halves: the hold comes down and
+/// `stocked` with it. A line nothing was reserved for — a draft order typed in
+/// the back office — still lowers `stocked`, because the goods left either way.
+pub async fn fulfil_units(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    line_item_id: LineItemId,
+    inventory_item_id: InventoryItemId,
+    location_id: StockLocationId,
+    quantity: i32,
+) -> Result<()> {
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Inventory {
+            id: Some(inventory_item_id.as_uuid()),
+        },
+    )?;
+
+    let quantity = positive(quantity, "a fulfilled quantity")?;
+    let held = take_held(
+        tx,
+        ctx,
+        line_item_id,
+        inventory_item_id,
+        location_id,
+        quantity,
+    )
+    .await?;
+
+    let moved = sqlx::query(
+        "update inventory_level
+         set reserved_quantity = reserved_quantity - case when $5 then $4 else 0 end,
+             stocked_quantity = stocked_quantity - $4
+         where scope = $1
+           and inventory_item_id = $2
+           and location_id = $3
+           and stocked_quantity >= $4
+           and (not $5 or reserved_quantity >= $4)",
+    )
+    .bind(ctx.scope.0)
+    .bind(inventory_item_id.as_uuid())
+    .bind(location_id.as_uuid())
+    .bind(quantity)
+    .bind(held)
+    .execute(&mut **tx)
+    .await?;
+
+    if moved.rows_affected() == 0 {
+        return Err(level_missing_or(
+            tx,
+            ctx,
+            inventory_item_id,
+            location_id,
+            Error::conflict("there is not that much on the shelf to ship"),
+        )
+        .await);
+    }
+
+    ctx.emit(
+        tx,
+        Event {
+            name: "stock.fulfilled",
+            entity_id: line_item_id.as_uuid(),
+            payload: serde_json::json!({
+                "inventory_item_id": inventory_item_id,
+                "location_id": location_id,
+                "quantity": quantity,
+                "line_item_id": line_item_id,
+            }),
+        },
+    )
+    .await?;
+
+    Ok(())
+}
+
+/// The goods come back before they left: `stocked` goes up and the line holds
+/// them again, which is what a cancelled parcel means.
+pub async fn unfulfil_units(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    line_item_id: LineItemId,
+    inventory_item_id: InventoryItemId,
+    location_id: StockLocationId,
+    quantity: i32,
+) -> Result<()> {
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Inventory {
+            id: Some(inventory_item_id.as_uuid()),
+        },
+    )?;
+
+    let quantity = positive(quantity, "an unfulfilled quantity")?;
+
+    let moved = sqlx::query(
+        "update inventory_level
+         set reserved_quantity = reserved_quantity + $4,
+             stocked_quantity = stocked_quantity + $4
+         where scope = $1 and inventory_item_id = $2 and location_id = $3",
+    )
+    .bind(ctx.scope.0)
+    .bind(inventory_item_id.as_uuid())
+    .bind(location_id.as_uuid())
+    .bind(quantity)
+    .execute(&mut **tx)
+    .await?;
+
+    if moved.rows_affected() == 0 {
+        return Err(Error::not_found("inventory level"));
+    }
+
+    let grown = sqlx::query(
+        "update reservation_item set quantity = quantity + $5
+         where scope = $1 and id = (
+             select id from reservation_item
+             where scope = $1
+               and line_item_id = $2
+               and inventory_item_id = $3
+               and location_id = $4
+             order by created_at, id
+             limit 1
+         )",
+    )
+    .bind(ctx.scope.0)
+    .bind(line_item_id.as_uuid())
+    .bind(inventory_item_id.as_uuid())
+    .bind(location_id.as_uuid())
+    .bind(quantity)
+    .execute(&mut **tx)
+    .await?;
+
+    if grown.rows_affected() == 0 {
+        sqlx::query(
+            "insert into reservation_item
+                 (id, scope, inventory_item_id, location_id, quantity, line_item_id)
+             values ($1, $2, $3, $4, $5, $6)",
+        )
+        .bind(ReservationId::new().as_uuid())
+        .bind(ctx.scope.0)
+        .bind(inventory_item_id.as_uuid())
+        .bind(location_id.as_uuid())
+        .bind(quantity)
+        .bind(line_item_id.as_uuid())
+        .execute(&mut **tx)
+        .await?;
+    }
+
+    ctx.emit(
+        tx,
+        Event {
+            name: "stock.unfulfilled",
+            entity_id: line_item_id.as_uuid(),
+            payload: serde_json::json!({
+                "inventory_item_id": inventory_item_id,
+                "location_id": location_id,
+                "quantity": quantity,
+                "line_item_id": line_item_id,
+            }),
+        },
+    )
+    .await?;
+
+    Ok(())
+}
+
+/// Takes `quantity` off the line's hold for one item, and says whether there
+/// was a hold to take it off. Two statements rather than one because the
+/// quantity check constraint forbids a reservation of nothing.
+async fn take_held(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    line_item_id: LineItemId,
+    inventory_item_id: InventoryItemId,
+    location_id: StockLocationId,
+    quantity: i32,
+) -> Result<bool> {
+    let emptied = sqlx::query(
+        "delete from reservation_item
+         where scope = $1 and id = (
+             select id from reservation_item
+             where scope = $1
+               and line_item_id = $2
+               and inventory_item_id = $3
+               and location_id = $4
+               and quantity = $5
+             order by created_at, id
+             limit 1
+         )",
+    )
+    .bind(ctx.scope.0)
+    .bind(line_item_id.as_uuid())
+    .bind(inventory_item_id.as_uuid())
+    .bind(location_id.as_uuid())
+    .bind(quantity)
+    .execute(&mut **tx)
+    .await?;
+
+    if emptied.rows_affected() > 0 {
+        return Ok(true);
+    }
+
+    let lowered = sqlx::query(
+        "update reservation_item set quantity = quantity - $5
+         where scope = $1 and id = (
+             select id from reservation_item
+             where scope = $1
+               and line_item_id = $2
+               and inventory_item_id = $3
+               and location_id = $4
+               and quantity > $5
+             order by created_at, id
+             limit 1
+         )",
+    )
+    .bind(ctx.scope.0)
+    .bind(line_item_id.as_uuid())
+    .bind(inventory_item_id.as_uuid())
+    .bind(location_id.as_uuid())
+    .bind(quantity)
+    .execute(&mut **tx)
+    .await?;
+
+    Ok(lowered.rows_affected() > 0)
+}
+
 /// Gives back everything whose hold has run out. A host runs this on a
 /// schedule; a cart abandoned mid-checkout is what it is for.
 pub async fn expire_reservations(

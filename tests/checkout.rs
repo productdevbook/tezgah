@@ -887,3 +887,132 @@ async fn a_line_in_the_wrong_currency_stops_at_the_gate() -> Result<()> {
     shop.close().await;
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// A campaign's money
+// ---------------------------------------------------------------------------
+
+/// A promotion on a campaign whose budget is money, taking `discount` off the
+/// cart's only line.
+async fn a_spending_promotion(shop: &Shop, cart_id: CartId, cap: Decimal, discount: Decimal) {
+    let mut tx = shop.begin().await;
+
+    let campaign = Uuid::now_v7();
+    sqlx::query("insert into campaign (id, scope, identifier, name) values ($1, $2, $3, $3)")
+        .bind(campaign)
+        .bind(shop.here.0)
+        .bind(format!("camp-{campaign}"))
+        .execute(&mut *tx)
+        .await
+        .expect("a campaign");
+
+    sqlx::query(
+        r#"insert into campaign_budget (id, scope, campaign_id, type, "limit", currency_code)
+           values ($1, $2, $3, 'spend', $4, 'TRY')"#,
+    )
+    .bind(Uuid::now_v7())
+    .bind(shop.here.0)
+    .bind(campaign)
+    .bind(cap)
+    .execute(&mut *tx)
+    .await
+    .expect("a spend budget");
+
+    let promotion = Uuid::now_v7();
+    sqlx::query(
+        "insert into promotion (id, scope, code, type, status, campaign_id)
+         values ($1, $2, $3, 'standard', 'active', $4)",
+    )
+    .bind(promotion)
+    .bind(shop.here.0)
+    .bind(format!("SPEND-{promotion}"))
+    .bind(campaign)
+    .execute(&mut *tx)
+    .await
+    .expect("a promotion");
+
+    sqlx::query(
+        "insert into cart_line_item_adjustment
+             (id, scope, cart_line_item_id, promotion_id, code, amount, currency_code)
+         select $1, $2, l.id, $3, 'SPEND', $5, 'TRY'
+         from cart_line_item l where l.scope = $2 and l.cart_id = $4",
+    )
+    .bind(Uuid::now_v7())
+    .bind(shop.here.0)
+    .bind(promotion)
+    .bind(cart_id.as_uuid())
+    .bind(discount)
+    .execute(&mut *tx)
+    .await
+    .expect("an adjustment");
+
+    tx.commit().await.expect("to commit the campaign");
+}
+
+async fn budget_used(shop: &Shop) -> Decimal {
+    let mut tx = shop.begin().await;
+    let used: Decimal = sqlx::query_scalar("select used from campaign_budget where scope = $1")
+        .bind(shop.here.0)
+        .fetch_one(&mut *tx)
+        .await
+        .expect("the budget");
+    tx.commit().await.expect("to commit");
+    used
+}
+
+#[tokio::test]
+async fn a_checkout_that_would_overspend_a_campaign_is_refused() -> Result<()> {
+    let shop = Shop::open().await;
+    let here = ready(&shop, 10, 2).await;
+    a_spending_promotion(&shop, here.cart_id, dec!(5.00), dec!(6.00)).await;
+
+    let bank = Bank::saying(Answer::Authorize);
+    let checkout = Checkout::new(
+        Arc::clone(&bank) as Arc<dyn PaymentProvider>,
+        here.location_id,
+    );
+
+    let placed = checkout
+        .place(&shop.pool, &shop.ctx(), here.cart_id)
+        .await?;
+
+    assert_eq!(placed.run.state, State::Reverted);
+    assert_eq!(budget_used(&shop).await, Decimal::ZERO);
+
+    nothing_left_behind(&shop, here.cart_id).await;
+    shop.close().await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_checkout_charges_a_campaigns_money_and_gives_it_back_when_it_unwinds() -> Result<()> {
+    let shop = Shop::open().await;
+    let here = ready(&shop, 10, 2).await;
+    a_spending_promotion(&shop, here.cart_id, dec!(20.00), dec!(6.00)).await;
+
+    let bank = Bank::saying(Answer::Authorize);
+    let checkout = Checkout::new(
+        Arc::clone(&bank) as Arc<dyn PaymentProvider>,
+        here.location_id,
+    );
+
+    let run = tezgah::workflow::run(
+        &shop.pool,
+        &shop.ctx(),
+        &checkout.workflow_then(Collapse),
+        "one-that-spends-and-falls-over",
+        serde_json::json!({ "cart_id": here.cart_id }),
+    )
+    .await?;
+
+    assert_eq!(run.state, State::Reverted);
+    assert_eq!(
+        budget_used(&shop).await,
+        Decimal::ZERO,
+        "the campaign kept money a checkout that never happened gave away"
+    );
+
+    nothing_left_behind(&shop, here.cart_id).await;
+    shop.close().await;
+    Ok(())
+}

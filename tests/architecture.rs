@@ -173,7 +173,16 @@ fn a_domain_reaches_only_for_the_kernel_and_what_is_declared_shared() {
                 "tax",
             ][..],
         ),
-        ("order", &["cart", "inventory", "payment", "promotion"][..]),
+        (
+            "order",
+            &["cart", "fulfilment", "inventory", "payment", "promotion"][..],
+        ),
+        // A parcel leaving is the moment stock leaves, so the module that writes
+        // the parcel is the one that has to move the count. The arrow only goes
+        // this way: `inventory` knows nothing of parcels, and the day it wants
+        // to, the shared part moves to the kernel rather than the arrow
+        // reversing.
+        ("fulfilment", &["inventory"][..]),
         (
             "checkout",
             &["cart", "inventory", "order", "payment", "promotion"][..],

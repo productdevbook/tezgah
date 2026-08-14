@@ -41,6 +41,10 @@ pub const MAX_LINES: i64 = 200;
 /// short.
 pub const MAX_BATCH: i64 = 500;
 
+/// One cart chooses one shipping, and the ceiling is here for the same reason
+/// [`MAX_LINES`] is: whoever adds a cart up wants all of it.
+pub const MAX_SHIPPING_METHODS: i64 = 50;
+
 const METHOD_COLUMNS: &str = "id, cart_id, shipping_option_id, name, description, amount, \
                               currency_code, is_tax_inclusive, data, metadata, created_at, \
                               updated_at";
@@ -397,6 +401,80 @@ pub async fn lines(tx: &mut Tx<'_>, ctx: &Ctx<'_>, cart_id: CartId) -> Result<Ve
     .await?;
 
     Ok(rows)
+}
+
+/// The chosen shipping, at most [`MAX_SHIPPING_METHODS`] of it.
+pub async fn shipping_methods(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    cart_id: CartId,
+) -> Result<Vec<ShippingMethod>> {
+    let _: Permit = ctx.permit(
+        Action::View,
+        Resource::Cart {
+            id: cart_id.as_uuid(),
+            customer: None,
+        },
+    )?;
+
+    let rows = sqlx::query_as::<_, ShippingMethod>(&format!(
+        "select {METHOD_COLUMNS} from cart_shipping_method
+         where scope = $1 and cart_id = $2
+         order by created_at, id
+         limit $3"
+    ))
+    .bind(ctx.scope.0)
+    .bind(cart_id.as_uuid())
+    .bind(MAX_SHIPPING_METHODS)
+    .fetch_all(&mut **tx)
+    .await?;
+
+    Ok(rows)
+}
+
+/// Where this cart is going, as far as anything outside the cart cares.
+#[derive(Debug, Clone)]
+pub struct Delivery {
+    pub country_code: String,
+    pub province_code: Option<String>,
+}
+
+/// The address a cart is judged by: the shipping one, or the billing one for a
+/// cart that ships nothing. `None` when neither names a country.
+pub async fn delivery(tx: &mut Tx<'_>, ctx: &Ctx<'_>, cart_id: CartId) -> Result<Option<Delivery>> {
+    let _: Permit = ctx.permit(
+        Action::View,
+        Resource::Cart {
+            id: cart_id.as_uuid(),
+            customer: None,
+        },
+    )?;
+
+    #[derive(FromRow)]
+    struct Row {
+        country_code: Option<String>,
+        province: Option<String>,
+    }
+
+    let row = sqlx::query_as::<_, Row>(
+        "select a.country_code, a.province
+         from cart c
+         join cart_address a
+           on a.scope = c.scope
+          and a.id = coalesce(c.shipping_address_id, c.billing_address_id)
+         where c.scope = $1 and c.id = $2",
+    )
+    .bind(ctx.scope.0)
+    .bind(cart_id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    Ok(row.and_then(|row| {
+        row.country_code.map(|country_code| Delivery {
+            country_code,
+            province_code: row.province,
+        })
+    }))
 }
 
 /// Adds a variant, or adds to it: the second add of the same variant is a
