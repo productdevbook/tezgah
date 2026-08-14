@@ -987,6 +987,26 @@ async fn finish(
     Ok(())
 }
 
+/// The key a run was started with, for a caller that must ask about ownership
+/// before it dares read the row. `None` for a run this scope does not have —
+/// distinguishing "not yours" from "not found" is [`get`]'s job, not this
+/// one's.
+pub async fn transaction_key_of(
+    pool: &PgPool,
+    ctx: &Ctx<'_>,
+    id: WorkflowRunId,
+) -> Result<Option<String>> {
+    let mut tx = scoped(pool, ctx).await?;
+    let key: Option<String> =
+        sqlx::query_scalar("select transaction_key from workflow_run where scope = $1 and id = $2")
+            .bind(ctx.scope.0)
+            .bind(id.as_uuid())
+            .fetch_optional(&mut *tx)
+            .await?;
+    tx.commit().await?;
+    Ok(key)
+}
+
 /// Reads a run back, for a caller that wants to know how one it started ended.
 pub async fn get(pool: &PgPool, ctx: &Ctx<'_>, id: WorkflowRunId) -> Result<Run> {
     let head = head(pool, ctx, id).await?;

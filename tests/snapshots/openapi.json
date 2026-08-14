@@ -8056,6 +8056,129 @@
         "x-tezgah-permission": "delete"
       }
     },
+    "/admin/products/{id}/channels": {
+      "get": {
+        "operationId": "getAdminProductsByIdChannels",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "List the sales channels a product is linked to",
+        "tags": [
+          "catalogue"
+        ],
+        "x-tezgah-permission": "view"
+      },
+      "post": {
+        "operationId": "postAdminProductsByIdChannels",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Link a product to a sales channel",
+        "tags": [
+          "catalogue"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/products/{id}/channels/{sales_channel_id}": {
+      "delete": {
+        "operationId": "deleteAdminProductsByIdChannelsBySalesChannelId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sales_channel_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Unlink a product from a sales channel",
+        "tags": [
+          "catalogue"
+        ],
+        "x-tezgah-permission": "delete"
+      }
+    },
     "/admin/products/{id}/images": {
       "get": {
         "operationId": "getAdminProductsByIdImages",
