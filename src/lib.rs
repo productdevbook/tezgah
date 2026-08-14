@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 pub mod error;
+pub mod id;
 pub mod money;
 pub mod ports;
 
