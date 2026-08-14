@@ -232,9 +232,9 @@ async fn two_people_reaching_for_the_last_use_of_a_coupon_and_one_of_them_gettin
 async fn a_customer_with_one_claim_each_cannot_take_a_second() {
     let shop = Shop::open().await;
     let ctx = shop.ctx();
-    let customer = tezgah::id::CustomerId::new();
 
     let mut tx = shop.begin().await;
+    let customer = common::a_customer(&mut tx, &ctx).await;
     let promotion = promotion::create_promotion(
         &mut tx,
         &ctx,

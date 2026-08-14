@@ -56,8 +56,8 @@ async fn accepting_a_transfer_moves_the_order_to_the_new_customer() -> tezgah::R
     let ctx = shop.ctx();
     seed_currency(&mut tx, shop.here).await;
 
-    let owner = CustomerId::new();
-    let taker = CustomerId::new();
+    let owner = common::a_customer(&mut tx, &ctx).await;
+    let taker = common::a_customer(&mut tx, &ctx).await;
     let placed = order::create(&mut tx, &ctx, an_order(owner)).await?;
 
     let offered = order::request_transfer(
@@ -96,7 +96,7 @@ async fn a_wrong_token_moves_nothing() -> tezgah::Result<()> {
     let ctx = shop.ctx();
     seed_currency(&mut tx, shop.here).await;
 
-    let owner = CustomerId::new();
+    let owner = common::a_customer(&mut tx, &ctx).await;
     let placed = order::create(&mut tx, &ctx, an_order(owner)).await?;
     let offered = order::request_transfer(
         &mut tx,
@@ -129,7 +129,7 @@ async fn declining_leaves_the_order_where_it_was() -> tezgah::Result<()> {
     let ctx = shop.ctx();
     seed_currency(&mut tx, shop.here).await;
 
-    let owner = CustomerId::new();
+    let owner = common::a_customer(&mut tx, &ctx).await;
     let placed = order::create(&mut tx, &ctx, an_order(owner)).await?;
     let offered = order::request_transfer(
         &mut tx,
@@ -169,7 +169,7 @@ async fn cancelling_withdraws_the_offer() -> tezgah::Result<()> {
     let ctx = shop.ctx();
     seed_currency(&mut tx, shop.here).await;
 
-    let owner = CustomerId::new();
+    let owner = common::a_customer(&mut tx, &ctx).await;
     let placed = order::create(&mut tx, &ctx, an_order(owner)).await?;
     let offered = order::request_transfer(
         &mut tx,
@@ -201,7 +201,8 @@ async fn an_order_is_offered_to_one_person_at_a_time() -> tezgah::Result<()> {
     let ctx = shop.ctx();
     seed_currency(&mut tx, shop.here).await;
 
-    let placed = order::create(&mut tx, &ctx, an_order(CustomerId::new())).await?;
+    let owner = common::a_customer(&mut tx, &ctx).await;
+    let placed = order::create(&mut tx, &ctx, an_order(owner)).await?;
     order::request_transfer(
         &mut tx,
         &ctx,
@@ -234,7 +235,8 @@ async fn a_transfer_that_has_expired_cannot_be_accepted() -> tezgah::Result<()> 
     let ctx = shop.ctx();
     seed_currency(&mut tx, shop.here).await;
 
-    let placed = order::create(&mut tx, &ctx, an_order(CustomerId::new())).await?;
+    let owner = common::a_customer(&mut tx, &ctx).await;
+    let placed = order::create(&mut tx, &ctx, an_order(owner)).await?;
     let expires = Utc::now() + Duration::hours(1);
     let offered =
         order::request_transfer(&mut tx, &ctx, placed.id, "late@example.com".into(), expires)
@@ -262,7 +264,8 @@ async fn a_transfer_of_somebody_elses_order_is_refused() -> tezgah::Result<()> {
     let ctx = shop.ctx();
     seed_currency(&mut tx, shop.here).await;
 
-    let placed = order::create(&mut tx, &ctx, an_order(CustomerId::new())).await?;
+    let owner = common::a_customer(&mut tx, &ctx).await;
+    let placed = order::create(&mut tx, &ctx, an_order(owner)).await?;
 
     let stranger = common::Doorman;
     let theirs = Ctx::new(
@@ -294,7 +297,8 @@ async fn another_scope_cannot_see_or_take_a_transfer() -> tezgah::Result<()> {
 
     let mut mine = shop.begin().await;
     seed_currency(&mut mine, shop.here).await;
-    let placed = order::create(&mut mine, &ctx, an_order(CustomerId::new())).await?;
+    let owner = common::a_customer(&mut mine, &ctx).await;
+    let placed = order::create(&mut mine, &ctx, an_order(owner)).await?;
     let offered = order::request_transfer(
         &mut mine,
         &ctx,

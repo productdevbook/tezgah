@@ -335,3 +335,11 @@ impl Shop {
         }
     }
 }
+
+/// A customer row that exists, for anything holding a foreign key to one.
+pub async fn a_customer(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> tezgah::id::CustomerId {
+    tezgah::customer::create(tx, ctx, tezgah::customer::NewCustomer::guest())
+        .await
+        .expect("a customer")
+        .id
+}

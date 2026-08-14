@@ -1089,40 +1089,6 @@ async fn copy_address(
 /// happened, and a compensation path is the last place that should quietly
 /// take them.
 async fn erase_order(tx: &mut Tx<'_>, ctx: &Ctx<'_>, order_id: OrderId) -> Result<()> {
-    for (table, parent, key) in [
-        (
-            "order_line_item_adjustment",
-            "order_line_item",
-            "order_line_item_id",
-        ),
-        (
-            "order_line_item_tax_line",
-            "order_line_item",
-            "order_line_item_id",
-        ),
-        (
-            "order_shipping_method_adjustment",
-            "order_shipping_method",
-            "order_shipping_method_id",
-        ),
-        (
-            "order_shipping_method_tax_line",
-            "order_shipping_method",
-            "order_shipping_method_id",
-        ),
-    ] {
-        sqlx::query(&format!(
-            "delete from {table}
-             where scope = $1 and {key} in (
-                 select id from {parent} where scope = $1 and order_id = $2
-             )"
-        ))
-        .bind(ctx.scope.0)
-        .bind(order_id.as_uuid())
-        .execute(&mut **tx)
-        .await?;
-    }
-
     // The line money hangs off the line, not the order, and 0025 made it
     // `restrict` — so it goes before the line it belongs to.
     for (table, parent, key) in [

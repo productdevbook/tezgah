@@ -87,6 +87,7 @@ Each domain owns a number, so parallel work does not collide.
 | `0024_order_status_backfill` | 0022's backfills, run again naming each scope, and its cancelled-return constraint validated after them |
 | `0025_history_and_money_restrict` | `tezgah_fk`, and `restrict` on the tables that are a record of what happened rather than a thing that cannot exist alone |
 | `0026_scoped_foreign_keys` | `unique (scope, id)` on every registered table, and `(scope, x_id)` keys down the order and money path |
+| `0027_scoped_keys_finished` | `fulfillment_item.line_item_id` keyed to `order_item`, where it always pointed, and the last single-column keys on the scoped-key tables |
 | `0023_payment_collection_cart` | which cart a payment collection was opened for, so a collection says whose it is |
 
 Migrations are append-only once merged. A change to a shipped table is a new
