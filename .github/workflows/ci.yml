@@ -46,6 +46,13 @@ jobs:
       - run: cargo nextest run --profile ci --all-features
       # nextest does not run doctests. This step is not redundant.
       - run: cargo test --doc
+      - name: Upload the generated OpenAPI document
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi
+          path: target/openapi.generated.json
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -74,11 +81,3 @@ jobs:
       - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload the generated OpenAPI document
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: openapi
-          path: target/openapi.generated.json
-          if-no-files-found: ignore
