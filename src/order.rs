@@ -1383,38 +1383,28 @@ async fn release_payments(tx: &mut Tx<'_>, ctx: &Ctx<'_>, order: &Order) -> Resu
 }
 
 /// Gives back the uses the checkout claimed. The promotions are read from the
-/// cart the order came out of: an order records what a discount was worth, not
-/// which campaign gave it.
+/// order's own adjustment rows — what was actually granted, not the cart that
+/// granted it — so an order without a cart, or one whose cart has been swept
+/// up, still gives its spend back.
 async fn release_promotions(tx: &mut Tx<'_>, ctx: &Ctx<'_>, order: &Order) -> Result<()> {
-    let cart_id = order
-        .metadata
-        .as_ref()
-        .and_then(|data| data.get("cart_id"))
-        .and_then(Value::as_str)
-        .and_then(|raw| Uuid::parse_str(raw).ok());
-
-    let Some(cart_id) = cart_id else {
-        return Ok(());
-    };
-
     // What each promotion actually gave away, so a spend budget gets back
     // exactly what it was charged rather than a guess.
     let given: Vec<(Uuid, rust_decimal::Decimal)> = sqlx::query_as(
         "select promotion_id, sum(amount) from (
              select a.promotion_id, a.amount
-             from cart_line_item_adjustment a
-             join cart_line_item l on l.scope = a.scope and l.id = a.cart_line_item_id
-             where a.scope = $1 and l.cart_id = $2 and a.promotion_id is not null
+             from order_line_item_adjustment a
+             join order_line_item l on l.scope = a.scope and l.id = a.order_line_item_id
+             where a.scope = $1 and l.order_id = $2 and a.promotion_id is not null
              union all
              select a.promotion_id, a.amount
-             from cart_shipping_method_adjustment a
-             join cart_shipping_method m on m.scope = a.scope and m.id = a.cart_shipping_method_id
-             where a.scope = $1 and m.cart_id = $2 and a.promotion_id is not null
+             from order_shipping_method_adjustment a
+             join order_shipping_method m on m.scope = a.scope and m.id = a.order_shipping_method_id
+             where a.scope = $1 and m.order_id = $2 and a.promotion_id is not null
          ) as gave
          group by promotion_id",
     )
     .bind(ctx.scope.0)
-    .bind(cart_id)
+    .bind(order.id.as_uuid())
     .fetch_all(&mut **tx)
     .await?;
 
@@ -1509,6 +1499,36 @@ pub async fn send_draft_for_payment(
         return Err(Error::conflict("that order is not a draft"));
     }
 
+    attach_payment_collection(tx, ctx, order_id, payment_collection_id).await?;
+
+    set_status(tx, ctx, order_id, OrderStatus::Pending).await
+}
+
+/// The one place an order's `payment_collection_id` is set. Two things can
+/// hold an authorisation before this runs — a checkout that opened the
+/// collection with the order, which already asked [`record_authorization`]
+/// to write it — and a collection assembled and authorised on its own before
+/// anything tied it to an order. This is where the second kind catches up:
+/// any payment the collection already holds that has no matching movement in
+/// [`ledger`]'s own reference gets one now, so `order::ledger` cannot read an
+/// authorisation that `order_transaction` never heard about, whichever order
+/// the two events happened in.
+pub async fn attach_payment_collection(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order_id: OrderId,
+    payment_collection_id: PaymentCollectionId,
+) -> Result<Order> {
+    let order = read(tx, ctx, order_id).await?;
+
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Order {
+            id: order_id.as_uuid(),
+            customer: order.customer_id.map(CustomerId::as_uuid),
+        },
+    )?;
+
     sqlx::query(r#"update "order" set payment_collection_id = $3 where scope = $1 and id = $2"#)
         .bind(ctx.scope.0)
         .bind(order_id.as_uuid())
@@ -1516,7 +1536,38 @@ pub async fn send_draft_for_payment(
         .execute(&mut **tx)
         .await?;
 
-    set_status(tx, ctx, order_id, OrderStatus::Pending).await
+    let currency = order.currency()?;
+
+    let unrecorded: Vec<(Uuid, Decimal)> = sqlx::query_as(
+        "select p.id, p.amount
+         from payment p
+         where p.scope = $1 and p.payment_collection_id = $2 and p.canceled_at is null
+           and not exists (
+             select 1 from order_transaction t
+             where t.scope = $1 and t.order_id = $3 and t.reference = 'payment'
+               and t.reference_id = p.id
+           )
+         order by p.created_at, p.id",
+    )
+    .bind(ctx.scope.0)
+    .bind(payment_collection_id.as_uuid())
+    .bind(order_id.as_uuid())
+    .fetch_all(&mut **tx)
+    .await?;
+
+    for (payment_id, amount) in unrecorded {
+        record_transaction(
+            tx,
+            ctx,
+            order_id,
+            Money::new(amount, currency),
+            "payment",
+            payment_id,
+        )
+        .await?;
+    }
+
+    read(tx, ctx, order_id).await
 }
 
 // ---------------------------------------------------------------------------
@@ -1618,6 +1669,23 @@ pub async fn record_refund(
 ) -> Result<Option<OrderTransaction>> {
     let back = Money::new(-amount.amount, amount.currency);
     record_settlement(tx, ctx, collection, "refund", refund.as_uuid(), back).await
+}
+
+/// Puts a hold a provider actually granted into the order's ledger, the same
+/// way [`record_capture`] and [`record_refund`] do for what came after it.
+///
+/// Called with nothing to write when the collection is not yet an order's —
+/// authorising ahead of checkout finishing, or a collection nobody has
+/// attached — is not an error: [`attach_payment_collection`] is what catches
+/// an authorisation up once the order does claim it.
+pub async fn record_authorization(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    collection: PaymentCollectionId,
+    payment: PaymentId,
+    amount: Money,
+) -> Result<Option<OrderTransaction>> {
+    record_settlement(tx, ctx, collection, "payment", payment.as_uuid(), amount).await
 }
 
 /// The lookup answers nothing to the caller; the permission is taken by

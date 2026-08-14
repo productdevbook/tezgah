@@ -695,7 +695,7 @@ impl Step for CreateOrder {
                 })
                 .collect(),
             no_notification: None,
-            metadata: Some(serde_json::json!({ "cart_id": cart_id })),
+            metadata: None,
         };
 
         let placed = order::create(tx, ctx, new).await.map_err(Failure::Final)?;
@@ -1049,13 +1049,12 @@ impl Step for AuthorizePayment {
 
         match authorized {
             Authorized::Payment(paid) => {
-                order::record_transaction(
+                order::record_authorization(
                     tx,
                     ctx,
-                    order_id,
+                    paid.payment_collection_id,
+                    paid.id,
                     Money::new(paid.amount, owed.currency),
-                    "payment",
-                    paid.id.as_uuid(),
                 )
                 .await
                 .map_err(Failure::Final)?;

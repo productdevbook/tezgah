@@ -397,32 +397,32 @@ async fn an_order_that_is_not_there_is_not_found() -> Result<()> {
     Ok(())
 }
 
-/// The collection a payment belongs to, made the order's own, which is how a
-/// capture finds the ledger it has to move.
+/// The collection a payment belongs to, made the order's own — the shape
+/// where a payment is authorised against a standalone collection and only
+/// attached to an order afterwards, which is what
+/// [`order::attach_payment_collection`] has to catch the ledger up on.
 async fn pay_for(
     tx: &mut Tx<'_>,
-    scope: Scope,
+    ctx: &Ctx<'_>,
     order_id: OrderId,
     payment: PaymentId,
 ) -> PaymentCollectionId {
     let collection: Uuid = sqlx::query_scalar(
         "select payment_collection_id from payment where scope = $1 and id = $2",
     )
-    .bind(scope.0)
+    .bind(ctx.scope.0)
     .bind(payment.as_uuid())
     .fetch_one(&mut **tx)
     .await
     .expect("the collection");
 
-    sqlx::query(r#"update "order" set payment_collection_id = $3 where scope = $1 and id = $2"#)
-        .bind(scope.0)
-        .bind(order_id.as_uuid())
-        .bind(collection)
-        .execute(&mut **tx)
+    let collection = PaymentCollectionId::from_uuid(collection);
+
+    order::attach_payment_collection(tx, ctx, order_id, collection)
         .await
         .expect("the order to be paying through it");
 
-    PaymentCollectionId::from_uuid(collection)
+    collection
 }
 
 #[tokio::test]
@@ -434,7 +434,7 @@ async fn a_capture_reaches_the_orders_ledger_and_a_refund_takes_it_back() -> Res
 
     let placed = admin_order::create_order(&mut tx, &ctx, an_order(dec!(100.00))).await?;
     let held = a_held_payment(&mut tx, &ctx, money(dec!(100.00))).await;
-    pay_for(&mut tx, shop.here, placed.id, held).await;
+    pay_for(&mut tx, &ctx, placed.id, held).await;
 
     let before = order::ledger(&mut tx, &ctx, placed.id).await?;
     assert_eq!(before.captured.amount, Decimal::ZERO);
@@ -478,6 +478,134 @@ async fn a_capture_reaches_the_orders_ledger_and_a_refund_takes_it_back() -> Res
     Ok(())
 }
 
+/// What `order::ledger`'s `authorized` reads and what `order_transaction`
+/// actually holds for `payment`/`payment_canceled` rows, side by side — the
+/// two must never disagree, whichever of the two orders authorising and
+/// attaching happened in.
+async fn authorized_agrees_with_transactions(tx: &mut Tx<'_>, ctx: &Ctx<'_>, order_id: OrderId) {
+    let ledger = order::ledger(tx, ctx, order_id).await.expect("a ledger");
+
+    let summed: Decimal = sqlx::query_scalar(
+        "select coalesce(sum(amount), 0) from order_transaction
+         where scope = $1 and order_id = $2 and reference in ('payment', 'payment_canceled')",
+    )
+    .bind(ctx.scope.0)
+    .bind(order_id.as_uuid())
+    .fetch_one(&mut **tx)
+    .await
+    .expect("the transactions");
+
+    assert_eq!(
+        ledger.authorized.amount, summed,
+        "order::ledger disagreed with order_transaction"
+    );
+}
+
+/// The attach-then-authorise order: a checkout opens the collection with the
+/// order already, and [`order::record_authorization`] writes the movement
+/// the moment the hold lands.
+#[tokio::test]
+async fn the_ledger_agrees_when_the_order_is_attached_before_it_authorises() -> Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+    seed_currency(&mut tx, shop.here).await;
+
+    let placed = admin_order::create_order(&mut tx, &ctx, an_order(dec!(70.00))).await?;
+
+    payment::register_provider(&mut tx, &ctx, PROVIDER).await?;
+    let collection = payment::create_collection(
+        &mut tx,
+        &ctx,
+        NewCollection {
+            amount: money(dec!(70.00)),
+            cart_id: None,
+            metadata: None,
+        },
+    )
+    .await?;
+
+    order::attach_payment_collection(&mut tx, &ctx, placed.id, collection.id).await?;
+
+    let session = payment::create_session(
+        &mut tx,
+        &ctx,
+        NewSession {
+            collection_id: collection.id,
+            provider_code: PROVIDER.to_owned(),
+            amount: money(dec!(70.00)),
+            context: None,
+            installment_count: None,
+        },
+    )
+    .await?;
+    payment::record_session(
+        &mut tx,
+        &ctx,
+        session.id,
+        SessionResponse {
+            data: json!({}),
+            status: SessionStatus::Pending,
+        },
+    )
+    .await?;
+    let authorized = payment::authorize(
+        &mut tx,
+        &ctx,
+        session.id,
+        Authorization {
+            status: AuthorizationStatus::Authorized,
+            amount: Some(money(dec!(70.00))),
+            data: json!({}),
+            redirect: None,
+            message: None,
+            installment: None,
+        },
+    )
+    .await?
+    .payment()
+    .expect("a payment");
+
+    // What `checkout` and `subscription` do in the same step, right after
+    // `payment::authorize`, because both already hold the order the
+    // collection is attached to.
+    order::record_authorization(
+        &mut tx,
+        &ctx,
+        collection.id,
+        authorized.id,
+        money(dec!(70.00)),
+    )
+    .await?;
+
+    authorized_agrees_with_transactions(&mut tx, &ctx, placed.id).await;
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
+}
+
+/// The `pay_for` shape: a payment authorised against a collection nobody has
+/// attached to an order yet, attached afterwards.
+/// [`order::attach_payment_collection`] is what makes the ledger catch up.
+#[tokio::test]
+async fn the_ledger_agrees_when_the_order_is_attached_after_it_authorises() -> Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+    seed_currency(&mut tx, shop.here).await;
+
+    let placed = admin_order::create_order(&mut tx, &ctx, an_order(dec!(45.00))).await?;
+    let held = a_held_payment(&mut tx, &ctx, money(dec!(45.00))).await;
+    pay_for(&mut tx, &ctx, placed.id, held).await;
+
+    authorized_agrees_with_transactions(&mut tx, &ctx, placed.id).await;
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
+}
+
 /// A redelivered webhook is the same capture arriving twice, and the ledger
 /// takes it once.
 #[tokio::test]
@@ -489,7 +617,7 @@ async fn the_same_capture_cannot_be_written_to_the_ledger_twice() -> Result<()> 
 
     let placed = admin_order::create_order(&mut tx, &ctx, an_order(dec!(100.00))).await?;
     let held = a_held_payment(&mut tx, &ctx, money(dec!(100.00))).await;
-    let collection = pay_for(&mut tx, shop.here, placed.id, held).await;
+    let collection = pay_for(&mut tx, &ctx, placed.id, held).await;
 
     let capture = CaptureId::new();
     let _ = order::record_capture(&mut tx, &ctx, collection, capture, money(dec!(10.00))).await?;
@@ -551,7 +679,7 @@ async fn another_shop_cannot_read_or_move_this_ones_ledger() -> Result<()> {
 
     let placed = admin_order::create_order(&mut tx, &ctx, an_order(dec!(50.00))).await?;
     let held = a_held_payment(&mut tx, &ctx, money(dec!(50.00))).await;
-    let collection = pay_for(&mut tx, shop.here, placed.id, held).await;
+    let collection = pay_for(&mut tx, &ctx, placed.id, held).await;
     tx.commit().await.expect("to commit");
 
     let theirs = shop.theirs();
@@ -588,7 +716,7 @@ async fn the_cancel_route_voids_the_authorisation_and_takes_a_second_click() -> 
 
     let placed = admin_order::create_order(&mut tx, &ctx, an_order(dec!(100.00))).await?;
     let held = a_held_payment(&mut tx, &ctx, money(dec!(100.00))).await;
-    pay_for(&mut tx, shop.here, placed.id, held).await;
+    pay_for(&mut tx, &ctx, placed.id, held).await;
 
     admin_order::cancel_order(&mut tx, &ctx, placed.id).await?;
 

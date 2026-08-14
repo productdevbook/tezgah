@@ -832,55 +832,19 @@ async fn a_cancelled_order_gives_the_promotion_use_back() -> tezgah::Result<()> 
     )
     .await?;
 
-    // A cart with the promotion recorded against its line, which is where an
-    // order's discounts come from and the only place the promotion is named.
-    let cart = Uuid::now_v7();
-    sqlx::query("insert into cart (id, scope, currency_code) values ($1, $2, 'TRY')")
-        .bind(cart)
-        .bind(shop.here.0)
-        .execute(&mut *tx)
-        .await
-        .expect("a cart");
-
-    let cart_line = Uuid::now_v7();
-    sqlx::query(
-        "insert into cart_line_item
-             (id, scope, cart_id, product_title, quantity, unit_price, currency_code)
-         values ($1, $2, $3, 'A thing', 1, 10, 'TRY')",
-    )
-    .bind(cart_line)
-    .bind(shop.here.0)
-    .bind(cart)
-    .execute(&mut *tx)
-    .await
-    .expect("a cart line");
-
-    sqlx::query(
-        "insert into cart_line_item_adjustment
-             (id, scope, cart_line_item_id, promotion_id, amount, currency_code)
-         values ($1, $2, $3, $4, 1, 'TRY')",
-    )
-    .bind(Uuid::now_v7())
-    .bind(shop.here.0)
-    .bind(cart_line)
-    .bind(promo.id.as_uuid())
-    .execute(&mut *tx)
-    .await
-    .expect("an adjustment");
-
     promotion::claim(&mut tx, &ctx, promo.id, None, Money::new(dec!(0), lira())).await?;
     let claimed = promotion::promotion(&mut tx, &ctx, promo.id).await?;
     assert_eq!(claimed.used, 1);
 
-    let placed = order::create(
-        &mut tx,
-        &ctx,
-        NewOrder {
-            metadata: Some(serde_json::json!({ "cart_id": cart })),
-            ..an_order(vec![a_line(1, dec!(10))])
-        },
-    )
-    .await?;
+    // The order's own line carries the discount — no cart involved, and none
+    // needed: `release_promotions` reads what the order itself recorded.
+    let mut discounted = a_line(1, dec!(10));
+    discounted.adjustments = vec![NewAdjustment {
+        promotion_id: Some(promo.id.as_uuid()),
+        ..NewAdjustment::of(dec!(1))
+    }];
+
+    let placed = order::create(&mut tx, &ctx, an_order(vec![discounted])).await?;
 
     order::cancel(&mut tx, &ctx, placed.id).await?;
 

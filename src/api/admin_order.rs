@@ -1272,6 +1272,31 @@ pub async fn record_transaction(
     Ok(row.into())
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AttachPaymentCollection {
+    pub payment_collection_id: PaymentCollectionId,
+}
+
+/// Puts a payment collection under a placed order — a collection opened and
+/// authorised on its own, offline or through another instrument, made this
+/// order's the way `convert_draft_order` does for a draft. Any hold the
+/// collection already carries is folded into the ledger the same moment, so
+/// an authorisation that happened first is not stranded behind an order that
+/// only just learned about it.
+pub async fn attach_order_payment_collection(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderId,
+    input: AttachPaymentCollection,
+) -> Result<OrderView> {
+    Ok(
+        order::attach_payment_collection(tx, ctx, id, input.payment_collection_id)
+            .await?
+            .into(),
+    )
+}
+
 pub async fn order_changes(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -3496,6 +3521,13 @@ pub(super) static ROUTES: &[Route] = &[
         Settle,
         "order",
         "Record money that moved outside tezgah"
+    ),
+    route!(
+        Post,
+        "/admin/orders/{id}/payment-collection",
+        Write,
+        "order",
+        "Put a payment collection under a placed order"
     ),
     route!(
         Get,

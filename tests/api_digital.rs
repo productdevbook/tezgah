@@ -15,6 +15,7 @@ use tezgah::catalogue::{self, NewProduct, NewVariant};
 use tezgah::customer::{self, NewCustomer};
 use tezgah::id::{CustomerId, OrderId, PaymentId, VariantId};
 use tezgah::money::{Currency, Money};
+use tezgah::order;
 use tezgah::payment::{
     self, Authorization, AuthorizationStatus, NewCollection, NewSession, SessionResponse,
     SessionStatus,
@@ -129,7 +130,6 @@ fn an_order(variant: VariantId, customer: Option<CustomerId>, amount: Decimal) -
 async fn a_held_payment(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
-    scope: Scope,
     order_id: OrderId,
     total: Money,
 ) -> PaymentId {
@@ -194,11 +194,7 @@ async fn a_held_payment(
     .expect("a payment")
     .id;
 
-    sqlx::query(r#"update "order" set payment_collection_id = $3 where scope = $1 and id = $2"#)
-        .bind(scope.0)
-        .bind(order_id.as_uuid())
-        .bind(collection.id.as_uuid())
-        .execute(&mut **tx)
+    order::attach_payment_collection(tx, ctx, order_id, collection.id)
         .await
         .expect("the order to be paying through it");
 
@@ -218,7 +214,7 @@ async fn capturing_grants_and_refunding_takes_it_back() {
     let placed = admin_order::create_order(&mut tx, &ctx, an_order(variant, None, dec!(100.00)))
         .await
         .expect("an order");
-    let held = a_held_payment(&mut tx, &ctx, shop.here, placed.id, money(dec!(100.00))).await;
+    let held = a_held_payment(&mut tx, &ctx, placed.id, money(dec!(100.00))).await;
 
     assert!(
         route::list_order_entitlements(&mut tx, &ctx, placed.id)
@@ -290,7 +286,7 @@ async fn a_shopper_lists_asks_for_a_link_and_spends_one_download() {
         admin_order::create_order(&mut tx, &staff, an_order(variant, Some(buyer), dec!(40.00)))
             .await
             .expect("an order");
-    let held = a_held_payment(&mut tx, &staff, shop.here, placed.id, money(dec!(40.00))).await;
+    let held = a_held_payment(&mut tx, &staff, placed.id, money(dec!(40.00))).await;
 
     admin_order::capture_payment(
         &mut tx,
