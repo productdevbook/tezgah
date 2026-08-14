@@ -971,3 +971,120 @@ async fn a_shipped_lot_cannot_be_deleted_out_from_under_its_parcel() {
 
     shop.close().await;
 }
+
+/// 0048's backfill has to reach three shapes of variant left behind by #100's
+/// rule: one that ships, one already known digital by another column, and one
+/// whose inventory link itself said it ships nothing.
+#[tokio::test]
+async fn a_migration_backfills_the_catalogues_shipping_flag() {
+    let shop = Shop::open().await;
+
+    let product = uuid::Uuid::now_v7();
+    let kettle = uuid::Uuid::now_v7();
+    let card = uuid::Uuid::now_v7();
+    let posted_nowhere = uuid::Uuid::now_v7();
+    let item = uuid::Uuid::now_v7();
+    let location = uuid::Uuid::now_v7();
+
+    let mut mine = shop.begin().await;
+    sqlx::query("insert into product (id, scope, handle, title) values ($1, $2, $3, 'A product')")
+        .bind(product)
+        .bind(shop.here.0)
+        .bind(format!("product-{product}"))
+        .execute(&mut *mine)
+        .await
+        .expect("a product");
+
+    for (id, is_giftcard) in [(kettle, false), (card, true), (posted_nowhere, false)] {
+        sqlx::query(
+            "insert into product_variant (id, scope, product_id, title, is_giftcard)
+             values ($1, $2, $3, 'One size', $4)",
+        )
+        .bind(id)
+        .bind(shop.here.0)
+        .bind(product)
+        .bind(is_giftcard)
+        .execute(&mut *mine)
+        .await
+        .expect("a variant");
+    }
+
+    sqlx::query("insert into stock_location (id, scope, name) values ($1, $2, 'warehouse')")
+        .bind(location)
+        .bind(shop.here.0)
+        .execute(&mut *mine)
+        .await
+        .expect("a location");
+    sqlx::query("insert into inventory_item (id, scope, requires_shipping) values ($1, $2, false)")
+        .bind(item)
+        .bind(shop.here.0)
+        .execute(&mut *mine)
+        .await
+        .expect("an inventory item that ships nothing");
+    sqlx::query(
+        "insert into variant_inventory_item (id, scope, variant_id, inventory_item_id)
+         values ($1, $2, $3, $4)",
+    )
+    .bind(uuid::Uuid::now_v7())
+    .bind(shop.here.0)
+    .bind(posted_nowhere)
+    .bind(item)
+    .execute(&mut *mine)
+    .await
+    .expect("a link");
+    mine.commit().await.expect("to commit");
+
+    let owner = shop.migrator().await;
+
+    // The column as #100 left every variant that was never touched by the
+    // fix this migration is undoing: unset.
+    owner
+        .execute("alter table product_variant alter column requires_shipping drop not null")
+        .await
+        .expect("to take the constraint back off");
+
+    let mut mine = shop.begin().await;
+    sqlx::query("update product_variant set requires_shipping = null where scope = $1")
+        .bind(shop.here.0)
+        .execute(&mut *mine)
+        .await
+        .expect("to put the table back before 0048 backfilled it");
+    mine.commit().await.expect("to commit");
+
+    owner
+        .execute(include_str!(
+            "../migrations/0048_shipping_flag_and_tax_variant_target.sql"
+        ))
+        .await
+        .expect("0048 to apply to a database that already has variants in it");
+
+    let mut mine = shop.begin().await;
+    let flags: Vec<(uuid::Uuid, bool)> = sqlx::query_as(
+        "select id, requires_shipping from product_variant where scope = $1 order by id",
+    )
+    .bind(shop.here.0)
+    .fetch_all(&mut *mine)
+    .await
+    .expect("the backfilled rows");
+    mine.commit().await.expect("to commit");
+
+    let by_id = |wanted: uuid::Uuid| {
+        flags
+            .iter()
+            .find(|(id, _)| *id == wanted)
+            .map(|(_, ships)| *ships)
+            .expect("the row to have been backfilled")
+    };
+
+    assert!(
+        by_id(kettle),
+        "a variant with no signal either way should ship, not be assumed digital"
+    );
+    assert!(!by_id(card), "a gift card does not need a courier");
+    assert!(
+        !by_id(posted_nowhere),
+        "an inventory item that itself ships nothing should still say so"
+    );
+
+    shop.close().await;
+}

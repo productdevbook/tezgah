@@ -44,7 +44,8 @@ macro_rules! variant_columns {
     () => {
         "id, product_id, title, sku, barcode, ean, upc, weight, length, height, width, material, \
          hs_code, origin_country, mid_code, manages_inventory, allows_backorder, rank, \
-         withdrawal_exclusion_reason, is_giftcard, metadata, created_at, updated_at"
+         withdrawal_exclusion_reason, is_giftcard, requires_shipping, metadata, created_at, \
+         updated_at"
     };
 }
 
@@ -174,6 +175,11 @@ pub struct ProductVariant {
     /// Selling this is selling money, not goods: the line carries no tax and a
     /// card is printed when the money is taken.
     pub is_giftcard: bool,
+    /// Whether a line selling this needs somewhere to send a parcel. A
+    /// product knows this independently of whether the shop counts its
+    /// stock — a shop that does not track inventory links no
+    /// `inventory_item` to anything, and that is not the same fact.
+    pub requires_shipping: bool,
     pub metadata: serde_json::Value,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
@@ -373,6 +379,7 @@ pub struct NewVariant {
     pub rank: Option<i32>,
     pub withdrawal_exclusion: Option<crate::order::WithdrawalExclusion>,
     pub is_giftcard: Option<bool>,
+    pub requires_shipping: Option<bool>,
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -398,6 +405,7 @@ pub struct VariantPatch {
     /// leaves whatever it says now.
     pub withdrawal_exclusion: Option<Option<crate::order::WithdrawalExclusion>>,
     pub is_giftcard: Option<bool>,
+    pub requires_shipping: Option<bool>,
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -972,9 +980,9 @@ async fn insert_variant(
         "insert into product_variant (id, scope, product_id, title, sku, barcode, ean, upc, \
          weight, length, height, width, material, hs_code, origin_country, mid_code, \
          manages_inventory, allows_backorder, rank, metadata, withdrawal_exclusion_reason, \
-         is_giftcard)
+         is_giftcard, requires_shipping)
          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, \
-         $19, $20, $21, $22)
+         $19, $20, $21, $22, $23)
          on conflict do nothing
          returning ",
         variant_columns!()
@@ -1004,6 +1012,7 @@ async fn insert_variant(
             .map(crate::order::WithdrawalExclusion::as_str),
     )
     .bind(new.is_giftcard.unwrap_or(false))
+    .bind(new.requires_shipping.unwrap_or(true))
     .fetch_optional(&mut **tx)
     .await?
     .ok_or_else(|| Error::conflict("that sku or barcode is already a variant here"))
@@ -1151,7 +1160,8 @@ pub async fn update_variant(
              metadata = coalesce($27, metadata),
              withdrawal_exclusion_reason = case when $28::bool then $29
                                            else withdrawal_exclusion_reason end,
-             is_giftcard = coalesce($30, is_giftcard)
+             is_giftcard = coalesce($30, is_giftcard),
+             requires_shipping = coalesce($31, requires_shipping)
          where scope = $1 and id = $2 and deleted_at is null
            and not exists (
                select 1 from product_variant other
@@ -1196,6 +1206,7 @@ pub async fn update_variant(
             .map(crate::order::WithdrawalExclusion::as_str),
     )
     .bind(patch.is_giftcard)
+    .bind(patch.requires_shipping)
     .fetch_optional(&mut **tx)
     .await?;
 

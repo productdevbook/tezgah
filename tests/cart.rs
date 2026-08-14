@@ -493,6 +493,23 @@ async fn another_scope_cannot_reach_the_cart() -> tezgah::Result<()> {
     Ok(())
 }
 
+/// Marks a variant as not needing a shipping address, independently of
+/// whether the shop tracks its stock at all — the fact belongs to the
+/// catalogue, not to the inventory link.
+async fn digital(tx: &mut Tx<'_>, ctx: &Ctx<'_>, variant: VariantId) -> tezgah::Result<()> {
+    catalogue::update_variant(
+        tx,
+        ctx,
+        variant,
+        catalogue::VariantPatch {
+            requires_shipping: Some(false),
+            ..catalogue::VariantPatch::default()
+        },
+    )
+    .await?;
+    Ok(())
+}
+
 /// What a line has to be sent, and where it is supplied from.
 ///
 /// The value is the inventory item's rather than the line's own: a variant
@@ -520,12 +537,13 @@ async fn stocked(
 }
 
 #[tokio::test]
-async fn a_variant_nothing_is_counted_for_does_not_ask_to_be_shipped() -> tezgah::Result<()> {
+async fn a_variant_marked_non_physical_does_not_ask_to_be_shipped() -> tezgah::Result<()> {
     let shop = Shop::open().await;
     let mut tx = shop.begin().await;
     let ctx = shop.ctx();
 
     let download = a_variant(&mut tx, &ctx, "album").await?;
+    digital(&mut tx, &ctx, download).await?;
     let kettle = a_variant(&mut tx, &ctx, "kettle").await?;
     stocked(&mut tx, &ctx, kettle, true).await?;
 
@@ -557,9 +575,60 @@ async fn a_variant_nothing_is_counted_for_does_not_ask_to_be_shipped() -> tezgah
 
     assert!(
         !digital.requires_shipping,
-        "a variant with no inventory item asked to be posted somewhere"
+        "a variant the catalogue marked non-physical still asked to be posted somewhere"
     );
     assert!(physical.requires_shipping);
+
+    tx.rollback().await.ok();
+    shop.close().await;
+    Ok(())
+}
+
+/// #115: a shop that never links an `inventory_item` — it does not track
+/// stock at all — must not have every one of its variants read as digital.
+/// Physical is the catalogue's default, independent of whether anybody is
+/// counting.
+#[tokio::test]
+async fn a_shop_that_does_not_track_stock_still_ships_a_physical_variant() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+
+    let kettle = a_variant(&mut tx, &ctx, "untracked-kettle").await?;
+    let album = a_variant(&mut tx, &ctx, "untracked-album").await?;
+    digital(&mut tx, &ctx, album).await?;
+
+    let cart = cart::create(&mut tx, &ctx, NewCart::guest(lira()?)).await?;
+    let physical = cart::add_line(
+        &mut tx,
+        &ctx,
+        cart.id,
+        AddLine {
+            variant_id: kettle,
+            quantity: 1,
+            unit_price: money(dec!(50))?,
+            is_tax_inclusive: false,
+        },
+    )
+    .await?;
+    let digital_line = cart::add_line(
+        &mut tx,
+        &ctx,
+        cart.id,
+        AddLine {
+            variant_id: album,
+            quantity: 1,
+            unit_price: money(dec!(30))?,
+            is_tax_inclusive: false,
+        },
+    )
+    .await?;
+
+    assert!(
+        physical.requires_shipping,
+        "a shop with no inventory tracking still sells physical goods"
+    );
+    assert!(!digital_line.requires_shipping);
 
     tx.rollback().await.ok();
     shop.close().await;

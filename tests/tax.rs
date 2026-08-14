@@ -245,6 +245,104 @@ async fn a_combinable_province_rate_sits_on_top_of_the_country_rate() {
     shop.close().await;
 }
 
+/// A variant-specific rate — a reduced rate on one magazine subscription,
+/// say — has to reach the line even though the address's own rate is the
+/// shop's default. Before #127, `TaxableLine` carried no variant target, so
+/// a rule narrowed to a variant could never match and the address rate won
+/// by default.
+#[tokio::test]
+async fn a_variant_specific_rate_reaches_the_line_over_the_address_rate() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    seed_currency(&mut tx, shop.here.0).await;
+
+    let country = tax::create_tax_region(
+        &mut tx,
+        &ctx,
+        NewTaxRegion {
+            country_code: "TR".into(),
+            province_code: None,
+            parent_id: None,
+            provider: None,
+        },
+    )
+    .await
+    .expect("a country");
+
+    tax::create_tax_rate(
+        &mut tx,
+        &ctx,
+        NewTaxRate {
+            tax_region_id: country.id,
+            rate: dec!(18),
+            code: Some("standard".into()),
+            name: "Standard".into(),
+            is_default: true,
+            is_combinable: false,
+        },
+    )
+    .await
+    .expect("the address's own default rate");
+
+    let reduced = tax::create_tax_rate(
+        &mut tx,
+        &ctx,
+        NewTaxRate {
+            tax_region_id: country.id,
+            rate: dec!(1),
+            code: Some("reduced".into()),
+            name: "Reduced".into(),
+            is_default: false,
+            is_combinable: false,
+        },
+    )
+    .await
+    .expect("a reduced rate");
+
+    let variant = Uuid::now_v7();
+    tax::create_tax_rate_rule(
+        &mut tx,
+        &ctx,
+        NewTaxRateRule {
+            tax_rate_id: reduced.id,
+            reference: TaxReference::Variant,
+            reference_id: variant,
+        },
+    )
+    .await
+    .expect("a variant rule");
+
+    let lines = vec![TaxableLine {
+        id: Uuid::now_v7(),
+        amount: Money::new(dec!(100), lira()),
+        targets: vec![TaxTarget {
+            reference: TaxReference::Variant,
+            id: variant,
+        }],
+        tax_code: None,
+        address: None,
+    }];
+
+    let address = TaxableAddress {
+        country_code: "TR".into(),
+        province_code: None,
+        postal_code: None,
+    };
+
+    let out = tax::calculate(&mut tx, &ctx, &lines, &address, None, false)
+        .await
+        .expect("a calculation");
+
+    assert_eq!(out.len(), 1, "the variant's own rate, not the address's");
+    assert_eq!(out[0].rate, dec!(1));
+    assert_eq!(out[0].amount.amount, dec!(1.00));
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
 #[tokio::test]
 async fn one_shops_rates_are_invisible_to_another() {
     let shop = Shop::open().await;

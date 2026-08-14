@@ -1424,13 +1424,16 @@ async fn retax(
             amount: line_total(line.quantity, line.unit_price, currency),
             targets: line
                 .product_id
-                .map(|product| {
-                    vec![tax::TaxTarget {
-                        reference: tax::TaxReference::Product,
-                        id: product,
-                    }]
+                .map(|product| tax::TaxTarget {
+                    reference: tax::TaxReference::Product,
+                    id: product,
                 })
-                .unwrap_or_default(),
+                .into_iter()
+                .chain(line.variant_id.map(|variant| tax::TaxTarget {
+                    reference: tax::TaxReference::Variant,
+                    id: variant.as_uuid(),
+                }))
+                .collect(),
             tax_code: line
                 .variant_id
                 .and_then(|variant| codes.get(&variant.as_uuid()).cloned()),
@@ -1541,13 +1544,16 @@ pub async fn quote_taxes(
             amount: line_total(line.quantity, line.unit_price, currency),
             targets: line
                 .product_id
-                .map(|product| {
-                    vec![tax::TaxTarget {
-                        reference: tax::TaxReference::Product,
-                        id: product,
-                    }]
+                .map(|product| tax::TaxTarget {
+                    reference: tax::TaxReference::Product,
+                    id: product,
                 })
-                .unwrap_or_default(),
+                .into_iter()
+                .chain(line.variant_id.map(|variant| tax::TaxTarget {
+                    reference: tax::TaxReference::Variant,
+                    id: variant.as_uuid(),
+                }))
+                .collect(),
             tax_code: line
                 .variant_id
                 .and_then(|variant| codes.get(&variant.as_uuid()).cloned()),

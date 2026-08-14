@@ -152,6 +152,7 @@ pub struct VariantView {
     pub rank: i32,
     pub withdrawal_exclusion: Option<String>,
     pub is_giftcard: bool,
+    pub requires_shipping: bool,
     pub metadata: serde_json::Value,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
@@ -180,6 +181,7 @@ impl From<catalogue::ProductVariant> for VariantView {
             rank: row.rank,
             withdrawal_exclusion: row.withdrawal_exclusion_reason,
             is_giftcard: row.is_giftcard,
+            requires_shipping: row.requires_shipping,
             metadata: row.metadata,
             created_at: row.created_at,
             updated_at: row.updated_at,
@@ -1074,6 +1076,10 @@ pub struct CreateVariant {
     pub withdrawal_exclusion: Option<String>,
     /// Whether selling this sells money rather than goods.
     pub is_giftcard: Option<bool>,
+    /// Whether a line selling this needs a shipping address. Defaults to
+    /// `true`: not tracking a variant's stock is not the same fact as it
+    /// being a digital good.
+    pub requires_shipping: Option<bool>,
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -1106,6 +1112,7 @@ pub async fn create_variant(
             .map(order::WithdrawalExclusion::parse)
             .transpose()?,
         is_giftcard: body.is_giftcard,
+        requires_shipping: body.requires_shipping,
         metadata: body.metadata,
     };
     Ok(VariantView::from(
@@ -1140,6 +1147,7 @@ pub struct UpdateVariant {
     #[serde(default, deserialize_with = "double_option")]
     pub withdrawal_exclusion: Option<Option<String>>,
     pub is_giftcard: Option<bool>,
+    pub requires_shipping: Option<bool>,
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -1172,6 +1180,7 @@ pub async fn update_variant(
             None => None,
         },
         is_giftcard: body.is_giftcard,
+        requires_shipping: body.requires_shipping,
         metadata: body.metadata,
     };
     Ok(VariantView::from(

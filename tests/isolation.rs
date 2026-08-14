@@ -272,6 +272,27 @@ fn excused_by_flag(def: &str) -> Option<(&str, &str)> {
     Some((needed, flag))
 }
 
+/// The pair in `period_end > period_start` (or `>=`): the column that has to
+/// come later, and the one it is measured against. A period whose ends are
+/// equal is not a period, and a seeder writing `now()` into both would make
+/// that true of every row.
+fn ordered_pair(def: &str) -> Option<(&str, &str)> {
+    for op in [" >= ", " > "] {
+        if let Some(at) = def.find(op) {
+            let later = ident_before(&def[..at])?;
+            let rest = &def[at + op.len()..];
+            let end = rest
+                .find(|c: char| !(c.is_alphanumeric() || c == '_'))
+                .unwrap_or(rest.len());
+            let earlier = &rest[..end];
+            if !earlier.is_empty() {
+                return Some((later, earlier));
+            }
+        }
+    }
+    None
+}
+
 /// The last identifier in a fragment, past whatever parentheses surround it.
 fn ident_before(fragment: &str) -> Option<&str> {
     let trimmed = fragment.trim_end_matches([')', ' ']);
@@ -397,6 +418,19 @@ fn satisfy_checks(
         if let Some((needed, flag)) = excused_by_flag(def) {
             if held(chosen, needed).is_none() && table.columns.iter().any(|c| c.name == flag) {
                 put(chosen, flag, "false".into());
+            }
+        }
+
+        if let Some((later, earlier)) = ordered_pair(def) {
+            let both_timestamps = |name: &str| {
+                table
+                    .columns
+                    .iter()
+                    .any(|c| c.name == name && c.data_type == "timestamp with time zone")
+            };
+            if both_timestamps(later) && both_timestamps(earlier) && held(chosen, earlier).is_some()
+            {
+                put(chosen, later, "now() + interval '1 day'".into());
             }
         }
 

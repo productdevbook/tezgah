@@ -45,6 +45,7 @@ pub enum TaxReference {
     ProductType,
     ProductCollection,
     ShippingOption,
+    Variant,
 }
 
 impl TaxReference {
@@ -54,6 +55,7 @@ impl TaxReference {
             TaxReference::ProductType => "product_type",
             TaxReference::ProductCollection => "product_collection",
             TaxReference::ShippingOption => "shipping_option",
+            TaxReference::Variant => "variant",
         }
     }
 
@@ -63,6 +65,7 @@ impl TaxReference {
             "product_type" => Ok(TaxReference::ProductType),
             "product_collection" => Ok(TaxReference::ProductCollection),
             "shipping_option" => Ok(TaxReference::ShippingOption),
+            "variant" => Ok(TaxReference::Variant),
             other => Err(Error::invalid(format!("{other:?} is not a tax reference"))),
         }
     }

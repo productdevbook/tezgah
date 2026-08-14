@@ -605,15 +605,19 @@ pub async fn add_line(
                   where vov.scope = v.scope and vov.variant_id = v.id),
                 p.thumbnail_url, $5::integer, $6::numeric, $7::char(3), $8::boolean,
                 p.is_discountable,
-                -- A variant nothing is counted for is a variant nothing is
-                -- posted for: that is what a digital one is.
-                coalesce((select bool_or(i.requires_shipping)
-                            from variant_inventory_item vi
-                            join inventory_item i
-                              on i.scope = vi.scope
-                             and i.id = vi.inventory_item_id
-                             and i.deleted_at is null
-                           where vi.scope = v.scope and vi.variant_id = v.id), false)
+                -- Whether a variant is physical is a catalogue fact first: a
+                -- shop that does not track stock links no `inventory_item` to
+                -- anything, and that is not the same as selling nothing that
+                -- ships. A linked inventory item that itself ships nothing
+                -- still overrides a variant the catalogue calls physical.
+                v.requires_shipping
+                and coalesce((select bool_or(i.requires_shipping)
+                                from variant_inventory_item vi
+                                join inventory_item i
+                                  on i.scope = vi.scope
+                                 and i.id = vi.inventory_item_id
+                                 and i.deleted_at is null
+                               where vi.scope = v.scope and vi.variant_id = v.id), true)
          from product_variant v
          join product p on p.scope = v.scope and p.id = v.product_id
          where v.scope = $2 and v.id = $4 and v.deleted_at is null and p.deleted_at is null
