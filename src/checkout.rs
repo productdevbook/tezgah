@@ -60,6 +60,7 @@ use crate::{cart, inventory, promotion};
 
 /// What the run is holding as it goes, and what a compensation is handed back.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
 struct Carried {
     cart_id: Option<CartId>,
     customer_id: Option<CustomerId>,
@@ -105,6 +106,15 @@ fn recall<T: for<'de> Deserialize<'de> + Default>(kept: &Value) -> T {
 pub struct Checkout {
     provider: Arc<dyn PaymentProvider>,
     location_id: StockLocationId,
+}
+
+impl std::fmt::Debug for Checkout {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Checkout")
+            .field("provider", &self.provider.code())
+            .field("location_id", &self.location_id)
+            .finish()
+    }
 }
 
 /// What a run came to.
