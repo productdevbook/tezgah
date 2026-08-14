@@ -56,8 +56,8 @@ use uuid::Uuid;
 
 use crate::error::{Error, Result};
 use crate::id::{
-    AccountHolderId, CaptureId, CustomerId, PaymentCollectionId, PaymentId, PaymentProviderId,
-    PaymentSessionId, PaymentWebhookEventId, RefundId, RefundReasonId,
+    AccountHolderId, CaptureId, CartId, CustomerId, PaymentCollectionId, PaymentId,
+    PaymentProviderId, PaymentSessionId, PaymentWebhookEventId, RefundId, RefundReasonId,
 };
 use crate::money::{Currency, Money};
 use crate::page::{Cursor, Page, Paging};
@@ -81,6 +81,7 @@ pub struct Provider {
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct PaymentCollection {
     pub id: PaymentCollectionId,
+    pub cart_id: Option<CartId>,
     pub currency_code: String,
     pub amount: Decimal,
     pub authorized_amount: Option<Decimal>,
@@ -499,6 +500,9 @@ pub struct PendingWebhook {
 #[derive(Debug, Clone)]
 pub struct NewCollection {
     pub amount: Money,
+    /// The cart this is being opened for, when there is one. It is what the
+    /// collection's owner is later read from.
+    pub cart_id: Option<CartId>,
     pub metadata: Option<Value>,
 }
 
@@ -628,7 +632,18 @@ pub async fn create_collection(
     new: NewCollection,
 ) -> Result<PaymentCollection> {
     let id = PaymentCollectionId::new();
-    let _: Permit = ctx.permit(Action::Write, payment_resource(id.as_uuid(), None))?;
+    let owner = match new.cart_id {
+        Some(cart) => cart_owner(tx, ctx, cart).await?,
+        None => None,
+    };
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Payment {
+            id: id.as_uuid(),
+            order: Uuid::nil(),
+            customer: owner,
+        },
+    )?;
 
     if new.amount.is_negative() {
         return Err(Error::invalid(
@@ -637,13 +652,14 @@ pub async fn create_collection(
     }
 
     let collection = sqlx::query_as::<_, PaymentCollection>(
-        "insert into payment_collection (id, scope, currency_code, amount, metadata)
-         values ($1, $2, $3, $4, $5)
-         returning id, currency_code, amount, authorized_amount, captured_amount,
+        "insert into payment_collection (id, scope, cart_id, currency_code, amount, metadata)
+         values ($1, $2, $3, $4, $5, $6)
+         returning id, cart_id, currency_code, amount, authorized_amount, captured_amount,
                    refunded_amount, status, completed_at, created_at",
     )
     .bind(id.as_uuid())
     .bind(ctx.scope.0)
+    .bind(new.cart_id.map(CartId::as_uuid))
     .bind(new.amount.currency.as_str())
     .bind(new.amount.amount)
     .bind(new.metadata)
@@ -673,7 +689,8 @@ pub async fn collection(
     ctx: &Ctx<'_>,
     id: PaymentCollectionId,
 ) -> Result<PaymentCollection> {
-    let _: Permit = ctx.permit(Action::View, payment_resource(id.as_uuid(), None))?;
+    let owned = owned_payment_resource(tx, ctx, id).await?;
+    let _: Permit = ctx.permit(Action::View, owned)?;
     read_collection(tx, ctx, id, false).await
 }
 
@@ -699,7 +716,7 @@ pub async fn flag_mismatch(
     let collection = sqlx::query_as::<_, PaymentCollection>(
         "update payment_collection set status = 'mismatch'
          where scope = $1 and id = $2
-         returning id, currency_code, amount, authorized_amount, captured_amount,
+         returning id, cart_id, currency_code, amount, authorized_amount, captured_amount,
                    refunded_amount, status, completed_at, created_at",
     )
     .bind(ctx.scope.0)
@@ -753,10 +770,8 @@ pub async fn create_session(
     ctx: &Ctx<'_>,
     new: NewSession,
 ) -> Result<PaymentSession> {
-    let _: Permit = ctx.permit(
-        Action::Write,
-        payment_resource(new.collection_id.as_uuid(), None),
-    )?;
+    let owned = owned_payment_resource(tx, ctx, new.collection_id).await?;
+    let _: Permit = ctx.permit(Action::Write, owned)?;
 
     if new.amount.is_negative() {
         return Err(Error::invalid(
@@ -1527,7 +1542,51 @@ fn payment_resource(id: Uuid, order: Option<Uuid>) -> Resource {
     Resource::Payment {
         id,
         order: order.unwrap_or_else(Uuid::nil),
+        customer: None,
     }
+}
+
+/// The same, with the owner read off whatever the collection is attached to,
+/// so an authorizer is asked a question it can answer.
+///
+/// The lookup takes no permission of its own: it answers nothing to the
+/// caller, and the permission is taken with what it found.
+async fn owned_payment_resource(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: PaymentCollectionId,
+) -> Result<Resource> {
+    let found: Option<(Option<Uuid>, Option<Uuid>)> = sqlx::query_as(
+        r#"select o.id, coalesce(o.customer_id, c.customer_id)
+           from payment_collection pc
+           left join cart c on c.scope = pc.scope and c.id = pc.cart_id
+           left join "order" o on o.scope = pc.scope and o.payment_collection_id = pc.id
+           where pc.scope = $1 and pc.id = $2"#,
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    let (order, customer) = found.unwrap_or((None, None));
+
+    Ok(Resource::Payment {
+        id: id.as_uuid(),
+        order: order.unwrap_or_else(Uuid::nil),
+        customer,
+    })
+}
+
+/// The owner of a cart, for a collection being opened against it.
+async fn cart_owner(tx: &mut Tx<'_>, ctx: &Ctx<'_>, cart: CartId) -> Result<Option<Uuid>> {
+    Ok(sqlx::query_scalar::<_, Option<Uuid>>(
+        "select customer_id from cart where scope = $1 and id = $2",
+    )
+    .bind(ctx.scope.0)
+    .bind(cart.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?
+    .flatten())
 }
 
 fn who(actor: &Actor) -> String {
@@ -1557,11 +1616,11 @@ async fn read_collection(
     lock: bool,
 ) -> Result<PaymentCollection> {
     let sql = if lock {
-        "select id, currency_code, amount, authorized_amount, captured_amount,
+        "select id, cart_id, currency_code, amount, authorized_amount, captured_amount,
                 refunded_amount, status, completed_at, created_at
          from payment_collection where scope = $1 and id = $2 for update"
     } else {
-        "select id, currency_code, amount, authorized_amount, captured_amount,
+        "select id, cart_id, currency_code, amount, authorized_amount, captured_amount,
                 refunded_amount, status, completed_at, created_at
          from payment_collection where scope = $1 and id = $2"
     };
@@ -1760,7 +1819,7 @@ async fn recompute(
              status = $6,
              completed_at = case when $7 then coalesce(completed_at, $8) else null end
          where scope = $1 and id = $2
-         returning id, currency_code, amount, authorized_amount, captured_amount,
+         returning id, cart_id, currency_code, amount, authorized_amount, captured_amount,
                    refunded_amount, status, completed_at, created_at",
     )
     .bind(ctx.scope.0)

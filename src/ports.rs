@@ -86,6 +86,10 @@ pub enum Resource {
     Payment {
         id: Uuid,
         order: Uuid,
+        /// Whose money is being reached for, when the collection is already
+        /// attached to a cart or an order. `None` is "nobody owns it yet",
+        /// not "anybody may".
+        customer: Option<Uuid>,
     },
     Fulfillment {
         id: Uuid,
@@ -101,6 +105,18 @@ pub enum Resource {
         id: Option<Uuid>,
     },
     Pricing,
+    /// Shop-wide settings: its name, its default currency, how tax is shown.
+    Store,
+    /// A currency, a region or a sales channel — what a shop sells in and
+    /// through. Not a price.
+    Channel {
+        id: Option<Uuid>,
+    },
+    /// A storefront credential. Minting or revoking one is not editing a
+    /// price, and a host must be able to grant the two apart.
+    PublishableKey {
+        id: Option<Uuid>,
+    },
     Tax,
     /// A run of the workflow runner, which carries whatever the workflow it
     /// ran was given and returned.
@@ -109,11 +125,15 @@ pub enum Resource {
     },
 }
 
-/// Proof that a question was asked and answered yes.
+/// The answer to a question that was asked: an [`Authorizer`] hands one back
+/// rather than a `true`, so an answer cannot be ignored by forgetting to read
+/// it.
 ///
-/// Repository calls take one and it cannot be built from outside this crate
-/// except through [`Permit::granted`], so a path that never asked cannot reach
-/// the data.
+/// It is not a key the compiler makes a caller carry. No function in this
+/// crate takes a `Permit` as a parameter; every public function that reaches
+/// the database calls `ctx.permit(..)` itself or reaches the rows through one
+/// that does, and `tests/permit_asked.rs` reads `src/` and fails CI when a new
+/// one does neither.
 #[derive(Debug, Clone, Copy)]
 pub struct Permit(());
 

@@ -29,9 +29,14 @@ a dependency audit and a secret scan.
 wants from a host. Adding a trait there is a real decision — it becomes work
 for everybody embedding this. Prefer a parameter.
 
-**Nothing reaches data without a `Permit`.** A repository call takes one, and
-the only way to get one is to have asked the host's `Authorizer`. If a code
-path does not need permission, say so where a reader can see it.
+**Every public function that reaches data asks first.** `ctx.permit(..)` puts
+the question to the host's `Authorizer`, and a denial is an error rather than a
+`false`. This is a convention with a test behind it rather than a type the
+compiler makes you carry: no function takes a `Permit` as a parameter, and
+`tests/permit_asked.rs` reads `src/` and fails when a public function runs a
+query with no `ctx.permit(..)` above it and no reason in its `TOLERATED` list.
+If a code path does not need permission, say so there, where a reader can see
+it.
 
 **Audit rows, events and jobs are written in the caller's transaction.** Never
 after the commit. A change that rolls back takes them with it, and an event

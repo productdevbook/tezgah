@@ -398,6 +398,7 @@ async fn a_payment_session_holds_only_the_statuses_the_code_knows() {
             &ctx,
             NewCollection {
                 amount: Money::new(dec!(100.00), lira()),
+                cart_id: None,
                 metadata: None,
             },
         )
@@ -471,6 +472,7 @@ async fn an_authorised_session_cannot_be_walked_back_to_an_open_one() {
             &ctx,
             NewCollection {
                 amount: Money::new(dec!(100.00), lira()),
+                cart_id: None,
                 metadata: None,
             },
         )

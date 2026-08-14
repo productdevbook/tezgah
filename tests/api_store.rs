@@ -12,10 +12,13 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use common::Shop;
-use tezgah::api::store::{self, CreateCart, ListPage, ListProducts};
+use tezgah::api::store::{
+    self, CreateCart, ListPage, ListProducts, StartPayment, StartPaymentSession,
+};
 use tezgah::catalogue::{self, NewProduct};
-use tezgah::id::CustomerId;
+use tezgah::id::{CartId, CustomerId, PaymentCollectionId};
 use tezgah::page::MAX_LIMIT;
+use tezgah::payment;
 use tezgah::ports::{
     Action, Actor, AuditEntry, AuditSink, Authorizer, Clock, Event, EventSink, Host, JobSpec, Jobs,
     Permit, Resource, Tx,
@@ -35,7 +38,9 @@ struct OnlyOwner;
 impl Authorizer for OnlyOwner {
     fn authorize(&self, actor: &Actor, _: Action, resource: &Resource) -> tezgah::Result<Permit> {
         let owner = match resource {
-            Resource::Cart { customer, .. } | Resource::Order { customer, .. } => *customer,
+            Resource::Cart { customer, .. }
+            | Resource::Order { customer, .. }
+            | Resource::Payment { customer, .. } => *customer,
             _ => None,
         };
 
@@ -220,6 +225,173 @@ async fn a_cart_is_not_reached_by_somebody_else() -> tezgah::Result<()> {
     );
 
     drop(tx);
+    shop.close().await;
+    Ok(())
+}
+
+/// A cart, and a payment collection opened for it, for one shopper.
+async fn a_cart_with_money_owed(
+    tx: &mut Tx<'_>,
+    ctx: &tezgah::ports::Ctx<'_>,
+) -> tezgah::Result<(CartId, PaymentCollectionId)> {
+    let cart = store::create_cart(
+        tx,
+        ctx,
+        CreateCart {
+            currency_code: "TRY".into(),
+            region_id: None,
+            sales_channel_id: None,
+            email: None,
+        },
+    )
+    .await?;
+
+    let collection =
+        store::create_payment_collection(tx, ctx, StartPayment { cart_id: cart.id }).await?;
+
+    Ok((cart.id, collection.id))
+}
+
+/// The exploit the surface used to allow: the cart in the body was the only
+/// thing ownership was asked about, and the collection in the path was
+/// anybody's.
+#[tokio::test]
+async fn a_session_is_not_opened_on_somebody_elses_collection() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+
+    payment::register_provider(&mut tx, &shop.ctx(), "mock").await?;
+
+    let mine = a_customer(&mut tx, &shop, "shopper@example.test").await?;
+    let theirs = a_customer(&mut tx, &shop, "somebody@example.test").await?;
+
+    let ctx = shop.ctx_as(
+        Actor::Customer { id: mine.as_uuid() },
+        shop.host.as_ref() as &dyn Host,
+    );
+    let stranger = shop.ctx_as(
+        Actor::Customer {
+            id: theirs.as_uuid(),
+        },
+        shop.host.as_ref() as &dyn Host,
+    );
+
+    let (my_cart, _) = a_cart_with_money_owed(&mut tx, &ctx).await?;
+    let (_, their_collection) = a_cart_with_money_owed(&mut tx, &stranger).await?;
+
+    // The host here says yes to everything, so what refuses is the surface.
+    let refused = store::create_payment_session(
+        &mut tx,
+        &ctx,
+        their_collection,
+        StartPaymentSession {
+            cart_id: my_cart,
+            provider_code: "mock".into(),
+            context: None,
+        },
+    )
+    .await
+    .expect_err("their collection is not mine to pay against");
+    assert!(
+        refused.is_not_found(),
+        "naming somebody else's collection answers not_found, so its amount is not \
+         handed back either"
+    );
+
+    drop(tx);
+    shop.close().await;
+    Ok(())
+}
+
+/// The other half: the host is now handed the owner, so it can refuse on its
+/// own rather than being asked a question with the answer removed.
+#[tokio::test]
+async fn a_host_is_told_whose_payment_collection_it_is() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let host: Arc<OnlyOwner> = Arc::new(OnlyOwner);
+    let mut tx = shop.begin().await;
+
+    payment::register_provider(&mut tx, &shop.ctx(), "mock").await?;
+
+    let mine = a_customer(&mut tx, &shop, "shopper@example.test").await?;
+    let theirs = a_customer(&mut tx, &shop, "somebody@example.test").await?;
+
+    let ctx = shop.ctx_as(
+        Actor::Customer { id: mine.as_uuid() },
+        host.as_ref() as &dyn Host,
+    );
+    let stranger = shop.ctx_as(
+        Actor::Customer {
+            id: theirs.as_uuid(),
+        },
+        host.as_ref() as &dyn Host,
+    );
+
+    let (my_cart, my_collection) = a_cart_with_money_owed(&mut tx, &ctx).await?;
+    let (_, their_collection) = a_cart_with_money_owed(&mut tx, &stranger).await?;
+
+    let refused = store::create_payment_session(
+        &mut tx,
+        &ctx,
+        their_collection,
+        StartPaymentSession {
+            cart_id: my_cart,
+            provider_code: "mock".into(),
+            context: None,
+        },
+    )
+    .await
+    .expect_err("the host was given an owner and said no");
+    assert!(refused.is_denied());
+
+    let opened = store::create_payment_session(
+        &mut tx,
+        &ctx,
+        my_collection,
+        StartPaymentSession {
+            cart_id: my_cart,
+            provider_code: "mock".into(),
+            context: None,
+        },
+    )
+    .await?;
+    assert_eq!(opened.payment_collection_id, my_collection);
+
+    drop(tx);
+    shop.close().await;
+    Ok(())
+}
+
+/// A collection belongs to the scope it was opened in and to no other.
+#[tokio::test]
+async fn a_collection_is_not_reachable_from_another_scope() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+
+    let mine = a_customer(&mut tx, &shop, "shopper@example.test").await?;
+    let ctx = shop.ctx_as(
+        Actor::Customer { id: mine.as_uuid() },
+        shop.host.as_ref() as &dyn Host,
+    );
+    let (my_cart, my_collection) = a_cart_with_money_owed(&mut tx, &ctx).await?;
+    tx.commit().await.expect("to commit");
+
+    let mut elsewhere = shop.begin_as(shop.elsewhere).await;
+    let refused = store::create_payment_session(
+        &mut elsewhere,
+        &shop.theirs(),
+        my_collection,
+        StartPaymentSession {
+            cart_id: my_cart,
+            provider_code: "mock".into(),
+            context: None,
+        },
+    )
+    .await
+    .expect_err("another shop's collection is not there at all");
+    assert!(refused.is_not_found());
+
+    drop(elsewhere);
     shop.close().await;
     Ok(())
 }

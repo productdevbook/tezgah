@@ -84,6 +84,7 @@ Each domain owns a number, so parallel work does not collide.
 | `0019_order_transfer` | handing an order to another customer: the claim, its token hash and its expiry |
 | `0021_order_line_money` | an order line's and a shipping method's adjustments and tax lines, a row per promotion and per rate |
 | `0022_order_operator_status` | triggers that keep `order.payment_status` and `order.fulfillment_status`, and the constraint pairing a cancelled return with its timestamp |
+| `0023_payment_collection_cart` | which cart a payment collection was opened for, so a collection says whose it is |
 
 Migrations are append-only once merged. A change to a shipped table is a new
 file, and it expands before it contracts: add and backfill in one release, read
@@ -101,7 +102,10 @@ add a `not null` check as `not valid`, then validate it.
 - One module per domain under `src/`, named for the domain.
 - Rows are structs deriving `sqlx::FromRow`, with typed ids from `src/id.rs`.
 - Every public function takes `&mut Tx<'_>` and `&Ctx<'_>`, in that order.
-- Nothing reads or writes without a `Permit` obtained from `ctx.permit(..)`.
+- Every public function that runs a query asks `ctx.permit(..)` first, or
+  reaches the rows through one that did. The `Permit` it hands back is the
+  answer, not a key the compiler makes you carry — `tests/permit_asked.rs`
+  reads `src/` and says so, with the exceptions named and reasoned there.
 - **Every scoped query names its scope**, `where scope = $1`, even though the
   policy already filters by it. The policy is the guarantee; the predicate is
   what still holds if a host connects as a table owner or a superuser, both of

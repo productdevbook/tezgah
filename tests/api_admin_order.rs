@@ -138,6 +138,7 @@ async fn a_held_payment(tx: &mut Tx<'_>, ctx: &Ctx<'_>, total: Money) -> Payment
         ctx,
         NewCollection {
             amount: total,
+            cart_id: None,
             metadata: None,
         },
     )

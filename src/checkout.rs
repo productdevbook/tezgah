@@ -563,6 +563,7 @@ impl Step for CreateOrder {
             ctx,
             NewCollection {
                 amount: totals.total,
+                cart_id: Some(cart_id),
                 metadata: Some(serde_json::json!({ "cart_id": cart_id })),
             },
         )

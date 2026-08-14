@@ -501,6 +501,7 @@ async fn a_draft_is_priced_like_any_other_order() -> tezgah::Result<()> {
         &ctx,
         tezgah::payment::NewCollection {
             amount: totals.total,
+            cart_id: None,
             metadata: None,
         },
     )

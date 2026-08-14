@@ -134,13 +134,13 @@ async fn read_store(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<Store> {
 }
 
 pub async fn store(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<Store> {
-    let _: Permit = ctx.permit(Action::View, Resource::Pricing)?;
+    let _: Permit = ctx.permit(Action::View, Resource::Store)?;
 
     read_store(tx, ctx).await
 }
 
 pub async fn update_store(tx: &mut Tx<'_>, ctx: &Ctx<'_>, patch: StorePatch) -> Result<Store> {
-    let _: Permit = ctx.permit(Action::Write, Resource::Pricing)?;
+    let _: Permit = ctx.permit(Action::Write, Resource::Store)?;
 
     if patch
         .name
@@ -218,7 +218,7 @@ pub async fn update_store(tx: &mut Tx<'_>, ctx: &Ctx<'_>, patch: StorePatch) -> 
 /// The currencies this shop prices in. Configuration rather than anybody's
 /// data, so it is capped rather than paged.
 pub async fn currencies(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<Vec<CurrencyRow>> {
-    let _: Permit = ctx.permit(Action::View, Resource::Pricing)?;
+    let _: Permit = ctx.permit(Action::View, Resource::Channel { id: None })?;
 
     let rows = sqlx::query_as::<_, CurrencyRow>(
         "select code, symbol, name, exponent from currency
@@ -233,7 +233,7 @@ pub async fn currencies(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<Vec<CurrencyRo
 }
 
 pub async fn currency(tx: &mut Tx<'_>, ctx: &Ctx<'_>, code: Currency) -> Result<CurrencyRow> {
-    let _: Permit = ctx.permit(Action::View, Resource::Pricing)?;
+    let _: Permit = ctx.permit(Action::View, Resource::Channel { id: None })?;
 
     sqlx::query_as::<_, CurrencyRow>(
         "select code, symbol, name, exponent from currency where scope = $1 and code = $2",
@@ -246,7 +246,7 @@ pub async fn currency(tx: &mut Tx<'_>, ctx: &Ctx<'_>, code: Currency) -> Result<
 }
 
 pub async fn create_region(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewRegion) -> Result<Region> {
-    let _: Permit = ctx.permit(Action::Write, Resource::Pricing)?;
+    let _: Permit = ctx.permit(Action::Write, Resource::Channel { id: None })?;
 
     if new.name.trim().is_empty() {
         return Err(Error::invalid("a region needs a name"));
@@ -282,7 +282,12 @@ pub async fn create_region(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewRegion) -> Re
 }
 
 pub async fn region(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: RegionId) -> Result<Region> {
-    let _: Permit = ctx.permit(Action::View, Resource::Pricing)?;
+    let _: Permit = ctx.permit(
+        Action::View,
+        Resource::Channel {
+            id: Some(id.as_uuid()),
+        },
+    )?;
 
     sqlx::query_as::<_, Region>(
         "select id, name, currency_code, is_tax_inclusive, created_at
@@ -310,7 +315,12 @@ pub async fn update_region(
     id: RegionId,
     patch: RegionPatch,
 ) -> Result<Region> {
-    let _: Permit = ctx.permit(Action::Write, Resource::Pricing)?;
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Channel {
+            id: Some(id.as_uuid()),
+        },
+    )?;
 
     if patch
         .name
@@ -355,7 +365,7 @@ pub async fn update_region(
 /// The languages this shop writes in. Configuration rather than anybody's data,
 /// so it is capped rather than paged.
 pub async fn locales(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<Vec<String>> {
-    let _: Permit = ctx.permit(Action::View, Resource::Pricing)?;
+    let _: Permit = ctx.permit(Action::View, Resource::Store)?;
 
     let found: Option<Vec<String>> = sqlx::query_scalar(
         "select supported_locales[1:$2::int] from store where scope = $1 limit 1",
@@ -369,7 +379,7 @@ pub async fn locales(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<Vec<String>> {
 }
 
 pub async fn regions(tx: &mut Tx<'_>, ctx: &Ctx<'_>, paging: Paging) -> Result<Page<Region>> {
-    let _: Permit = ctx.permit(Action::View, Resource::Pricing)?;
+    let _: Permit = ctx.permit(Action::View, Resource::Channel { id: None })?;
 
     let rows = sqlx::query_as::<_, Region>(
         "select id, name, currency_code, is_tax_inclusive, created_at
@@ -414,7 +424,7 @@ pub async fn create_sales_channel(
     ctx: &Ctx<'_>,
     new: NewSalesChannel,
 ) -> Result<SalesChannel> {
-    let _: Permit = ctx.permit(Action::Write, Resource::Pricing)?;
+    let _: Permit = ctx.permit(Action::Write, Resource::Channel { id: None })?;
 
     if new.name.trim().is_empty() {
         return Err(Error::invalid("a sales channel needs a name"));
@@ -461,7 +471,12 @@ pub async fn update_sales_channel(
     id: SalesChannelId,
     patch: SalesChannelPatch,
 ) -> Result<SalesChannel> {
-    let _: Permit = ctx.permit(Action::Write, Resource::Pricing)?;
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Channel {
+            id: Some(id.as_uuid()),
+        },
+    )?;
 
     if patch
         .name
@@ -508,7 +523,12 @@ pub async fn delete_sales_channel(
     ctx: &Ctx<'_>,
     id: SalesChannelId,
 ) -> Result<()> {
-    let _: Permit = ctx.permit(Action::Delete, Resource::Pricing)?;
+    let _: Permit = ctx.permit(
+        Action::Delete,
+        Resource::Channel {
+            id: Some(id.as_uuid()),
+        },
+    )?;
 
     let done = sqlx::query("delete from sales_channel where scope = $1 and id = $2")
         .bind(ctx.scope.0)
@@ -540,7 +560,12 @@ pub async fn sales_channel(
     ctx: &Ctx<'_>,
     id: SalesChannelId,
 ) -> Result<SalesChannel> {
-    let _: Permit = ctx.permit(Action::View, Resource::Pricing)?;
+    let _: Permit = ctx.permit(
+        Action::View,
+        Resource::Channel {
+            id: Some(id.as_uuid()),
+        },
+    )?;
 
     sqlx::query_as::<_, SalesChannel>(&format!(
         "select {CHANNEL_COLUMNS} from sales_channel where scope = $1 and id = $2"
@@ -557,7 +582,7 @@ pub async fn sales_channels(
     ctx: &Ctx<'_>,
     paging: Paging,
 ) -> Result<Page<SalesChannel>> {
-    let _: Permit = ctx.permit(Action::View, Resource::Pricing)?;
+    let _: Permit = ctx.permit(Action::View, Resource::Channel { id: None })?;
 
     let rows = sqlx::query_as::<_, SalesChannel>(
         "select id, name, description, is_disabled, created_at
@@ -616,7 +641,7 @@ pub async fn create_publishable_key(
     ctx: &Ctx<'_>,
     title: &str,
 ) -> Result<IssuedKey> {
-    let _: Permit = ctx.permit(Action::Write, Resource::Pricing)?;
+    let _: Permit = ctx.permit(Action::Write, Resource::PublishableKey { id: None })?;
 
     if title.trim().is_empty() {
         return Err(Error::invalid("a publishable key needs a title"));
@@ -658,7 +683,12 @@ pub async fn revoke_publishable_key(
     ctx: &Ctx<'_>,
     id: PublishableKeyId,
 ) -> Result<PublishableKey> {
-    let _: Permit = ctx.permit(Action::Write, Resource::Pricing)?;
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::PublishableKey {
+            id: Some(id.as_uuid()),
+        },
+    )?;
 
     let key = sqlx::query_as::<_, PublishableKey>(&format!(
         "update publishable_key set revoked_at = $3
@@ -698,7 +728,12 @@ pub async fn publishable_key(
     ctx: &Ctx<'_>,
     id: PublishableKeyId,
 ) -> Result<PublishableKey> {
-    let _: Permit = ctx.permit(Action::View, Resource::Pricing)?;
+    let _: Permit = ctx.permit(
+        Action::View,
+        Resource::PublishableKey {
+            id: Some(id.as_uuid()),
+        },
+    )?;
 
     sqlx::query_as::<_, PublishableKey>(&format!(
         "select {KEY_COLUMNS} from publishable_key where scope = $1 and id = $2"
@@ -715,7 +750,7 @@ pub async fn publishable_keys(
     ctx: &Ctx<'_>,
     paging: Paging,
 ) -> Result<Page<PublishableKey>> {
-    let _: Permit = ctx.permit(Action::View, Resource::Pricing)?;
+    let _: Permit = ctx.permit(Action::View, Resource::PublishableKey { id: None })?;
 
     let rows = sqlx::query_as::<_, PublishableKey>(&format!(
         "select {KEY_COLUMNS} from publishable_key
@@ -743,7 +778,12 @@ pub async fn link_key_to_channel(
     key: PublishableKeyId,
     channel: SalesChannelId,
 ) -> Result<()> {
-    let _: Permit = ctx.permit(Action::Write, Resource::Pricing)?;
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::PublishableKey {
+            id: Some(key.as_uuid()),
+        },
+    )?;
 
     let done = sqlx::query(
         "insert into publishable_key_sales_channel
@@ -795,7 +835,12 @@ pub async fn unlink_key_from_channel(
     key: PublishableKeyId,
     channel: SalesChannelId,
 ) -> Result<()> {
-    let _: Permit = ctx.permit(Action::Delete, Resource::Pricing)?;
+    let _: Permit = ctx.permit(
+        Action::Delete,
+        Resource::PublishableKey {
+            id: Some(key.as_uuid()),
+        },
+    )?;
 
     let done = sqlx::query(
         "delete from publishable_key_sales_channel
@@ -832,7 +877,12 @@ pub async fn channels_for_key(
     ctx: &Ctx<'_>,
     key: PublishableKeyId,
 ) -> Result<Vec<SalesChannel>> {
-    let _: Permit = ctx.permit(Action::View, Resource::Pricing)?;
+    let _: Permit = ctx.permit(
+        Action::View,
+        Resource::PublishableKey {
+            id: Some(key.as_uuid()),
+        },
+    )?;
 
     let rows = sqlx::query_as::<_, SalesChannel>(
         "select c.id, c.name, c.description, c.is_disabled, c.created_at
@@ -868,7 +918,7 @@ pub async fn channels_for_token(
 
 /// Which live key a token is, or a denial.
 async fn key_for_token(tx: &mut Tx<'_>, ctx: &Ctx<'_>, token: &str) -> Result<PublishableKeyId> {
-    let _: Permit = ctx.permit(Action::View, Resource::Pricing)?;
+    let _: Permit = ctx.permit(Action::View, Resource::PublishableKey { id: None })?;
 
     let held: Option<(Uuid, String)> = sqlx::query_as(
         "select id, token from publishable_key

@@ -3,10 +3,16 @@
 
 mod common;
 
-use common::Shop;
+use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use common::{Doorman, Shop};
+use tezgah::id::{PublishableKeyId, SalesChannelId};
 use tezgah::page::Paging;
-use tezgah::ports::Tx;
-use tezgah::store::{self, NewSalesChannel, SalesChannel, SalesChannelPatch};
+use tezgah::ports::{
+    Action, Actor, AuditEntry, AuditSink, Authorizer, Clock, Event, EventSink, JobSpec, Jobs,
+    Permit, Resource, Tx,
+};
+use tezgah::store::{self, NewSalesChannel, SalesChannel, SalesChannelPatch, StorePatch};
 
 async fn a_channel(shop: &Shop, tx: &mut Tx<'_>, name: &str) -> SalesChannel {
     store::create_sales_channel(
@@ -198,5 +204,169 @@ async fn one_shops_channels_and_keys_are_invisible_to_another() {
     assert!(refused.is_empty());
 
     theirs.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+/// A host granting tezgah's pricing power and nothing else — the obvious thing
+/// to give whoever edits prices.
+#[derive(Debug, Default)]
+struct PricesOnly;
+
+impl Authorizer for PricesOnly {
+    fn authorize(&self, _: &Actor, _: Action, resource: &Resource) -> tezgah::Result<Permit> {
+        match resource {
+            Resource::Pricing => Ok(Permit::granted()),
+            _ => Err(tezgah::Error::denied()),
+        }
+    }
+}
+
+impl Clock for PricesOnly {
+    fn now(&self) -> DateTime<Utc> {
+        Utc::now()
+    }
+}
+
+#[async_trait]
+impl AuditSink for PricesOnly {
+    async fn record(&self, _: &mut Tx<'_>, _: AuditEntry) -> tezgah::Result<()> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl EventSink for PricesOnly {
+    async fn emit(&self, _: &mut Tx<'_>, _: Event) -> tezgah::Result<()> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl Jobs for PricesOnly {
+    async fn enqueue(&self, _: &mut Tx<'_>, _: JobSpec) -> tezgah::Result<()> {
+        Ok(())
+    }
+}
+
+/// Minting a storefront credential is not editing a price, and a host must be
+/// able to grant the one without the other.
+#[tokio::test]
+async fn a_key_is_not_reachable_with_permission_to_edit_prices() {
+    let shop = Shop::open().await;
+    let host = PricesOnly;
+    let ctx = shop.ctx_as(
+        Actor::Staff {
+            id: uuid::Uuid::now_v7(),
+        },
+        &host,
+    );
+    let mut tx = shop.begin().await;
+
+    let key = PublishableKeyId::new();
+    let channel = SalesChannelId::new();
+
+    assert!(
+        store::create_publishable_key(&mut tx, &ctx, "Storefront")
+            .await
+            .expect_err("a price editor does not mint credentials")
+            .is_denied()
+    );
+    assert!(
+        store::publishable_keys(&mut tx, &ctx, Paging::first(10))
+            .await
+            .expect_err("nor read them")
+            .is_denied()
+    );
+    assert!(
+        store::publishable_key(&mut tx, &ctx, key)
+            .await
+            .expect_err("nor read one")
+            .is_denied()
+    );
+    assert!(
+        store::revoke_publishable_key(&mut tx, &ctx, key)
+            .await
+            .expect_err("nor revoke one")
+            .is_denied()
+    );
+    assert!(
+        store::link_key_to_channel(&mut tx, &ctx, key, channel)
+            .await
+            .expect_err("nor point one at a channel")
+            .is_denied()
+    );
+    assert!(
+        store::unlink_key_from_channel(&mut tx, &ctx, key, channel)
+            .await
+            .expect_err("nor take it away again")
+            .is_denied()
+    );
+    assert!(
+        store::channels_for_token(&mut tx, &ctx, "pk_whatever")
+            .await
+            .expect_err("nor spend a token")
+            .is_denied()
+    );
+
+    assert!(
+        store::update_store(&mut tx, &ctx, StorePatch::default())
+            .await
+            .expect_err("nor rewrite the shop's own settings")
+            .is_denied()
+    );
+    assert!(
+        store::create_sales_channel(
+            &mut tx,
+            &ctx,
+            NewSalesChannel {
+                name: "Web".into(),
+                description: None,
+                is_disabled: false,
+            },
+        )
+        .await
+        .expect_err("nor open a channel to sell through")
+        .is_denied()
+    );
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+/// The other half: that the calls ask at all rather than reading the rows.
+#[tokio::test]
+async fn a_host_that_refuses_everything_is_obeyed_by_the_key_calls() {
+    let shop = Shop::open().await;
+    let doorman = Doorman;
+    let ctx = shop.ctx_as(
+        Actor::Staff {
+            id: uuid::Uuid::now_v7(),
+        },
+        &doorman,
+    );
+    let mut tx = shop.begin().await;
+
+    let key = PublishableKeyId::new();
+
+    assert!(
+        store::create_publishable_key(&mut tx, &ctx, "Storefront")
+            .await
+            .expect_err("nothing is minted")
+            .is_denied()
+    );
+    assert!(
+        store::publishable_keys(&mut tx, &ctx, Paging::first(10))
+            .await
+            .expect_err("nothing is listed")
+            .is_denied()
+    );
+    assert!(
+        store::revoke_publishable_key(&mut tx, &ctx, key)
+            .await
+            .expect_err("nothing is revoked")
+            .is_denied()
+    );
+
+    tx.rollback().await.expect("to roll back");
     shop.close().await;
 }

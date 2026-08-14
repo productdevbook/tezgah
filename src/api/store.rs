@@ -1860,6 +1860,7 @@ pub async fn create_payment_collection(
         ctx,
         payment::NewCollection {
             amount: owed.total,
+            cart_id: Some(input.cart_id),
             metadata: None,
         },
     )
@@ -1887,6 +1888,10 @@ pub async fn create_payment_session(
     own_cart(tx, ctx, input.cart_id, Action::Write).await?;
 
     let collection = payment::collection(tx, ctx, collection_id).await?;
+    if collection.cart_id != Some(input.cart_id) {
+        return Err(Error::not_found("payment collection"));
+    }
+
     let currency = Currency::parse(&collection.currency_code)?;
 
     let made = payment::create_session(

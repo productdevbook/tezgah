@@ -2410,6 +2410,7 @@ pub async fn list_payments(
         Resource::Payment {
             id: Uuid::nil(),
             order: Uuid::nil(),
+            customer: None,
         },
     )?;
 
@@ -2538,6 +2539,7 @@ pub async fn create_payment_collection(
 ) -> Result<CollectionView> {
     let new = payment::NewCollection {
         amount: input.amount.money()?,
+        cart_id: None,
         metadata: input.metadata,
     };
     Ok(payment::create_collection(tx, ctx, new).await?.into())

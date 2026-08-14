@@ -471,6 +471,7 @@ async fn one_step(
                 ctx,
                 NewCollection {
                     amount: total,
+                    cart_id: None,
                     metadata: None,
                 },
             )

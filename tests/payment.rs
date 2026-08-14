@@ -187,6 +187,7 @@ async fn open_session(shop: &Shop, total: Money) -> PaymentSessionId {
         &ctx,
         NewCollection {
             amount: total,
+            cart_id: None,
             metadata: None,
         },
     )

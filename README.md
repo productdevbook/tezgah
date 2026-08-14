@@ -45,6 +45,12 @@ tezgah decides nothing it does not have to. It asks, through traits in
 You assemble a `Ctx` once per request and pass it down. A host with none of
 this uses `Permit::granted()` and a clock, and everything works.
 
+Every public function that reaches the database asks your `Authorizer` before
+it does, and `tests/permit_asked.rs` reads the crate's own source to keep that
+true — a new function that queries without asking fails CI. The `Permit` an
+authorizer returns is the answer, not a token the compiler makes each call
+carry: what is checked is that the question was put, not threaded.
+
 Every table carries a `scope` — one shop, one tenant, one marketplace seller —
 and ships row-level security policies reading it. A single-shop host uses one
 fixed scope and never thinks about it again. A multi-tenant host sets
