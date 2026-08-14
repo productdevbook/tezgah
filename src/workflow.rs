@@ -312,6 +312,11 @@ pub struct Run {
 /// Opens its own transactions, one per step. The caller's transaction, if it
 /// has one, should be committed first: a run that is waiting on a row this
 /// request has not released will simply wait.
+///
+/// Takes the same lease a [`work`] loop does before driving anything, so the
+/// two drivers cannot run one step twice. A run somebody else is already
+/// holding is a conflict rather than a wait: the caller is a request handler,
+/// and the other driver will finish it.
 pub async fn run(
     pool: &PgPool,
     ctx: &Ctx<'_>,
@@ -326,7 +331,14 @@ pub async fn run(
 
     let outcome = async {
         let id = claim(pool, ctx, workflow, transaction_key, input).await?;
-        drive(pool, ctx, workflow, id).await
+        let worker = Uuid::now_v7().to_string();
+        let lease = lease_run(pool, ctx, id, &worker).await?;
+        if lease.leased == 0 && lease.held_elsewhere > 0 {
+            return Err(Error::conflict(
+                "something else is already driving this run; try again",
+            ));
+        }
+        held(pool, ctx, workflow, id, &worker).await
     }
     .await;
 
@@ -412,32 +424,33 @@ async fn claim(
 ) -> Result<WorkflowRunId> {
     let mut tx = scoped(pool, ctx).await?;
 
-    let existing: Option<Uuid> = sqlx::query_scalar(
-        "select id from workflow_run where scope = $1 and name = $2 and transaction_key = $3",
-    )
-    .bind(ctx.scope.0)
-    .bind(workflow.name)
-    .bind(transaction_key)
-    .fetch_optional(&mut *tx)
-    .await?;
-
-    if let Some(id) = existing {
-        tx.commit().await?;
-        return Ok(WorkflowRunId::from_uuid(id));
-    }
-
     let id = WorkflowRunId::new();
-    sqlx::query(
+    let inserted: Option<Uuid> = sqlx::query_scalar(
         "insert into workflow_run (id, scope, name, transaction_key, input)
-         values ($1, $2, $3, $4, $5)",
+         values ($1, $2, $3, $4, $5)
+         on conflict (scope, name, transaction_key) do nothing
+         returning id",
     )
     .bind(id.as_uuid())
     .bind(ctx.scope.0)
     .bind(workflow.name)
     .bind(transaction_key)
     .bind(&input)
-    .execute(&mut *tx)
+    .fetch_optional(&mut *tx)
     .await?;
+
+    if inserted.is_none() {
+        let existing: Uuid = sqlx::query_scalar(
+            "select id from workflow_run where scope = $1 and name = $2 and transaction_key = $3",
+        )
+        .bind(ctx.scope.0)
+        .bind(workflow.name)
+        .bind(transaction_key)
+        .fetch_one(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        return Ok(WorkflowRunId::from_uuid(existing));
+    }
 
     for slot in workflow.plan() {
         for (k, one) in slot.steps.iter().enumerate() {
@@ -478,12 +491,63 @@ struct Head {
     failure: Option<String>,
 }
 
+/// What stopped a step short of an outcome.
+enum Stop {
+    /// The row is no longer ours: somebody else leased it, or the attempts are
+    /// gone. Nothing to unwind here — whoever holds it decides.
+    Lost,
+    Refused(Failure),
+}
+
+/// How many of a run's due steps this driver took, and how many somebody else
+/// is still holding.
+struct Lease {
+    leased: i64,
+    held_elsewhere: i64,
+}
+
+/// Leases every due step of one run for `worker`, which is what taking a run
+/// is. Two drivers racing here serialise on the row locks, and the loser's
+/// predicate no longer holds, so exactly one comes away with the steps.
+async fn lease_run(pool: &PgPool, ctx: &Ctx<'_>, id: WorkflowRunId, worker: &str) -> Result<Lease> {
+    let mut tx = scoped(pool, ctx).await?;
+    let (leased, held_elsewhere): (i64, i64) = sqlx::query_as(
+        "with leased as (
+             update workflow_step
+             set lease_until = $2, locked_by = $3
+             where run_id = $1
+               and state in ('pending', 'compensating', 'failed')
+               and run_after <= now()
+               and (lease_until is null or lease_until < now())
+             returning 1 as one
+         )
+         select (select count(*) from leased),
+                (select count(*) from workflow_step
+                 where run_id = $1
+                   and state in ('pending', 'invoking', 'compensating')
+                   and lease_until >= now()
+                   and locked_by is distinct from $3)",
+    )
+    .bind(id.as_uuid())
+    .bind(Utc::now() + LEASE)
+    .bind(worker)
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    Ok(Lease {
+        leased,
+        held_elsewhere,
+    })
+}
+
 /// Invokes what has not run, then unwinds if something refuses to.
 async fn drive(
     pool: &PgPool,
     ctx: &Ctx<'_>,
     workflow: &Workflow,
     id: WorkflowRunId,
+    worker: &str,
 ) -> Result<Run> {
     let head = head(pool, ctx, id).await?;
 
@@ -500,7 +564,7 @@ async fn drive(
         let why = head
             .failure
             .unwrap_or_else(|| "the run was already unwinding".into());
-        return unwind(pool, ctx, workflow, id, why).await;
+        return unwind(pool, ctx, workflow, id, worker, why).await;
     }
 
     let mut carried = head.input;
@@ -530,15 +594,18 @@ async fn drive(
                         slot.steps[k].as_ref(),
                         &carried,
                         &rows[k],
+                        worker,
                     )
                 })
                 .collect::<Vec<_>>();
 
             let mut failed: Option<(&'static str, Failure)> = None;
+            let mut lost = false;
             for (&k, result) in waiting.iter().zip(all(running).await) {
                 match result {
                     Ok(output) => outputs[k] = output,
-                    Err(failure) => {
+                    Err(Stop::Lost) => lost = true,
+                    Err(Stop::Refused(failure)) => {
                         if failed.is_none() {
                             failed = Some((slot.steps[k].name(), failure));
                         }
@@ -546,9 +613,15 @@ async fn drive(
                 }
             }
 
+            if lost {
+                return Err(Error::conflict(
+                    "another driver holds this run; it will be finished there",
+                ));
+            }
+
             if let Some((name, failure)) = failed {
                 let why = format!("{name}: {}", failure.error().report());
-                return unwind(pool, ctx, workflow, id, why).await;
+                return unwind(pool, ctx, workflow, id, worker, why).await;
             }
         }
 
@@ -658,33 +731,41 @@ async fn invoke(
     step: &dyn Step,
     input: &Value,
     row: &StepRow,
-) -> std::result::Result<Value, Failure> {
-    let mut attempts = row.attempts;
-
-    if attempts >= row.max_attempts {
-        return Err(Failure::Final(Error::conflict(
+    worker: &str,
+) -> std::result::Result<Value, Stop> {
+    if row.attempts >= row.max_attempts {
+        return Err(Stop::Refused(Failure::Final(Error::conflict(
             "this step has already used every attempt it had",
-        )));
+        ))));
     }
 
     loop {
-        attempts += 1;
         let leased = Utc::now() + LEASE;
 
-        let mut tx = scoped(pool, ctx).await.map_err(Failure::Final)?;
+        let mut tx = scoped(pool, ctx)
+            .await
+            .map_err(|err| Stop::Refused(Failure::Final(err)))?;
 
-        sqlx::query(
+        let taken: Option<i32> = sqlx::query_scalar(
             "update workflow_step
-             set state = 'invoking', attempts = $3, lease_until = $4
-             where run_id = $1 and ordering = $2",
+             set state = 'invoking', attempts = attempts + 1, lease_until = $4
+             where run_id = $1 and ordering = $2
+               and state in ('pending', 'invoking', 'failed')
+               and attempts < max_attempts
+               and locked_by = $3
+             returning attempts",
         )
         .bind(id.as_uuid())
         .bind(at)
-        .bind(attempts)
+        .bind(worker)
         .bind(leased)
-        .execute(&mut *tx)
+        .fetch_optional(&mut *tx)
         .await
-        .map_err(|err| Failure::Final(Error::from(err)))?;
+        .map_err(|err| Stop::Refused(Failure::Final(Error::from(err))))?;
+
+        let Some(attempts) = taken else {
+            return Err(Stop::Lost);
+        };
 
         match step.invoke(&mut tx, ctx, input).await {
             Ok(outcome) => {
@@ -699,11 +780,11 @@ async fn invoke(
                 .bind(&outcome.compensate_input)
                 .execute(&mut *tx)
                 .await
-                .map_err(|err| Failure::Final(Error::from(err)))?;
+                .map_err(|err| Stop::Refused(Failure::Final(Error::from(err))))?;
 
                 tx.commit()
                     .await
-                    .map_err(|err| Failure::Final(Error::from(err)))?;
+                    .map_err(|err| Stop::Refused(Failure::Final(Error::from(err))))?;
                 return Ok(outcome.output);
             }
             Err(failure) => {
@@ -718,21 +799,23 @@ async fn invoke(
                     Failure::Retry(err) | Failure::Final(err) => err.report(),
                 };
 
-                let mut tx = scoped(pool, ctx).await.map_err(Failure::Final)?;
+                let mut tx = scoped(pool, ctx)
+                    .await
+                    .map_err(|err| Stop::Refused(Failure::Final(err)))?;
                 let _ = sqlx::query(
                     "update workflow_step
-                     set state = 'failed', attempts = $3, failure = $4, lease_until = null
-                     where run_id = $1 and ordering = $2",
+                     set state = 'failed', failure = $3, lease_until = null
+                     where run_id = $1 and ordering = $2 and locked_by = $4",
                 )
                 .bind(id.as_uuid())
                 .bind(at)
-                .bind(attempts)
                 .bind(&message)
+                .bind(worker)
                 .execute(&mut *tx)
                 .await;
                 let _ = tx.commit().await;
 
-                return Err(failure);
+                return Err(Stop::Refused(failure));
             }
         }
     }
@@ -750,6 +833,7 @@ async fn unwind(
     ctx: &Ctx<'_>,
     workflow: &Workflow,
     id: WorkflowRunId,
+    worker: &str,
     failure: String,
 ) -> Result<Run> {
     set_state(pool, ctx, id, State::Compensating, Some(&failure)).await?;
@@ -771,10 +855,13 @@ async fn unwind(
             match one.compensate(&mut tx, ctx, &kept).await {
                 Ok(()) => {
                     sqlx::query(
-                        "update workflow_step set state = 'reverted' where run_id = $1 and ordering = $2",
+                        "update workflow_step
+                         set state = 'reverted', lease_until = null, locked_by = $3
+                         where run_id = $1 and ordering = $2",
                     )
                     .bind(id.as_uuid())
                     .bind(at)
+                    .bind(worker)
                     .execute(&mut *tx)
                     .await?;
                     tx.commit().await?;
@@ -1106,12 +1193,16 @@ pub async fn work(
         recover(pool, ctx).await?;
 
         match take(pool, ctx, &names).await? {
-            Some(id) => {
+            Some((id, worker)) => {
                 let name = run_name(pool, ctx, id).await?;
                 let Some(workflow) = workflows.iter().copied().find(|w| w.name() == name) else {
                     continue;
                 };
-                held(pool, ctx, workflow, id).await?;
+                match held(pool, ctx, workflow, id, &worker).await {
+                    Ok(_) => {}
+                    Err(err) if err.is_conflict() => {}
+                    Err(err) => return Err(err),
+                }
             }
             None => {
                 tokio::select! {
@@ -1124,27 +1215,35 @@ pub async fn work(
 }
 
 /// Drives one run, keeping its lease alive for as long as that takes.
-async fn held(pool: &PgPool, ctx: &Ctx<'_>, workflow: &Workflow, id: WorkflowRunId) -> Result<()> {
-    let mut driving = std::pin::pin!(drive(pool, ctx, workflow, id));
+async fn held(
+    pool: &PgPool,
+    ctx: &Ctx<'_>,
+    workflow: &Workflow,
+    id: WorkflowRunId,
+    worker: &str,
+) -> Result<Run> {
+    let mut driving = std::pin::pin!(drive(pool, ctx, workflow, id, worker));
 
     let beat = std::time::Duration::from_millis((LEASE.num_milliseconds() / 3).max(1) as u64);
 
     loop {
         tokio::select! {
-            outcome = &mut driving => {
-                outcome?;
-                return Ok(());
-            }
+            outcome = &mut driving => return outcome,
             _ = tokio::time::sleep(beat) => {
-                touch(pool, ctx, id).await?;
+                touch(pool, ctx, id, worker).await?;
             }
         }
     }
 }
 
 /// Leases every due step of one waiting run, which is what claiming a run is.
-async fn take(pool: &PgPool, ctx: &Ctx<'_>, names: &[String]) -> Result<Option<WorkflowRunId>> {
+async fn take(
+    pool: &PgPool,
+    ctx: &Ctx<'_>,
+    names: &[String],
+) -> Result<Option<(WorkflowRunId, String)>> {
     let mut tx = scoped(pool, ctx).await?;
+    let worker = Uuid::now_v7().to_string();
 
     let claimed: Option<Uuid> = sqlx::query_scalar(
         "with candidate as (
@@ -1167,6 +1266,8 @@ async fn take(pool: &PgPool, ctx: &Ctx<'_>, names: &[String]) -> Result<Option<W
              from workflow_step s
              join candidate c on c.id = s.run_id
              where s.state in ('pending', 'compensating')
+               and s.run_after <= now()
+               and (s.lease_until is null or s.lease_until < now())
              for update of s skip locked
          ),
          leased as (
@@ -1180,12 +1281,12 @@ async fn take(pool: &PgPool, ctx: &Ctx<'_>, names: &[String]) -> Result<Option<W
     )
     .bind(names)
     .bind(Utc::now() + LEASE)
-    .bind(Uuid::now_v7().to_string())
+    .bind(&worker)
     .fetch_optional(&mut *tx)
     .await?;
 
     tx.commit().await?;
-    Ok(claimed.map(WorkflowRunId::from_uuid))
+    Ok(claimed.map(|id| (WorkflowRunId::from_uuid(id), worker)))
 }
 
 async fn run_name(pool: &PgPool, ctx: &Ctx<'_>, id: WorkflowRunId) -> Result<String> {
@@ -1199,14 +1300,16 @@ async fn run_name(pool: &PgPool, ctx: &Ctx<'_>, id: WorkflowRunId) -> Result<Str
 }
 
 /// Pushes the lease out for everything this run is holding.
-async fn touch(pool: &PgPool, ctx: &Ctx<'_>, id: WorkflowRunId) -> Result<()> {
+async fn touch(pool: &PgPool, ctx: &Ctx<'_>, id: WorkflowRunId, worker: &str) -> Result<()> {
     let mut tx = scoped(pool, ctx).await?;
     sqlx::query(
         "update workflow_step set lease_until = $2
-         where run_id = $1 and state in ('pending', 'invoking', 'compensating')",
+         where run_id = $1 and state in ('pending', 'invoking', 'compensating')
+           and locked_by = $3",
     )
     .bind(id.as_uuid())
     .bind(Utc::now() + LEASE)
+    .bind(worker)
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;

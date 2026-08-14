@@ -199,6 +199,102 @@ impl Step for Wave {
     }
 }
 
+/// Stays inside its step long enough for every other driver to want it.
+struct Linger {
+    count: Arc<AtomicUsize>,
+    how_long: Duration,
+}
+
+#[async_trait]
+impl Step for Linger {
+    fn name(&self) -> &'static str {
+        "linger"
+    }
+
+    async fn invoke(
+        &self,
+        _tx: &mut Tx<'_>,
+        _ctx: &Ctx<'_>,
+        _input: &Value,
+    ) -> Result<Outcome, Failure> {
+        self.count.fetch_add(1, Memory::SeqCst);
+        tokio::time::sleep(self.how_long).await;
+        Ok(Outcome::nothing())
+    }
+}
+
+async fn until_settled(pool: &sqlx::PgPool, ctx: &Ctx<'_>, id: tezgah::id::WorkflowRunId) {
+    loop {
+        if let Ok(run) = workflow::get(pool, ctx, id).await {
+            if matches!(run.state, State::Done | State::Reverted | State::Failed) {
+                return;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
+/// Three drivers, one run, at the same time: the inline `run()` a host calls in
+/// its handler and the two `work()` loops it also has running.
+#[tokio::test]
+async fn one_step_runs_once_however_many_drivers_want_it() {
+    let shop = Shop::open().await;
+    let count = Arc::new(AtomicUsize::new(0));
+
+    let flow = Workflow::new("contended").then(Linger {
+        count: count.clone(),
+        how_long: Duration::from_millis(500),
+    });
+
+    let ctx = shop.ctx();
+    let id = workflow::start(&shop.pool, &ctx, &flow, "contended-1", json!({}))
+        .await
+        .expect("the run to be written");
+
+    let (_, _, driven) = tokio::join!(
+        workflow::work(
+            &shop.pool,
+            &ctx,
+            &[&flow],
+            until_settled(&shop.pool, &ctx, id)
+        ),
+        workflow::work(
+            &shop.pool,
+            &ctx,
+            &[&flow],
+            until_settled(&shop.pool, &ctx, id)
+        ),
+        workflow::run(&shop.pool, &ctx, &flow, "contended-1", json!({})),
+    );
+
+    until_settled(&shop.pool, &ctx, id).await;
+
+    if let Ok(run) = &driven {
+        assert_eq!(run.id, id, "run() started a second run for one key");
+    }
+
+    assert_eq!(
+        count.load(Memory::SeqCst),
+        1,
+        "the step ran more than once with three drivers on it"
+    );
+
+    let attempts: i32 =
+        sqlx::query_scalar("select attempts from workflow_step where run_id = $1 and ordering = 0")
+            .bind(id.as_uuid())
+            .fetch_one(&mut *shop.begin().await)
+            .await
+            .expect("the step row");
+    assert_eq!(attempts, 1, "the step was invoked twice in the database");
+
+    let state = workflow::get(&shop.pool, &ctx, id)
+        .await
+        .expect("to read the run back");
+    assert_eq!(state.state, State::Done, "{:?}", state.failure);
+
+    shop.close().await;
+}
+
 async fn once(flag: Arc<AtomicBool>) {
     while !flag.load(Memory::SeqCst) {
         tokio::time::sleep(Duration::from_millis(20)).await;
