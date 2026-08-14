@@ -93,6 +93,8 @@ Each domain owns a number, so parallel work does not collide.
 | `0029_agreement_and_withdrawal` | `agreement_version`, the whole rendered text a buyer was shown, written once and frozen by a trigger; `order_agreement`, that this order accepted that version and when; the per-line `withdrawal_eligible` decided at the sale; and the withdrawal timestamps on `order_return` |
 | `0030_scoped_catalogue_keys` | the rest of what 0026 left single-column — every catalogue, pricing, inventory and cart key made `(scope, …)`, the variant/option-value composite widened to carry the scope rather than dropped, and those tables registered in `tezgah_scoped_fk_table` |
 
+| `0031_tax_identity` | `tax_registration`, where the shop itself is registered and under which scheme; `customer_tax_id`, the number a buyer gave and the evidence of the day it was checked; `tax_exemption`, a certificate with an end date; `tax_code` on `product` and `product_variant`; and on all four tax-line tables the frozen snapshot — treatment, jurisdiction, provider and its transaction id, the address the answer came from, and the number or certificate it rested on |
+
 Migrations are append-only once merged. A change to a shipped table is a new
 file, and it expands before it contracts: add and backfill in one release, read
 from the new column in the next, drop the old one in a third.
