@@ -643,11 +643,11 @@ async fn place(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewOrder, draft: bool) -> Re
     }
 
     let shipping_address_id = match new.shipping_address {
-        Some(address) => Some(write_address(tx, ctx, new.customer_id, address).await?),
+        Some(address) => Some(write_address(tx, ctx, new.customer_id, &address).await?),
         None => None,
     };
     let billing_address_id = match new.billing_address {
-        Some(address) => Some(write_address(tx, ctx, new.customer_id, address).await?),
+        Some(address) => Some(write_address(tx, ctx, new.customer_id, &address).await?),
         None => None,
     };
 
