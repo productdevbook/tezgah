@@ -1137,6 +1137,8 @@ pub async fn add_line_item(
         .await?
         .ok_or_else(|| Error::invalid("that variant has no price in this currency"))?;
 
+    let is_tax_inclusive = pricing::is_tax_inclusive(tx, ctx, &at).await?;
+
     let item = cart::add_line(
         tx,
         ctx,
@@ -1145,7 +1147,7 @@ pub async fn add_line_item(
             variant_id: input.variant_id,
             quantity: input.quantity,
             unit_price: price.calculated,
-            is_tax_inclusive: pricing::is_tax_inclusive(tx, ctx, &at).await?,
+            is_tax_inclusive,
         },
     )
     .await?;
@@ -1212,6 +1214,8 @@ pub async fn set_shipping_method(
         .await?
         .ok_or_else(|| Error::invalid("that shipping option has no price here"))?;
 
+    let is_tax_inclusive = pricing::is_tax_inclusive(tx, ctx, &at).await?;
+
     let chosen = cart::set_shipping_method(
         tx,
         ctx,
@@ -1221,7 +1225,8 @@ pub async fn set_shipping_method(
             name: option.name,
             description: None,
             amount,
-            is_tax_inclusive: pricing::is_tax_inclusive(tx, ctx, &at).await?,
+            is_tax_inclusive,
+            data: None,
         },
     )
     .await?;
