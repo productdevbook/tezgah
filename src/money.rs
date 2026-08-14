@@ -101,7 +101,11 @@ pub fn allocate(total: Money, weights: &[Decimal], exponent: u32) -> Result<Vec<
     let mut drift = total.amount - parts.iter().sum::<Decimal>();
     let mut at = 0;
     while !drift.is_zero() && at < parts.len() {
-        let nudge = if drift.is_sign_negative() { -step } else { step };
+        let nudge = if drift.is_sign_negative() {
+            -step
+        } else {
+            step
+        };
         parts[at] += nudge;
         drift -= nudge;
         at += 1;
@@ -152,7 +156,10 @@ mod tests {
     fn the_remainder_lands_somewhere_rather_than_vanishing() {
         let total = Money::new(dec!(29.00), try_("TRY"));
         let parts = allocate(total, &[dec!(1), dec!(1), dec!(1)], 2).expect("allocates");
-        assert_eq!(parts.iter().map(|part| part.amount).sum::<Decimal>(), dec!(29.00));
+        assert_eq!(
+            parts.iter().map(|part| part.amount).sum::<Decimal>(),
+            dec!(29.00)
+        );
         assert_ne!(parts[0].amount, parts[2].amount);
     }
 }

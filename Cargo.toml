@@ -25,7 +25,6 @@ sqlx = { version = "0.8", default-features = false, features = [
     "macros",
     "migrate",
 ] }
-thiserror = "2"
 uuid = { version = "1", features = ["serde", "v7"] }
 
 [dev-dependencies]

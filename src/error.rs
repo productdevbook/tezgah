@@ -14,14 +14,18 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug)]
 pub(crate) enum Cause {
     Invalid(String),
-    NotFound { entity: &'static str },
+    NotFound {
+        entity: &'static str,
+    },
     Denied,
     Conflict(String),
     Provider {
         provider: &'static str,
         message: String,
     },
-    OutOfStock { variant: Uuid },
+    OutOfStock {
+        variant: Uuid,
+    },
     Db(sqlx::Error),
     Bug(&'static str),
 }
