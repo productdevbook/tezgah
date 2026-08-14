@@ -1187,7 +1187,7 @@ pub async fn record_transaction(
         "insert into order_transaction
              (id, scope, order_id, version, amount, currency_code, reference, reference_id)
          values ($1, $2, $3, $4, $5, $6, $7, $8)
-         on conflict (scope, order_id, reference, reference_id) do nothing
+         on conflict (scope, order_id, reference, reference_id) where reference is not null do nothing
          returning id, order_id, version, amount, currency_code, reference, reference_id,
                    metadata, created_at",
     )
