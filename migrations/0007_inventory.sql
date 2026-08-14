@@ -131,7 +131,7 @@ create index reservation_item_expires_at_idx
 -- A bundle is this table with several rows for one variant.
 create table variant_inventory_item (
     id                  uuid primary key,
-    variant_id          uuid not null references variant (id) on delete cascade,
+    variant_id          uuid not null references product_variant (id) on delete cascade,
     inventory_item_id   uuid not null references inventory_item (id) on delete restrict,
     required_quantity   integer not null default 1,
     constraint variant_inventory_item_required_quantity_valid check (required_quantity > 0)
