@@ -453,6 +453,46 @@ pub async fn delivery(tx: &mut Tx<'_>, ctx: &Ctx<'_>, cart_id: CartId) -> Result
         },
     )?;
 
+    address_of(
+        tx,
+        ctx,
+        cart_id,
+        "coalesce(c.shipping_address_id, c.billing_address_id)",
+    )
+    .await
+}
+
+/// Where a line that ships nowhere is supplied: the billing address, or the
+/// shipping one where there is no billing address. An electronic service is
+/// taxed where the buyer is, and the parcel's destination is not that.
+pub async fn place_of_supply(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    cart_id: CartId,
+) -> Result<Option<Delivery>> {
+    let _: Permit = ctx.permit(
+        Action::View,
+        Resource::Cart {
+            id: cart_id.as_uuid(),
+            customer: None,
+        },
+    )?;
+
+    address_of(
+        tx,
+        ctx,
+        cart_id,
+        "coalesce(c.billing_address_id, c.shipping_address_id)",
+    )
+    .await
+}
+
+async fn address_of(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    cart_id: CartId,
+    which: &str,
+) -> Result<Option<Delivery>> {
     #[derive(FromRow)]
     struct Row {
         country_code: Option<String>,
@@ -460,14 +500,14 @@ pub async fn delivery(tx: &mut Tx<'_>, ctx: &Ctx<'_>, cart_id: CartId) -> Result
         postal_code: Option<String>,
     }
 
-    let row = sqlx::query_as::<_, Row>(
+    let row = sqlx::query_as::<_, Row>(&format!(
         "select a.country_code, a.province, a.postal_code
          from cart c
          join cart_address a
            on a.scope = c.scope
-          and a.id = coalesce(c.shipping_address_id, c.billing_address_id)
-         where c.scope = $1 and c.id = $2",
-    )
+          and a.id = {which}
+         where c.scope = $1 and c.id = $2"
+    ))
     .bind(ctx.scope.0)
     .bind(cart_id.as_uuid())
     .fetch_optional(&mut **tx)
@@ -520,7 +560,16 @@ pub async fn add_line(
                      on ov.scope = vov.scope and ov.id = vov.option_value_id
                   where vov.scope = v.scope and vov.variant_id = v.id),
                 p.thumbnail_url, $5::integer, $6::numeric, $7::char(3), $8::boolean,
-                p.is_discountable, true
+                p.is_discountable,
+                -- A variant nothing is counted for is a variant nothing is
+                -- posted for: that is what a digital one is.
+                coalesce((select bool_or(i.requires_shipping)
+                            from variant_inventory_item vi
+                            join inventory_item i
+                              on i.scope = vi.scope
+                             and i.id = vi.inventory_item_id
+                             and i.deleted_at is null
+                           where vi.scope = v.scope and vi.variant_id = v.id), false)
          from product_variant v
          join product p on p.scope = v.scope and p.id = v.product_id
          where v.scope = $2 and v.id = $4 and v.deleted_at is null and p.deleted_at is null

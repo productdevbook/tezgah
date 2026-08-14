@@ -381,6 +381,10 @@ pub struct TaxableLine {
     /// The variant's taxability code, or the product's where the variant has
     /// none. It is an input to whoever calculates, and it belongs to the shop.
     pub tax_code: Option<String>,
+    /// Where this one line is supplied, when that is not where the rest of the
+    /// cart is going. An audiobook in a parcel's cart is taxed where the buyer
+    /// is, not where the parcel lands.
+    pub address: Option<TaxableAddress>,
 }
 
 /// One authority's share of one line, and everything an audit will ask about
@@ -1030,68 +1034,126 @@ pub async fn calculate(
     }
 
     let at = ctx.now();
-    let decision = decide(address, subject, at);
 
-    // Nothing is charged, so nothing is looked up: a rate table that changed
-    // since cannot change what this line says.
-    if !decision.treatment.is_charged() {
-        return Ok(lines
+    let mut places: Vec<Place> = Vec::new();
+    for line in lines {
+        let here = line.address.as_ref().unwrap_or(address);
+        if places.iter().any(|place| place.is(here)) {
+            continue;
+        }
+        places.push(place(tx, ctx, here, subject, at).await?);
+    }
+
+    let exponent = if places.iter().any(|place| !place.chain.is_empty()) {
+        u32::try_from(store::currency(tx, ctx, currency).await?.exponent)
+            .map_err(|_| Error::bug("a currency's exponent is not a count of decimal places"))?
+    } else {
+        0
+    };
+
+    let mut out = Vec::new();
+    for line in lines {
+        let here = line.address.as_ref().unwrap_or(address);
+        let place = places
             .iter()
-            .map(|line| TaxLine {
+            .find(|place| place.is(here))
+            .ok_or_else(|| Error::bug("a line was taxed at an address nobody looked up"))?;
+        let decision = &place.decision;
+        let evidence = subject.map(|s| s.evidence.clone()).unwrap_or_default();
+
+        // Nothing is charged, so no rate is used: a rate table that changed
+        // since cannot change what this line says.
+        if !decision.treatment.is_charged() {
+            out.push(TaxLine {
                 is_tax_inclusive,
                 tax_code: line.tax_code.clone(),
-                address: address.clone(),
+                address: here.clone(),
                 tax_id: decision.tax_id.clone(),
                 tax_id_evidence: decision.tax_id_evidence.clone(),
                 exemption_id: decision.exemption_id,
-                evidence: subject.map(|s| s.evidence.clone()).unwrap_or_default(),
+                evidence,
                 ..TaxLine::nil(line.id, currency, decision.treatment, at)
-            })
-            .collect());
+            });
+            continue;
+        }
+
+        let applicable = applicable_rates(&place.chain, &place.rules, line);
+        let mut priced = amounts_for(line, &applicable, is_tax_inclusive, exponent)?;
+        for row in &mut priced {
+            row.treatment = decision.treatment;
+            row.tax_code = line.tax_code.clone();
+            row.calculated_at = at;
+            row.address = here.clone();
+            row.tax_id = decision.tax_id.clone();
+            row.tax_id_evidence = decision.tax_id_evidence.clone();
+            row.evidence = evidence.clone();
+        }
+        out.extend(priced);
     }
 
-    let chain = rates_for(tx, ctx, address).await?;
-    if chain.is_empty() {
-        return Ok(Vec::new());
-    }
+    Ok(out)
+}
 
-    let exponent = u32::try_from(store::currency(tx, ctx, currency).await?.exponent)
-        .map_err(|_| Error::bug("a currency's exponent is not a count of decimal places"))?;
+/// One address's answer, worked out once however many lines are supplied there.
+struct Place {
+    address: TaxableAddress,
+    decision: TaxDecision,
+    chain: Vec<(TaxRegion, Vec<TaxRate>)>,
+    rules: Vec<TaxRateRuleRow>,
+}
+
+impl Place {
+    fn is(&self, address: &TaxableAddress) -> bool {
+        self.address
+            .country_code
+            .eq_ignore_ascii_case(&address.country_code)
+            && self.address.province_code == address.province_code
+            && self.address.postal_code == address.postal_code
+    }
+}
+
+async fn place(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    address: &TaxableAddress,
+    subject: Option<&TaxSubject>,
+    at: chrono::DateTime<chrono::Utc>,
+) -> Result<Place> {
+    let decision = decide(address, subject, at)?;
+
+    let chain = if decision.treatment.is_charged() {
+        rates_for(tx, ctx, address).await?
+    } else {
+        Vec::new()
+    };
 
     let rate_ids: Vec<Uuid> = chain
         .iter()
         .flat_map(|(_, rates)| rates.iter().map(|rate| rate.id.as_uuid()))
         .collect();
 
-    let rules = sqlx::query_as::<_, TaxRateRuleRow>(
-        "select id, tax_rate_id, reference, reference_id
-         from tax_rate_rule
-         where scope = $1 and tax_rate_id = any($2)
-         limit $3",
-    )
-    .bind(ctx.scope.0)
-    .bind(&rate_ids)
-    .bind(MAX_TAX_RATE_RULES)
-    .fetch_all(&mut **tx)
-    .await?;
+    let rules = if rate_ids.is_empty() {
+        Vec::new()
+    } else {
+        sqlx::query_as::<_, TaxRateRuleRow>(
+            "select id, tax_rate_id, reference, reference_id
+             from tax_rate_rule
+             where scope = $1 and tax_rate_id = any($2)
+             limit $3",
+        )
+        .bind(ctx.scope.0)
+        .bind(&rate_ids)
+        .bind(MAX_TAX_RATE_RULES)
+        .fetch_all(&mut **tx)
+        .await?
+    };
 
-    let mut out = Vec::new();
-    for line in lines {
-        let applicable = applicable_rates(&chain, &rules, line);
-        let mut priced = amounts_for(line, &applicable, is_tax_inclusive, exponent)?;
-        for row in &mut priced {
-            row.treatment = decision.treatment;
-            row.tax_code = line.tax_code.clone();
-            row.calculated_at = at;
-            row.address = address.clone();
-            row.tax_id = decision.tax_id.clone();
-            row.tax_id_evidence = decision.tax_id_evidence.clone();
-            row.evidence = subject.map(|s| s.evidence.clone()).unwrap_or_default();
-        }
-        out.extend(priced);
-    }
-
-    Ok(out)
+    Ok(Place {
+        address: address.clone(),
+        decision,
+        chain,
+        rules,
+    })
 }
 
 /// Whether this buyer is charged at all, decided before a rate is looked up.
@@ -1109,17 +1171,17 @@ fn decide(
     address: &TaxableAddress,
     subject: Option<&TaxSubject>,
     at: chrono::DateTime<chrono::Utc>,
-) -> TaxDecision {
+) -> Result<TaxDecision> {
     let Some(subject) = subject else {
-        return TaxDecision::default();
+        return Ok(TaxDecision::default());
     };
 
     if let Some(exemption) = subject.exemption_for(address, at) {
-        return TaxDecision {
+        return Ok(TaxDecision {
             treatment: TaxTreatment::Exempt,
             exemption_id: Some(exemption.id),
             ..TaxDecision::default()
-        };
+        });
     }
 
     let home = subject.home_country();
@@ -1127,33 +1189,71 @@ fn decide(
 
     if subject.is_business && crosses {
         if let Some(number) = subject.validated_id_for(&address.country_code) {
-            return TaxDecision {
+            return Ok(TaxDecision {
                 treatment: TaxTreatment::ReverseCharge,
                 tax_id: Some(number.tax_id.clone()),
                 tax_id_evidence: number.evidence.clone(),
                 ..TaxDecision::default()
-            };
+            });
         }
     }
 
     // A consumer abroad is still charged — at their country's rate — but the
     // return it lands on is the scheme's, not the home country's.
     if crosses && !subject.is_business {
-        if subject.files_under("oss") {
-            return TaxDecision {
-                treatment: TaxTreatment::Oss,
+        let scheme = if subject.files_under("oss") {
+            Some(TaxTreatment::Oss)
+        } else if subject.files_under("ioss") {
+            Some(TaxTreatment::Ioss)
+        } else {
+            None
+        };
+
+        if let Some(treatment) = scheme {
+            places_the_buyer(&subject.evidence, address)?;
+            return Ok(TaxDecision {
+                treatment,
                 ..TaxDecision::default()
-            };
-        }
-        if subject.files_under("ioss") {
-            return TaxDecision {
-                treatment: TaxTreatment::Ioss,
-                ..TaxDecision::default()
-            };
+            });
         }
     }
 
-    TaxDecision::default()
+    Ok(TaxDecision::default())
+}
+
+/// Whether the pieces on file put the buyer where the sale says they are.
+///
+/// Two, from different sources, agreeing with each other and with the address:
+/// one piece is only the address saying itself again, and two that disagree
+/// place the buyer nowhere. A piece naming no country is not a piece.
+fn places_the_buyer(evidence: &[TaxEvidence], address: &TaxableAddress) -> Result<()> {
+    let mut sources: Vec<&str> = Vec::new();
+    for piece in evidence {
+        if country_code(&piece.country_code).is_err() {
+            continue;
+        }
+        if !piece
+            .country_code
+            .trim()
+            .eq_ignore_ascii_case(&address.country_code)
+        {
+            return Err(Error::invalid(
+                "the evidence for where this buyer is contradicts itself",
+            ));
+        }
+        let source = piece.source.trim();
+        if !source.is_empty() && !sources.iter().any(|seen| seen.eq_ignore_ascii_case(source)) {
+            sources.push(source);
+        }
+    }
+
+    if sources.len() < 2 {
+        return Err(Error::invalid(
+            "a distance sale to a consumer abroad needs two pieces of evidence for where they are",
+        ));
+    }
+
+    Ok(())
 }
 
 /// Puts what [`calculate`] worked out on the cart, replacing whatever was
@@ -1891,6 +1991,7 @@ mod tests {
             amount: Money::new(amount, currency()),
             targets: Vec::new(),
             tax_code: None,
+            address: None,
         }
     }
 
@@ -1909,6 +2010,29 @@ mod tests {
             }],
             ..TaxSubject::default()
         }
+    }
+
+    fn evidence(source: &str, country: &str) -> TaxEvidence {
+        TaxEvidence {
+            source: source.into(),
+            country_code: country.into(),
+        }
+    }
+
+    /// A shop at home in Turkey that files a German consumer's VAT under OSS.
+    fn filing_under_oss() -> TaxSubject {
+        let mut buyer = subject("TR", false);
+        buyer.registrations.push(TaxRegistration {
+            id: Uuid::now_v7(),
+            country_code: "DE".into(),
+            scheme: "oss".into(),
+            tax_id: None,
+            is_home: false,
+            valid_from: chrono::Utc::now(),
+            valid_until: None,
+            created_at: chrono::Utc::now(),
+        });
+        buyer
     }
 
     fn validated(country: &str) -> CustomerTaxId {
@@ -1946,7 +2070,8 @@ mod tests {
         let mut buyer = subject("TR", true);
         buyer.tax_ids = vec![validated("DE")];
 
-        let decided = decide(&TaxableAddress::to("DE"), Some(&buyer), chrono::Utc::now());
+        let decided = decide(&TaxableAddress::to("DE"), Some(&buyer), chrono::Utc::now())
+            .expect("a decision");
 
         assert_eq!(decided.treatment, TaxTreatment::ReverseCharge);
         assert!(!decided.treatment.is_charged());
@@ -1965,7 +2090,8 @@ mod tests {
         unchecked.evidence = None;
         buyer.tax_ids = vec![unchecked];
 
-        let decided = decide(&TaxableAddress::to("DE"), Some(&buyer), chrono::Utc::now());
+        let decided = decide(&TaxableAddress::to("DE"), Some(&buyer), chrono::Utc::now())
+            .expect("a decision");
         assert_eq!(decided.treatment, TaxTreatment::Standard);
     }
 
@@ -1974,7 +2100,8 @@ mod tests {
         let mut buyer = subject("DE", true);
         buyer.tax_ids = vec![validated("DE")];
 
-        let decided = decide(&TaxableAddress::to("DE"), Some(&buyer), chrono::Utc::now());
+        let decided = decide(&TaxableAddress::to("DE"), Some(&buyer), chrono::Utc::now())
+            .expect("a decision");
         assert_eq!(decided.treatment, TaxTreatment::Standard);
     }
 
@@ -1984,13 +2111,17 @@ mod tests {
         let mut buyer = subject("US", true);
         buyer.exemptions = vec![certificate("US", Some(now + chrono::Duration::days(1)))];
         assert_eq!(
-            decide(&TaxableAddress::to("US"), Some(&buyer), now).treatment,
+            decide(&TaxableAddress::to("US"), Some(&buyer), now)
+                .expect("a decision")
+                .treatment,
             TaxTreatment::Exempt
         );
 
         buyer.exemptions = vec![certificate("US", Some(now - chrono::Duration::days(1)))];
         assert_eq!(
-            decide(&TaxableAddress::to("US"), Some(&buyer), now).treatment,
+            decide(&TaxableAddress::to("US"), Some(&buyer), now)
+                .expect("a decision")
+                .treatment,
             TaxTreatment::Standard
         );
     }
@@ -2008,13 +2139,59 @@ mod tests {
             valid_until: None,
             created_at: chrono::Utc::now(),
         });
+        buyer.evidence = vec![
+            evidence("billing_address", "DE"),
+            evidence("card_issuer", "DE"),
+        ];
 
-        let decided = decide(&TaxableAddress::to("DE"), Some(&buyer), chrono::Utc::now());
+        let decided = decide(&TaxableAddress::to("DE"), Some(&buyer), chrono::Utc::now())
+            .expect("a decision");
         assert_eq!(decided.treatment, TaxTreatment::Oss);
         assert!(
             decided.treatment.is_charged(),
             "OSS charges the buyer's rate; it only changes which return it lands on"
         );
+    }
+
+    #[test]
+    fn one_piece_of_evidence_does_not_place_a_consumer_abroad() {
+        let mut buyer = filing_under_oss();
+        buyer.evidence = vec![evidence("billing_address", "DE")];
+
+        decide(&TaxableAddress::to("DE"), Some(&buyer), chrono::Utc::now())
+            .expect_err("a sale placed by the address saying itself again");
+    }
+
+    #[test]
+    fn two_pieces_that_disagree_place_the_consumer_nowhere() {
+        let mut buyer = filing_under_oss();
+        buyer.evidence = vec![
+            evidence("billing_address", "DE"),
+            evidence("card_issuer", "FR"),
+        ];
+
+        decide(&TaxableAddress::to("DE"), Some(&buyer), chrono::Utc::now())
+            .expect_err("a sale placed by contradicting evidence");
+    }
+
+    #[test]
+    fn the_same_source_twice_is_one_piece() {
+        let mut buyer = filing_under_oss();
+        buyer.evidence = vec![
+            evidence("billing_address", "DE"),
+            evidence("billing_address", "DE"),
+        ];
+
+        decide(&TaxableAddress::to("DE"), Some(&buyer), chrono::Utc::now())
+            .expect_err("one source repeated");
+    }
+
+    #[test]
+    fn a_sale_at_home_needs_no_evidence_at_all() {
+        let buyer = subject("DE", false);
+        let decided = decide(&TaxableAddress::to("DE"), Some(&buyer), chrono::Utc::now())
+            .expect("a domestic sale");
+        assert_eq!(decided.treatment, TaxTreatment::Standard);
     }
 
     #[test]

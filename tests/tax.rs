@@ -15,6 +15,7 @@ use tezgah::tax::{
     self, NewTaxRate, NewTaxRateRule, NewTaxRegion, TaxReference, TaxTarget, TaxableAddress,
     TaxableLine,
 };
+use tezgah::{cart, catalogue, inventory};
 use uuid::Uuid;
 
 fn lira() -> Currency {
@@ -69,6 +70,7 @@ fn one_line(amount: Decimal) -> Vec<TaxableLine> {
         amount: Money::new(amount, lira()),
         targets: Vec::new(),
         tax_code: None,
+        address: None,
     }]
 }
 
@@ -217,6 +219,7 @@ async fn a_combinable_province_rate_sits_on_top_of_the_country_rate() {
             id: product,
         }],
         tax_code: None,
+        address: None,
     }];
 
     let address = TaxableAddress {
@@ -287,12 +290,14 @@ async fn two_currencies_in_one_calculation_are_refused() {
             amount: Money::new(dec!(100), lira()),
             targets: Vec::new(),
             tax_code: None,
+            address: None,
         },
         TaxableLine {
             id: Uuid::now_v7(),
             amount: Money::new(dec!(100), Currency::parse("USD").expect("a currency code")),
             targets: Vec::new(),
             tax_code: None,
+            address: None,
         },
     ];
 
@@ -724,6 +729,7 @@ async fn a_taxed_cart_keeps_what_it_was_taxed_with_when_the_rate_moves() {
             amount: Money::new(dec!(100), lira()),
             targets: Vec::new(),
             tax_code: Some("txcd_99999999".into()),
+            address: None,
         }],
         &to_turkey(),
         None,
@@ -797,6 +803,7 @@ async fn a_jurisdiction_breakdown_lands_as_several_rows_under_one_line() {
             amount: Money::new(dec!(100), lira()),
             targets: Vec::new(),
             tax_code: None,
+            address: None,
         }],
         &TaxableAddress {
             country_code: "US".into(),
@@ -871,4 +878,190 @@ async fn seed_line(tx: &mut Tx<'_>, scope: uuid::Uuid, cart_id: Uuid) -> Uuid {
     .await
     .expect("a line");
     id
+}
+
+// ---------------------------------------------------------------------------
+// One cart, two places of supply
+// ---------------------------------------------------------------------------
+
+async fn a_country_rate(tx: &mut Tx<'_>, ctx: &Ctx<'_>, country: &str, percent: Decimal) {
+    let region = tax::create_tax_region(
+        tx,
+        ctx,
+        NewTaxRegion {
+            country_code: country.into(),
+            province_code: None,
+            parent_id: None,
+            provider: None,
+        },
+    )
+    .await
+    .expect("a country");
+
+    tax::create_tax_rate(
+        tx,
+        ctx,
+        NewTaxRate {
+            tax_region_id: region.id,
+            rate: percent,
+            code: Some("vat".into()),
+            name: format!("{country} VAT"),
+            is_default: true,
+            is_combinable: false,
+        },
+    )
+    .await
+    .expect("a default rate");
+}
+
+async fn a_variant(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    handle: &str,
+    ships: Option<bool>,
+) -> tezgah::id::VariantId {
+    let product = catalogue::create_product(
+        tx,
+        ctx,
+        catalogue::NewProduct {
+            handle: handle.into(),
+            title: format!("A {handle}"),
+            ..catalogue::NewProduct::default()
+        },
+    )
+    .await
+    .expect("a product");
+
+    let variant = catalogue::create_variant(
+        tx,
+        ctx,
+        product.id,
+        catalogue::NewVariant {
+            title: "One size".into(),
+            sku: Some(format!("{handle}-1")),
+            ..catalogue::NewVariant::default()
+        },
+    )
+    .await
+    .expect("a variant");
+
+    if let Some(requires_shipping) = ships {
+        let item = inventory::create_inventory_item(
+            tx,
+            ctx,
+            inventory::NewInventoryItem {
+                sku: Some(format!("{handle}-stock")),
+                title: None,
+                requires_shipping,
+            },
+        )
+        .await
+        .expect("an inventory item");
+
+        inventory::attach_inventory_item(tx, ctx, variant.id, item.id, 1)
+            .await
+            .expect("the variant to consume the item");
+    }
+
+    variant.id
+}
+
+#[tokio::test]
+async fn a_book_and_an_audiobook_are_taxed_in_two_different_countries() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    seed_currency(&mut tx, shop.here.0).await;
+    a_country_rate(&mut tx, &ctx, "DE", dec!(19)).await;
+    a_country_rate(&mut tx, &ctx, "FR", dec!(20)).await;
+
+    let book = a_variant(&mut tx, &ctx, "book", Some(true)).await;
+    let audiobook = a_variant(&mut tx, &ctx, "audiobook", None).await;
+
+    let cart = cart::create(
+        &mut tx,
+        &ctx,
+        cart::NewCart::guest(Currency::parse("TRY").expect("a currency")),
+    )
+    .await
+    .expect("a cart");
+
+    // The parcel goes to Germany; the buyer is in France, which is where an
+    // electronic service is supplied.
+    cart::set_addresses(
+        &mut tx,
+        &ctx,
+        cart.id,
+        Some(cart::CartAddress {
+            country_code: Some("DE".into()),
+            ..cart::CartAddress::default()
+        }),
+        Some(cart::CartAddress {
+            country_code: Some("FR".into()),
+            ..cart::CartAddress::default()
+        }),
+    )
+    .await
+    .expect("two addresses");
+
+    for (variant, price) in [(book, dec!(100)), (audiobook, dec!(200))] {
+        cart::add_line(
+            &mut tx,
+            &ctx,
+            cart.id,
+            cart::AddLine {
+                variant_id: variant,
+                quantity: 1,
+                unit_price: Money::new(price, Currency::parse("TRY").expect("a currency")),
+                is_tax_inclusive: false,
+            },
+        )
+        .await
+        .expect("a line");
+    }
+
+    tezgah::api::store::reprice(&mut tx, &ctx, cart.id)
+        .await
+        .expect("the cart to be worked out again");
+
+    #[derive(sqlx::FromRow)]
+    struct Row {
+        variant_id: Option<Uuid>,
+        country: Option<String>,
+        rate: Decimal,
+        calculated_at: chrono::DateTime<chrono::Utc>,
+    }
+
+    let rows = sqlx::query_as::<_, Row>(
+        "select l.variant_id, t.address_country_code as country, t.rate, t.calculated_at
+         from cart_line_item_tax_line t
+         join cart_line_item l on l.scope = t.scope and l.id = t.cart_line_item_id
+         where t.scope = $1 and l.cart_id = $2",
+    )
+    .bind(shop.here.0)
+    .bind(cart.id.as_uuid())
+    .fetch_all(&mut *tx)
+    .await
+    .expect("the tax lines");
+
+    assert_eq!(rows.len(), 2, "one tax line each");
+
+    for row in &rows {
+        let (country, rate) = if row.variant_id == Some(book.as_uuid()) {
+            ("DE", dec!(19))
+        } else {
+            ("FR", dec!(20))
+        };
+        assert_eq!(row.country.as_deref(), Some(country));
+        assert_eq!(row.rate, rate);
+    }
+
+    assert_eq!(
+        rows[0].calculated_at, rows[1].calculated_at,
+        "the two lines came out of two calculations rather than one"
+    );
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
 }

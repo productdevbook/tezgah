@@ -9,6 +9,7 @@ use tezgah::cart::{
 use tezgah::catalogue::{self, NewProduct, NewVariant};
 use tezgah::customer::{self, NewCustomer};
 use tezgah::id::VariantId;
+use tezgah::inventory;
 use tezgah::money::{Currency, Money};
 use tezgah::page::Paging;
 use tezgah::ports::{Ctx, Tx};
@@ -486,6 +487,204 @@ async fn another_scope_cannot_reach_the_cart() -> tezgah::Result<()> {
     );
     theirs.rollback().await.ok();
 
+    shop.close().await;
+    Ok(())
+}
+
+/// What a line has to be sent, and where it is supplied from.
+///
+/// The value is the inventory item's rather than the line's own: a variant
+/// nothing is counted for is a variant nothing is posted for, and that is
+/// exactly what a gift card or a download is.
+async fn stocked(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    variant: VariantId,
+    requires_shipping: bool,
+) -> tezgah::Result<()> {
+    let item = inventory::create_inventory_item(
+        tx,
+        ctx,
+        inventory::NewInventoryItem {
+            sku: Some(format!("stock-{}", uuid::Uuid::now_v7().simple())),
+            title: None,
+            requires_shipping,
+        },
+    )
+    .await?;
+
+    inventory::attach_inventory_item(tx, ctx, variant, item.id, 1).await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_variant_nothing_is_counted_for_does_not_ask_to_be_shipped() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+
+    let download = a_variant(&mut tx, &ctx, "album").await?;
+    let kettle = a_variant(&mut tx, &ctx, "kettle").await?;
+    stocked(&mut tx, &ctx, kettle, true).await?;
+
+    let cart = cart::create(&mut tx, &ctx, NewCart::guest(lira()?)).await?;
+    let digital = cart::add_line(
+        &mut tx,
+        &ctx,
+        cart.id,
+        AddLine {
+            variant_id: download,
+            quantity: 1,
+            unit_price: money(dec!(30))?,
+            is_tax_inclusive: false,
+        },
+    )
+    .await?;
+    let physical = cart::add_line(
+        &mut tx,
+        &ctx,
+        cart.id,
+        AddLine {
+            variant_id: kettle,
+            quantity: 1,
+            unit_price: money(dec!(50))?,
+            is_tax_inclusive: false,
+        },
+    )
+    .await?;
+
+    assert!(
+        !digital.requires_shipping,
+        "a variant with no inventory item asked to be posted somewhere"
+    );
+    assert!(physical.requires_shipping);
+
+    tx.rollback().await.ok();
+    shop.close().await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn an_inventory_item_that_ships_nothing_makes_a_line_that_ships_nothing() -> tezgah::Result<()>
+{
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+
+    let card = a_variant(&mut tx, &ctx, "gift-card").await?;
+    stocked(&mut tx, &ctx, card, false).await?;
+
+    let cart = cart::create(&mut tx, &ctx, NewCart::guest(lira()?)).await?;
+    let line = cart::add_line(
+        &mut tx,
+        &ctx,
+        cart.id,
+        AddLine {
+            variant_id: card,
+            quantity: 1,
+            unit_price: money(dec!(100))?,
+            is_tax_inclusive: false,
+        },
+    )
+    .await?;
+
+    assert!(!line.requires_shipping);
+
+    tx.rollback().await.ok();
+    shop.close().await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_merge_does_not_spread_a_line_that_ships_nowhere() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+
+    let download = a_variant(&mut tx, &ctx, "audiobook").await?;
+    let kettle = a_variant(&mut tx, &ctx, "pan").await?;
+    stocked(&mut tx, &ctx, kettle, true).await?;
+
+    let who = customer::create(&mut tx, &ctx, NewCustomer::account("nils@example.com")).await?;
+    let mine = cart::create(&mut tx, &ctx, NewCart::of(who.id, lira()?)).await?;
+    cart::add_line(
+        &mut tx,
+        &ctx,
+        mine.id,
+        AddLine {
+            variant_id: kettle,
+            quantity: 1,
+            unit_price: money(dec!(50))?,
+            is_tax_inclusive: false,
+        },
+    )
+    .await?;
+
+    let guest = cart::create(&mut tx, &ctx, NewCart::guest(lira()?)).await?;
+    cart::add_line(
+        &mut tx,
+        &ctx,
+        guest.id,
+        AddLine {
+            variant_id: download,
+            quantity: 1,
+            unit_price: money(dec!(20))?,
+            is_tax_inclusive: false,
+        },
+    )
+    .await?;
+
+    let merged = cart::transfer_to_customer(&mut tx, &ctx, guest.id, who.id).await?;
+    let lines = cart::lines(&mut tx, &ctx, merged.id).await?;
+    assert_eq!(lines.len(), 2);
+
+    for line in lines {
+        let ships = line.variant_id == Some(kettle);
+        assert_eq!(
+            line.requires_shipping, ships,
+            "the merge carried the wrong answer for {}",
+            line.product_title
+        );
+    }
+
+    tx.rollback().await.ok();
+    shop.close().await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_cart_that_ships_nothing_is_supplied_where_it_is_billed() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+
+    let cart = cart::create(&mut tx, &ctx, NewCart::guest(lira()?)).await?;
+    cart::set_addresses(
+        &mut tx,
+        &ctx,
+        cart.id,
+        Some(CartAddress {
+            country_code: Some("DE".into()),
+            ..CartAddress::default()
+        }),
+        Some(CartAddress {
+            country_code: Some("FR".into()),
+            ..CartAddress::default()
+        }),
+    )
+    .await?;
+
+    let parcel = cart::delivery(&mut tx, &ctx, cart.id)
+        .await?
+        .expect("a country");
+    let supply = cart::place_of_supply(&mut tx, &ctx, cart.id)
+        .await?
+        .expect("a country");
+
+    assert_eq!(parcel.country_code, "DE");
+    assert_eq!(supply.country_code, "FR");
+
+    tx.rollback().await.ok();
     shop.close().await;
     Ok(())
 }

@@ -17,8 +17,10 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use serde_json::Value;
 use sqlx::PgPool;
+use tezgah::cart;
 use tezgah::checkout::Checkout;
 use tezgah::id::{CartId, StockLocationId, VariantId};
+use tezgah::money::{Currency, Money};
 use tezgah::order::{self, OrderStatus};
 use tezgah::payment::{
     Authorization, AuthorizationStatus, AuthorizeRequest, CancelRequest, CaptureRequest,
@@ -162,6 +164,12 @@ async fn seed_currency(tx: &mut Tx<'_>, scope: Scope) {
 /// A cart of `quantity` at ten lira, an address on it, an idempotency key, and
 /// `stocked` on the shelf.
 async fn ready(shop: &Shop, stocked: i32, quantity: i32) -> Ready {
+    ready_with(shop, stocked, quantity, true).await
+}
+
+/// The same, for something that is posted nowhere: the inventory item ships
+/// nothing, and the only address on the cart is the one it is billed to.
+async fn ready_with(shop: &Shop, stocked: i32, quantity: i32, ships: bool) -> Ready {
     let mut tx = shop.begin().await;
     let ctx = shop.ctx();
     seed_currency(&mut tx, shop.here).await;
@@ -192,7 +200,7 @@ async fn ready(shop: &Shop, stocked: i32, quantity: i32) -> Ready {
         inventory::NewInventoryItem {
             sku: Some(format!("sku-{}", Uuid::now_v7())),
             title: Some("a thing".into()),
-            requires_shipping: true,
+            requires_shipping: ships,
         },
     )
     .await
@@ -240,11 +248,16 @@ async fn ready(shop: &Shop, stocked: i32, quantity: i32) -> Ready {
     .expect("an address");
 
     let cart = CartId::new();
-    sqlx::query(
+    let column = if ships {
+        "shipping_address_id"
+    } else {
+        "billing_address_id"
+    };
+    sqlx::query(&format!(
         "insert into cart
-             (id, scope, currency_code, email, shipping_address_id, idempotency_key)
-         values ($1, $2, 'TRY', 'shopper@example.com', $3, $4)",
-    )
+             (id, scope, currency_code, email, {column}, idempotency_key)
+         values ($1, $2, 'TRY', 'shopper@example.com', $3, $4)"
+    ))
     .bind(cart.as_uuid())
     .bind(shop.here.0)
     .bind(address)
@@ -254,19 +267,19 @@ async fn ready(shop: &Shop, stocked: i32, quantity: i32) -> Ready {
     .expect("a cart");
 
     if quantity > 0 {
-        sqlx::query(
-            "insert into cart_line_item
-                 (id, scope, cart_id, variant_id, product_id, product_title, quantity,
-                  unit_price, currency_code)
-             values ($1, $2, $3, $4, $5, 'A thing', $6, 10, 'TRY')",
+        // Through the cart rather than by hand, so what the line says about
+        // shipping is what the catalogue says rather than what a test wanted.
+        cart::add_line(
+            &mut tx,
+            &ctx,
+            cart,
+            cart::AddLine {
+                variant_id: variant,
+                quantity,
+                unit_price: Money::new(dec!(10), Currency::parse("TRY").expect("a currency")),
+                is_tax_inclusive: false,
+            },
         )
-        .bind(Uuid::now_v7())
-        .bind(shop.here.0)
-        .bind(cart.as_uuid())
-        .bind(variant.as_uuid())
-        .bind(product)
-        .bind(quantity)
-        .execute(&mut *tx)
         .await
         .expect("a line");
     }
@@ -1119,6 +1132,41 @@ async fn the_order_copies_the_cart_s_adjustments_and_rates() -> Result<()> {
     let after = order::totals(&mut tx, &shop.ctx(), order_id, 1).await?;
     assert_eq!(before, after);
     tx.commit().await.expect("to commit");
+
+    shop.close().await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_gift_card_is_sold_without_a_shipping_address() -> Result<()> {
+    let shop = Shop::open().await;
+    let here = ready_with(&shop, 10, 1, false).await;
+
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    let lines = cart::lines(&mut tx, &ctx, here.cart_id).await?;
+    assert!(
+        !lines[0].requires_shipping,
+        "a variant whose inventory item ships nothing still asked for a courier"
+    );
+    tx.commit().await.expect("to commit");
+
+    let bank = Bank::saying(Answer::Authorize);
+    let checkout = Checkout::new(
+        Arc::clone(&bank) as Arc<dyn PaymentProvider>,
+        here.location_id,
+    );
+
+    let placed = checkout
+        .place(&shop.pool, &shop.ctx(), here.cart_id)
+        .await?;
+    assert_eq!(
+        placed.run.state,
+        State::Done,
+        "a cart that ships nothing was refused for having nowhere to ship to: {:?}",
+        placed.run.failure
+    );
+    assert!(placed.order_id.is_some());
 
     shop.close().await;
     Ok(())

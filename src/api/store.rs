@@ -1234,6 +1234,16 @@ async fn retax(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: CartId) -> Result<()> {
         postal_code: to.postal_code,
     };
 
+    // Where a line that ships nowhere is supplied. A parcel's destination is
+    // not where an electronic service is taxed.
+    let supplied = cart::place_of_supply(tx, ctx, id)
+        .await?
+        .map(|at| tax::TaxableAddress {
+            country_code: at.country_code,
+            province_code: at.province_code,
+            postal_code: at.postal_code,
+        });
+
     // A buyer who put a tax number on file is buying as a business; that is the
     // only signal a storefront has, and it is what the reverse charge turns on.
     let mut subject = tax::subject_for(tx, ctx, holding.customer_id, false, Vec::new()).await?;
@@ -1258,6 +1268,11 @@ async fn retax(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: CartId) -> Result<()> {
             tax_code: line
                 .variant_id
                 .and_then(|variant| codes.get(&variant.as_uuid()).cloned()),
+            address: if line.requires_shipping {
+                None
+            } else {
+                supplied.clone()
+            },
         })
         .collect();
 
@@ -1277,6 +1292,7 @@ async fn retax(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: CartId) -> Result<()> {
                 })
                 .unwrap_or_default(),
             tax_code: None,
+            address: None,
         })
         .collect();
 
@@ -1369,6 +1385,7 @@ pub async fn quote_taxes(
             tax_code: line
                 .variant_id
                 .and_then(|variant| codes.get(&variant.as_uuid()).cloned()),
+            address: None,
         })
         .collect();
 
