@@ -264,7 +264,7 @@ async fn an_exempt_institution_pays_nothing_until_the_certificate_is_revoked() {
         &ctx,
         NewTaxExemption {
             customer_id: buyer,
-            kind: "institution".into(),
+            kind: "government".into(),
             reason_code: Some("public_body".into()),
             certificate_reference: Some("REF-1".into()),
             country_code: "DE".into(),
@@ -517,7 +517,7 @@ async fn a_tax_number_stays_out_of_what_an_error_says() {
         &ctx,
         NewTaxExemption {
             customer_id: buyer,
-            kind: "institution".into(),
+            kind: "government".into(),
             reason_code: None,
             certificate_reference: Some("REF-SECRET".into()),
             country_code: "DE".into(),

@@ -374,12 +374,13 @@ pub async fn stock_location_address(
         },
     )?;
 
-    Ok(sqlx::query_as::<_, StockLocationAddress>(&format!(
-        "select {STOCK_LOCATION_ADDRESS_COLUMNS}
+    Ok(sqlx::query_as::<_, StockLocationAddress>(
+        "select a.id, a.address_1, a.address_2, a.company, a.city, a.country_code,
+                a.province, a.postal_code, a.phone
          from stock_location_address a
          join stock_location l on l.scope = a.scope and l.address_id = a.id
-         where a.scope = $1 and l.id = $2"
-    ))
+         where a.scope = $1 and l.id = $2",
+    )
     .bind(ctx.scope.0)
     .bind(id.as_uuid())
     .fetch_optional(&mut **tx)
