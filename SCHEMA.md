@@ -91,5 +91,9 @@ add a `not null` check as `not valid`, then validate it.
 - Rows are structs deriving `sqlx::FromRow`, with typed ids from `src/id.rs`.
 - Every public function takes `&mut Tx<'_>` and `&Ctx<'_>`, in that order.
 - Nothing reads or writes without a `Permit` obtained from `ctx.permit(..)`.
+- **Every scoped query names its scope**, `where scope = $1`, even though the
+  policy already filters by it. The policy is the guarantee; the predicate is
+  what still holds if a host connects as a table owner or a superuser, both of
+  which bypass policies. It costs nothing — the index starts with `scope`.
 - Audit rows, events and jobs go through `Ctx`, in the same transaction.
 - Listing returns a `Page<T>` with a cursor. There is no unbounded list.

@@ -5,6 +5,12 @@
 //! transaction first and the context second, asks for a [`Permit`] before it
 //! touches a row, and writes its audit row and its events inside the caller's
 //! transaction so a rollback takes them too.
+//!
+//! Every scoped query names its scope even though a policy already filters by
+//! it. The policy is the guarantee; the predicate is what still holds when a
+//! host connects as an owner or a superuser, which bypasses policies
+//! altogether. It costs nothing — the index starts with `scope` — and it means
+//! a misconfigured deployment reads nothing rather than everything.
 
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -72,8 +78,9 @@ pub async fn currencies(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<Vec<CurrencyRo
     let _: Permit = ctx.permit(Action::View, Resource::Pricing)?;
 
     let rows = sqlx::query_as::<_, CurrencyRow>(
-        "select code, symbol, name, exponent from currency order by code",
+        "select code, symbol, name, exponent from currency where scope = $1 order by code",
     )
+    .bind(ctx.scope.0)
     .fetch_all(&mut **tx)
     .await?;
 
@@ -84,8 +91,9 @@ pub async fn currency(tx: &mut Tx<'_>, ctx: &Ctx<'_>, code: Currency) -> Result<
     let _: Permit = ctx.permit(Action::View, Resource::Pricing)?;
 
     sqlx::query_as::<_, CurrencyRow>(
-        "select code, symbol, name, exponent from currency where code = $1",
+        "select code, symbol, name, exponent from currency where scope = $1 and code = $2",
     )
+    .bind(ctx.scope.0)
     .bind(code.as_str())
     .fetch_optional(&mut **tx)
     .await?
@@ -134,10 +142,12 @@ pub async fn regions(tx: &mut Tx<'_>, ctx: &Ctx<'_>, paging: Paging) -> Result<P
     let rows = sqlx::query_as::<_, Region>(
         "select id, name, currency_code, is_tax_inclusive, created_at
          from region
-         where ($1::timestamptz is null or (created_at, id) > ($1, $2))
+         where scope = $1
+           and ($2::timestamptz is null or (created_at, id) > ($2, $3))
          order by created_at, id
-         limit $3",
+         limit $4",
     )
+    .bind(ctx.scope.0)
     .bind(paging.after.map(|c| c.at))
     .bind(paging.after.map(|c| c.id))
     .bind(paging.probe())
@@ -160,10 +170,12 @@ pub async fn sales_channels(
     let rows = sqlx::query_as::<_, SalesChannel>(
         "select id, name, description, is_disabled, created_at
          from sales_channel
-         where ($1::timestamptz is null or (created_at, id) > ($1, $2))
+         where scope = $1
+           and ($2::timestamptz is null or (created_at, id) > ($2, $3))
          order by created_at, id
-         limit $3",
+         limit $4",
     )
+    .bind(ctx.scope.0)
     .bind(paging.after.map(|c| c.at))
     .bind(paging.after.map(|c| c.id))
     .bind(paging.probe())
