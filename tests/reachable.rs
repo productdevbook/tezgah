@@ -39,7 +39,7 @@ use std::path::{Path, PathBuf};
 
 /// Public functions nothing in the crate calls, each with the reason.
 /// Adding to this is not a fix.
-const TOLERATED: [(&str, &str); 87] = [
+const TOLERATED: [(&str, &str); 89] = [
     (
         "batch::import_workflow",
         "the import workflow a host runs through the runner when a file is large \
@@ -49,6 +49,11 @@ const TOLERATED: [(&str, &str); 87] = [
         "cart::set_customer",
         "the plain setter; the storefront moves a cart to its customer through \
          `cart::transfer_to_customer`",
+    ),
+    (
+        "cart::list",
+        "a page of carts, which no surface asks for: a storefront reaches its \
+         own cart by id and the back office has no cart screen",
     ),
     (
         "cart::expire",
@@ -364,6 +369,11 @@ const TOLERATED: [(&str, &str); 87] = [
         "iyzico::read_event",
         "verifying a provider's webhook signature, which the host does before it \
          hands the body over",
+    ),
+    (
+        "stripe::read_event",
+        "parses a provider's webhook body, which the host does before it hands \
+         anything to the library",
     ),
     (
         "stripe::verify_signature",
