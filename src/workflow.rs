@@ -542,7 +542,7 @@ async fn drive(
             }
 
             if let Some((name, failure)) = failed {
-                let why = format!("{name}: {}", failure.error());
+                let why = format!("{name}: {}", failure.error().report());
                 return unwind(pool, ctx, workflow, id, why).await;
             }
         }
@@ -777,7 +777,7 @@ async fn unwind(
                 Err(err) => {
                     drop(tx);
                     ok = false;
-                    dead_letter(pool, ctx, id, one.name(), &err.to_string()).await?;
+                    dead_letter(pool, ctx, id, one.name(), &err.report()).await?;
                 }
             }
         }

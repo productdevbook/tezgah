@@ -29,6 +29,15 @@ fn the_document_matches_what_was_agreed() {
     let path = snapshot();
     let fresh = generated();
 
+    // Written every run so CI can hand it back as an artifact: this crate is
+    // not built on the machine it is written on, so the snapshot cannot be
+    // regenerated there.
+    let beside = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/openapi.generated.json");
+    if let Some(dir) = beside.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let _ = std::fs::write(&beside, &fresh);
+
     if std::env::var_os("TEZGAH_UPDATE_SNAPSHOT").is_some() {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).expect("somewhere to write the snapshot");
