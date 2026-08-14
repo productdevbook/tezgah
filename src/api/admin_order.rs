@@ -1005,6 +1005,7 @@ impl NewLineIn {
             is_tax_inclusive: self.is_tax_inclusive,
             is_discountable: true,
             requires_shipping: self.requires_shipping,
+            is_giftcard: false,
             adjustments: charged(self.discount),
             tax_lines: taxed(self.tax_rate),
             withdrawal_exclusion: None,

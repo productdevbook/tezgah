@@ -112,6 +112,10 @@ pub struct PaymentCollection {
     pub merchant_surcharge_amount: Decimal,
     /// `amount` plus the customer-borne surcharge: what the card is charged.
     pub charged_amount: Option<Decimal>,
+    /// How much of this collection a gift card or a customer's store credit
+    /// carried. Derived by `recompute` from the two ledgers rather than
+    /// written by whoever redeemed, so it cannot drift from them.
+    pub credit_amount: Decimal,
 }
 
 impl PaymentCollection {
@@ -148,6 +152,16 @@ impl PaymentCollection {
 
     pub fn charged_total(&self) -> Result<Money> {
         Ok(Money::new(self.charged(), self.currency()?))
+    }
+
+    /// What is left for a provider once the instruments have carried their
+    /// part. Zero means nobody's card is asked for anything.
+    pub fn due(&self) -> Decimal {
+        (self.charged() - self.credit_amount).max(Decimal::ZERO)
+    }
+
+    pub fn due_total(&self) -> Result<Money> {
+        Ok(Money::new(self.due(), self.currency()?))
     }
 }
 
@@ -791,7 +805,7 @@ pub async fn create_collection(
          returning id, cart_id, currency_code, amount, authorized_amount, captured_amount,
                    refunded_amount, status, completed_at, created_at,
                    installment_count, surcharge_amount, merchant_surcharge_amount,
-                   charged_amount",
+                   charged_amount, credit_amount",
     )
     .bind(id.as_uuid())
     .bind(ctx.scope.0)
@@ -855,7 +869,7 @@ pub async fn flag_mismatch(
          returning id, cart_id, currency_code, amount, authorized_amount, captured_amount,
                    refunded_amount, status, completed_at, created_at,
                    installment_count, surcharge_amount, merchant_surcharge_amount,
-                   charged_amount",
+                   charged_amount, credit_amount",
     )
     .bind(ctx.scope.0)
     .bind(id.as_uuid())
@@ -1794,12 +1808,14 @@ async fn read_collection(
     let sql = if lock {
         "select id, cart_id, currency_code, amount, authorized_amount, captured_amount,
                 refunded_amount, status, completed_at, created_at,
-                installment_count, surcharge_amount, merchant_surcharge_amount, charged_amount
+                installment_count, surcharge_amount, merchant_surcharge_amount, charged_amount,
+                credit_amount
          from payment_collection where scope = $1 and id = $2 for update"
     } else {
         "select id, cart_id, currency_code, amount, authorized_amount, captured_amount,
                 refunded_amount, status, completed_at, created_at,
-                installment_count, surcharge_amount, merchant_surcharge_amount, charged_amount
+                installment_count, surcharge_amount, merchant_surcharge_amount, charged_amount,
+                credit_amount
          from payment_collection where scope = $1 and id = $2"
     };
 
@@ -1935,7 +1951,7 @@ async fn balance_of(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: PaymentId) -> Result<Bal
 /// Sums the collection's three amounts from the rows and names the state they
 /// add up to. `mismatch` is left alone: it is a person's to clear, and a later
 /// capture must not quietly agree with the provider on the shop's behalf.
-async fn recompute(
+pub(crate) async fn recompute(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
     id: PaymentCollectionId,
@@ -1959,6 +1975,22 @@ async fn recompute(
 
     let (customer_surcharge, merchant_surcharge, installments) = plan;
     let charged = collection.amount + customer_surcharge;
+
+    // Negated because the ledgers sign a redemption the way the balance moved.
+    // A compensation writes the positive row back against the same collection,
+    // so an unwound checkout nets to nothing here without anything being
+    // deleted.
+    let credit: Decimal = sqlx::query_scalar(
+        "select
+             coalesce((select -sum(g.amount) from gift_card_transaction g
+                       where g.scope = $1 and g.payment_collection_id = $2), 0)
+           + coalesce((select -sum(c.amount) from store_credit_transaction c
+                       where c.scope = $1 and c.payment_collection_id = $2), 0)",
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .fetch_one(&mut **tx)
+    .await?;
 
     let sums: (Decimal, Decimal, Decimal, i64, i64) = sqlx::query_as(
         "select
@@ -1984,19 +2016,27 @@ async fn recompute(
 
     let (authorized, captured, refunded, sessions, canceled) = sums;
 
+    // Credit is money the shop already holds, so it counts as taken rather
+    // than as promised. A basket paid entirely with a gift card is captured
+    // with no provider ever asked.
+    // `captured_amount` and `authorized_amount` stay the providers' own sums;
+    // what the instruments carried is `credit_amount` beside them.
+    let taken = captured + credit;
+    let held = authorized + credit;
+
     let status = if collection.status() == CollectionStatus::Mismatch {
         CollectionStatus::Mismatch
-    } else if refunded > Decimal::ZERO && refunded >= captured {
+    } else if refunded > Decimal::ZERO && refunded >= taken {
         CollectionStatus::Refunded
     } else if refunded > Decimal::ZERO {
         CollectionStatus::PartiallyRefunded
-    } else if captured >= charged && captured > Decimal::ZERO {
+    } else if taken >= charged && taken > Decimal::ZERO {
         CollectionStatus::Captured
-    } else if captured > Decimal::ZERO {
+    } else if taken > Decimal::ZERO {
         CollectionStatus::PartiallyCaptured
-    } else if authorized >= charged && authorized > Decimal::ZERO {
+    } else if held >= charged && held > Decimal::ZERO {
         CollectionStatus::Authorized
-    } else if authorized > Decimal::ZERO {
+    } else if held > Decimal::ZERO {
         CollectionStatus::PartiallyAuthorized
     } else if canceled > 0 {
         CollectionStatus::Canceled
@@ -2021,12 +2061,13 @@ async fn recompute(
              surcharge_amount = $9,
              merchant_surcharge_amount = $10,
              charged_amount = $11,
-             installment_count = $12
+             installment_count = $12,
+             credit_amount = $13
          where scope = $1 and id = $2
          returning id, cart_id, currency_code, amount, authorized_amount, captured_amount,
                    refunded_amount, status, completed_at, created_at,
                    installment_count, surcharge_amount, merchant_surcharge_amount,
-                   charged_amount",
+                   charged_amount, credit_amount",
     )
     .bind(ctx.scope.0)
     .bind(id.as_uuid())
@@ -2040,6 +2081,7 @@ async fn recompute(
     .bind(merchant_surcharge)
     .bind(charged)
     .bind(installments)
+    .bind(credit)
     .fetch_one(&mut **tx)
     .await?;
 

@@ -5,6 +5,7 @@ pub mod batch;
 pub mod cart;
 pub mod catalogue;
 pub mod checkout;
+pub mod credit;
 pub mod customer;
 pub mod error;
 pub mod fulfilment;

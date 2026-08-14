@@ -189,8 +189,19 @@ fn a_domain_reaches_only_for_the_kernel_and_what_is_declared_shared() {
         ("fulfilment", &["inventory"][..]),
         (
             "checkout",
-            &["cart", "inventory", "order", "payment", "promotion"][..],
+            &[
+                "cart",
+                "credit",
+                "inventory",
+                "order",
+                "payment",
+                "promotion",
+            ][..],
         ),
+        // A gift card is money owed against an order and carried on a payment
+        // collection, so it reaches both. Neither reaches back: an order knows
+        // it has a credit line, not what minted it.
+        ("credit", &["order", "payment"][..]),
         ("providers", &["payment"][..]),
         // promotion::apply reads a cart's lines and bounds them by the ceiling
         // cart owns. This is the edge that would become a cycle the day cart

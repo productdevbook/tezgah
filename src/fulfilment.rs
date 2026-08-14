@@ -1094,20 +1094,16 @@ pub async fn create_fulfillment_with(
             ));
         }
 
-        for (line, inventory_item, units) in
-            consumption(tx, ctx, item.order_item_id, item.quantity).await?
-        {
-            crate::inventory::fulfil_units(tx, ctx, line, inventory_item, new.location_id, units)
-                .await?;
-        }
-
+        // Written before the stock moves, so the lots that leave have a row to
+        // be recorded against — that row is what answers a recall.
+        let fulfillment_item_id = Uuid::now_v7();
         sqlx::query(
             "insert into fulfillment_item
                  (id, scope, fulfillment_id, inventory_item_id, line_item_id, title, sku,
                   barcode, quantity)
              values ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
         )
-        .bind(Uuid::now_v7())
+        .bind(fulfillment_item_id)
         .bind(ctx.scope.0)
         .bind(id.as_uuid())
         .bind(item.inventory_item_id.map(InventoryItemId::as_uuid))
@@ -1118,6 +1114,21 @@ pub async fn create_fulfillment_with(
         .bind(item.quantity)
         .execute(&mut **tx)
         .await?;
+
+        for (line, inventory_item, units) in
+            consumption(tx, ctx, item.order_item_id, item.quantity).await?
+        {
+            crate::inventory::fulfil_units(
+                tx,
+                ctx,
+                line,
+                inventory_item,
+                new.location_id,
+                units,
+                Some(fulfillment_item_id),
+            )
+            .await?;
+        }
     }
 
     for label in shipment.labels {
@@ -1424,6 +1435,7 @@ pub async fn cancel_fulfillment_with(
                 inventory_item,
                 current.location_id,
                 units,
+                Some(item.id),
             )
             .await?;
         }

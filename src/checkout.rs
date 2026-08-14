@@ -14,6 +14,7 @@
 //! | `claim_promotions` | [`promotion::claim`] | [`promotion::release`] |
 //! | `reserve_stock` | [`inventory::reserve`] | [`inventory::release`] |
 //! | `create_order` | order, lines, items at version 1, summary | deletes them |
+//! | `redeem_credit` | [`credit::redeem_gift_card`] | puts the balances back |
 //! | `authorize_payment` | [`payment::authorize`] | [`payment::cancel`] |
 //! | `complete_cart` | stamps `completed_at` | clears it |
 //!
@@ -46,8 +47,9 @@ use uuid::Uuid;
 
 use crate::error::{Error, Result};
 use crate::id::{
-    CartId, CustomerId, LineItemId, OrderId, PaymentCollectionId, PaymentId, PaymentSessionId,
-    PromotionId, ReservationId, ShippingOptionId, StockLocationId, VariantId,
+    CartId, CustomerId, GiftCardId, LineItemId, OrderId, PaymentCollectionId, PaymentId,
+    PaymentSessionId, PromotionId, ReservationId, ShippingOptionId, StockLocationId, StoreCreditId,
+    VariantId,
 };
 use crate::money::{Currency, Money};
 use crate::order::{
@@ -60,7 +62,7 @@ use crate::payment::{
 };
 use crate::ports::{Action, AuditEntry, Ctx, Event, Permit, Resource, Tx};
 use crate::workflow::{self, Failure, Outcome, Step, Workflow};
-use crate::{cart, inventory, promotion};
+use crate::{cart, credit, inventory, promotion};
 
 /// What the run is holding as it goes, and what a compensation is handed back.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -156,6 +158,7 @@ impl Checkout {
                 location_id: self.location_id,
             })
             .then(CreateOrder)
+            .then(RedeemCredit)
             .then(AuthorizePayment {
                 provider: Arc::clone(&self.provider),
             })
@@ -630,6 +633,9 @@ impl Step for CreateOrder {
                     is_tax_inclusive: line.is_tax_inclusive,
                     is_discountable: line.is_discountable,
                     requires_shipping: line.requires_shipping,
+                    // A cart line cannot say it is one yet; a shop selling
+                    // cards issues them from the order.
+                    is_giftcard: false,
                     adjustments: line_adjustments
                         .remove(&line.id.as_uuid())
                         .unwrap_or_default(),
@@ -682,7 +688,232 @@ impl Step for CreateOrder {
 }
 
 // ---------------------------------------------------------------------------
-// 5. Ask the provider to hold the money
+// 5. Spend what the shop already holds
+// ---------------------------------------------------------------------------
+
+/// One instrument and what it carried, kept so the compensation can put it
+/// back without reading the ledger again.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Spent {
+    gift_card_id: Option<GiftCardId>,
+    store_credit_id: Option<StoreCreditId>,
+    amount: Decimal,
+    currency: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct SpentCredit {
+    #[serde(default)]
+    spent: Vec<Spent>,
+    order_id: Option<OrderId>,
+    payment_collection_id: Option<PaymentCollectionId>,
+}
+
+/// Claims the gift cards and store credit the cart said it would use.
+///
+/// Here rather than in `authorize_payment` because this is not a provider: the
+/// money is already the shop's, and taking it is a decrement in the same
+/// transaction the order was written in. It runs before the provider is asked
+/// so the provider is asked for the remainder, and it lowers what the card is
+/// charged rather than what the goods cost — a gift card is not a discount and
+/// must not move the tax base.
+struct RedeemCredit;
+
+#[async_trait]
+impl Step for RedeemCredit {
+    fn name(&self) -> &'static str {
+        "redeem_credit"
+    }
+
+    async fn invoke(
+        &self,
+        tx: &mut Tx<'_>,
+        ctx: &Ctx<'_>,
+        input: &Value,
+    ) -> std::result::Result<Outcome, Failure> {
+        let carried = Carried::of(input)?;
+        let cart_id = carried.cart()?;
+
+        let collection_id = carried
+            .payment_collection_id
+            .ok_or_else(|| Failure::Final(Error::bug("a checkout lost its payment collection")))?;
+        let order_id = carried
+            .order_id
+            .ok_or_else(|| Failure::Final(Error::bug("a checkout lost its order")))?;
+
+        let intents = credit::cart_credits(tx, ctx, cart_id)
+            .await
+            .map_err(Failure::Final)?;
+        if intents.is_empty() {
+            return Ok(Outcome::new(carried.value()?, Value::Null));
+        }
+
+        let collection = payment::collection(tx, ctx, collection_id)
+            .await
+            .map_err(Failure::Final)?;
+        let currency = collection.currency().map_err(Failure::Final)?;
+        let mut left = collection.charged();
+        let mut spent = Vec::new();
+
+        for intent in intents {
+            if left <= Decimal::ZERO {
+                break;
+            }
+            if intent.currency_code != currency.as_str() {
+                return Err(Failure::Final(Error::invalid(
+                    "an instrument in another currency was put against this cart",
+                )));
+            }
+
+            let (available, gift_card_id, store_credit_id) =
+                match (intent.gift_card_id, intent.store_credit_id) {
+                    (Some(card_id), _) => {
+                        let card = credit::gift_card(tx, ctx, card_id)
+                            .await
+                            .map_err(Failure::Final)?;
+                        if !card.is_spendable(ctx.now()) {
+                            return Err(Failure::Final(Error::conflict(
+                                "that gift card has expired, been disabled, or has nothing on it",
+                            )));
+                        }
+                        (card.balance, Some(card_id), None)
+                    }
+                    (None, Some(account_id)) => {
+                        let account = credit::store_credit_by_id(tx, ctx, account_id)
+                            .await
+                            .map_err(Failure::Final)?;
+                        if account.disabled_at.is_some() {
+                            return Err(Failure::Final(Error::conflict(
+                                "that balance has been disabled",
+                            )));
+                        }
+                        (account.balance, None, Some(account_id))
+                    }
+                    (None, None) => {
+                        return Err(Failure::Final(Error::bug(
+                            "a cart credit names neither a gift card nor a balance",
+                        )));
+                    }
+                };
+
+            let take = intent.amount.min(left).min(available);
+            if take <= Decimal::ZERO {
+                continue;
+            }
+
+            let money = Money::new(take, currency);
+            let what = credit::Redemption {
+                order_id: Some(order_id),
+                payment_collection_id: Some(collection_id),
+                reason: None,
+            };
+
+            // A refusal means somebody spent the balance between the read and
+            // this statement, which is exactly what the conditional update is
+            // for. Retry rather than fail: the run comes back and asks for what
+            // is left.
+            let (reference, reference_id) = if let Some(card_id) = gift_card_id {
+                credit::redeem_gift_card(tx, ctx, card_id, money, &what)
+                    .await
+                    .map_err(Failure::Retry)?;
+                ("gift_card", card_id.as_uuid())
+            } else if let Some(account_id) = store_credit_id {
+                credit::redeem_store_credit(tx, ctx, account_id, money, &what)
+                    .await
+                    .map_err(Failure::Retry)?;
+                ("store_credit", account_id.as_uuid())
+            } else {
+                return Err(Failure::Final(Error::bug("a cart credit named nothing")));
+            };
+
+            record_credit_line(tx, ctx, order_id, money, reference, reference_id)
+                .await
+                .map_err(Failure::Final)?;
+
+            left -= take;
+            spent.push(Spent {
+                gift_card_id,
+                store_credit_id,
+                amount: take,
+                currency: currency.as_str().to_string(),
+            });
+        }
+
+        let undo = SpentCredit {
+            spent,
+            order_id: Some(order_id),
+            payment_collection_id: Some(collection_id),
+        };
+
+        Ok(Outcome::new(carried.value()?, kept(&undo)))
+    }
+
+    async fn compensate(&self, tx: &mut Tx<'_>, ctx: &Ctx<'_>, keep: &Value) -> Result<()> {
+        let undo: SpentCredit = recall(keep);
+        let Some(order_id) = undo.order_id else {
+            return Ok(());
+        };
+
+        let what = credit::Redemption {
+            order_id: Some(order_id),
+            payment_collection_id: undo.payment_collection_id,
+            reason: None,
+        };
+
+        for one in undo.spent {
+            let currency = Currency::parse(&one.currency)?;
+            let money = Money::new(one.amount, currency);
+
+            if let Some(card_id) = one.gift_card_id {
+                credit::restore_gift_card(tx, ctx, card_id, money, &what).await?;
+            } else if let Some(account_id) = one.store_credit_id {
+                credit::restore_store_credit(tx, ctx, account_id, money, &what).await?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+/// The per-order half of a redemption: `order_credit_line` says the order was
+/// paid for in part by something that is not a card, and the ledger row makes
+/// the order's payment status follow.
+///
+/// Positive is value carried toward the order. `order_credit_line` was written
+/// in 0011 for exactly this and had nowhere to draw on until now.
+async fn record_credit_line(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order_id: OrderId,
+    amount: Money,
+    reference: &str,
+    reference_id: Uuid,
+) -> Result<()> {
+    let line: Uuid = sqlx::query_scalar(
+        r#"insert into order_credit_line
+               (id, scope, order_id, version, amount, currency_code, reference, reference_id)
+           select $1, $2, o.id, o.version, $3, $4, $5, $6
+           from "order" o
+           where o.scope = $2 and o.id = $7
+           returning id"#,
+    )
+    .bind(Uuid::now_v7())
+    .bind(ctx.scope.0)
+    .bind(amount.amount)
+    .bind(amount.currency.as_str())
+    .bind(reference)
+    .bind(reference_id)
+    .bind(order_id.as_uuid())
+    .fetch_one(&mut **tx)
+    .await?;
+
+    order::record_transaction(tx, ctx, order_id, amount, "credit_line", line).await?;
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// 6. Ask the provider to hold the money
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -719,7 +950,17 @@ impl Step for AuthorizePayment {
         let collection = payment::collection(tx, ctx, collection_id)
             .await
             .map_err(Failure::Final)?;
-        let owed = collection.total().map_err(Failure::Final)?;
+
+        // What is left after the instruments carried their part, which is the
+        // whole of it when there were none.
+        let owed = collection.due_total().map_err(Failure::Final)?;
+
+        // Nobody's card is asked for nothing. The collection is already
+        // captured — the shop had the money before the shopper arrived — so
+        // there is no session to open and nothing to compensate.
+        if owed.amount <= Decimal::ZERO {
+            return Ok(Outcome::new(carried.value()?, Value::Null));
+        }
 
         let session = payment::create_session(
             tx,

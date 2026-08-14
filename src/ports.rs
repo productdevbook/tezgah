@@ -104,6 +104,15 @@ pub enum Resource {
     Promotion {
         id: Option<Uuid>,
     },
+    /// A gift card or a customer's store credit. Its own resource rather than
+    /// `Payment`: no provider holds it, and a shop that lets staff refund a
+    /// card is not thereby letting them mint balances.
+    Credit {
+        id: Option<Uuid>,
+        /// Whose balance, when it is a named customer's. A gift card is a
+        /// bearer instrument and has no owner to name.
+        customer: Option<Uuid>,
+    },
     Pricing,
     /// Shop-wide settings: its name, its default currency, how tax is shown.
     Store,

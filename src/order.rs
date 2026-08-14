@@ -617,6 +617,11 @@ pub struct NewOrderLine {
     pub is_tax_inclusive: bool,
     pub is_discountable: bool,
     pub requires_shipping: bool,
+    /// This line is a gift card rather than goods. Selling one takes money in
+    /// that is not revenue — it is a liability until the card is spent — so it
+    /// is not taxed here and `create` refuses a tax line on it. The tax is
+    /// charged on whatever the card eventually buys.
+    pub is_giftcard: bool,
     pub adjustments: Vec<NewAdjustment>,
     pub tax_lines: Vec<NewTaxLine>,
     /// Why this line is outside the withdrawal right, decided here because the
@@ -647,6 +652,7 @@ impl NewOrderLine {
             is_tax_inclusive: false,
             is_discountable: true,
             requires_shipping: true,
+            is_giftcard: false,
             adjustments: Vec::new(),
             tax_lines: Vec::new(),
             withdrawal_exclusion: None,
@@ -812,16 +818,25 @@ async fn place(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewOrder, draft: bool) -> Re
     .await?;
 
     for line in new.lines {
+        // A gift card is money changing form, not goods changing hands: the
+        // tax is charged on what the card buys, and charging it twice is the
+        // one thing this flag exists to stop.
+        if line.is_giftcard && !line.tax_lines.is_empty() {
+            return Err(Error::invalid(
+                "a gift card line is not taxed; the tax belongs on what the card buys",
+            ));
+        }
+
         let line_id = LineItemId::new();
         sqlx::query(
             "insert into order_line_item
                  (id, scope, order_id, variant_id, product_id, title, subtitle, thumbnail,
                   product_title, product_handle, variant_title, variant_sku,
                   variant_option_values, unit_price, compare_at_unit_price, currency_code,
-                  requires_shipping, is_tax_inclusive, is_discountable,
+                  requires_shipping, is_tax_inclusive, is_discountable, is_giftcard,
                   withdrawal_eligible, withdrawal_exclusion_reason)
              values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
-                     $17, $18, $19, $20, $21)",
+                     $17, $18, $19, $20, $21, $22)",
         )
         .bind(line_id.as_uuid())
         .bind(ctx.scope.0)
@@ -842,6 +857,7 @@ async fn place(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewOrder, draft: bool) -> Re
         .bind(line.requires_shipping)
         .bind(line.is_tax_inclusive)
         .bind(line.is_discountable)
+        .bind(line.is_giftcard)
         .bind(line.withdrawal_exclusion.is_none())
         .bind(line.withdrawal_exclusion.map(WithdrawalExclusion::as_str))
         .execute(&mut **tx)

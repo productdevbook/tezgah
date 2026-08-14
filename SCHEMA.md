@@ -95,6 +95,10 @@ Each domain owns a number, so parallel work does not collide.
 
 | `0031_tax_identity` | `tax_registration`, where the shop itself is registered and under which scheme; `customer_tax_id`, the number a buyer gave and the evidence of the day it was checked; `tax_exemption`, a certificate with an end date; `tax_code` on `product` and `product_variant`; and on all four tax-line tables the frozen snapshot — treatment, jurisdiction, provider and its transaction id, the address the answer came from, and the number or certificate it rested on |
 
+| `0032_credit` | `gift_card`, a bearer instrument keyed by the hash of its code and never by the code itself, with `gift_card_transaction` beside it as the append-only ledger the balance column must equal; `store_credit`, one named customer's balance per currency, with `store_credit_transaction` the same way; `cart_credit`, what a cart says it will pay with before anything moves; `payment_collection.credit_amount`, derived by `payment::recompute` from the two ledgers so a collection says how much of it an instrument carried; and `tezgah_order_payment_status` taught to count a `credit_line` as money taken, because a gift card is money the shop already holds |
+
+| `0033_inventory_lot` | `inventory_item.tracking_mode` and `allocation_strategy`, both defaulting to what every existing row already is; `inventory_lot`, a batch counted where it stands, with a serial stored as a lot of one under a partial unique index rather than in a table of its own; `reservation_lot`, which lots a hold was taken out of, a row each because one hold may span two; and `fulfillment_lot`, which lot went in which parcel, with the code and the expiry frozen the way `fulfillment_item` freezes the title — that is the row a recall is answered from |
+
 Migrations are append-only once merged. A change to a shipped table is a new
 file, and it expands before it contracts: add and backfill in one release, read
 from the new column in the next, drop the old one in a third.
