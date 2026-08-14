@@ -34,7 +34,7 @@ use crate::page::{Cursor, Page, Paging};
 use crate::ports::{Action, Actor, Ctx, Resource, Tx};
 use crate::{cart, catalogue, checkout, customer, fulfilment, order, payment, pricing, store, tax};
 
-use super::{Method, Route, Surface};
+use super::{Method, Route, Surface, own_cart, own_order, signed_in};
 
 // ---------------------------------------------------------------------------
 // Views
@@ -645,50 +645,6 @@ fn paging(after: Option<&str>, limit: Option<u32>) -> Result<Paging> {
         Some(text) => Ok(Paging::after(Cursor::decode(text)?, limit)),
         None => Ok(Paging::first(limit)),
     }
-}
-
-/// Who is asking, when the route is one only a signed-in shopper has.
-pub(crate) fn signed_in(ctx: &Ctx<'_>) -> Result<CustomerId> {
-    match ctx.actor {
-        Actor::Customer { id } => Ok(CustomerId::from_uuid(id)),
-        _ => Err(Error::denied()),
-    }
-}
-
-/// Loads a cart and asks the host whether this actor may have it, handing over
-/// whose cart it is rather than deciding that here.
-pub(crate) async fn own_cart(
-    tx: &mut Tx<'_>,
-    ctx: &Ctx<'_>,
-    id: CartId,
-    action: Action,
-) -> Result<cart::Cart> {
-    let found = cart::get(tx, ctx, id).await?;
-    ctx.permit(
-        action,
-        Resource::Cart {
-            id: id.as_uuid(),
-            customer: found.customer_id.map(CustomerId::as_uuid),
-        },
-    )?;
-    Ok(found)
-}
-
-pub(crate) async fn own_order(
-    tx: &mut Tx<'_>,
-    ctx: &Ctx<'_>,
-    id: OrderId,
-    action: Action,
-) -> Result<order::Order> {
-    let found = order::get(tx, ctx, id).await?;
-    ctx.permit(
-        action,
-        Resource::Order {
-            id: id.as_uuid(),
-            customer: found.customer_id.map(CustomerId::as_uuid),
-        },
-    )?;
-    Ok(found)
 }
 
 /// A product that is not published is not here, as far as a storefront is

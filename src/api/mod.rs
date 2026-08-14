@@ -27,7 +27,56 @@ pub mod inventory_lot;
 pub mod openapi;
 pub mod store;
 
-use crate::ports::Action;
+use crate::id::{CartId, CustomerId, OrderId};
+use crate::ports::{Action, Actor, Ctx, Resource, Tx};
+
+/// Who is asking, when the route is one only a signed-in shopper has.
+pub(crate) fn signed_in(ctx: &Ctx<'_>) -> crate::Result<CustomerId> {
+    match ctx.actor {
+        Actor::Customer { id } => Ok(CustomerId::from_uuid(id)),
+        _ => Err(crate::Error::denied()),
+    }
+}
+
+/// Loads a cart and asks the host whether this actor may have it, handing over
+/// whose cart it is rather than deciding that here.
+///
+/// Here rather than in one surface because both reach for it: a shopper paying
+/// with a gift card and a shopper adding a line are the same question about the
+/// same row, and asking it two ways is how one of them ends up not asking.
+pub(crate) async fn own_cart(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: CartId,
+    action: Action,
+) -> crate::Result<crate::cart::Cart> {
+    let found = crate::cart::get(tx, ctx, id).await?;
+    ctx.permit(
+        action,
+        Resource::Cart {
+            id: id.as_uuid(),
+            customer: found.customer_id.map(CustomerId::as_uuid),
+        },
+    )?;
+    Ok(found)
+}
+
+pub(crate) async fn own_order(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderId,
+    action: Action,
+) -> crate::Result<crate::order::Order> {
+    let found = crate::order::get(tx, ctx, id).await?;
+    ctx.permit(
+        action,
+        Resource::Order {
+            id: id.as_uuid(),
+            customer: found.customer_id.map(CustomerId::as_uuid),
+        },
+    )?;
+    Ok(found)
+}
 
 /// Which surface a route belongs to. The same resource is usually reachable on
 /// both and answers differently: a shopper sees a published product, an

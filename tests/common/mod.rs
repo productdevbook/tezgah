@@ -370,7 +370,8 @@ pub async fn a_cart_ready(shop: &Shop, stocked: i32, quantity: i32) -> Shelf {
 
     sqlx::query(
         "insert into currency (id, scope, code, exponent, symbol, symbol_native, name)
-         values ($1, $2, 'TRY', 2, 'x', 'x', 'Turkish lira')",
+         values ($1, $2, 'TRY', 2, 'x', 'x', 'Turkish lira')
+         on conflict do nothing",
     )
     .bind(Uuid::now_v7())
     .bind(shop.here.0)
@@ -379,7 +380,8 @@ pub async fn a_cart_ready(shop: &Shop, stocked: i32, quantity: i32) -> Shelf {
     .expect("a currency");
 
     sqlx::query(
-        "insert into payment_provider (id, scope, code, is_enabled) values ($1, $2, $3, true)",
+        "insert into payment_provider (id, scope, code, is_enabled) values ($1, $2, $3, true)
+         on conflict do nothing",
     )
     .bind(Uuid::now_v7())
     .bind(shop.here.0)
@@ -567,9 +569,12 @@ pub struct OnlyMine {
 
 impl Authorizer for OnlyMine {
     fn authorize(&self, _: &Actor, _: Action, resource: &Resource) -> tezgah::Result<Permit> {
+        // `None` is a row nobody owns yet, which is what a domain call hands
+        // over before the storefront names whose it is. Refusing that would
+        // refuse everybody rather than the stranger.
         let mine = match resource {
             Resource::Cart { customer, .. } | Resource::Order { customer, .. } => {
-                *customer == Some(self.customer)
+                customer.is_none_or(|whose| whose == self.customer)
             }
             _ => true,
         };

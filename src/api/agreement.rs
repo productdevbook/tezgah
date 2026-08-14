@@ -17,7 +17,7 @@ use crate::order;
 use crate::page::{Cursor, Page, Paging};
 use crate::ports::{Action, Ctx, Tx};
 
-use super::{Method, Route, Surface};
+use super::{Method, Route, Surface, own_order};
 
 fn paging(after: Option<&str>, limit: Option<u32>) -> Result<Paging> {
     let limit = limit.unwrap_or(crate::page::DEFAULT_LIMIT);
@@ -271,6 +271,20 @@ pub async fn accepted_text(
     Ok(AgreementVersionView::from(
         order::accepted_text(tx, ctx, order_id, kind).await?,
     ))
+}
+
+/// The same, for the shopper themselves. Their own order and nobody else's:
+/// the row is loaded and the host is handed whose it is before a word of the
+/// text is read.
+pub async fn my_accepted_text(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order_id: OrderId,
+    kind: &str,
+) -> Result<AgreementVersionView> {
+    own_order(tx, ctx, order_id, Action::View).await?;
+
+    accepted_text(tx, ctx, order_id, kind).await
 }
 
 // ---------------------------------------------------------------------------
