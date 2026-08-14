@@ -20,6 +20,7 @@ use tezgah::payment::{
     RefundRequest, RefundResult, SessionRequest, SessionResponse, SessionStatus, WebhookEvent,
     WebhookKind, WebhookOutcome,
 };
+use tezgah::ports::Ctx;
 use tezgah::ports::{
     Action, Actor, AuditEntry, AuditSink, Authorizer, Clock, Event, EventSink, Host, JobSpec, Jobs,
     Permit, Resource, Tx,
