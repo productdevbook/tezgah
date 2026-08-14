@@ -211,12 +211,14 @@ async fn two_people_reaching_for_the_last_use_of_a_coupon_and_one_of_them_gettin
         "a coupon with one use left went to both of them or to neither"
     );
 
+    let mut after = shop.begin().await;
     let used: i32 = sqlx::query_scalar("select used from promotion where scope = $1 and id = $2")
         .bind(shop.here.0)
         .bind(id.as_uuid())
-        .fetch_one(&shop.pool)
+        .fetch_one(&mut *after)
         .await
         .expect("the counter");
+    after.commit().await.expect("to finish reading");
     assert_eq!(used, 1);
 
     shop.close().await;
