@@ -18,6 +18,7 @@ use crate::id::{
 };
 use crate::inventory;
 use crate::money::{Currency, Money};
+use crate::order;
 use crate::page::{Cursor, Page, Paging};
 use crate::ports::{Action, Ctx, Tx};
 use crate::pricing;
@@ -148,6 +149,7 @@ pub struct VariantView {
     pub manages_inventory: bool,
     pub allows_backorder: bool,
     pub rank: i32,
+    pub withdrawal_exclusion: Option<String>,
     pub metadata: serde_json::Value,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
@@ -174,6 +176,7 @@ impl From<catalogue::ProductVariant> for VariantView {
             manages_inventory: row.manages_inventory,
             allows_backorder: row.allows_backorder,
             rank: row.rank,
+            withdrawal_exclusion: row.withdrawal_exclusion_reason,
             metadata: row.metadata,
             created_at: row.created_at,
             updated_at: row.updated_at,
@@ -1009,6 +1012,8 @@ pub struct CreateVariant {
     pub manages_inventory: Option<bool>,
     pub allows_backorder: Option<bool>,
     pub rank: Option<i32>,
+    /// Why buying this is outside the right of withdrawal.
+    pub withdrawal_exclusion: Option<String>,
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -1035,6 +1040,11 @@ pub async fn create_variant(
         manages_inventory: body.manages_inventory,
         allows_backorder: body.allows_backorder,
         rank: body.rank,
+        withdrawal_exclusion: body
+            .withdrawal_exclusion
+            .as_deref()
+            .map(order::WithdrawalExclusion::parse)
+            .transpose()?,
         metadata: body.metadata,
     };
     Ok(VariantView::from(
@@ -1065,6 +1075,9 @@ pub struct UpdateVariant {
     pub manages_inventory: Option<bool>,
     pub allows_backorder: Option<bool>,
     pub rank: Option<i32>,
+    /// Absent leaves it alone; `null` puts the variant back inside the right.
+    #[serde(default, deserialize_with = "double_option")]
+    pub withdrawal_exclusion: Option<Option<String>>,
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -1091,6 +1104,11 @@ pub async fn update_variant(
         manages_inventory: body.manages_inventory,
         allows_backorder: body.allows_backorder,
         rank: body.rank,
+        withdrawal_exclusion: match body.withdrawal_exclusion {
+            Some(Some(reason)) => Some(Some(order::WithdrawalExclusion::parse(&reason)?)),
+            Some(None) => Some(None),
+            None => None,
+        },
         metadata: body.metadata,
     };
     Ok(VariantView::from(

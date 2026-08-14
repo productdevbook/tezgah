@@ -62,7 +62,7 @@ use crate::payment::{
 };
 use crate::ports::{Action, AuditEntry, Ctx, Event, Permit, Resource, Tx};
 use crate::workflow::{self, Failure, Outcome, Step, Workflow};
-use crate::{cart, credit, inventory, promotion};
+use crate::{cart, catalogue, credit, inventory, promotion};
 
 /// What the run is holding as it goes, and what a compensation is handed back.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -589,6 +589,13 @@ impl Step for CreateOrder {
         .map_err(Failure::Final)?;
 
         let lines = cart_lines(tx, ctx, cart_id).await.map_err(Failure::Final)?;
+        let sold: Vec<VariantId> = lines
+            .iter()
+            .filter_map(|line| line.variant_id.map(VariantId::from_uuid))
+            .collect();
+        let exclusions = catalogue::withdrawal_exclusions(tx, ctx, &sold)
+            .await
+            .map_err(Failure::Final)?;
         let methods = cart_methods(tx, ctx, cart_id)
             .await
             .map_err(Failure::Final)?;
@@ -640,9 +647,10 @@ impl Step for CreateOrder {
                         .remove(&line.id.as_uuid())
                         .unwrap_or_default(),
                     tax_lines: line_taxes.remove(&line.id.as_uuid()).unwrap_or_default(),
-                    // A cart line carries no exemption, so a checkout sells
-                    // nothing it claims is outside the withdrawal right.
-                    withdrawal_exclusion: None,
+                    withdrawal_exclusion: line
+                        .variant_id
+                        .map(VariantId::from_uuid)
+                        .and_then(|id| exclusions.get(&id).copied()),
                 })
                 .collect(),
             shipping: methods

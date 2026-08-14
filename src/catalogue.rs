@@ -43,8 +43,8 @@ macro_rules! product_columns {
 macro_rules! variant_columns {
     () => {
         "id, product_id, title, sku, barcode, ean, upc, weight, length, height, width, material, \
-         hs_code, origin_country, mid_code, manages_inventory, allows_backorder, rank, metadata, \
-         created_at, updated_at"
+         hs_code, origin_country, mid_code, manages_inventory, allows_backorder, rank, \
+         withdrawal_exclusion_reason, metadata, created_at, updated_at"
     };
 }
 
@@ -168,6 +168,9 @@ pub struct ProductVariant {
     pub manages_inventory: bool,
     pub allows_backorder: bool,
     pub rank: i32,
+    /// Why buying this is outside the right of withdrawal. `None` is the
+    /// ordinary case: it may be sent back.
+    pub withdrawal_exclusion_reason: Option<String>,
     pub metadata: serde_json::Value,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
@@ -359,6 +362,7 @@ pub struct NewVariant {
     pub manages_inventory: Option<bool>,
     pub allows_backorder: Option<bool>,
     pub rank: Option<i32>,
+    pub withdrawal_exclusion: Option<crate::order::WithdrawalExclusion>,
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -380,6 +384,9 @@ pub struct VariantPatch {
     pub manages_inventory: Option<bool>,
     pub allows_backorder: Option<bool>,
     pub rank: Option<i32>,
+    /// `Some(None)` puts the variant back inside the withdrawal right; `None`
+    /// leaves whatever it says now.
+    pub withdrawal_exclusion: Option<Option<crate::order::WithdrawalExclusion>>,
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -944,9 +951,9 @@ async fn insert_variant(
     sqlx::query_as::<_, ProductVariant>(concat!(
         "insert into product_variant (id, scope, product_id, title, sku, barcode, ean, upc, \
          weight, length, height, width, material, hs_code, origin_country, mid_code, \
-         manages_inventory, allows_backorder, rank, metadata)
+         manages_inventory, allows_backorder, rank, metadata, withdrawal_exclusion_reason)
          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, \
-         $19, $20)
+         $19, $20, $21)
          on conflict do nothing
          returning ",
         variant_columns!()
@@ -971,6 +978,10 @@ async fn insert_variant(
     .bind(new.allows_backorder.unwrap_or(false))
     .bind(new.rank.unwrap_or(0))
     .bind(metadata_or_empty(new.metadata))
+    .bind(
+        new.withdrawal_exclusion
+            .map(crate::order::WithdrawalExclusion::as_str),
+    )
     .fetch_optional(&mut **tx)
     .await?
     .ok_or_else(|| Error::conflict("that sku or barcode is already a variant here"))
@@ -989,6 +1000,37 @@ pub async fn variant(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: VariantId) -> Result<Pr
     .fetch_optional(&mut **tx)
     .await?
     .ok_or_else(|| Error::not_found("variant"))
+}
+
+/// Which of these variants are outside the right of withdrawal, keyed by
+/// variant. Only the ones that are: a variant with no answer is not in the map.
+///
+/// Bounded by what the caller passed in, and read in one statement because a
+/// checkout asks this once for a whole cart.
+pub async fn withdrawal_exclusions(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    ids: &[VariantId],
+) -> Result<std::collections::HashMap<VariantId, crate::order::WithdrawalExclusion>> {
+    let _: Permit = ctx.permit(Action::View, Resource::Product { id: None })?;
+
+    if ids.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+
+    let wanted: Vec<Uuid> = ids.iter().map(|id| id.as_uuid()).collect();
+    let rows: Vec<(VariantId, String)> = sqlx::query_as(
+        "select id, withdrawal_exclusion_reason from product_variant
+         where scope = $1 and id = any($2) and withdrawal_exclusion_reason is not null",
+    )
+    .bind(ctx.scope.0)
+    .bind(&wanted)
+    .fetch_all(&mut **tx)
+    .await?;
+
+    rows.into_iter()
+        .map(|(id, reason)| Ok((id, crate::order::WithdrawalExclusion::parse(&reason)?)))
+        .collect()
 }
 
 pub async fn variants(
@@ -1060,7 +1102,9 @@ pub async fn update_variant(
              manages_inventory = coalesce($24, manages_inventory),
              allows_backorder = coalesce($25, allows_backorder),
              rank = coalesce($26, rank),
-             metadata = coalesce($27, metadata)
+             metadata = coalesce($27, metadata),
+             withdrawal_exclusion_reason = case when $28::bool then $29
+                                           else withdrawal_exclusion_reason end
          where scope = $1 and id = $2 and deleted_at is null
            and not exists (
                select 1 from product_variant other
@@ -1097,6 +1141,13 @@ pub async fn update_variant(
     .bind(patch.allows_backorder)
     .bind(patch.rank)
     .bind(patch.metadata)
+    .bind(patch.withdrawal_exclusion.is_some())
+    .bind(
+        patch
+            .withdrawal_exclusion
+            .flatten()
+            .map(crate::order::WithdrawalExclusion::as_str),
+    )
     .fetch_optional(&mut **tx)
     .await?;
 

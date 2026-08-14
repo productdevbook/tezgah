@@ -343,3 +343,268 @@ pub async fn a_customer(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> tezgah::id::CustomerI
         .expect("a customer")
         .id
 }
+
+/// A shop with one thing in one cart, ready to be checked out.
+///
+/// The same seed the checkout tests grew: a currency, a payment provider, a
+/// location, an inventory item the variant consumes, an address and an
+/// idempotency key. Everything a `Checkout` reads before it asks a bank for
+/// anything.
+pub struct Shelf {
+    pub cart_id: tezgah::id::CartId,
+    pub location_id: tezgah::id::StockLocationId,
+    pub variant_id: tezgah::id::VariantId,
+    pub product_id: Uuid,
+    pub inventory_item_id: tezgah::id::InventoryItemId,
+}
+
+/// `stocked` on the shelf, `quantity` in the cart, at ten lira each.
+pub async fn a_cart_ready(shop: &Shop, stocked: i32, quantity: i32) -> Shelf {
+    use rust_decimal_macros::dec;
+    use tezgah::id::{CartId, VariantId};
+    use tezgah::money::{Currency, Money};
+    use tezgah::{cart, inventory};
+
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+
+    sqlx::query(
+        "insert into currency (id, scope, code, exponent, symbol, symbol_native, name)
+         values ($1, $2, 'TRY', 2, 'x', 'x', 'Turkish lira')",
+    )
+    .bind(Uuid::now_v7())
+    .bind(shop.here.0)
+    .execute(&mut *tx)
+    .await
+    .expect("a currency");
+
+    sqlx::query(
+        "insert into payment_provider (id, scope, code, is_enabled) values ($1, $2, $3, true)",
+    )
+    .bind(Uuid::now_v7())
+    .bind(shop.here.0)
+    .bind("bank")
+    .execute(&mut *tx)
+    .await
+    .expect("a payment provider");
+
+    let location = inventory::create_stock_location(
+        &mut tx,
+        &ctx,
+        inventory::NewStockLocation {
+            name: format!("warehouse {}", Uuid::now_v7()),
+        },
+    )
+    .await
+    .expect("a location");
+
+    let item = inventory::create_inventory_item(
+        &mut tx,
+        &ctx,
+        inventory::NewInventoryItem {
+            sku: Some(format!("sku-{}", Uuid::now_v7())),
+            title: Some("a thing".into()),
+            requires_shipping: true,
+        },
+    )
+    .await
+    .expect("an inventory item");
+
+    inventory::set_stock(&mut tx, &ctx, item.id, location.id, stocked, 0)
+        .await
+        .expect("a level");
+
+    let product = Uuid::now_v7();
+    sqlx::query("insert into product (id, scope, handle, title) values ($1, $2, $3, $4)")
+        .bind(product)
+        .bind(shop.here.0)
+        .bind(format!("thing-{product}"))
+        .bind("A thing")
+        .execute(&mut *tx)
+        .await
+        .expect("a product");
+
+    let variant = VariantId::new();
+    sqlx::query(
+        "insert into product_variant (id, scope, product_id, title) values ($1, $2, $3, $4)",
+    )
+    .bind(variant.as_uuid())
+    .bind(shop.here.0)
+    .bind(product)
+    .bind("The only one")
+    .execute(&mut *tx)
+    .await
+    .expect("a variant");
+
+    inventory::attach_inventory_item(&mut tx, &ctx, variant, item.id, 1)
+        .await
+        .expect("the variant to consume the item");
+
+    let address = Uuid::now_v7();
+    sqlx::query(
+        "insert into cart_address (id, scope, address_1, city, country_code)
+         values ($1, $2, '1 Example Street', 'Istanbul', 'TR')",
+    )
+    .bind(address)
+    .bind(shop.here.0)
+    .execute(&mut *tx)
+    .await
+    .expect("an address");
+
+    let cart = CartId::new();
+    sqlx::query(
+        "insert into cart
+             (id, scope, currency_code, email, shipping_address_id, idempotency_key)
+         values ($1, $2, 'TRY', 'shopper@example.com', $3, $4)",
+    )
+    .bind(cart.as_uuid())
+    .bind(shop.here.0)
+    .bind(address)
+    .bind(format!("key-{}", cart.as_uuid()))
+    .execute(&mut *tx)
+    .await
+    .expect("a cart");
+
+    if quantity > 0 {
+        cart::add_line(
+            &mut tx,
+            &ctx,
+            cart,
+            cart::AddLine {
+                variant_id: variant,
+                quantity,
+                unit_price: Money::new(dec!(10), Currency::parse("TRY").expect("a currency")),
+                is_tax_inclusive: false,
+            },
+        )
+        .await
+        .expect("a line");
+    }
+
+    tx.commit().await.expect("to commit the seed");
+
+    Shelf {
+        cart_id: cart,
+        location_id: location.id,
+        variant_id: variant,
+        product_id: product,
+        inventory_item_id: item.id,
+    }
+}
+
+/// A payment provider that authorises whatever it is asked for.
+#[derive(Debug, Default)]
+pub struct Teller;
+
+#[async_trait]
+impl tezgah::payment::PaymentProvider for Teller {
+    fn code(&self) -> &'static str {
+        "bank"
+    }
+
+    async fn create_session(
+        &self,
+        _: tezgah::payment::SessionRequest,
+    ) -> tezgah::Result<tezgah::payment::SessionResponse> {
+        Ok(tezgah::payment::SessionResponse {
+            data: serde_json::json!({ "intent": "an-intent" }),
+            status: tezgah::payment::SessionStatus::Pending,
+        })
+    }
+
+    async fn authorize(
+        &self,
+        req: tezgah::payment::AuthorizeRequest,
+    ) -> tezgah::Result<tezgah::payment::Authorization> {
+        Ok(tezgah::payment::Authorization {
+            status: tezgah::payment::AuthorizationStatus::Authorized,
+            amount: Some(req.amount),
+            data: serde_json::json!({ "intent": "an-intent" }),
+            redirect: None,
+            message: None,
+            installment: None,
+        })
+    }
+
+    async fn capture(
+        &self,
+        req: tezgah::payment::CaptureRequest,
+    ) -> tezgah::Result<tezgah::payment::CaptureResult> {
+        Ok(tezgah::payment::CaptureResult {
+            amount: req.amount,
+            data: serde_json::Value::Null,
+        })
+    }
+
+    async fn refund(
+        &self,
+        req: tezgah::payment::RefundRequest,
+    ) -> tezgah::Result<tezgah::payment::RefundResult> {
+        Ok(tezgah::payment::RefundResult {
+            amount: req.amount,
+            data: serde_json::Value::Null,
+        })
+    }
+
+    async fn cancel(&self, _: tezgah::payment::CancelRequest) -> tezgah::Result<()> {
+        Ok(())
+    }
+
+    fn parse_webhook(
+        &self,
+        _: &[(String, String)],
+        _: &[u8],
+    ) -> tezgah::Result<tezgah::payment::WebhookEvent> {
+        Err(tezgah::Error::invalid("this bank sends no webhooks"))
+    }
+}
+
+/// A host that lets one named customer at their own things and nobody else at
+/// them, so "only your own cart" can be asserted rather than assumed.
+pub struct OnlyMine {
+    pub customer: Uuid,
+}
+
+impl Authorizer for OnlyMine {
+    fn authorize(&self, _: &Actor, _: Action, resource: &Resource) -> tezgah::Result<Permit> {
+        let mine = match resource {
+            Resource::Cart { customer, .. } | Resource::Order { customer, .. } => {
+                *customer == Some(self.customer)
+            }
+            _ => true,
+        };
+
+        if mine {
+            Ok(Permit::granted())
+        } else {
+            Err(tezgah::Error::denied())
+        }
+    }
+}
+
+impl Clock for OnlyMine {
+    fn now(&self) -> DateTime<Utc> {
+        Utc::now()
+    }
+}
+
+#[async_trait]
+impl AuditSink for OnlyMine {
+    async fn record(&self, _: &mut Tx<'_>, _: AuditEntry) -> tezgah::Result<()> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl EventSink for OnlyMine {
+    async fn emit(&self, _: &mut Tx<'_>, _: Event) -> tezgah::Result<()> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl Jobs for OnlyMine {
+    async fn enqueue(&self, _: &mut Tx<'_>, _: JobSpec) -> tezgah::Result<()> {
+        Ok(())
+    }
+}

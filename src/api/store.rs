@@ -648,7 +648,7 @@ fn paging(after: Option<&str>, limit: Option<u32>) -> Result<Paging> {
 }
 
 /// Who is asking, when the route is one only a signed-in shopper has.
-fn signed_in(ctx: &Ctx<'_>) -> Result<CustomerId> {
+pub(crate) fn signed_in(ctx: &Ctx<'_>) -> Result<CustomerId> {
     match ctx.actor {
         Actor::Customer { id } => Ok(CustomerId::from_uuid(id)),
         _ => Err(Error::denied()),
@@ -657,7 +657,7 @@ fn signed_in(ctx: &Ctx<'_>) -> Result<CustomerId> {
 
 /// Loads a cart and asks the host whether this actor may have it, handing over
 /// whose cart it is rather than deciding that here.
-async fn own_cart(
+pub(crate) async fn own_cart(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
     id: CartId,
@@ -674,7 +674,7 @@ async fn own_cart(
     Ok(found)
 }
 
-async fn own_order(
+pub(crate) async fn own_order(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
     id: OrderId,

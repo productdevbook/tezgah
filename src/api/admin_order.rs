@@ -984,10 +984,20 @@ pub struct NewLineIn {
     pub discount: Decimal,
     #[serde(default)]
     pub tax_rate: Decimal,
+    /// Why this line is outside the right of withdrawal. A draft order is
+    /// written by staff who know what they are selling, so it is said here
+    /// rather than looked up.
+    pub withdrawal_exclusion: Option<String>,
 }
 
 impl NewLineIn {
     fn line(self) -> Result<order::NewOrderLine> {
+        let exclusion = self
+            .withdrawal_exclusion
+            .as_deref()
+            .map(order::WithdrawalExclusion::parse)
+            .transpose()?;
+
         Ok(order::NewOrderLine {
             variant_id: self.variant_id,
             product_id: self.product_id,
@@ -1008,7 +1018,7 @@ impl NewLineIn {
             is_giftcard: false,
             adjustments: charged(self.discount),
             tax_lines: taxed(self.tax_rate),
-            withdrawal_exclusion: None,
+            withdrawal_exclusion: exclusion,
             reserved_for: None,
         })
     }

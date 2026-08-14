@@ -39,7 +39,7 @@ use std::path::{Path, PathBuf};
 
 /// Public functions nothing in the crate calls, each with the reason.
 /// Adding to this is not a fix.
-const TOLERATED: [(&str, &str); 89] = [
+const TOLERATED: [(&str, &str); 60] = [
     (
         "batch::import_workflow",
         "the import workflow a host runs through the runner when a file is large \
@@ -60,62 +60,7 @@ const TOLERATED: [(&str, &str); 89] = [
         "a sweep a host runs on a schedule; there is no request to hang it off",
     ),
     (
-        "credit::issue",
-        "gift cards have no route and no in-crate caller; shipped unwired, see \
-         #108",
-    ),
-    (
-        "credit::gift_card_by_code",
-        "gift cards have no route and no in-crate caller; shipped unwired, see \
-         #108",
-    ),
-    (
-        "credit::gift_cards",
-        "gift cards have no route and no in-crate caller; shipped unwired, see \
-         #108",
-    ),
-    (
-        "credit::disable_gift_card",
-        "gift cards have no route and no in-crate caller; shipped unwired, see \
-         #108",
-    ),
-    (
-        "credit::gift_card_ledger",
-        "gift cards have no route and no in-crate caller; shipped unwired, see \
-         #108",
-    ),
-    (
-        "credit::store_credit",
-        "store credit has no route and no in-crate caller; shipped unwired, see \
-         #108",
-    ),
-    (
-        "credit::grant_store_credit",
-        "store credit has no route and no in-crate caller; shipped unwired, see \
-         #108",
-    ),
-    (
         "credit::refund_to_credit",
-        "store credit has no route and no in-crate caller; shipped unwired, see \
-         #108",
-    ),
-    (
-        "credit::store_credit_ledger",
-        "store credit has no route and no in-crate caller; shipped unwired, see \
-         #108",
-    ),
-    (
-        "credit::apply_gift_card",
-        "gift cards have no route and no in-crate caller; shipped unwired, see \
-         #108",
-    ),
-    (
-        "credit::apply_store_credit",
-        "store credit has no route and no in-crate caller; shipped unwired, see \
-         #108",
-    ),
-    (
-        "credit::remove_cart_credit",
         "store credit has no route and no in-crate caller; shipped unwired, see \
          #108",
     ),
@@ -173,41 +118,6 @@ const TOLERATED: [(&str, &str); 89] = [
          answers the question",
     ),
     (
-        "inventory::set_tracking",
-        "lot and serial tracking has no route and no in-crate caller; shipped \
-         unwired, see #110",
-    ),
-    (
-        "inventory::receive_lot",
-        "lot and serial tracking has no route and no in-crate caller; shipped \
-         unwired, see #110",
-    ),
-    (
-        "inventory::adjust_lot",
-        "lot and serial tracking has no route and no in-crate caller; shipped \
-         unwired, see #110",
-    ),
-    (
-        "inventory::lot",
-        "lot and serial tracking has no route and no in-crate caller; shipped \
-         unwired, see #110",
-    ),
-    (
-        "inventory::lots_for_item",
-        "lot and serial tracking has no route and no in-crate caller; shipped \
-         unwired, see #110",
-    ),
-    (
-        "inventory::expiring_lots",
-        "lot and serial tracking has no route and no in-crate caller; shipped \
-         unwired, see #110",
-    ),
-    (
-        "inventory::orders_for_lot",
-        "lot and serial tracking has no route and no in-crate caller; shipped \
-         unwired, see #110",
-    ),
-    (
         "inventory::reserve_from_lot",
         "lot and serial tracking has no route and no in-crate caller; shipped \
          unwired, see #110",
@@ -228,69 +138,9 @@ const TOLERATED: [(&str, &str); 89] = [
          the status and does not give back what the order holds",
     ),
     (
-        "order::record_invoice",
-        "invoices and credit notes have no route and no in-crate caller; shipped \
-         unwired, see #111",
-    ),
-    (
-        "order::record_credit_note",
-        "invoices and credit notes have no route and no in-crate caller; shipped \
-         unwired, see #111",
-    ),
-    (
-        "order::set_invoice_status",
-        "invoices and credit notes have no route and no in-crate caller; shipped \
-         unwired, see #111",
-    ),
-    (
         "order::invoice",
         "invoices and credit notes have no route and no in-crate caller; shipped \
          unwired, see #111",
-    ),
-    (
-        "order::invoices",
-        "invoices and credit notes have no route and no in-crate caller; shipped \
-         unwired, see #111",
-    ),
-    (
-        "order::publish_agreement",
-        "agreements and the withdrawal clock have no route and no in-crate \
-         caller; shipped unwired, see #111",
-    ),
-    (
-        "order::agreement_versions",
-        "agreements and the withdrawal clock have no route and no in-crate \
-         caller; shipped unwired, see #111",
-    ),
-    (
-        "order::agreement_version",
-        "agreements and the withdrawal clock have no route and no in-crate \
-         caller; shipped unwired, see #111",
-    ),
-    (
-        "order::accept_agreement",
-        "agreements and the withdrawal clock have no route and no in-crate \
-         caller; shipped unwired, see #111",
-    ),
-    (
-        "order::agreements",
-        "agreements and the withdrawal clock have no route and no in-crate \
-         caller; shipped unwired, see #111",
-    ),
-    (
-        "order::accepted_text",
-        "agreements and the withdrawal clock have no route and no in-crate \
-         caller; shipped unwired, see #111",
-    ),
-    (
-        "order::withdrawal_deadline",
-        "agreements and the withdrawal clock have no route and no in-crate \
-         caller; shipped unwired, see #111",
-    ),
-    (
-        "order::notify_withdrawal",
-        "agreements and the withdrawal clock have no route and no in-crate \
-         caller; shipped unwired, see #111",
     ),
     (
         "payment::register_provider",
