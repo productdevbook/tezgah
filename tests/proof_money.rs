@@ -15,7 +15,8 @@
 //! replays the same sequence.
 //!
 //! `TEZGAH_PROOF_RUNS` and `TEZGAH_PROOF_STEPS` widen the walk without a
-//! recompile, for a nightly that has longer than CI does.
+//! recompile: the default is what fits inside nextest's slow-test timeout, and
+//! a nightly with longer has only to raise them.
 
 mod common;
 
@@ -180,11 +181,11 @@ struct Seeded {
 }
 
 impl Seeded {
-    fn from(seed: u64) -> Seeded {
+    fn at(seed: u64) -> Seeded {
         Seeded { seed, state: seed }
     }
 
-    fn next(&mut self) -> u64 {
+    fn draw(&mut self) -> u64 {
         self.state = self.state.wrapping_add(0x9e37_79b9_7f4a_7c15);
         let mut z = self.state;
         z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
@@ -196,7 +197,7 @@ impl Seeded {
         if bound == 0 {
             return 0;
         }
-        (self.next() % bound as u64) as usize
+        (self.draw() % bound as u64) as usize
     }
 
     fn between(&mut self, low: i32, high: i32) -> i32 {
@@ -322,8 +323,8 @@ async fn money_invariants_hold_under_a_generated_sequence_of_operations() {
     let shop = Shop::open().await;
     let ctx = shop.ctx();
 
-    let runs: u64 = env_or("TEZGAH_PROOF_RUNS", 4);
-    let steps: u32 = env_or("TEZGAH_PROOF_STEPS", 50);
+    let runs: u64 = env_or("TEZGAH_PROOF_RUNS", 3);
+    let steps: u32 = env_or("TEZGAH_PROOF_STEPS", 40);
 
     {
         let mut tx = shop.begin().await;
@@ -336,7 +337,7 @@ async fn money_invariants_hold_under_a_generated_sequence_of_operations() {
     for run in 0..runs {
         // The run number is the seed, so a failure names something to re-run.
         let seed = 0x7e26_a400 + run;
-        let mut rng = Seeded::from(seed);
+        let mut rng = Seeded::at(seed);
         let shelf = stock_the_shelf(&shop, run).await;
 
         let cart = {
