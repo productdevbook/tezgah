@@ -851,10 +851,11 @@ pub async fn line_items(
     Ok(sqlx::query_as::<_, OrderLineItem>(&format!(
         "select {LINE_COLUMNS} from order_line_item
          where scope = $1 and order_id = $2
-         order by created_at, id limit 500"
+         order by created_at, id limit $3"
     ))
     .bind(ctx.scope.0)
     .bind(order_id.as_uuid())
+    .bind(MAX_LINES)
     .fetch_all(&mut **tx)
     .await?)
 }
@@ -878,11 +879,12 @@ pub async fn items(
     Ok(sqlx::query_as::<_, OrderItem>(&format!(
         "select {ITEM_COLUMNS} from order_item
          where scope = $1 and order_id = $2 and version = $3
-         order by created_at, id"
+         order by created_at, id limit $4"
     ))
     .bind(ctx.scope.0)
     .bind(order_id.as_uuid())
     .bind(version)
+    .bind(MAX_LINES)
     .fetch_all(&mut **tx)
     .await?)
 }
@@ -906,11 +908,12 @@ pub async fn shipping_methods(
                 currency_code, is_tax_inclusive, data, metadata
          from order_shipping_method
          where scope = $1 and order_id = $2 and version = $3
-         order by created_at, id",
+         order by created_at, id limit $4",
     )
     .bind(ctx.scope.0)
     .bind(order_id.as_uuid())
     .bind(version)
+    .bind(MAX_LINES)
     .fetch_all(&mut **tx)
     .await?)
 }

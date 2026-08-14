@@ -364,14 +364,13 @@ async fn no_registered_table_shows_its_rows_to_another_scope() {
 /// it does not: a check constraint that ties two columns together, a foreign
 /// key that is not a plain `id`, a cycle of required references.
 const NOT_YET_SEEDED: &[&str] = &[
-    "application_method",
-    "campaign_budget",
-    "geo_zone",
-    "order_change_action",
-    "order_item",
-    "price",
-    "price_rule",
-    "shipping_option",
+    "note",
+    "price_list_rule",
+    "product_translation",
+    "promotion_buy_rule",
+    "promotion_rule",
+    "promotion_target_rule",
+    "store",
 ];
 
 #[tokio::test]
