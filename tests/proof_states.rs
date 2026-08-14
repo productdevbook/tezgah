@@ -915,6 +915,8 @@ async fn a_return_cancelled_in_word_only_is_still_received() {
 // A fulfilment, whose machine is its timestamps
 // ---------------------------------------------------------------------------
 
+// A state this test does not know is a typo in the table above, not a case.
+#[expect(clippy::panic, reason = "a typo in the table must stop the test")]
 async fn a_fulfilment_in(
     shop: &Shop,
     ctx: &Ctx<'_>,
@@ -981,6 +983,8 @@ async fn a_fulfilment_in(
     (order, made.id, item)
 }
 
+// A state this test does not know is a typo in the table above, not a case.
+#[expect(clippy::panic, reason = "a typo in the table must stop the test")]
 async fn make_the_move(
     tx: &mut tezgah::ports::Tx<'_>,
     ctx: &Ctx<'_>,
