@@ -18,6 +18,8 @@ use uuid::Uuid;
 struct Column {
     name: String,
     data_type: String,
+    /// What one element is, for an array column: `_text` becomes `text`.
+    element: String,
     length: Option<i32>,
     required: bool,
 }
@@ -30,6 +32,8 @@ struct Table {
     parents: HashMap<String, String>,
     /// Column -> a literal a check constraint will accept.
     literals: HashMap<String, String>,
+    /// This table's check constraints, casts stripped.
+    checks: Vec<String>,
 }
 
 fn quote(name: &str) -> String {
@@ -46,7 +50,8 @@ async fn describe(shop: &Shop) -> Vec<Table> {
     let columns: Vec<PgRow> = sqlx::query(
         "select table_name::text, column_name::text, data_type::text,
                 character_maximum_length::int,
-                (is_nullable = 'NO' and column_default is null) as required
+                (is_nullable = 'NO' and column_default is null) as required,
+                udt_name::text
          from information_schema.columns
          where table_schema = 'public'
          order by ordinal_position",
@@ -84,46 +89,176 @@ async fn describe(shop: &Shop) -> Vec<Table> {
     .await
     .expect("to read check constraints");
 
-    names
-        .into_iter()
-        .map(|name| {
-            let columns = columns
-                .iter()
-                .filter(|row| row.get::<String, _>(0) == name)
-                .map(|row| Column {
-                    name: row.get(1),
-                    data_type: row.get(2),
-                    length: row.get(3),
-                    required: row.get(4),
-                })
-                .collect::<Vec<_>>();
+    let mut tables = Vec::new();
 
-            let parents = keys
-                .iter()
-                .filter(|(child, _, _, referenced)| *child == name && referenced == "id")
-                .map(|(_, column, parent, _)| (column.clone(), parent.clone()))
-                .collect();
+    for name in names {
+        let columns = columns
+            .iter()
+            .filter(|row| row.get::<String, _>(0) == name)
+            .map(|row| Column {
+                name: row.get(1),
+                data_type: row.get(2),
+                element: row.get::<String, _>(5).trim_start_matches('_').to_string(),
+                length: row.get(3),
+                required: row.get(4),
+            })
+            .collect::<Vec<_>>();
 
-            let literals = columns
+        let parents = keys
+            .iter()
+            .filter(|(child, _, _, referenced)| *child == name && referenced == "id")
+            .map(|(_, column, parent, _)| (column.clone(), parent.clone()))
+            .collect();
+
+        let mine: Vec<String> = checks
+            .iter()
+            .filter(|(table, _)| *table == name)
+            .map(|(_, def)| strip_casts(def))
+            .collect();
+
+        let mut literals: HashMap<String, String> = HashMap::new();
+        for column in &columns {
+            let said = mine
                 .iter()
-                .filter_map(|column| {
-                    let value = checks
+                .filter(|def| mentions(def, &column.name))
+                .find_map(|def| accepted_literal(def));
+
+            let value = match said {
+                Some(literal) => Some(literal),
+                None => {
+                    let pattern = mine
                         .iter()
-                        .filter(|(table, _)| *table == name)
-                        .filter(|(_, def)| mentions(def, &column.name))
-                        .find_map(|(_, def)| accepted_literal(def))?;
-                    Some((column.name.clone(), value))
-                })
-                .collect();
+                        .filter(|def| mentions(def, &column.name))
+                        .find_map(|def| regex_in(def));
+                    match pattern {
+                        Some(pattern) => matching(&shop.pool, &pattern, column).await,
+                        None => None,
+                    }
+                }
+            };
 
-            Table {
-                name,
-                columns,
-                parents,
-                literals,
+            if let Some(value) = value {
+                literals.insert(column.name.clone(), value);
             }
-        })
-        .collect()
+        }
+
+        tables.push(Table {
+            name,
+            columns,
+            parents,
+            literals,
+            checks: mine,
+        });
+    }
+
+    tables
+}
+
+/// `(locale)::text ~ '^[a-z]{2}'::text` reads as `locale ~ '^[a-z]{2}'`, which
+/// is what the patterns below are written against.
+fn strip_casts(def: &str) -> String {
+    let mut out = String::with_capacity(def.len());
+    let mut rest = def;
+    while let Some(at) = rest.find("::") {
+        out.push_str(&rest[..at]);
+        let after = &rest[at + 2..];
+        let end = after
+            .find(|c: char| !(c.is_alphanumeric() || c == '_' || c == ' '))
+            .unwrap_or(after.len());
+        rest = after[end..].strip_prefix("[]").unwrap_or(&after[end..]);
+    }
+    out.push_str(rest);
+    out
+}
+
+/// The regular expression a check holds, if it holds one.
+fn regex_in(def: &str) -> Option<String> {
+    let (_, rest) = def.split_once("~ '")?;
+    let (pattern, _) = rest.split_once('\'')?;
+    Some(pattern.to_string())
+}
+
+/// A value the pattern accepts, asked of Postgres rather than guessed: its
+/// regular expressions are its own, and a Rust one agreeing is not the point.
+///
+/// The column's own default is offered first, so a column that already seeded
+/// keeps the value it seeded with.
+async fn matching(pool: &sqlx::PgPool, pattern: &str, column: &Column) -> Option<String> {
+    let mut candidates: Vec<String> = Vec::new();
+    if let Some(default) = plain_text(column) {
+        candidates.push(default);
+    }
+    candidates.extend(["US", "USD", "en", "en-US", "tezgah"].map(str::to_string));
+
+    for candidate in candidates {
+        let accepted: bool = sqlx::query_scalar("select $1 ~ $2")
+            .bind(&candidate)
+            .bind(pattern)
+            .fetch_one(pool)
+            .await
+            .expect("Postgres to answer whether a value matches");
+        if accepted {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+/// The text this column would get from its type alone, unquoted.
+fn plain_text(column: &Column) -> Option<String> {
+    match column.data_type.as_str() {
+        "text" | "character varying" | "character" => Some(match column.length {
+            Some(2) => "US".into(),
+            Some(3) => "USD".into(),
+            _ => "tezgah".into(),
+        }),
+        _ => None,
+    }
+}
+
+/// The column an emptiness check insists on having something in:
+/// `cardinality(allowed_values) > 0`.
+fn non_empty_array(def: &str) -> Option<&str> {
+    if !def.contains("> 0") {
+        return None;
+    }
+    let (_, rest) = def
+        .split_once("cardinality(")
+        .or_else(|| def.split_once("array_length("))?;
+    let end = rest.find(|c: char| !(c.is_alphanumeric() || c == '_'))?;
+    Some(&rest[..end])
+}
+
+/// The scalar and the array of `default_currency_code = ANY (supported_currency_codes)`.
+/// A literal list — `= ANY (ARRAY[...])` — is somebody else's job.
+fn membership(def: &str) -> Option<(&str, &str)> {
+    let at = def.find(" = ANY (")?;
+    let scalar = ident_before(&def[..at])?;
+    let rest = def[at + " = ANY (".len()..].trim_start_matches(['(', ' ']);
+    let end = rest.find(|c: char| !(c.is_alphanumeric() || c == '_'))?;
+    let array = &rest[..end];
+    (!array.is_empty() && array != "ARRAY").then_some((scalar, array))
+}
+
+/// `type <> 'fixed' OR currency_code IS NOT NULL` — the column, the value that
+/// triggers it, and what then has to be filled in.
+fn implication(def: &str) -> Option<(&str, &str, &str)> {
+    let at = def.find(" <> '")?;
+    let column = ident_before(&def[..at])?;
+    let rest = &def[at + " <> '".len()..];
+    let (literal, _) = rest.split_once('\'')?;
+    let needs = def.find(" IS NOT NULL")?;
+    let needed = ident_before(&def[..needs])?;
+    Some((column, literal, needed))
+}
+
+/// The last identifier in a fragment, past whatever parentheses surround it.
+fn ident_before(fragment: &str) -> Option<&str> {
+    let trimmed = fragment.trim_end_matches([')', ' ']);
+    let start = trimmed
+        .rfind(|c: char| !(c.is_alphanumeric() || c == '_'))
+        .map_or(0, |at| at + 1);
+    (start < trimmed.len()).then(|| &trimmed[start..])
 }
 
 /// A value a check constraint says is allowed, where it says so plainly.
@@ -194,6 +329,64 @@ fn value(
     })
 }
 
+/// Bends the columns already chosen until the checks that tie them together
+/// are satisfied: an array that may not be empty, an array that must contain
+/// another column, a column that is only required because of what a second one
+/// holds.
+fn satisfy_checks(
+    table: &Table,
+    chosen: &mut Vec<(String, String)>,
+    id: Uuid,
+    seeded: &HashMap<String, Uuid>,
+) -> Result<(), String> {
+    fn held(chosen: &[(String, String)], name: &str) -> Option<String> {
+        chosen
+            .iter()
+            .find(|(column, _)| column == name)
+            .map(|(_, literal)| literal.clone())
+    }
+
+    fn put(chosen: &mut Vec<(String, String)>, name: &str, literal: String) {
+        chosen.retain(|(had, _)| had != name);
+        chosen.push((name.to_string(), literal));
+    }
+
+    for def in &table.checks {
+        if let Some(name) = non_empty_array(def) {
+            let column = table.columns.iter().find(|c| c.name == name);
+            if let (Some(column), Some(_)) = (column, held(chosen, name)) {
+                put(
+                    chosen,
+                    name,
+                    format!("array['tezgah']::{}[]", column.element),
+                );
+            }
+        }
+
+        if let Some((scalar, array)) = membership(def) {
+            let column = table.columns.iter().find(|c| c.name == array);
+            if let (Some(column), Some(inside)) = (column, held(chosen, scalar)) {
+                put(
+                    chosen,
+                    array,
+                    format!("array[{inside}]::{}[]", column.element),
+                );
+            }
+        }
+
+        if let Some((name, literal, needed)) = implication(def) {
+            let triggered = held(chosen, name).as_deref() == Some(format!("'{literal}'").as_str());
+            let column = table.columns.iter().find(|c| c.name == needed);
+            if let (true, None, Some(column)) = (triggered, held(chosen, needed), column) {
+                let filled = value(table, column, id, seeded)?;
+                chosen.push((needed.to_string(), filled));
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Seeds one row per table in `shop.here`, parents before children.
 ///
 /// Returns the tables that got a row, and the ones that did not with the reason.
@@ -224,8 +417,7 @@ async fn seed(shop: &Shop) -> (Vec<String>, Vec<(String, String)>) {
             }
 
             let id = Uuid::now_v7();
-            let mut names = vec![quote("id"), quote("scope")];
-            let mut values = vec![format!("'{id}'::uuid"), format!("'{}'::uuid", shop.here.0)];
+            let mut chosen: Vec<(String, String)> = Vec::new();
             let mut refused = None;
 
             for column in &table.columns {
@@ -233,10 +425,7 @@ async fn seed(shop: &Shop) -> (Vec<String>, Vec<(String, String)>) {
                     continue;
                 }
                 match value(table, column, id, &seeded) {
-                    Ok(literal) => {
-                        names.push(quote(&column.name));
-                        values.push(literal);
-                    }
+                    Ok(literal) => chosen.push((column.name.clone(), literal)),
                     Err(why) => {
                         refused = Some(format!("{}: {why}", column.name));
                         break;
@@ -248,6 +437,19 @@ async fn seed(shop: &Shop) -> (Vec<String>, Vec<(String, String)>) {
                 skipped.push((table.name.clone(), why));
                 progressed = true;
                 continue;
+            }
+
+            if let Err(why) = satisfy_checks(table, &mut chosen, id, &seeded) {
+                skipped.push((table.name.clone(), why));
+                progressed = true;
+                continue;
+            }
+
+            let mut names = vec![quote("id"), quote("scope")];
+            let mut values = vec![format!("'{id}'::uuid"), format!("'{}'::uuid", shop.here.0)];
+            for (column, literal) in &chosen {
+                names.push(quote(column));
+                values.push(literal.clone());
             }
 
             let statement = format!(
@@ -355,32 +557,13 @@ async fn no_registered_table_shows_its_rows_to_another_scope() {
     );
 }
 
-/// The coverage half of the test above, kept separate so a table nobody can
-/// seed is reported as a gap in the test rather than as a leak.
-/// Tables the seeder cannot yet build a row for, so isolation is asserted for
-/// everything else and these are named rather than quietly missing.
+/// Tables the seeder cannot build a row for, so isolation would be asserted for
+/// everything else and these named rather than quietly missing.
 ///
-/// The list may only shrink. Each one needs the seeder to understand something
-/// it does not: a check constraint that ties two columns together, a foreign
-/// key that is not a plain `id`, a cycle of required references.
-/// Tables the seeder cannot build a row for, so isolation is asserted for the
-/// other ninety-two and these are named rather than quietly missing.
-///
-/// Every one carries a check constraint that ties columns to each other — a
-/// currency required with a fixed amount and refused with a percentage, a
-/// locale that must match a shape, an array that may not be empty — and the
-/// seeder fills columns one at a time from their types alone.
-///
-/// The list may only shrink: a table that starts seeding fails this test until
-/// it is taken off.
-const NOT_YET_SEEDED: &[&str] = &[
-    "application_method",
-    "campaign_budget",
-    "price_list_rule",
-    "product_translation",
-    "promotion_rule",
-    "store",
-];
+/// Empty, and it may only shrink: a table that starts seeding fails this test
+/// until it is taken off, and one that stops has to be understood rather than
+/// listed.
+const NOT_YET_SEEDED: &[&str] = &[];
 
 #[tokio::test]
 async fn every_registered_table_can_be_seeded_so_isolation_is_actually_asked() {

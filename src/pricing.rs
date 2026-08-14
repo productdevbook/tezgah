@@ -31,6 +31,10 @@ pub const REGION_ATTRIBUTE: &str = "region_id";
 pub const CUSTOMER_GROUP_ATTRIBUTE: &str = "customer_group_id";
 pub const SALES_CHANNEL_ATTRIBUTE: &str = "sales_channel_id";
 
+/// Rules on one price are configuration, and their order carries meaning, so
+/// this is a ceiling rather than a cursor.
+const MAX_PRICE_RULES: i64 = 200;
+
 const LIST_TYPES: [&str; 2] = ["sale", "override"];
 const LIST_STATUSES: [&str; 3] = ["draft", "active", "expired"];
 const RULE_OPERATORS: [&str; 6] = ["eq", "in", "gt", "lt", "gte", "lte"];
@@ -666,10 +670,12 @@ pub async fn price_rules(tx: &mut Tx<'_>, ctx: &Ctx<'_>, price: PriceId) -> Resu
         "select id, price_id, attribute, value, operator, priority
          from price_rule
          where scope = $1 and price_id = $2
-         order by priority desc, attribute",
+         order by priority desc, attribute
+         limit $3",
     )
     .bind(ctx.scope.0)
     .bind(price.as_uuid())
+    .bind(MAX_PRICE_RULES)
     .fetch_all(&mut **tx)
     .await?;
 

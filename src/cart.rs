@@ -32,6 +32,15 @@ const LINE_COLUMNS: &str = "id, cart_id, variant_id, product_id, product_title, 
                             currency_code, is_tax_inclusive, is_discountable, requires_shipping, \
                             metadata, created_at, updated_at";
 
+/// Most line items one cart may be read with. Every caller here totals a
+/// whole cart, so this is a ceiling rather than a page: a cursor would hand
+/// checkout a partial cart and it would price it as if that were all of it.
+pub const MAX_LINES: i64 = 200;
+
+/// Most carts one sweep deletes. A caller runs it again until it comes back
+/// short.
+pub const MAX_BATCH: i64 = 500;
+
 const METHOD_COLUMNS: &str = "id, cart_id, shipping_option_id, name, description, amount, \
                               currency_code, is_tax_inclusive, data, metadata, created_at, \
                               updated_at";
@@ -378,10 +387,12 @@ pub async fn lines(tx: &mut Tx<'_>, ctx: &Ctx<'_>, cart_id: CartId) -> Result<Ve
     let rows = sqlx::query_as::<_, LineItem>(&format!(
         "select {LINE_COLUMNS} from cart_line_item
          where scope = $1 and cart_id = $2
-         order by created_at, id"
+         order by created_at, id
+         limit $3"
     ))
     .bind(ctx.scope.0)
     .bind(cart_id.as_uuid())
+    .bind(MAX_LINES)
     .fetch_all(&mut **tx)
     .await?;
 
@@ -879,7 +890,8 @@ pub async fn totals(tx: &mut Tx<'_>, ctx: &Ctx<'_>, cart_id: CartId) -> Result<C
 }
 
 /// Clears out the carts nobody came back to. Completed carts are never touched:
-/// one of those is an order's history.
+/// one of those is an order's history. At most [`MAX_BATCH`] a call: a sweep
+/// that came back full has more to take, so call it again until it does not.
 pub async fn expire(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -890,13 +902,20 @@ pub async fn expire(
     let gone: Vec<CartId> = sqlx::query_scalar(
         "delete from cart
          where scope = $1
-           and completed_at is null
-           and expires_at is not null
-           and expires_at <= $2
+           and id in (
+             select id from cart
+             where scope = $1
+               and completed_at is null
+               and expires_at is not null
+               and expires_at <= $2
+             order by expires_at, id
+             limit $3
+           )
          returning id",
     )
     .bind(ctx.scope.0)
     .bind(now)
+    .bind(MAX_BATCH)
     .fetch_all(&mut **tx)
     .await?;
 

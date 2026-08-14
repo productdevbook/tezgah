@@ -24,6 +24,14 @@ use crate::page::{Cursor, Page, Paging};
 use crate::ports::{Action, AuditEntry, Ctx, Permit, Resource, Tx};
 use crate::store;
 
+/// Tax is configuration: the regions an address falls in, the rates under them
+/// and the rules on a rate are all small and all wanted whole, so each is
+/// capped rather than paged — a page would silently tax a line at the wrong
+/// rate.
+const MAX_TAX_REGIONS: i64 = 100;
+const MAX_TAX_RATES: i64 = 500;
+const MAX_TAX_RATE_RULES: i64 = 1_000;
+
 /// The kind of thing a rate rule points at. The row it names lives in another
 /// domain, which is why the schema carries no foreign key for it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -435,10 +443,12 @@ pub async fn tax_rate_rules(
         "select id, tax_rate_id, reference, reference_id
          from tax_rate_rule
          where scope = $1 and tax_rate_id = $2
-         order by id",
+         order by id
+         limit $3",
     )
     .bind(ctx.scope.0)
     .bind(rate.as_uuid())
+    .bind(MAX_TAX_RATE_RULES)
     .fetch_all(&mut **tx)
     .await?;
 
@@ -484,11 +494,13 @@ pub async fn rates_for(
              or ($3::text is not null and lower(province_code) = lower($3))
            )
          -- Most specific first: a province before the country holding it.
-         order by province_code nulls last",
+         order by province_code nulls last
+         limit $4",
     )
     .bind(ctx.scope.0)
     .bind(&country)
     .bind(address.province_code.as_deref())
+    .bind(MAX_TAX_REGIONS)
     .fetch_all(&mut **tx)
     .await?;
 
@@ -501,10 +513,12 @@ pub async fn rates_for(
         "select id, tax_region_id, rate, code, name, is_default, is_combinable, created_at
          from tax_rate
          where scope = $1 and tax_region_id = any($2)
-         order by created_at, id",
+         order by created_at, id
+         limit $3",
     )
     .bind(ctx.scope.0)
     .bind(&ids)
+    .bind(MAX_TAX_RATES)
     .fetch_all(&mut **tx)
     .await?;
 
@@ -526,6 +540,9 @@ pub async fn rates_for(
 /// `is_tax_inclusive` says what the amounts already contain. Inclusive means
 /// the tax is taken out of the amount rather than added to it, so a line priced
 /// at 118 with an eighteen percent rate carries 18 of tax and not 21.24.
+///
+/// One tax line per line handed in per applicable rate: bounded by the caller's
+/// input, and by [`MAX_TAX_RATES`] behind it.
 pub async fn calculate(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -552,10 +569,12 @@ pub async fn calculate(
     let rules = sqlx::query_as::<_, TaxRateRuleRow>(
         "select id, tax_rate_id, reference, reference_id
          from tax_rate_rule
-         where scope = $1 and tax_rate_id = any($2)",
+         where scope = $1 and tax_rate_id = any($2)
+         limit $3",
     )
     .bind(ctx.scope.0)
     .bind(&rate_ids)
+    .bind(MAX_TAX_RATE_RULES)
     .fetch_all(&mut **tx)
     .await?;
 

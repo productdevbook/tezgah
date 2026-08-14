@@ -13,44 +13,15 @@
 //! 3. touch no database at all, so the length is whatever the caller passed in.
 //!
 //! Anything else has to be named in `TOLERATED` below with a reason. That list
-//! is a ratchet, not a permission: it is seeded with what was already unbounded
-//! when the check was written (tracked in issue #52) and nothing may be added
-//! to it. Emptying it closes that issue.
+//! is empty, which is the point: it was seeded with the seventeen functions
+//! issue #52 named, and they are all bounded now. Nothing may be added to it.
 
 use std::path::Path;
 
-/// Unbounded today, tracked in #52. Do not add to this list.
-const TOLERATED: [(&str, &str); 17] = [
-    ("cart::lines", "grows with the line items in one cart"),
-    ("cart::expire", "sweeps every expired cart in one go"),
-    ("customer::group_ids", "grows with a customer's groups"),
-    ("fulfilment::providers", "grows with configured providers"),
-    ("fulfilment::service_zones", "grows with a set's zones"),
-    (
-        "fulfilment::zones_for",
-        "grows with the zones an address hits",
-    ),
-    (
-        "fulfilment::options_for",
-        "grows with the options an address hits",
-    ),
-    ("fulfilment::labels", "grows with a fulfilment's labels"),
-    (
-        "inventory::inventory_items_for_variant",
-        "grows with the items behind a variant",
-    ),
-    (
-        "inventory::reservations_for_line_item",
-        "grows with a line's reservations",
-    ),
-    ("payment::providers", "grows with configured providers"),
-    ("pricing::price_rules", "grows with a price's rules"),
-    ("promotion::apply", "grows with the cart it is applied to"),
-    ("store::currencies", "grows with configured currencies"),
-    ("tax::tax_rate_rules", "grows with a rate's rules"),
-    ("tax::rates_for", "grows with the regions an address hits"),
-    ("tax::calculate", "grows with the lines handed in"),
-];
+/// Nothing. Every public function handing back a list is paged, capped by a
+/// named `MAX_*`, or bounded by what the caller passed in. Adding to this is
+/// not a fix.
+const TOLERATED: [(&str, &str); 0] = [];
 
 struct Function {
     at: String,

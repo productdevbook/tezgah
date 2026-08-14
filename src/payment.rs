@@ -63,6 +63,10 @@ use crate::money::{Currency, Money};
 use crate::page::{Cursor, Page, Paging};
 use crate::ports::{Action, Actor, AuditEntry, Ctx, Event, Permit, Resource, Tx};
 
+/// Providers are configuration, not a customer's data: a shop with more than
+/// this has a different problem from a missing page.
+const MAX_PROVIDERS: i64 = 200;
+
 // ---------------------------------------------------------------------------
 // Rows
 // ---------------------------------------------------------------------------
@@ -554,9 +558,11 @@ pub async fn providers(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<Vec<Provider>> 
     let _: Permit = ctx.permit(Action::View, Resource::Pricing)?;
 
     let rows = sqlx::query_as::<_, Provider>(
-        "select id, code, is_enabled from payment_provider where scope = $1 order by code",
+        "select id, code, is_enabled from payment_provider
+         where scope = $1 order by code limit $2",
     )
     .bind(ctx.scope.0)
+    .bind(MAX_PROVIDERS)
     .fetch_all(&mut **tx)
     .await?;
 

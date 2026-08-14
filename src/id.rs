@@ -124,6 +124,7 @@ ids! {
     OrderId => "order",
     OrderItemId => "order item",
     OrderChangeId => "order change",
+    OrderTransferId => "order transfer",
     PaymentCollectionId => "payment collection",
     PaymentSessionId => "payment session",
     PaymentProviderId => "payment provider",

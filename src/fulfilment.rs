@@ -25,6 +25,18 @@ use crate::money::Money;
 use crate::page::{Cursor, Page, Paging};
 use crate::ports::{Action, AuditEntry, Ctx, Event, Permit, Resource, Tx};
 
+/// Shipping is configuration: providers, a set's zones, the zones an address
+/// falls in and the options under them are wanted whole — an option missed
+/// because it fell off a page is an option the shopper cannot choose — so each
+/// is capped rather than paged.
+const MAX_PROVIDERS: i64 = 200;
+const MAX_SERVICE_ZONES: i64 = 500;
+const MAX_GEO_ZONES: i64 = 500;
+const MAX_SHIPPING_OPTIONS: i64 = 500;
+const MAX_OPTION_RULES: i64 = 2_000;
+/// Labels are read inside a fulfilment's detail, not browsed on their own.
+const MAX_LABELS: i64 = 200;
+
 /// Configuration belongs to the shop rather than to any one order, so the
 /// order it is judged against is nil.
 fn config(id: Uuid) -> Resource {
@@ -392,9 +404,11 @@ pub async fn providers(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<Vec<Fulfillment
     let _: Permit = ctx.permit(Action::View, config(Uuid::nil()))?;
 
     let rows = sqlx::query_as::<_, FulfillmentProviderRow>(
-        "select id, name, is_enabled from fulfillment_provider where scope = $1 order by name",
+        "select id, name, is_enabled from fulfillment_provider
+         where scope = $1 order by name limit $2",
     )
     .bind(ctx.scope.0)
+    .bind(MAX_PROVIDERS)
     .fetch_all(&mut **tx)
     .await?;
 
@@ -542,10 +556,12 @@ pub async fn service_zones(
         "select id, name, fulfillment_set_id, created_at
          from service_zone
          where scope = $1 and fulfillment_set_id = $2
-         order by created_at, id",
+         order by created_at, id
+         limit $3",
     )
     .bind(ctx.scope.0)
     .bind(set.as_uuid())
+    .bind(MAX_SERVICE_ZONES)
     .fetch_all(&mut **tx)
     .await?;
 
@@ -614,12 +630,14 @@ pub async fn zones_for(
          order by case type
                     when 'zip' then 0 when 'city' then 1 when 'province' then 2 else 3
                   end,
-                  created_at, id",
+                  created_at, id
+         limit $5",
     )
     .bind(ctx.scope.0)
     .bind(&country)
     .bind(address.province_code.as_deref())
     .bind(address.city.as_deref())
+    .bind(MAX_GEO_ZONES)
     .fetch_all(&mut **tx)
     .await?;
 
@@ -753,10 +771,12 @@ pub async fn options_for(
                 data, created_at
          from shipping_option
          where scope = $1 and service_zone_id = any($2)
-         order by created_at, id",
+         order by created_at, id
+         limit $3",
     )
     .bind(ctx.scope.0)
     .bind(&service_zones)
+    .bind(MAX_SHIPPING_OPTIONS)
     .fetch_all(&mut **tx)
     .await?;
 
@@ -768,10 +788,12 @@ pub async fn options_for(
     let rules = sqlx::query_as::<_, ShippingOptionRule>(
         "select id, attribute, operator, value, shipping_option_id
          from shipping_option_rule
-         where scope = $1 and shipping_option_id = any($2)",
+         where scope = $1 and shipping_option_id = any($2)
+         limit $3",
     )
     .bind(ctx.scope.0)
     .bind(&ids)
+    .bind(MAX_OPTION_RULES)
     .fetch_all(&mut **tx)
     .await?;
 
@@ -1218,10 +1240,12 @@ pub async fn labels(
         "select id, fulfillment_id, tracking_number, tracking_url, label_url
          from fulfillment_label
          where scope = $1 and fulfillment_id = $2
-         order by id",
+         order by id
+         limit $3",
     )
     .bind(ctx.scope.0)
     .bind(id.as_uuid())
+    .bind(MAX_LABELS)
     .fetch_all(&mut **tx)
     .await?;
 

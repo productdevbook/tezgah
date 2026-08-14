@@ -28,7 +28,15 @@ async fn the_migrations_apply_to_an_empty_database() {
 
 /// The registry's own tables and sqlx's bookkeeping. Nothing else belongs
 /// here: a table outside it is one no policy guards and no test looks at.
-const UNSCOPED: [&str; 3] = ["tezgah_scope", "tezgah_table", "_sqlx_migrations"];
+/// Tables that carry no scope on purpose: the scope registry itself, the table
+/// registry, sqlx's own, and the order transitions, which are the library's
+/// rules rather than a shop's.
+const UNSCOPED: [&str; 4] = [
+    "tezgah_scope",
+    "tezgah_table",
+    "_sqlx_migrations",
+    "tezgah_order_status_move",
+];
 
 #[tokio::test]
 async fn no_table_exists_that_the_registry_has_never_heard_of() {

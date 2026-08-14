@@ -23,6 +23,10 @@ const ADDRESS_COLUMNS: &str = "id, customer_id, label, is_default_shipping, is_d
      last_name, address_1, address_2, city, province, postal_code, country_code, phone, \
      metadata, created_at, updated_at";
 
+/// Most groups one customer is read as belonging to. Callers match price rules
+/// against the whole set, so this is a ceiling rather than a page.
+const MAX_GROUPS: i64 = 200;
+
 const GROUP_COLUMNS: &str = "id, name, metadata, created_at, updated_at";
 
 const MEMBER_COLUMNS: &str = "c.id, c.email, c.first_name, c.last_name, c.phone, c.company_name, c.has_account, \
@@ -881,10 +885,12 @@ pub async fn group_ids(
          from customer_group_customer m
          join customer_group g on g.scope = m.scope and g.id = m.customer_group_id
          where m.scope = $1 and m.customer_id = $2 and g.deleted_at is null
-         order by m.customer_group_id",
+         order by m.customer_group_id
+         limit $3",
     )
     .bind(ctx.scope.0)
     .bind(customer_id.as_uuid())
+    .bind(MAX_GROUPS)
     .fetch_all(&mut **tx)
     .await?;
 

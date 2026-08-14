@@ -207,13 +207,17 @@ pub async fn update_store(tx: &mut Tx<'_>, ctx: &Ctx<'_>, patch: StorePatch) -> 
     Ok(store)
 }
 
+/// The currencies this shop prices in. Configuration rather than anybody's
+/// data, so it is capped rather than paged.
 pub async fn currencies(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<Vec<CurrencyRow>> {
     let _: Permit = ctx.permit(Action::View, Resource::Pricing)?;
 
     let rows = sqlx::query_as::<_, CurrencyRow>(
-        "select code, symbol, name, exponent from currency where scope = $1 order by code",
+        "select code, symbol, name, exponent from currency
+         where scope = $1 order by code limit $2",
     )
     .bind(ctx.scope.0)
+    .bind(MAX_SUPPORTED_CURRENCIES)
     .fetch_all(&mut **tx)
     .await?;
 

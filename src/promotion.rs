@@ -26,6 +26,7 @@ use crate::store;
 
 /// Most rules one set of one promotion may be read back with.
 const MAX_RULES: i64 = 500;
+const MAX_SHIPPING_METHODS: i64 = 50;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PromotionKind {
@@ -1101,6 +1102,10 @@ struct Slot {
 /// order is fixed rather than incidental because each promotion works on what
 /// the ones before it left, so a percentage taken second is a percentage of
 /// less — and two carts with the same contents have to reach the same total.
+///
+/// One adjustment per slot a promotion takes, so bounded by the cart it is
+/// applied to: [`crate::cart::MAX_LINES`] lines and [`MAX_SHIPPING_METHODS`]
+/// methods.
 pub async fn apply(tx: &mut Tx<'_>, ctx: &Ctx<'_>, cart_id: CartId) -> Result<Vec<Adjustment>> {
     let cart = sqlx::query_as::<_, CartRow>(
         "select id, customer_id, email, region_id, currency_code, sales_channel_id, metadata,
@@ -1134,10 +1139,12 @@ pub async fn apply(tx: &mut Tx<'_>, ctx: &Ctx<'_>, cart_id: CartId) -> Result<Ve
                 is_tax_inclusive, is_discountable
          from cart_line_item
          where scope = $1 and cart_id = $2
-         order by created_at, id",
+         order by created_at, id
+         limit $3",
     )
     .bind(ctx.scope.0)
     .bind(cart_id.as_uuid())
+    .bind(crate::cart::MAX_LINES)
     .fetch_all(&mut **tx)
     .await?;
 
@@ -1145,10 +1152,12 @@ pub async fn apply(tx: &mut Tx<'_>, ctx: &Ctx<'_>, cart_id: CartId) -> Result<Ve
         "select id, shipping_option_id, name, amount, currency_code, is_tax_inclusive
          from cart_shipping_method
          where scope = $1 and cart_id = $2
-         order by created_at, id",
+         order by created_at, id
+         limit $3",
     )
     .bind(ctx.scope.0)
     .bind(cart_id.as_uuid())
+    .bind(MAX_SHIPPING_METHODS)
     .fetch_all(&mut **tx)
     .await?;
 

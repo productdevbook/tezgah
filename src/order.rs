@@ -26,19 +26,21 @@
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use sqlx::FromRow;
+use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
 use crate::cart::{CartTotals, TotalsLine, TotalsShipping, compute};
 use crate::error::{Error, Result};
 use crate::id::{
     AddressId, ClaimId, CustomerId, ExchangeId, LineItemId, OrderChangeId, OrderId, OrderItemId,
-    OrderTransactionId, PaymentCollectionId, RegionId, ReturnId, SalesChannelId, ShippingOptionId,
-    StockLocationId, VariantId,
+    OrderTransactionId, OrderTransferId, PaymentCollectionId, RegionId, ReturnId, SalesChannelId,
+    ShippingOptionId, StockLocationId, VariantId,
 };
 use crate::money::{Currency, Money};
 use crate::page::{Cursor, Page, Paging};
-use crate::ports::{Action, AuditEntry, Ctx, Event, Permit, Resource, Tx};
+use crate::ports::{Action, Actor, AuditEntry, Ctx, Event, Permit, Resource, Tx};
 
 const ORDER_COLUMNS: &str = "id, display_id, region_id, sales_channel_id, customer_id, \
                              shipping_address_id, billing_address_id, payment_collection_id, \
@@ -2784,6 +2786,354 @@ async fn carry_forward(
     }
 
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Transfer
+// ---------------------------------------------------------------------------
+
+/// An order offered to somebody else.
+///
+/// Ownership moves and nothing else does, so this is not a [`ChangeType`]: no
+/// version is written, no item row is copied, and the money owed is untouched.
+#[derive(Debug, Clone, FromRow)]
+pub struct OrderTransfer {
+    pub id: OrderTransferId,
+    pub order_id: OrderId,
+    pub from_customer_id: Option<CustomerId>,
+    pub to_customer_id: Option<CustomerId>,
+    pub to_email: String,
+    pub status: String,
+    pub expires_at: chrono::DateTime<chrono::Utc>,
+    pub requested_by: Option<String>,
+    pub requested_at: chrono::DateTime<chrono::Utc>,
+    pub settled_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+const TRANSFER_COLUMNS: &str = "id, order_id, from_customer_id, to_customer_id, to_email, \
+                                status, expires_at, requested_by, requested_at, settled_at, \
+                                created_at, updated_at";
+
+/// A fresh transfer and the one time its token is readable.
+///
+/// The token is not stored and cannot be read back: only its hash is kept, so
+/// whoever asked has to send it to the recipient now or ask again.
+#[derive(Debug, Clone)]
+pub struct RequestedTransfer {
+    pub transfer: OrderTransfer,
+    pub token: String,
+}
+
+pub async fn request_transfer(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order_id: OrderId,
+    to_email: String,
+    expires_at: chrono::DateTime<chrono::Utc>,
+) -> Result<RequestedTransfer> {
+    let order = read(tx, ctx, order_id).await?;
+
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Order {
+            id: order_id.as_uuid(),
+            customer: order.customer_id.map(CustomerId::as_uuid),
+        },
+    )?;
+
+    if order.status()?.is_final() {
+        return Err(Error::conflict("that order is closed"));
+    }
+    if expires_at <= ctx.now() {
+        return Err(Error::invalid("a transfer that has already expired"));
+    }
+
+    let token = fresh_token(tx).await?;
+    let id = OrderTransferId::new();
+    let transfer = sqlx::query_as::<_, OrderTransfer>(&format!(
+        "insert into order_transfer
+             (id, scope, order_id, from_customer_id, to_email, token_hash, status,
+              expires_at, requested_by, requested_at)
+         values ($1, $2, $3, $4, $5, $6, 'requested', $7, $8, $9)
+         returning {TRANSFER_COLUMNS}"
+    ))
+    .bind(id.as_uuid())
+    .bind(ctx.scope.0)
+    .bind(order_id.as_uuid())
+    .bind(order.customer_id.map(CustomerId::as_uuid))
+    .bind(&to_email)
+    .bind(digest(&token))
+    .bind(expires_at)
+    .bind(actor_name(ctx))
+    .bind(ctx.now())
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(|error| match &error {
+        sqlx::Error::Database(failure) if failure.is_unique_violation() => {
+            Error::conflict("that order is already offered to somebody")
+        }
+        _ => Error::from(error),
+    })?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "order_transfer",
+            entity_id: id.as_uuid(),
+            summary: serde_json::json!({ "order": order_id, "to": to_email }),
+        },
+    )
+    .await?;
+
+    ctx.emit(
+        tx,
+        Event {
+            name: "order.transfer_requested",
+            entity_id: order_id.as_uuid(),
+            payload: serde_json::json!({ "transfer": id, "to": to_email }),
+        },
+    )
+    .await?;
+
+    Ok(RequestedTransfer { transfer, token })
+}
+
+/// Takes the order over. The token is the claim; the permit is asked about the
+/// customer who would end up owning it rather than the one who still does.
+pub async fn accept_transfer(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order_id: OrderId,
+    token: &str,
+    by: CustomerId,
+) -> Result<Order> {
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Order {
+            id: order_id.as_uuid(),
+            customer: Some(by.as_uuid()),
+        },
+    )?;
+
+    let open = open_transfer(tx, ctx, order_id, Some(token)).await?;
+    if open.expires_at <= ctx.now() {
+        return Err(Error::conflict("that transfer has expired"));
+    }
+
+    settle(tx, ctx, open.id, "accepted", Some(by)).await?;
+
+    let moved = sqlx::query_as::<_, Order>(&format!(
+        r#"update "order" set customer_id = $3
+           where scope = $1 and id = $2
+           returning {ORDER_COLUMNS}"#
+    ))
+    .bind(ctx.scope.0)
+    .bind(order_id.as_uuid())
+    .bind(by.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("order"))?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "order",
+            entity_id: order_id.as_uuid(),
+            summary: serde_json::json!({
+                "transfer": open.id,
+                "from": open.from_customer_id,
+                "to": by,
+            }),
+        },
+    )
+    .await?;
+
+    ctx.emit(
+        tx,
+        Event {
+            name: "order.transferred",
+            entity_id: order_id.as_uuid(),
+            payload: serde_json::json!({
+                "transfer": open.id,
+                "from": open.from_customer_id,
+                "to": by,
+            }),
+        },
+    )
+    .await?;
+
+    Ok(moved)
+}
+
+/// The recipient says no. Holding the token is what says it is theirs to
+/// refuse, so an expired one may still be declined.
+pub async fn decline_transfer(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order_id: OrderId,
+    token: &str,
+) -> Result<OrderTransfer> {
+    let open = open_transfer(tx, ctx, order_id, Some(token)).await?;
+
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Order {
+            id: order_id.as_uuid(),
+            customer: open.to_customer_id.map(CustomerId::as_uuid),
+        },
+    )?;
+
+    let settled = settle(tx, ctx, open.id, "declined", None).await?;
+
+    ctx.emit(
+        tx,
+        Event {
+            name: "order.transfer_declined",
+            entity_id: order_id.as_uuid(),
+            payload: serde_json::json!({ "transfer": open.id }),
+        },
+    )
+    .await?;
+
+    Ok(settled)
+}
+
+/// The owner withdraws the offer. No token: whoever still owns the order is
+/// who may take it back.
+pub async fn cancel_transfer(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order_id: OrderId,
+) -> Result<OrderTransfer> {
+    let order = read(tx, ctx, order_id).await?;
+
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Order {
+            id: order_id.as_uuid(),
+            customer: order.customer_id.map(CustomerId::as_uuid),
+        },
+    )?;
+
+    let open = open_transfer(tx, ctx, order_id, None).await?;
+    let settled = settle(tx, ctx, open.id, "canceled", None).await?;
+
+    ctx.emit(
+        tx,
+        Event {
+            name: "order.transfer_canceled",
+            entity_id: order_id.as_uuid(),
+            payload: serde_json::json!({ "transfer": open.id }),
+        },
+    )
+    .await?;
+
+    Ok(settled)
+}
+
+/// The order's one open transfer, and when a token is given, only if it is the
+/// one that was issued.
+async fn open_transfer(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order_id: OrderId,
+    token: Option<&str>,
+) -> Result<OrderTransfer> {
+    let transfer = sqlx::query_as::<_, OrderTransfer>(&format!(
+        "select {TRANSFER_COLUMNS} from order_transfer
+         where scope = $1 and order_id = $2 and status = 'requested'"
+    ))
+    .bind(ctx.scope.0)
+    .bind(order_id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("order transfer"))?;
+
+    if let Some(token) = token {
+        let hash: String = sqlx::query_scalar(
+            "select token_hash from order_transfer where scope = $1 and id = $2",
+        )
+        .bind(ctx.scope.0)
+        .bind(transfer.id.as_uuid())
+        .fetch_one(&mut **tx)
+        .await?;
+
+        // Constant time: a comparison that stops at the first wrong byte tells
+        // whoever is guessing how much of the token they have right.
+        let matches: bool = digest(token).as_bytes().ct_eq(hash.as_bytes()).into();
+        if !matches {
+            return Err(Error::denied());
+        }
+    }
+
+    Ok(transfer)
+}
+
+async fn settle(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderTransferId,
+    status: &str,
+    to_customer: Option<CustomerId>,
+) -> Result<OrderTransfer> {
+    let settled = sqlx::query_as::<_, OrderTransfer>(&format!(
+        "update order_transfer
+            set status = $3,
+                settled_at = $4,
+                to_customer_id = coalesce($5, to_customer_id)
+          where scope = $1 and id = $2 and status = 'requested'
+          returning {TRANSFER_COLUMNS}"
+    ))
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .bind(status)
+    .bind(ctx.now())
+    .bind(to_customer.map(CustomerId::as_uuid))
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::conflict("that transfer was settled while this was being decided"))?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "order_transfer",
+            entity_id: id.as_uuid(),
+            summary: serde_json::json!({ "status": status }),
+        },
+    )
+    .await?;
+
+    Ok(settled)
+}
+
+/// 256 bits from the database's own generator, so no host has to supply one.
+async fn fresh_token(tx: &mut Tx<'_>) -> Result<String> {
+    Ok(sqlx::query_scalar::<_, String>(
+        "select replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '')",
+    )
+    .fetch_one(&mut **tx)
+    .await?)
+}
+
+fn digest(token: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(token.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
+fn actor_name(ctx: &Ctx<'_>) -> Option<String> {
+    match ctx.actor {
+        Actor::Staff { id } | Actor::Customer { id } => Some(id.to_string()),
+        Actor::Guest { .. } | Actor::System => None,
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -25,6 +25,10 @@ use crate::ports::{Action, AuditEntry, Ctx, Event, Permit, Resource, Tx};
 const LEVEL_COLUMNS: &str = "id, inventory_item_id, location_id, stocked_quantity,
      reserved_quantity, incoming_quantity, available_quantity, created_at";
 
+/// What one variant is made of: a bundle, not a customer's data, and every
+/// part of it is needed to reserve stock — so a ceiling rather than a page.
+const MAX_ITEMS_PER_VARIANT: i64 = 200;
+
 const RESERVATION_COLUMNS: &str = "id, inventory_item_id, location_id, quantity, line_item_id,
      allows_backorder, expires_at, created_at";
 
@@ -620,10 +624,12 @@ pub async fn inventory_items_for_variant(
         "select variant_id, inventory_item_id, required_quantity
          from variant_inventory_item
          where scope = $1 and variant_id = $2
-         order by inventory_item_id",
+         order by inventory_item_id
+         limit $3",
     )
     .bind(ctx.scope.0)
     .bind(variant_id.as_uuid())
+    .bind(MAX_ITEMS_PER_VARIANT)
     .fetch_all(&mut **tx)
     .await?;
 
@@ -1096,21 +1102,30 @@ pub async fn reservations_for_line_item(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
     line_item_id: LineItemId,
-) -> Result<Vec<Reservation>> {
+    paging: Paging,
+) -> Result<Page<Reservation>> {
     let _: Permit = ctx.permit(Action::View, Resource::Inventory { id: None })?;
 
     let rows = sqlx::query_as::<_, Reservation>(&format!(
         "select {RESERVATION_COLUMNS}
          from reservation_item
          where scope = $1 and line_item_id = $2
-         order by created_at, id"
+           and ($3::timestamptz is null or (created_at, id) > ($3, $4))
+         order by created_at, id
+         limit $5"
     ))
     .bind(ctx.scope.0)
     .bind(line_item_id.as_uuid())
+    .bind(paging.after.map(|c| c.at))
+    .bind(paging.after.map(|c| c.id))
+    .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(rows)
+    Ok(Page::build(rows, paging, |row| Cursor {
+        at: row.created_at,
+        id: row.id.as_uuid(),
+    }))
 }
 
 pub async fn reservations(

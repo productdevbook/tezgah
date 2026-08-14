@@ -977,8 +977,8 @@ pub async fn delete_tax_rate(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: TaxRateId) -> R
     tax::delete_tax_rate(tx, ctx, id).await
 }
 
-/// Bounded by how many rules one rate has, which is configuration rather than
-/// a customer's data.
+/// Capped rather than paged: rules on one rate are configuration rather than a
+/// customer's data.
 pub async fn list_tax_rate_rules(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,

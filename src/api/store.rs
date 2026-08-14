@@ -1600,6 +1600,95 @@ pub async fn get_my_order(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: OrderId) -> Result
     Ok(OrderView::from(found))
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransferView {
+    pub id: crate::id::OrderTransferId,
+    pub order_id: OrderId,
+    pub to_email: String,
+    pub status: String,
+    pub expires_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl From<order::OrderTransfer> for TransferView {
+    fn from(row: order::OrderTransfer) -> Self {
+        TransferView {
+            id: row.id,
+            order_id: row.order_id,
+            to_email: row.to_email,
+            status: row.status,
+            expires_at: row.expires_at,
+        }
+    }
+}
+
+/// The token is here and nowhere else: it is not stored and this response is
+/// the only time it can be read.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RequestedTransferView {
+    pub transfer: TransferView,
+    pub token: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RequestTransfer {
+    pub to_email: String,
+    pub expires_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ClaimTransfer {
+    pub token: String,
+}
+
+pub async fn request_transfer(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderId,
+    input: RequestTransfer,
+) -> Result<RequestedTransferView> {
+    own_order(tx, ctx, id, Action::Write).await?;
+
+    let made = order::request_transfer(tx, ctx, id, input.to_email, input.expires_at).await?;
+    Ok(RequestedTransferView {
+        transfer: TransferView::from(made.transfer),
+        token: made.token,
+    })
+}
+
+/// No `own_order` here: the order is somebody else's until this succeeds, and
+/// the token is what says the asker was offered it.
+pub async fn accept_transfer(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderId,
+    input: ClaimTransfer,
+) -> Result<OrderView> {
+    let who = signed_in(ctx)?;
+    Ok(OrderView::from(
+        order::accept_transfer(tx, ctx, id, &input.token, who).await?,
+    ))
+}
+
+pub async fn decline_transfer(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderId,
+    input: ClaimTransfer,
+) -> Result<TransferView> {
+    Ok(TransferView::from(
+        order::decline_transfer(tx, ctx, id, &input.token).await?,
+    ))
+}
+
+pub async fn cancel_transfer(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: OrderId) -> Result<TransferView> {
+    own_order(tx, ctx, id, Action::Write).await?;
+    Ok(TransferView::from(
+        order::cancel_transfer(tx, ctx, id).await?,
+    ))
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ReturnLineInput {
@@ -2088,6 +2177,38 @@ pub(super) static ROUTES: &[Route] = &[
         action: Action::View,
         domain: "order",
         summary: "Fetch one of one's own orders",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Post,
+        path: "/store/orders/{id}/transfer/request",
+        action: Action::Write,
+        domain: "order",
+        summary: "Offer one of one's own orders to somebody else",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Post,
+        path: "/store/orders/{id}/transfer/accept",
+        action: Action::Write,
+        domain: "order",
+        summary: "Take over an order one was offered",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Post,
+        path: "/store/orders/{id}/transfer/decline",
+        action: Action::Write,
+        domain: "order",
+        summary: "Refuse an order one was offered",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Post,
+        path: "/store/orders/{id}/transfer/cancel",
+        action: Action::Write,
+        domain: "order",
+        summary: "Withdraw an offer of one's own order",
     },
     Route {
         surface: Surface::Store,
