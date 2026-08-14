@@ -225,7 +225,7 @@ async fn giftcards_of(shop: &Shop, order_id: OrderId) -> i64 {
     )
     .bind(shop.here.0)
     .bind(order_id.as_uuid())
-    .fetch_one(&mut tx)
+    .fetch_one(&mut *tx)
     .await
     .expect("the gift cards this order printed");
     tx.rollback().await.expect("to roll back");
@@ -239,7 +239,7 @@ async fn entitlements_of(shop: &Shop, order_id: OrderId) -> i64 {
     )
     .bind(shop.here.0)
     .bind(order_id.as_uuid())
-    .fetch_one(&mut tx)
+    .fetch_one(&mut *tx)
     .await
     .expect("the live entitlements this order granted");
     tx.rollback().await.expect("to roll back");
@@ -255,7 +255,7 @@ async fn periods_of(shop: &Shop, subscription_id: SubscriptionId) -> Vec<(i32, S
     )
     .bind(shop.here.0)
     .bind(subscription_id.as_uuid())
-    .fetch_all(&mut tx)
+    .fetch_all(&mut *tx)
     .await
     .expect("the periods billed so far");
     tx.rollback().await.expect("to roll back");
