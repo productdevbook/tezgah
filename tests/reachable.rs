@@ -11,14 +11,31 @@
 //! 1. every free `pub fn` outside `src/api/` has a caller somewhere else in
 //!    the crate;
 //! 2. every table a migration creates has a writer in `src/`;
-//! 3. every value a `check (col in (..))` permits is written somewhere in
-//!    `src/`.
+//! 3. every value a `check (col in (..))` permits appears as a `'literal'`
+//!    somewhere in `src/`.
 //!
 //! What this does not prove: that a caller is on a path a request can reach,
 //! or that a route is wired up by the host, or that the value written is
 //! written in the right column. Names are matched textually — a caller is a
 //! `module::name(` elsewhere, or a bare `name(` in a file that imported it —
 //! so two functions sharing a name share their callers.
+//!
+//! Check 3 is weaker than checks 1 and 2, and it is worth being exact about
+//! how. It does not distinguish where a literal sits — a value in a `match`
+//! arm or a `where` clause passes the same as one in an `insert`, so `'lot'`
+//! and `'serial'` (#110) and eight `withdrawal_exclusion` reasons (#111)
+//! passed this check while nothing could write any of them; both were found
+//! by hand. It reads only `src/`, so a value a trigger writes in
+//! `migrations/` — `order.fulfillment_status`, moved by
+//! `tezgah_order_fulfillment_status` in migration 0022 on every `order_item`
+//! change — looks unwritten when it is not. And it cannot follow data: a
+//! column fed by a caller's string, validated at insert time by the check
+//! constraint itself, has no literal to find even though the value is fully
+//! reachable — `customer_tax_id.tax_id_type` and `tax_exemption.kind` are
+//! exactly this, now that #107's routes exist. None of that makes the check
+//! worthless — a value with no literal and no writer anywhere is still worth
+//! a human look — but its tolerated reasons say what the check actually
+//! found: "not a literal in `src/`", not "unreachable". See #118.
 //!
 //! Constraints are read from `migrations/` rather than the catalogue, where
 //! `tests/schema.rs` reads them. The catalogue is the more accurate of the
@@ -319,89 +336,99 @@ const TOLERATED_TABLES: [(&str, &str); 6] = [
     ),
 ];
 
-/// Values a check constraint permits and nothing in `src/` writes, with the
-/// reason each is not a hole.
+/// Values a check constraint permits and no `'literal'` for appears in
+/// `src/`. That is all this check can see — not that the value is
+/// unreachable. Each reason says which of the three shapes it is: written by
+/// SQL the scanner does not read, written from a caller's string the
+/// scanner cannot follow, or genuinely not offered yet, in which case the
+/// reason names the issue.
 const TOLERATED_VALUES: [(&str, &str); 19] = [
     (
         "workflow_step.state = 'skipped'",
         "a step a compensation walked past; the runner has no branch that \
-         writes it yet",
+         writes it yet, and no issue tracks it",
     ),
     (
         "order.fulfillment_status = 'not_fulfilled'",
-        "the order fulfilment ladder is carried by the fulfilment tables and \
-         the column is never set from the library",
+        "written by the tezgah_order_fulfillment_status trigger installed in \
+         migration 0022 on every order_item change, not by a literal in \
+         src/; this check only reads src/, see #118",
     ),
     (
         "order.fulfillment_status = 'partially_fulfilled'",
-        "same ladder, same reason: nothing writes the column",
+        "same trigger, same reason: written in SQL, not as a literal in src/",
     ),
     (
         "order.fulfillment_status = 'partially_shipped'",
-        "same ladder, same reason: nothing writes the column",
+        "same trigger, same reason: written in SQL, not as a literal in src/",
     ),
     (
         "order.fulfillment_status = 'partially_delivered'",
-        "same ladder, same reason: nothing writes the column",
+        "same trigger, same reason: written in SQL, not as a literal in src/",
     ),
     (
         "order.fulfillment_status = 'partially_returned'",
-        "same ladder, same reason: nothing writes the column",
+        "same trigger, same reason: written in SQL, not as a literal in src/",
     ),
     (
         "order.fulfillment_status = 'returned'",
-        "same ladder, same reason: nothing writes the column",
+        "same trigger, same reason: written in SQL, not as a literal in src/",
     ),
     (
         "order_return.status = 'open'",
         "a return is written `requested` and moves on from there; 'open' is a \
-         state the library never puts a return in",
+         state the library never puts a return in — a deliberate omission, \
+         not missing work",
     ),
     (
         "customer_tax_id.tax_id_type = 'ein'",
-        "the tax identity tables shipped with nothing writing them, see #107",
+        "reachable now: #107's routes take this as a caller-supplied string, \
+         validated at insert by this same check constraint; the value has no \
+         literal in src/ for this check to find, see #118",
     ),
     (
         "customer_tax_id.tax_id_type = 'vkn'",
-        "the tax identity tables shipped with nothing writing them, see #107",
+        "same column, same reason: a caller's string, not a literal in src/",
     ),
     (
         "customer_tax_id.tax_id_type = 'tckn'",
-        "the tax identity tables shipped with nothing writing them, see #107",
+        "same column, same reason: a caller's string, not a literal in src/",
     ),
     (
         "customer_tax_id.tax_id_type = 'gst'",
-        "the tax identity tables shipped with nothing writing them, see #107",
+        "same column, same reason: a caller's string, not a literal in src/",
     ),
     (
         "customer_tax_id.tax_id_type = 'abn'",
-        "the tax identity tables shipped with nothing writing them, see #107",
+        "same column, same reason: a caller's string, not a literal in src/",
     ),
     (
         "tax_exemption.kind = 'nonprofit'",
-        "an exemption kind no caller names, see #107",
+        "reachable now: #107's routes take this as a caller-supplied string, \
+         validated at insert by this same check constraint; the value has no \
+         literal in src/ for this check to find, see #118",
     ),
     (
         "tax_exemption.kind = 'government'",
-        "an exemption kind no caller names, see #107",
+        "same column, same reason: a caller's string, not a literal in src/",
     ),
     (
         "tax_exemption.kind = 'diplomatic'",
-        "an exemption kind no caller names, see #107",
+        "same column, same reason: a caller's string, not a literal in src/",
     ),
     (
         "tax_exemption.kind = 'export'",
-        "an exemption kind no caller names, see #107",
+        "same column, same reason: a caller's string, not a literal in src/",
     ),
     (
         "gift_card_transaction.kind = 'adjust'",
         "a manual correction to a gift card's balance, which nothing offers \
-         yet, see #108",
+         yet, see #128",
     ),
     (
         "store_credit_transaction.kind = 'adjust'",
         "a manual correction to a credit balance, which nothing offers yet, \
-         see #108",
+         see #128",
     ),
 ];
 
@@ -802,8 +829,12 @@ fn permitted_values(migrations: &str) -> Vec<(String, String, Vec<String>)> {
     out
 }
 
+/// Advisory, not proof: a value with no `'literal'` in `src/` may still be
+/// written from SQL (a trigger, a function body) or from a caller's data
+/// that this textual scan cannot follow — see the module doc. What this
+/// finds is worth a human look, not a verdict.
 #[test]
-fn every_permitted_value_is_written_somewhere() {
+fn every_permitted_value_appears_as_a_literal_in_src() {
     let migrations = migrations();
     let source: String = sources()
         .into_iter()
@@ -838,7 +869,9 @@ fn every_permitted_value_is_written_somewhere() {
 
     assert!(
         unwritten.is_empty(),
-        "the database permits these and nothing writes one:\n  {}\n\
+        "the database permits these and no literal for them appears in src/ \
+         (a trigger or a caller's data could still write one — this check \
+         cannot tell):\n  {}\n\
          Write them, narrow the constraint, or name them in TOLERATED_VALUES \
          with the reason.",
         unwritten.join("\n  ")
@@ -851,7 +884,7 @@ fn every_permitted_value_is_written_somewhere() {
         .collect();
     assert!(
         stale.is_empty(),
-        "these are written now, or the constraint changed; take them out of \
-         TOLERATED_VALUES: {stale:?}"
+        "these have a literal in src/ now, or the constraint changed; take \
+         them out of TOLERATED_VALUES: {stale:?}"
     );
 }
