@@ -25,7 +25,7 @@ use crate::ports::Action;
 /// Which surface a route belongs to. The same resource is usually reachable on
 /// both and answers differently: a shopper sees a published product, an
 /// operator sees the draft beside it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Surface {
     /// Reached by a shopper, with a publishable key.
     Store,
@@ -33,7 +33,7 @@ pub enum Surface {
     Admin,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Method {
     Get,
     Post,

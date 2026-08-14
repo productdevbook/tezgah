@@ -28,7 +28,6 @@ pub struct ProductView {
     pub title: String,
     pub subtitle: Option<String>,
     pub description: Option<String>,
-    pub thumbnail: Option<String>,
 }
 
 impl From<catalogue::Product> for ProductView {
@@ -39,7 +38,6 @@ impl From<catalogue::Product> for ProductView {
             title: row.title,
             subtitle: row.subtitle,
             description: row.description,
-            thumbnail: row.thumbnail,
         }
     }
 }
