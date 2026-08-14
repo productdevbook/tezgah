@@ -72,7 +72,12 @@ pub struct Route {
 ///
 /// The router, the OpenAPI document and the permission matrix test all read
 /// this, so a route that exists in one and not the others cannot happen.
-pub static ROUTES: &[Route] = &[];
+pub fn routes() -> Vec<Route> {
+    let mut all = Vec::with_capacity(store::ROUTES.len() + admin::ROUTES.len());
+    all.extend_from_slice(store::ROUTES);
+    all.extend_from_slice(admin::ROUTES);
+    all
+}
 
 #[cfg(test)]
 mod tests {
@@ -81,7 +86,7 @@ mod tests {
     #[test]
     fn no_two_routes_answer_the_same_call() {
         let mut seen = std::collections::BTreeSet::new();
-        for route in ROUTES {
+        for route in routes() {
             let key = (route.surface, route.method, route.path);
             assert!(
                 seen.insert(key),
@@ -94,7 +99,7 @@ mod tests {
 
     #[test]
     fn a_path_parameter_is_written_the_one_way() {
-        for route in ROUTES {
+        for route in routes() {
             assert!(
                 !route.path.contains(':') && !route.path.contains('<'),
                 "{} uses a framework's parameter syntax; use {{name}}",
@@ -110,7 +115,7 @@ mod tests {
 
     #[test]
     fn a_reading_route_does_not_ask_for_a_writing_permission() {
-        for route in ROUTES {
+        for route in routes() {
             if route.method == Method::Get {
                 assert_eq!(
                     route.action,

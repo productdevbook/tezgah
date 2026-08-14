@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+pub mod api;
 pub mod cart;
 pub mod catalogue;
 pub mod checkout;
