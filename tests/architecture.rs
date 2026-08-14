@@ -173,6 +173,7 @@ fn a_domain_reaches_only_for_the_kernel_and_what_is_declared_shared() {
                 "credit",
                 "digital",
                 "promotion",
+                "subscription",
                 "tax",
             ][..],
         ),
@@ -213,6 +214,15 @@ fn a_domain_reaches_only_for_the_kernel_and_what_is_declared_shared() {
         // it reaches both and neither reaches back: the day `order` wants to
         // know what a line entitled somebody to, it asks through a surface.
         ("digital", &["catalogue", "order"][..]),
+        // A contract resolves its own price, reserves its own stock, writes its
+        // own order and charges a stored instrument, so it reaches most of the
+        // shop. Nothing reaches back: the day `order` wants to know which
+        // contract produced it, it asks through a surface, because the arrow
+        // reversing is the cycle.
+        (
+            "subscription",
+            &["inventory", "order", "payment", "pricing", "tax"][..],
+        ),
         ("providers", &["payment"][..]),
         // promotion::apply reads a cart's lines and bounds them by the ceiling
         // cart owns. This is the edge that would become a cycle the day cart

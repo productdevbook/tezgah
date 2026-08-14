@@ -27,6 +27,7 @@ pub mod digital;
 pub mod inventory_lot;
 pub mod openapi;
 pub mod store;
+pub mod subscription;
 pub mod tax_identity;
 
 use crate::id::{CartId, CustomerId, OrderId};
@@ -141,6 +142,7 @@ pub fn routes() -> Vec<Route> {
             + credit::ROUTES.len()
             + digital::ROUTES.len()
             + inventory_lot::ROUTES.len()
+            + subscription::ROUTES.len()
             + tax_identity::ROUTES.len(),
     );
     all.extend_from_slice(store::ROUTES);
@@ -152,6 +154,7 @@ pub fn routes() -> Vec<Route> {
     all.extend_from_slice(credit::ROUTES);
     all.extend_from_slice(digital::ROUTES);
     all.extend_from_slice(inventory_lot::ROUTES);
+    all.extend_from_slice(subscription::ROUTES);
     all.extend_from_slice(tax_identity::ROUTES);
     all
 }

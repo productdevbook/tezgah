@@ -10548,6 +10548,179 @@
         "x-tezgah-permission": "write"
       }
     },
+    "/admin/selling-plan-groups": {
+      "get": {
+        "operationId": "getAdminSellingPlanGroups",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "List the groups of selling plans",
+        "tags": [
+          "subscription"
+        ],
+        "x-tezgah-permission": "view"
+      },
+      "post": {
+        "operationId": "postAdminSellingPlanGroups",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Write a group of selling plans",
+        "tags": [
+          "subscription"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/selling-plan-groups/{id}/plans": {
+      "get": {
+        "operationId": "getAdminSellingPlanGroupsByIdPlans",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "List a group's plans",
+        "tags": [
+          "subscription"
+        ],
+        "x-tezgah-permission": "view"
+      },
+      "post": {
+        "operationId": "postAdminSellingPlanGroupsByIdPlans",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Add a plan to a group",
+        "tags": [
+          "subscription"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/selling-plans/{id}/variants": {
+      "post": {
+        "operationId": "postAdminSellingPlansByIdVariants",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Offer a variant on this plan",
+        "tags": [
+          "subscription"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
     "/admin/shipping-option-types": {
       "get": {
         "operationId": "getAdminShippingOptionTypes",
@@ -11341,6 +11514,250 @@
           "store"
         ],
         "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/subscriptions": {
+      "get": {
+        "operationId": "getAdminSubscriptions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "List the contracts",
+        "tags": [
+          "subscription"
+        ],
+        "x-tezgah-permission": "view"
+      },
+      "post": {
+        "operationId": "postAdminSubscriptions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Open a contract",
+        "tags": [
+          "subscription"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/subscriptions/due": {
+      "get": {
+        "operationId": "getAdminSubscriptionsDue",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "What is owed a renewal",
+        "tags": [
+          "subscription"
+        ],
+        "x-tezgah-permission": "view"
+      }
+    },
+    "/admin/subscriptions/{id}": {
+      "get": {
+        "operationId": "getAdminSubscriptionsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "One contract and what it is for",
+        "tags": [
+          "subscription"
+        ],
+        "x-tezgah-permission": "view"
+      }
+    },
+    "/admin/subscriptions/{id}/cancel": {
+      "post": {
+        "operationId": "postAdminSubscriptionsByIdCancel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Stop a contract",
+        "tags": [
+          "subscription"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/subscriptions/{id}/events": {
+      "get": {
+        "operationId": "getAdminSubscriptionsByIdEvents",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "What has happened to this contract",
+        "tags": [
+          "subscription"
+        ],
+        "x-tezgah-permission": "view"
+      }
+    },
+    "/admin/subscriptions/{id}/renew": {
+      "post": {
+        "operationId": "postAdminSubscriptionsByIdRenew",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Bill this contract for the cycle it is owed",
+        "tags": [
+          "subscription"
+        ],
+        "x-tezgah-permission": "settle"
       }
     },
     "/admin/tax-exemptions/{id}/revoke": {
@@ -14448,6 +14865,75 @@
         ],
         "x-tezgah-permission": "write"
       }
+    },
+    "/store/subscriptions": {
+      "get": {
+        "operationId": "getStoreSubscriptions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "publishableKey": []
+          }
+        ],
+        "summary": "What I have subscribed to",
+        "tags": [
+          "subscription"
+        ],
+        "x-tezgah-permission": "view"
+      }
+    },
+    "/store/subscriptions/{id}/cancel": {
+      "post": {
+        "operationId": "postStoreSubscriptionsByIdCancel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "publishableKey": []
+          }
+        ],
+        "summary": "Stop mine at the end of this period",
+        "tags": [
+          "subscription"
+        ],
+        "x-tezgah-permission": "write"
+      }
     }
   },
   "tags": [
@@ -14486,6 +14972,9 @@
     },
     {
       "name": "store"
+    },
+    {
+      "name": "subscription"
     },
     {
       "name": "tax"

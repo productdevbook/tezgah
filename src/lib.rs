@@ -21,6 +21,7 @@ pub mod pricing;
 pub mod promotion;
 pub mod providers;
 pub mod store;
+pub mod subscription;
 pub mod tax;
 pub mod workflow;
 

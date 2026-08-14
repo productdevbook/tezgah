@@ -127,6 +127,14 @@ pub enum Resource {
         /// bearer instrument and has no owner to name.
         customer: Option<Uuid>,
     },
+    /// A recurring contract. Not an [`Resource::Order`]: a shop that lets
+    /// somebody cancel a subscription is not thereby letting them edit the
+    /// orders it produced, and a host cannot grant the two apart unless they
+    /// arrive apart.
+    Subscription {
+        id: Option<Uuid>,
+        customer: Option<Uuid>,
+    },
     Pricing,
     /// Shop-wide settings: its name, its default currency, how tax is shown.
     Store,

@@ -498,6 +498,36 @@ pub trait PaymentProvider: Send + Sync {
     fn parse_webhook(&self, headers: &[(String, String)], body: &[u8]) -> Result<WebhookEvent>;
 }
 
+/// A provider that can charge an instrument it already holds, with nobody in a
+/// browser.
+///
+/// An extension trait rather than a method on [`PaymentProvider`]: adding one
+/// there would break every implementor, and a provider that cannot do this
+/// should be unable to sell a subscription at compile time rather than at the
+/// till.
+///
+/// tezgah supplies references and never an instrument: `account_holder` and
+/// `payment_method_reference` are opaque strings the provider issued, and the
+/// mandate is the commerce fact that the shopper agreed to be charged again.
+#[async_trait]
+pub trait RecurringProvider: PaymentProvider {
+    async fn authorize_stored(&self, req: StoredChargeRequest) -> Result<Authorization>;
+}
+
+#[derive(Debug, Clone)]
+pub struct StoredChargeRequest {
+    pub session_id: PaymentSessionId,
+    pub collection_id: PaymentCollectionId,
+    pub amount: Money,
+    /// The provider's own id for this customer.
+    pub account_holder: String,
+    /// The provider's own id for the instrument to charge.
+    pub payment_method_reference: String,
+    /// What the shopper agreed to, for a scheme that wants it quoted back.
+    pub mandate_reference: Option<String>,
+    pub context: Value,
+}
+
 #[derive(Debug, Clone)]
 pub struct SessionRequest {
     pub session_id: PaymentSessionId,
@@ -1548,6 +1578,15 @@ pub async fn save_account_holder(
     Ok(holder)
 }
 
+/// The one holder this customer has with this provider.
+///
+/// Nothing stops a customer having several — the unique index is on
+/// `(scope, payment_provider_id, external_id)` — and this used to take the
+/// newest without saying so. For a shopper standing at the till a wrong pick
+/// shows up immediately; for an off-session renewal charging a stored
+/// instrument it does not, so several is a conflict to be answered rather than
+/// a choice to be made here. A caller that knows which one it means holds the
+/// id and asks [`account_holder_by_id`].
 pub async fn account_holder(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -1563,20 +1602,46 @@ pub async fn account_holder(
 
     let provider = provider_row(tx, ctx, provider_code).await?;
 
-    let holder = sqlx::query_as::<_, AccountHolder>(
+    let mut holders = sqlx::query_as::<_, AccountHolder>(
         "select id, payment_provider_id, customer_id, external_id, email, data, created_at
          from account_holder
          where scope = $1 and payment_provider_id = $2 and customer_id = $3
-         order by created_at desc
-         limit 1",
+         order by created_at desc, id
+         limit 2",
     )
     .bind(ctx.scope.0)
     .bind(provider.id.as_uuid())
     .bind(customer.as_uuid())
-    .fetch_optional(&mut **tx)
+    .fetch_all(&mut **tx)
     .await?;
 
-    Ok(holder)
+    if holders.len() > 1 {
+        return Err(Error::conflict(
+            "this customer has more than one account with that provider; name the one you mean",
+        ));
+    }
+
+    Ok(holders.pop())
+}
+
+/// The holder a contract names, which is the shape anything charging a stored
+/// instrument should be reaching for.
+pub async fn account_holder_by_id(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: AccountHolderId,
+) -> Result<Option<AccountHolder>> {
+    let _: Permit = ctx.permit(Action::View, Resource::Customer { id: None })?;
+
+    Ok(sqlx::query_as::<_, AccountHolder>(
+        "select id, payment_provider_id, customer_id, external_id, email, data, created_at
+         from account_holder
+         where scope = $1 and id = $2",
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?)
 }
 
 // ---------------------------------------------------------------------------

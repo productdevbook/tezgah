@@ -29,6 +29,9 @@ pub struct Recorder {
     pub events: parking_lot::Mutex<Vec<&'static str>>,
     pub payloads: parking_lot::Mutex<Vec<(&'static str, serde_json::Value)>>,
     pub jobs: parking_lot::Mutex<Vec<&'static str>>,
+    /// The jobs with when each asked to be run, for anything that queues a
+    /// retry rather than doing it now.
+    pub job_runs: parking_lot::Mutex<Vec<(&'static str, Option<DateTime<Utc>>)>>,
     now: Option<DateTime<Utc>>,
 }
 
@@ -61,6 +64,16 @@ impl Recorder {
 
     pub fn queued(&self, kind: &str) -> bool {
         self.jobs.lock().contains(&kind)
+    }
+
+    /// When each job of this kind asked to run.
+    pub fn queued_for(&self, kind: &str) -> Vec<Option<DateTime<Utc>>> {
+        self.job_runs
+            .lock()
+            .iter()
+            .filter(|(seen, _)| *seen == kind)
+            .map(|(_, at)| *at)
+            .collect()
     }
 
     pub fn audited(&self, entity: &str) -> bool {
@@ -101,6 +114,7 @@ impl EventSink for Recorder {
 impl Jobs for Recorder {
     async fn enqueue(&self, _: &mut Tx<'_>, job: JobSpec) -> tezgah::Result<()> {
         self.jobs.lock().push(job.kind);
+        self.job_runs.lock().push((job.kind, job.run_after));
         Ok(())
     }
 }

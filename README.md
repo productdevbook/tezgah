@@ -42,6 +42,14 @@ tezgah decides nothing it does not have to. It asks, through traits in
 | `Jobs` | how deferred work is queued | same transaction; enqueue and the change it belongs to commit together |
 | `Clock` | what time it is | so "expires in an hour" is testable without sleeping |
 
+Two of those are load-bearing for anything that happens with nobody watching.
+A renewal runs as `Actor::System`, because there is no shopper in a browser to
+run it as: an `Authorizer` that denies `System` stops every subscription in the
+shop from renewing, and stops them silently, since the only caller is a cron.
+`Jobs` is where a declined renewal's next attempt is queued, in the same
+transaction as the `past_due` it belongs to — a host that implements it as a
+no-op has a shop that stops charging somebody and never retries.
+
 You assemble a `Ctx` once per request and pass it down. A host with none of
 this uses `Permit::granted()` and a clock, and everything works.
 
