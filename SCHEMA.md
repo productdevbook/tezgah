@@ -76,6 +76,7 @@ Each domain owns a number, so parallel work does not collide.
 | `0012_fulfilment` | set, service zone, geo zone, shipping option, fulfilment |
 | `0013_tax` | tax region, rate, rate rule |
 | `0014_promotion` | promotion, application method, rules, campaign |
+| `0018_session_cancelled_after_authorising` | lets a cancelled session keep when it authorised |
 | `0015_payment_mismatch` | the `mismatch` collection status |
 | `0016_pricing_link` | which price set answers for a variant and for a shipping option |
 | `0017_workflow_parallel` | the group a workflow step runs in, for steps that run at once |
