@@ -20,10 +20,8 @@ fn snapshot() -> PathBuf {
 }
 
 fn generated() -> String {
-    match serde_json::to_string_pretty(&tezgah::api::openapi::document()) {
-        Ok(text) => text,
-        Err(error) => panic!("the document did not serialise: {error}"),
-    }
+    serde_json::to_string_pretty(&tezgah::api::openapi::document())
+        .expect("the document to serialise")
 }
 
 #[test]
