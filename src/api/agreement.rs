@@ -333,7 +333,7 @@ pub struct RecordInvoice {
 }
 
 impl RecordInvoice {
-    fn new(self) -> Result<order::NewInvoice> {
+    fn document(self) -> Result<order::NewInvoice> {
         Ok(order::NewInvoice {
             number: self.number,
             external_id: self.external_id,
@@ -354,7 +354,7 @@ pub async fn record_invoice(
     body: RecordInvoice,
 ) -> Result<InvoiceView> {
     Ok(InvoiceView::from(
-        order::record_invoice(tx, ctx, order_id, body.new()?).await?,
+        order::record_invoice(tx, ctx, order_id, body.document()?).await?,
     ))
 }
 
@@ -368,7 +368,7 @@ pub async fn record_credit_note(
     body: RecordInvoice,
 ) -> Result<InvoiceView> {
     Ok(InvoiceView::from(
-        order::record_credit_note(tx, ctx, order_id, replaces, body.new()?).await?,
+        order::record_credit_note(tx, ctx, order_id, replaces, body.document()?).await?,
     ))
 }
 
