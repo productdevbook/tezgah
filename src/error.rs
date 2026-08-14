@@ -128,6 +128,18 @@ impl Error {
         }
     }
 
+    /// Display, plus the cause when it is one this crate hid.
+    ///
+    /// For a log or a dead letter, never for a response body: an internal
+    /// error's message names tables and constraints.
+    pub fn report(&self) -> String {
+        match &*self.cause {
+            Cause::Db(err) => format!("the database refused a query: {err}"),
+            Cause::Bug(what) => format!("internal error: {what}"),
+            _ => self.to_string(),
+        }
+    }
+
     pub fn backtrace(&self) -> &Backtrace {
         &self.backtrace
     }

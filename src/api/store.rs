@@ -1933,7 +1933,7 @@ pub(super) static ROUTES: &[Route] = &[
         surface: Surface::Store,
         method: Method::Post,
         path: "/store/carts/{id}/complete",
-        action: Action::Settle,
+        action: Action::Write,
         domain: "cart",
         summary: "Place the cart as an order",
     },

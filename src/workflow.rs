@@ -710,7 +710,7 @@ async fn invoke(
                 }
 
                 let message = match &failure {
-                    Failure::Retry(err) | Failure::Final(err) => err.to_string(),
+                    Failure::Retry(err) | Failure::Final(err) => err.report(),
                 };
 
                 let mut tx = scoped(pool, ctx).await.map_err(Failure::Final)?;
