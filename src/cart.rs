@@ -430,7 +430,7 @@ pub async fn add_line(
          from product_variant v
          join product p on p.scope = v.scope and p.id = v.product_id
          where v.scope = $2 and v.id = $4 and v.deleted_at is null and p.deleted_at is null
-         on conflict (scope, cart_id, variant_id) where variant_id is not null where variant_id is not null
+         on conflict (scope, cart_id, variant_id) where variant_id is not null
          do update set quantity = cart_line_item.quantity + excluded.quantity
          returning {LINE_COLUMNS}"
     ))
@@ -782,7 +782,7 @@ pub async fn transfer_to_customer(
                     currency_code, is_tax_inclusive, is_discountable, requires_shipping, metadata
              from cart_line_item
              where scope = $3 and id = $4
-             on conflict (scope, cart_id, variant_id) where variant_id is not null where variant_id is not null
+             on conflict (scope, cart_id, variant_id) where variant_id is not null
              do update set quantity = cart_line_item.quantity + excluded.quantity",
         )
         .bind(LineItemId::new().as_uuid())

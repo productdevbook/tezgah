@@ -295,6 +295,10 @@ async fn a_row_cannot_be_written_into_somebody_elses_scope() {
     .execute(&mut *mine)
     .await;
 
+    // Rolled back before the pool is closed: a live transaction holds a
+    // connection, and closing a pool waits for every one of them back.
+    mine.rollback().await.expect("to give the connection back");
+
     assert!(
         refused.is_err(),
         "the policy's check clause let a row be written into another scope"

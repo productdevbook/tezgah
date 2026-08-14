@@ -262,9 +262,16 @@ fn a_host_that_counts_a_currency_differently_is_believed() {
         to_minor(money(dec!(10.50), "ISK"), &exponents).expect("minor units"),
         1050
     );
+    // Banker's rounding: a half goes to the even neighbour, so 10.50 with no
+    // decimal places is 10 and 11.50 is 12. Half-up would bias every rounding
+    // in the shop's favour, which over enough orders is somebody's money.
     assert_eq!(
         to_minor(money(dec!(10.50), "ISK"), &Exponents::new()).expect("minor units"),
-        11
+        10
+    );
+    assert_eq!(
+        to_minor(money(dec!(11.50), "ISK"), &Exponents::new()).expect("minor units"),
+        12
     );
 }
 

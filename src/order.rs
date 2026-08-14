@@ -831,6 +831,10 @@ pub async fn list(
     }))
 }
 
+/// Most lines one order may be read with. An order with more than this is a
+/// mistake somewhere upstream, not a page anybody wants.
+pub const MAX_LINES: i64 = 500;
+
 pub async fn line_items(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -847,7 +851,7 @@ pub async fn line_items(
     Ok(sqlx::query_as::<_, OrderLineItem>(&format!(
         "select {LINE_COLUMNS} from order_line_item
          where scope = $1 and order_id = $2
-         order by created_at, id"
+         order by created_at, id limit 500"
     ))
     .bind(ctx.scope.0)
     .bind(order_id.as_uuid())
