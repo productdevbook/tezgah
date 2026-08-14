@@ -78,6 +78,7 @@ Each domain owns a number, so parallel work does not collide.
 | `0014_promotion` | promotion, application method, rules, campaign |
 | `0015_payment_mismatch` | the `mismatch` collection status |
 | `0016_pricing_link` | which price set answers for a variant and for a shipping option |
+| `0017_workflow_parallel` | the group a workflow step runs in, for steps that run at once |
 
 Migrations are append-only once merged. A change to a shipped table is a new
 file, and it expands before it contracts: add and backfill in one release, read

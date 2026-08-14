@@ -260,13 +260,14 @@ async fn a_set_with_one_bad_step_in_it_unwinds_the_whole_run() {
         !trail.contains(&"last".to_string()),
         "a step after the failure ran: {trail:?}"
     );
-    let undone: Vec<&String> = trail
+    let undone: Vec<String> = trail
         .iter()
         .filter(|entry| entry.starts_with("undo"))
+        .cloned()
         .collect();
     assert_eq!(
         undone,
-        vec!["undo left", "undo first"],
+        ["undo left", "undo first"],
         "compensation did not walk back through the run: {trail:?}"
     );
 
@@ -296,7 +297,7 @@ async fn a_nested_workflow_is_unwound_with_the_one_that_holds_it() {
         .into_iter()
         .filter(|entry| entry.starts_with("undo"))
         .collect();
-    assert_eq!(undone, vec!["undo price", "undo hold", "undo open"]);
+    assert_eq!(undone, ["undo price", "undo hold", "undo open"]);
 
     // One run and one set of steps: the nested workflow is not a run of its own.
     let runs: i64 = sqlx::query_scalar("select count(*) from workflow_run")
@@ -381,7 +382,7 @@ async fn a_worker_takes_back_a_step_whose_lease_ran_out() {
         .await
         .expect("to read the run back");
     assert_eq!(run.state, State::Done, "{:?}", run.failure);
-    assert_eq!(seen(&log), vec!["first"]);
+    assert_eq!(seen(&log), ["first"]);
 
     shop.close().await;
 }
@@ -411,8 +412,7 @@ async fn two_runs_on_one_key_do_not_interleave() {
 
     let (won, lost) = match (first, second) {
         (Ok(won), Err(lost)) | (Err(lost), Ok(won)) => (won, lost),
-        (Ok(one), Ok(two)) => panic!("both runs held the cart at once: {one:?} and {two:?}"),
-        (Err(one), Err(two)) => panic!("neither run got the cart: {one:?} and {two:?}"),
+        other => panic!("one run should have been turned away: {other:?}"),
     };
 
     assert_eq!(won.state, State::Done);

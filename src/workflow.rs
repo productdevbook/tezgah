@@ -527,7 +527,7 @@ async fn drive(
                         &rows[k],
                     )
                 })
-                .collect();
+                .collect::<Vec<_>>();
 
             let mut failed: Option<(&'static str, Failure)> = None;
             for (&k, result) in waiting.iter().zip(all(running).await) {
@@ -941,7 +941,7 @@ pub async fn work(
         match take(pool, ctx, &names).await? {
             Some(id) => {
                 let name = run_name(pool, ctx, id).await?;
-                let Some(workflow) = workflows.iter().find(|w| w.name() == name) else {
+                let Some(workflow) = workflows.iter().copied().find(|w| w.name() == name) else {
                     continue;
                 };
                 held(pool, ctx, workflow, id).await?;
@@ -958,8 +958,7 @@ pub async fn work(
 
 /// Drives one run, keeping its lease alive for as long as that takes.
 async fn held(pool: &PgPool, ctx: &Ctx<'_>, workflow: &Workflow, id: WorkflowRunId) -> Result<()> {
-    let driving = drive(pool, ctx, workflow, id);
-    tokio::pin!(driving);
+    let mut driving = std::pin::pin!(drive(pool, ctx, workflow, id));
 
     let beat = std::time::Duration::from_millis((LEASE.num_milliseconds() / 3).max(1) as u64);
 
@@ -1002,7 +1001,7 @@ async fn take(pool: &PgPool, ctx: &Ctx<'_>, names: &[String]) -> Result<Option<W
              join candidate c on c.id = s.run_id
              where s.state in ('pending', 'compensating')
              for update of s skip locked
-         )
+         ),
          leased as (
              update workflow_step s
              set lease_until = $2, locked_by = $3

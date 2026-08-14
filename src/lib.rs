@@ -2,12 +2,14 @@
 
 pub mod cart;
 pub mod catalogue;
+pub mod checkout;
 pub mod customer;
 pub mod error;
 pub mod fulfilment;
 pub mod id;
 pub mod inventory;
 pub mod money;
+pub mod order;
 pub mod page;
 pub mod payment;
 pub mod ports;

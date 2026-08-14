@@ -1752,7 +1752,11 @@ pub async fn request_return(
             tx,
             ctx,
             change.id,
-            NewAction::on(ChangeAction::ReturnItem, line.order_line_item_id, line.quantity),
+            NewAction::on(
+                ChangeAction::ReturnItem,
+                line.order_line_item_id,
+                line.quantity,
+            ),
         )
         .await?;
     }
@@ -2111,7 +2115,11 @@ pub async fn request_exchange(
             tx,
             ctx,
             change.id,
-            NewAction::on(ChangeAction::ReturnItem, line.order_line_item_id, line.quantity),
+            NewAction::on(
+                ChangeAction::ReturnItem,
+                line.order_line_item_id,
+                line.quantity,
+            ),
         )
         .await?;
     }
@@ -2120,7 +2128,11 @@ pub async fn request_exchange(
             tx,
             ctx,
             change.id,
-            NewAction::on(ChangeAction::ItemAdd, line.order_line_item_id, line.quantity),
+            NewAction::on(
+                ChangeAction::ItemAdd,
+                line.order_line_item_id,
+                line.quantity,
+            ),
         )
         .await?;
     }
@@ -2316,7 +2328,11 @@ pub async fn request_claim(
             tx,
             ctx,
             change.id,
-            NewAction::on(ChangeAction::ItemAdd, line.order_line_item_id, line.quantity),
+            NewAction::on(
+                ChangeAction::ItemAdd,
+                line.order_line_item_id,
+                line.quantity,
+            ),
         )
         .await?;
     }
@@ -2787,14 +2803,13 @@ async fn restock(
         return Ok(());
     };
 
-    let variant_id: Option<Uuid> = sqlx::query_scalar(
-        "select variant_id from order_line_item where scope = $1 and id = $2",
-    )
-    .bind(ctx.scope.0)
-    .bind(line_id.as_uuid())
-    .fetch_optional(&mut **tx)
-    .await?
-    .flatten();
+    let variant_id: Option<Uuid> =
+        sqlx::query_scalar("select variant_id from order_line_item where scope = $1 and id = $2")
+            .bind(ctx.scope.0)
+            .bind(line_id.as_uuid())
+            .fetch_optional(&mut **tx)
+            .await?
+            .flatten();
 
     let Some(variant_id) = variant_id else {
         return Ok(());
@@ -3016,11 +3031,20 @@ mod tests {
     fn an_order_walks_forward_and_stops_at_the_end() {
         assert!(can_transition(OrderStatus::Draft, OrderStatus::Pending));
         assert!(can_transition(OrderStatus::Pending, OrderStatus::Completed));
-        assert!(can_transition(OrderStatus::Completed, OrderStatus::Archived));
+        assert!(can_transition(
+            OrderStatus::Completed,
+            OrderStatus::Archived
+        ));
 
-        assert!(!can_transition(OrderStatus::Completed, OrderStatus::Pending));
+        assert!(!can_transition(
+            OrderStatus::Completed,
+            OrderStatus::Pending
+        ));
         assert!(!can_transition(OrderStatus::Canceled, OrderStatus::Pending));
-        assert!(!can_transition(OrderStatus::Archived, OrderStatus::Completed));
+        assert!(!can_transition(
+            OrderStatus::Archived,
+            OrderStatus::Completed
+        ));
         assert!(!can_transition(OrderStatus::Pending, OrderStatus::Draft));
     }
 
