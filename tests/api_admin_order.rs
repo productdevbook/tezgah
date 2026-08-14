@@ -574,3 +574,31 @@ async fn another_shop_cannot_read_or_move_this_ones_ledger() -> Result<()> {
     shop.close().await;
     Ok(())
 }
+
+/// The route used to move a status column and leave the hold on the card. It
+/// cancels as an operation now, and cancelling twice is not an error.
+#[tokio::test]
+async fn the_cancel_route_voids_the_authorisation_and_takes_a_second_click() -> Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+    seed_currency(&mut tx, shop.here).await;
+
+    let placed = admin_order::create_order(&mut tx, &ctx, an_order(dec!(100.00))).await?;
+    let held = a_held_payment(&mut tx, &ctx, money(dec!(100.00))).await;
+    pay_for(&mut tx, shop.here, placed.id, held).await;
+
+    admin_order::cancel_order(&mut tx, &ctx, placed.id).await?;
+
+    let voided = payment::payment(&mut tx, &ctx, held).await?;
+    assert!(
+        voided.canceled_at.is_some(),
+        "the route reported success and left the hold on the card"
+    );
+
+    admin_order::cancel_order(&mut tx, &ctx, placed.id).await?;
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
+}

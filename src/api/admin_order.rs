@@ -1135,8 +1135,10 @@ pub async fn complete_order(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: OrderId) -> Resu
     move_order(tx, ctx, id, order::OrderStatus::Completed).await
 }
 
+/// Cancelling is an operation rather than a status: `order::cancel` gives back
+/// the stock and the authorisation, and calling it twice is a no-op.
 pub async fn cancel_order(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: OrderId) -> Result<OrderView> {
-    move_order(tx, ctx, id, order::OrderStatus::Canceled).await
+    Ok(order::cancel(tx, ctx, id).await?.into())
 }
 
 pub async fn archive_order(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: OrderId) -> Result<OrderView> {

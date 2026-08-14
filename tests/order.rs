@@ -11,6 +11,7 @@ use std::sync::Arc;
 use common::{Doorman, Shop};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
+use sqlx::Executor;
 use tezgah::id::{InventoryItemId, LineItemId, StockLocationId, VariantId};
 use tezgah::money::{Currency, Money};
 use tezgah::order::{
@@ -1821,4 +1822,97 @@ async fn a_return_and_a_cancellation_on_one_order_do_not_deadlock() -> tezgah::R
 
     shop.close().await;
     Ok(())
+}
+
+/// `display_id` was `max(display_id) + 1`, which two connections read as the
+/// same number. Two at once, not one after the other: a simulated race proves
+/// nothing.
+#[tokio::test]
+async fn two_checkouts_at_once_are_given_two_different_numbers() {
+    let shop = Shop::open().await;
+
+    let mut setup = shop.begin().await;
+    seed_currency(&mut setup, shop.here).await;
+    setup.commit().await.expect("to keep the currency");
+
+    let place = || async {
+        let mut tx = shop.begin().await;
+        let placed = order::create(&mut tx, &shop.ctx(), an_order(vec![a_line(1, dec!(10))])).await;
+
+        match placed {
+            Ok(order) => {
+                tx.commit().await.expect("to keep the order");
+                Ok(order.display_id)
+            }
+            Err(err) => {
+                tx.rollback().await.expect("to give it back");
+                Err(err)
+            }
+        }
+    };
+
+    let (first, second) = tokio::join!(place(), place());
+    let first = first.expect("the first checkout to go through");
+    let second = second.expect("the second checkout to go through");
+
+    assert!(
+        first.is_some() && second.is_some(),
+        "an order with no number"
+    );
+    assert_ne!(
+        first, second,
+        "two checkouts were given the same order number"
+    );
+
+    shop.close().await;
+}
+
+/// A shop that already had orders keeps counting from where it was: an order
+/// number is what a shop reconciles its books against, and restarting at one
+/// would put two sales under the same number.
+#[tokio::test]
+async fn the_counter_carries_on_above_the_numbers_a_shop_already_has() {
+    let shop = Shop::open().await;
+
+    let mut setup = shop.begin().await;
+    seed_currency(&mut setup, shop.here).await;
+
+    // The database as 0036 finds it: numbered rows and no counter.
+    sqlx::query("delete from display_counter where scope = $1")
+        .bind(shop.here.0)
+        .execute(&mut *setup)
+        .await
+        .expect("to take the counter away");
+    sqlx::query(
+        r#"insert into "order" (id, scope, display_id, currency_code) values ($1, $2, 500, 'TRY')"#,
+    )
+    .bind(Uuid::now_v7())
+    .bind(shop.here.0)
+    .execute(&mut *setup)
+    .await
+    .expect("an order from before");
+    setup.commit().await.expect("to keep it");
+
+    let owner = shop.migrator().await;
+    owner
+        .execute(include_str!(
+            "../migrations/0036_display_counter_and_released_holds.sql"
+        ))
+        .await
+        .expect("0036 to apply to a database that has orders in it");
+    owner.close().await;
+
+    let mut tx = shop.begin().await;
+    let placed = order::create(&mut tx, &shop.ctx(), an_order(vec![a_line(1, dec!(10))]))
+        .await
+        .expect("an order");
+    tx.commit().await.expect("to commit");
+
+    assert_eq!(
+        placed.display_id,
+        Some(501),
+        "the counter started again under numbers the shop already has"
+    );
+
+    shop.close().await;
 }

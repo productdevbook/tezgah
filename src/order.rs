@@ -47,7 +47,7 @@ use crate::error::{Error, Result};
 use crate::id::{
     AddressId, AgreementVersionId, CaptureId, ClaimId, CustomerId, ExchangeId, LineItemId,
     OrderAgreementId, OrderChangeId, OrderId, OrderInvoiceId, OrderItemId, OrderTransactionId,
-    OrderTransferId, PaymentCollectionId, PromotionId, RefundId, RegionId, ReturnId,
+    OrderTransferId, PaymentCollectionId, PaymentId, PromotionId, RefundId, RegionId, ReturnId,
     SalesChannelId, ShippingOptionId, StockLocationId, VariantId,
 };
 use crate::money::{Currency, Money};
@@ -777,12 +777,7 @@ async fn place(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewOrder, draft: bool) -> Re
         None => None,
     };
 
-    let display_id: i64 = sqlx::query_scalar(
-        r#"select coalesce(max(display_id), 0) + 1 from "order" where scope = $1"#,
-    )
-    .bind(ctx.scope.0)
-    .fetch_one(&mut **tx)
-    .await?;
+    let display_id = next_display(tx, ctx, "order").await?;
 
     let status = if draft {
         OrderStatus::Draft
@@ -1300,6 +1295,8 @@ async fn unwind(tx: &mut Tx<'_>, ctx: &Ctx<'_>, order: &Order, from: OrderStatus
         ));
     }
 
+    release_payments(tx, ctx, order).await?;
+
     crate::fulfilment::cancel_open_fulfillments(tx, ctx, order.id).await?;
 
     for line in line_items(tx, ctx, order.id).await? {
@@ -1309,6 +1306,74 @@ async fn unwind(tx: &mut Tx<'_>, ctx: &Ctx<'_>, order: &Order, from: OrderStatus
     release_promotions(tx, ctx, order).await?;
 
     move_status(tx, ctx, order.id, from, OrderStatus::Canceled).await
+}
+
+/// Voids the holds the order's authorisations still carry on a card.
+///
+/// Money already taken is refused rather than half-given-back: a capture has no
+/// compensation, it has a refund, and a refund is somebody's decision about how
+/// much — so an order that has been paid is refunded first and cancelled after.
+/// A payment whose captures have all been refunded already gave its money back
+/// and holds nothing, so it is left as it is.
+async fn release_payments(tx: &mut Tx<'_>, ctx: &Ctx<'_>, order: &Order) -> Result<()> {
+    let Some(collection) = order.payment_collection_id else {
+        return Ok(());
+    };
+
+    let held: Decimal = sqlx::query_scalar(
+        "select coalesce(sum(c.amount), 0) - coalesce((
+                    select sum(r.amount) from refund r
+                    join payment p on p.scope = r.scope and p.id = r.payment_id
+                    where r.scope = $1 and p.payment_collection_id = $2), 0)
+         from capture c
+         join payment p on p.scope = c.scope and p.id = c.payment_id
+         where c.scope = $1 and p.payment_collection_id = $2",
+    )
+    .bind(ctx.scope.0)
+    .bind(collection.as_uuid())
+    .fetch_one(&mut **tx)
+    .await?;
+
+    if held > Decimal::ZERO {
+        return Err(Error::conflict(
+            "money has been taken against that order; refund it before cancelling",
+        ));
+    }
+
+    let open: Vec<(Uuid, Option<Decimal>)> = sqlx::query_as(
+        "select p.id, (select sum(t.amount) from order_transaction t
+                       where t.scope = $1 and t.reference = 'payment'
+                         and t.reference_id = p.id)
+         from payment p
+         where p.scope = $1 and p.payment_collection_id = $2 and p.canceled_at is null
+           and not exists (select 1 from capture c
+                           where c.scope = $1 and c.payment_id = p.id)
+         order by p.created_at, p.id",
+    )
+    .bind(ctx.scope.0)
+    .bind(collection.as_uuid())
+    .fetch_all(&mut **tx)
+    .await?;
+
+    let currency = order.currency()?;
+
+    for (payment, authorized) in open {
+        crate::payment::cancel(tx, ctx, PaymentId::from_uuid(payment)).await?;
+
+        if let Some(amount) = authorized.filter(|amount| !amount.is_zero()) {
+            record_transaction(
+                tx,
+                ctx,
+                order.id,
+                Money::new(-amount, currency),
+                "payment_canceled",
+                payment,
+            )
+            .await?;
+        }
+    }
+
+    Ok(())
 }
 
 /// Gives back the uses the checkout claimed. The promotions are read from the
@@ -1626,7 +1691,7 @@ pub async fn ledger(tx: &mut Tx<'_>, ctx: &Ctx<'_>, order_id: OrderId) -> Result
 
     let (authorized, captured, refunded): (Decimal, Decimal, Decimal) = sqlx::query_as(
         "select
-             coalesce(sum(amount) filter (where reference = 'payment'), 0),
+             coalesce(sum(amount) filter (where reference in ('payment', 'payment_canceled')), 0),
              coalesce(sum(amount) filter (where reference in ('capture', 'manual')), 0),
              coalesce(-sum(amount) filter (where reference in ('refund', 'order_return',
                                                                'order_exchange', 'order_claim')), 0)
@@ -3888,6 +3953,8 @@ async fn apply_action(
         None => 0,
     };
 
+    let mut after: Option<i32> = None;
+
     match what {
         ChangeAction::ItemAdd => {
             let line = line?;
@@ -3897,37 +3964,45 @@ async fn apply_action(
                 None => line_price(tx, ctx, line).await?,
             };
 
-            let added = sqlx::query(
+            let added: Option<i32> = sqlx::query_scalar(
                 "update order_item set quantity = quantity + $4
                  where scope = $1 and order_id = $2 and version = $3
-                   and order_line_item_id = $5",
+                   and order_line_item_id = $5
+                 returning quantity",
             )
             .bind(ctx.scope.0)
             .bind(order.id.as_uuid())
             .bind(version)
             .bind(quantity)
             .bind(line.as_uuid())
-            .execute(&mut **tx)
+            .fetch_optional(&mut **tx)
             .await?;
 
-            if added.rows_affected() == 0 {
-                insert_item(tx, ctx, order.id, line, version, quantity, price, currency).await?;
-            }
+            after = match added {
+                Some(quantity) => Some(quantity),
+                None => {
+                    insert_item(tx, ctx, order.id, line, version, quantity, price, currency)
+                        .await?;
+                    Some(quantity)
+                }
+            };
         }
         ChangeAction::ItemUpdate => {
             let line = line?;
             let quantity = quantity_of(&action.details)?;
-            touch(
-                tx,
-                ctx,
-                order.id,
-                version,
-                line,
-                "quantity = $4",
-                quantity,
-                "that line is not on this order",
-            )
-            .await?;
+            after = Some(
+                touch(
+                    tx,
+                    ctx,
+                    order.id,
+                    version,
+                    line,
+                    "quantity = $4",
+                    quantity,
+                    "that line is not on this order",
+                )
+                .await?,
+            );
         }
         ChangeAction::ItemRemove => {
             let line = line?;
@@ -3941,6 +4016,8 @@ async fn apply_action(
             .bind(line.as_uuid())
             .execute(&mut **tx)
             .await?;
+
+            after = Some(0);
         }
         ChangeAction::ReturnItem => {
             bump(
@@ -4085,9 +4162,8 @@ async fn apply_action(
         }
     }
 
-    if let Some(line) = counted {
+    if let (Some(line), Some(after)) = (counted, after) {
         if before > 0 {
-            let after = item_quantity(tx, ctx, order.id, version, line).await?;
             crate::inventory::rescale_line(tx, ctx, line, before, after).await?;
         }
     }
@@ -5049,24 +5125,21 @@ async fn touch(
     assignment: &str,
     value: i32,
     complaint: &'static str,
-) -> Result<()> {
-    let moved = sqlx::query(&format!(
+) -> Result<i32> {
+    let moved: Option<i32> = sqlx::query_scalar(&format!(
         "update order_item set {assignment}
-         where scope = $1 and order_id = $2 and version = $3 and order_line_item_id = $5"
+         where scope = $1 and order_id = $2 and version = $3 and order_line_item_id = $5
+         returning quantity"
     ))
     .bind(ctx.scope.0)
     .bind(order_id.as_uuid())
     .bind(version)
     .bind(value)
     .bind(line_id.as_uuid())
-    .execute(&mut **tx)
+    .fetch_optional(&mut **tx)
     .await?;
 
-    if moved.rows_affected() == 0 {
-        return Err(Error::conflict(complaint));
-    }
-
-    Ok(())
+    moved.ok_or_else(|| Error::conflict(complaint))
 }
 
 async fn line_price(tx: &mut Tx<'_>, ctx: &Ctx<'_>, line_id: LineItemId) -> Result<Decimal> {
@@ -5087,12 +5160,20 @@ fn quantity_of(details: &Value) -> Result<i32> {
         .ok_or_else(|| Error::invalid("that action carries no quantity"))
 }
 
-async fn next_display(tx: &mut Tx<'_>, ctx: &Ctx<'_>, table: &str) -> Result<i64> {
-    // `table` is a literal chosen at each call site, never a caller's string.
-    let next: i64 = sqlx::query_scalar(&format!(
-        "select coalesce(max(display_id), 0) + 1 from {table} where scope = $1"
-    ))
+/// The next human-facing number of one kind, taken off the counter's own write.
+///
+/// `max(display_id) + 1` read the same number twice whenever two checkouts
+/// committed together, and the loser met the unique index mid-workflow.
+async fn next_display(tx: &mut Tx<'_>, ctx: &Ctx<'_>, kind: &str) -> Result<i64> {
+    let next: i64 = sqlx::query_scalar(
+        "insert into display_counter (id, scope, kind, next)
+         values ($1, $2, $3, 1)
+         on conflict (scope, kind) do update set next = display_counter.next + 1
+         returning next",
+    )
+    .bind(Uuid::now_v7())
     .bind(ctx.scope.0)
+    .bind(kind)
     .fetch_one(&mut **tx)
     .await?;
 

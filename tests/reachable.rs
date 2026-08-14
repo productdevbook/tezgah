@@ -133,11 +133,6 @@ const TOLERATED: [(&str, &str); 59] = [
          callers reach it through the version write",
     ),
     (
-        "order::cancel",
-        "cancelling as an operation rather than a status; the admin route moves \
-         the status and does not give back what the order holds",
-    ),
-    (
         "order::invoice",
         "invoices and credit notes have no route and no in-crate caller; shipped \
          unwired, see #111",

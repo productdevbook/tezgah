@@ -12,8 +12,9 @@ use chrono::{DateTime, Utc};
 use common::Shop;
 use rust_decimal_macros::dec;
 use serde_json::json;
-use tezgah::id::{PaymentId, PaymentSessionId};
+use tezgah::id::{OrderId, PaymentId, PaymentSessionId};
 use tezgah::money::{Currency, Money};
+use tezgah::order::{self, NewOrder, NewOrderLine};
 use tezgah::payment::{
     self, Authorization, AuthorizationStatus, AuthorizeRequest, Authorized, CancelRequest,
     CaptureRequest, CaptureResult, CollectionStatus, Installment, NewCollection, NewSession,
@@ -1068,6 +1069,143 @@ async fn a_partial_refund_gives_back_its_share_of_the_charge() {
     payment::refund(&mut tx, &ctx, paid.id, share, None, None)
         .await
         .expect("the refund to be within what was charged");
+    tx.commit().await.expect("to commit");
+
+    shop.close().await;
+}
+
+/// An order on the same collection as `paid`, priced at `total`.
+async fn an_order_paying(
+    shop: &Shop,
+    session: PaymentSessionId,
+    total: Money,
+    paid: PaymentId,
+) -> OrderId {
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    sqlx::query(
+        "insert into currency (id, scope, code, exponent, symbol, symbol_native, name)
+         values ($1, $2, 'TRY', 2, 'x', 'x', 'Turkish lira')
+         on conflict do nothing",
+    )
+    .bind(uuid::Uuid::now_v7())
+    .bind(shop.here.0)
+    .execute(&mut *tx)
+    .await
+    .expect("a currency");
+
+    let collection = payment::session(&mut tx, &ctx, session)
+        .await
+        .expect("the session")
+        .payment_collection_id;
+
+    let placed = order::create(
+        &mut tx,
+        &ctx,
+        NewOrder {
+            payment_collection_id: Some(collection),
+            lines: vec![NewOrderLine::of("A thing", 1, total)],
+            ..NewOrder::of(total.currency)
+        },
+    )
+    .await
+    .expect("an order");
+
+    order::record_transaction(&mut tx, &ctx, placed.id, total, "payment", paid.as_uuid())
+        .await
+        .expect("the hold in the ledger");
+
+    tx.commit().await.expect("to commit");
+    placed.id
+}
+
+#[tokio::test]
+async fn cancelling_an_order_gives_the_card_its_hold_back() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let total = try_(dec!(100.00));
+
+    let session = open_session(&shop, total).await;
+    let paid = authorize(&shop, &FakeProvider::approving(), session)
+        .await
+        .payment()
+        .expect("a payment")
+        .id;
+    let placed = an_order_paying(&shop, session, total, paid).await;
+
+    let mut tx = shop.begin().await;
+    let before = order::ledger(&mut tx, &ctx, placed)
+        .await
+        .expect("a ledger");
+    assert_eq!(before.authorized.amount, dec!(100.00));
+
+    order::cancel(&mut tx, &ctx, placed)
+        .await
+        .expect("the order to cancel");
+
+    let hold = payment::payment(&mut tx, &ctx, paid)
+        .await
+        .expect("the payment");
+    assert!(
+        hold.canceled_at.is_some(),
+        "the authorisation is still sitting on the card"
+    );
+
+    let after = order::ledger(&mut tx, &ctx, placed)
+        .await
+        .expect("a ledger");
+    assert_eq!(
+        after.authorized.amount,
+        dec!(0),
+        "the ledger still claims money is held"
+    );
+
+    // The admin clicks twice.
+    order::cancel(&mut tx, &ctx, placed)
+        .await
+        .expect("a second cancel to be a no-op");
+
+    tx.commit().await.expect("to commit");
+    shop.close().await;
+}
+
+/// Captured money is not un-captured. The order is refused rather than
+/// half-cancelled, and the refund is a decision somebody makes first.
+#[tokio::test]
+async fn an_order_whose_money_was_taken_is_refunded_before_it_is_cancelled() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let total = try_(dec!(100.00));
+
+    let session = open_session(&shop, total).await;
+    let paid = authorize(&shop, &FakeProvider::approving(), session)
+        .await
+        .payment()
+        .expect("a payment")
+        .id;
+    let placed = an_order_paying(&shop, session, total, paid).await;
+
+    let mut tx = shop.begin().await;
+    payment::capture(&mut tx, &ctx, paid, total, None)
+        .await
+        .expect("the capture");
+    tx.commit().await.expect("to commit");
+
+    let mut tx = shop.begin().await;
+    let refused = order::cancel(&mut tx, &ctx, placed)
+        .await
+        .expect_err("money taken is refunded, not cancelled");
+    assert!(refused.is_conflict());
+    tx.rollback().await.expect("to roll back");
+
+    let mut tx = shop.begin().await;
+    payment::refund(&mut tx, &ctx, paid, total, None, None)
+        .await
+        .expect("the refund");
+    order::cancel(&mut tx, &ctx, placed)
+        .await
+        .expect("a refunded order to cancel");
     tx.commit().await.expect("to commit");
 
     shop.close().await;
