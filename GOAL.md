@@ -28,6 +28,18 @@ already solved by whatever embeds this, so it is asked for through
 | caching | — | a library that caches behind your back is a bug |
 | analytics dashboards, admin UI | the API | a Rust library does not ship React |
 
+## Where this is
+
+229 tests green. Every domain in stages 2 to 13 has a module, a schema and
+tests; both API surfaces are served, 295 routes, with an OpenAPI document
+generated from the route table and snapshotted. Forty-seven of the issues
+opened against this file are closed.
+
+What is left is written as issues rather than as boxes here: the proof suite
+(#48, #49), the payment providers moving onto kasapay (#53), the seventeen
+listings that still want a page (#52), order transfer (#54), and six tables the
+isolation seeder cannot yet build a row for (#55).
+
 ## Stages
 
 Nothing starts before the thing above it works.
@@ -38,8 +50,8 @@ Nothing starts before the thing above it works.
 - [x] `Money` — `Decimal` and a currency; `allocate` whose parts add back up
 - [x] `Error` — one canonical struct, private cause, stable `code()`
 - [x] `id` — typed ids, so a product id cannot be passed where an order id goes
-- [ ] `scope` — the column, the RLS policies, a schema test no table escapes
-- [ ] test harness — real Postgres per test, two scopes seeded, parallel-safe
+- [x] `scope` — the column, the RLS policies, a schema test no table escapes
+- [x] test harness — real Postgres per test, two scopes seeded, parallel-safe
 
 ### 2. Workflow runner
 
