@@ -407,3 +407,38 @@ async fn another_scope_sees_none_of_it() {
 
     shop.close().await;
 }
+
+/// A count that disagrees with what was already promised is believed, and said
+/// out loud: the goods are owed and nobody asked for a backorder.
+#[tokio::test]
+async fn counting_less_than_was_promised_says_so() {
+    let shop = Shop::open().await;
+    let (item, location, _) = seed(&shop, 10).await;
+
+    let mut tx = shop.begin().await;
+    inventory::reserve(&mut tx, &shop.ctx(), item, location, 8, None, false, None)
+        .await
+        .expect("eight of ten");
+    tx.commit().await.expect("to commit");
+
+    let mut tx = shop.begin().await;
+    inventory::adjust_stock(
+        &mut tx,
+        &shop.ctx(),
+        item,
+        location,
+        -7,
+        Some("counted the shelf"),
+    )
+    .await
+    .expect("a count is believed");
+    tx.commit().await.expect("to commit");
+
+    assert_eq!(stock(&shop, item, location).await, (3, 8, -5));
+    assert!(
+        shop.host.emitted("stock.oversold"),
+        "five units are owed that do not exist and nothing said so"
+    );
+
+    shop.close().await;
+}

@@ -828,6 +828,28 @@ pub async fn adjust_stock(
     )
     .await?;
 
+    // A count is the truth, so it is not refused for disagreeing with what was
+    // already promised — but somebody has to be told that stock is owed which
+    // no longer exists, and this is the only place it can happen without a
+    // backorder having been asked for.
+    if level.available_quantity < 0 {
+        ctx.emit(
+            tx,
+            Event {
+                name: "stock.oversold",
+                entity_id: level.id.as_uuid(),
+                payload: serde_json::json!({
+                    "inventory_item_id": inventory_item_id,
+                    "location_id": location_id,
+                    "stocked_quantity": level.stocked_quantity,
+                    "reserved_quantity": level.reserved_quantity,
+                    "short_by": -level.available_quantity,
+                }),
+            },
+        )
+        .await?;
+    }
+
     Ok(level)
 }
 
