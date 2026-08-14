@@ -23,7 +23,7 @@ use std::path::Path;
 
 /// Functions that run a query without a permit anywhere beneath them, each
 /// with the reason it is not a hole. Adding to this is not a fix.
-const TOLERATED: [(&str, &str); 3] = [
+const TOLERATED: [(&str, &str); 4] = [
     (
         "payment::recompute",
         "derives a collection's amounts from rows already written; `pub(crate)` \
@@ -38,6 +38,12 @@ const TOLERATED: [(&str, &str); 3] = [
         "workflow::extend",
         "a running step extending its own lease; takes no Ctx, so there is \
          nobody to ask",
+    ),
+    (
+        "workflow::transaction_key_of",
+        "reads only the key a run may be checked ownership against; every \
+         caller asks with it before reading anything else about the run, \
+         see #123",
     ),
 ];
 
