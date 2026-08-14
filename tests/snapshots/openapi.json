@@ -10391,6 +10391,162 @@
         "x-tezgah-permission": "view"
       }
     },
+    "/store/orders/{id}/transfer/accept": {
+      "post": {
+        "operationId": "postStoreOrdersByIdTransferAccept",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "publishableKey": []
+          }
+        ],
+        "summary": "Take over an order one was offered",
+        "tags": [
+          "order"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/store/orders/{id}/transfer/cancel": {
+      "post": {
+        "operationId": "postStoreOrdersByIdTransferCancel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "publishableKey": []
+          }
+        ],
+        "summary": "Withdraw an offer of one's own order",
+        "tags": [
+          "order"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/store/orders/{id}/transfer/decline": {
+      "post": {
+        "operationId": "postStoreOrdersByIdTransferDecline",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "publishableKey": []
+          }
+        ],
+        "summary": "Refuse an order one was offered",
+        "tags": [
+          "order"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/store/orders/{id}/transfer/request": {
+      "post": {
+        "operationId": "postStoreOrdersByIdTransferRequest",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "publishableKey": []
+          }
+        ],
+        "summary": "Offer one of one's own orders to somebody else",
+        "tags": [
+          "order"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
     "/store/payment-collections": {
       "post": {
         "operationId": "postStorePaymentCollections",
