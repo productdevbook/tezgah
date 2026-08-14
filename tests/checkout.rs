@@ -85,6 +85,7 @@ impl PaymentProvider for Bank {
             data: serde_json::json!({ "intent": "an-intent" }),
             redirect: None,
             message: Some("the bank said so".into()),
+            installment: None,
         })
     }
 

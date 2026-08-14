@@ -757,7 +757,8 @@ pub struct ShippingOptionTypeView {
 
 const RETURN_COLUMNS: &str = "id, order_id, order_version, display_id, status, location_id, \
                               refund_amount, currency_code, no_notification, created_by, \
-                              requested_at, received_at, canceled_at, metadata, created_at, \
+                              requested_at, received_at, canceled_at, notified_at, \
+                              goods_returned_at, refund_due_by, metadata, created_at, \
                               updated_at";
 
 const EXCHANGE_COLUMNS: &str = "id, order_id, order_return_id, order_version, display_id, \
@@ -1006,6 +1007,7 @@ impl NewLineIn {
             requires_shipping: self.requires_shipping,
             adjustments: charged(self.discount),
             tax_lines: taxed(self.tax_rate),
+            withdrawal_exclusion: None,
             reserved_for: None,
         })
     }
@@ -2585,6 +2587,7 @@ pub async fn create_payment_session(
         provider_code: input.provider_code,
         amount: input.amount.money()?,
         context: input.context,
+        installment_count: None,
     };
     Ok(payment::create_session(tx, ctx, new).await?.into())
 }

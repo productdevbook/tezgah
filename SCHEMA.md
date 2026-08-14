@@ -89,6 +89,8 @@ Each domain owns a number, so parallel work does not collide.
 | `0026_scoped_foreign_keys` | `unique (scope, id)` on every registered table, and `(scope, x_id)` keys down the order and money path |
 | `0027_scoped_keys_finished` | `fulfillment_item.line_item_id` keyed to `order_item`, where it always pointed, and the last single-column keys on the scoped-key tables |
 | `0023_payment_collection_cart` | which cart a payment collection was opened for, so a collection says whose it is |
+| `0028_installment_and_invoice` | the instalment count, the difference it costs and who carries it, so what the basket came to and what the card was charged are two numbers; and `order_invoice`, the reference to the document a tax authority issued, unique per serial and per identifier so it cannot be issued twice |
+| `0029_agreement_and_withdrawal` | `agreement_version`, the whole rendered text a buyer was shown, written once and frozen by a trigger; `order_agreement`, that this order accepted that version and when; the per-line `withdrawal_eligible` decided at the sale; and the withdrawal timestamps on `order_return` |
 
 Migrations are append-only once merged. A change to a shipped table is a new
 file, and it expands before it contracts: add and backfill in one release, read

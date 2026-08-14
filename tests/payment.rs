@@ -16,9 +16,9 @@ use tezgah::id::{PaymentId, PaymentSessionId};
 use tezgah::money::{Currency, Money};
 use tezgah::payment::{
     self, Authorization, AuthorizationStatus, AuthorizeRequest, Authorized, CancelRequest,
-    CaptureRequest, CaptureResult, CollectionStatus, NewCollection, NewSession, PaymentProvider,
-    RefundRequest, RefundResult, SessionRequest, SessionResponse, SessionStatus, WebhookEvent,
-    WebhookKind, WebhookOutcome,
+    CaptureRequest, CaptureResult, CollectionStatus, Installment, NewCollection, NewSession,
+    PaymentProvider, RefundRequest, RefundResult, SessionRequest, SessionResponse, SessionStatus,
+    SurchargeBearer, WebhookEvent, WebhookKind, WebhookOutcome,
 };
 use tezgah::ports::Ctx;
 use tezgah::ports::{
@@ -36,6 +36,8 @@ struct FakeProvider {
     authorization: AuthorizationStatus,
     /// What the provider claims it held, when that is not what it was asked for.
     holds: Option<Money>,
+    /// The plan the bank accepted, when the card was split.
+    plan: Option<Installment>,
 }
 
 impl FakeProvider {
@@ -43,6 +45,7 @@ impl FakeProvider {
         FakeProvider {
             authorization: AuthorizationStatus::Authorized,
             holds: None,
+            plan: None,
         }
     }
 
@@ -50,6 +53,7 @@ impl FakeProvider {
         FakeProvider {
             authorization: AuthorizationStatus::RequiresMore,
             holds: None,
+            plan: None,
         }
     }
 
@@ -57,6 +61,27 @@ impl FakeProvider {
         FakeProvider {
             authorization: AuthorizationStatus::Authorized,
             holds: Some(amount),
+            plan: None,
+        }
+    }
+
+    /// A card split into `count`, charged `charged`, with `surcharge` of that
+    /// carried by whoever `bearer` says.
+    fn on_instalments(
+        charged: Money,
+        count: i32,
+        surcharge: Money,
+        bearer: SurchargeBearer,
+    ) -> FakeProvider {
+        FakeProvider {
+            authorization: AuthorizationStatus::Authorized,
+            holds: Some(charged),
+            plan: Some(Installment {
+                count,
+                surcharge,
+                bearer,
+                campaign: Some("a-campaign".to_owned()),
+            }),
         }
     }
 }
@@ -84,6 +109,7 @@ impl PaymentProvider for FakeProvider {
                 _ => None,
             },
             message: None,
+            installment: self.plan.clone(),
         })
     }
 
@@ -202,6 +228,7 @@ async fn open_session(shop: &Shop, total: Money) -> PaymentSessionId {
             provider_code: PROVIDER.to_owned(),
             amount: total,
             context: None,
+            installment_count: None,
         },
     )
     .await
@@ -231,6 +258,7 @@ async fn authorize(shop: &Shop, provider: &FakeProvider, session: PaymentSession
             amount: asked,
             data: json!({}),
             context: json!({}),
+            installment_count: None,
         })
         .await
         .expect("the provider to answer");
@@ -493,6 +521,7 @@ async fn capturing_asks_a_permission_authorising_did_not() {
             amount: try_(dec!(100.00)),
             data: json!({}),
             context: json!({}),
+            installment_count: None,
         })
         .await
         .expect("the provider to answer");
@@ -875,6 +904,171 @@ async fn a_capture_and_a_refund_at_the_same_time_leave_the_ledger_whole() {
         collection_refunded, balance.refunded,
         "the collection and the refund rows disagree"
     );
+
+    shop.close().await;
+}
+
+/// The bug #75 reports: a correct Turkish instalment sale, authorised for the
+/// basket plus the vade farkı, was being recorded as a fraud signal.
+#[tokio::test]
+async fn an_agreed_instalment_difference_is_not_a_mismatch() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let session = open_session(&shop, try_(dec!(1000.00))).await;
+
+    let provider = FakeProvider::on_instalments(
+        try_(dec!(1090.00)),
+        3,
+        try_(dec!(90.00)),
+        SurchargeBearer::Customer,
+    );
+    let paid = authorize(&shop, &provider, session)
+        .await
+        .payment()
+        .expect("a payment");
+
+    assert_eq!(paid.amount, dec!(1090.00), "the card is charged the plan");
+    assert_eq!(paid.installment_count, Some(3));
+    assert_eq!(paid.surcharge_amount, dec!(90.00));
+    assert_eq!(
+        paid.goods_amount(),
+        dec!(1000.00),
+        "the goods are still worth what the basket came to"
+    );
+
+    let mut tx = shop.begin().await;
+    let collection = payment::collection(&mut tx, &ctx, paid.payment_collection_id)
+        .await
+        .expect("the collection");
+    tx.commit().await.expect("to commit");
+
+    assert_ne!(
+        collection.status(),
+        CollectionStatus::Mismatch,
+        "an instalment difference the shopper agreed to was read as fraud"
+    );
+    assert_eq!(collection.status(), CollectionStatus::Authorized);
+    assert_eq!(collection.amount, dec!(1000.00), "the basket");
+    assert_eq!(collection.charged(), dec!(1090.00), "the card");
+    assert_eq!(collection.installment_count, Some(3));
+
+    shop.close().await;
+}
+
+#[tokio::test]
+async fn a_difference_nobody_explained_is_still_a_mismatch() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let session = open_session(&shop, try_(dec!(1000.00))).await;
+
+    // The plan accounts for 90 of it. The other 50 is unexplained.
+    let provider = FakeProvider::on_instalments(
+        try_(dec!(1140.00)),
+        3,
+        try_(dec!(90.00)),
+        SurchargeBearer::Customer,
+    );
+    let paid = authorize(&shop, &provider, session)
+        .await
+        .payment()
+        .expect("a payment");
+
+    let mut tx = shop.begin().await;
+    let collection = payment::collection(&mut tx, &ctx, paid.payment_collection_id)
+        .await
+        .expect("the collection");
+    tx.commit().await.expect("to commit");
+
+    assert_eq!(
+        collection.status(),
+        CollectionStatus::Mismatch,
+        "the guard stopped catching what it is for"
+    );
+
+    shop.close().await;
+}
+
+/// "6 taksit, faizsiz": the shop funds the plan, the card sees the basket, and
+/// less money arrives at settlement.
+#[tokio::test]
+async fn a_merchant_funded_plan_charges_the_basket_and_records_what_it_cost() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let session = open_session(&shop, try_(dec!(1000.00))).await;
+
+    let provider = FakeProvider::on_instalments(
+        try_(dec!(1000.00)),
+        6,
+        try_(dec!(60.00)),
+        SurchargeBearer::Merchant,
+    );
+    let paid = authorize(&shop, &provider, session)
+        .await
+        .payment()
+        .expect("a payment");
+
+    assert_eq!(paid.amount, dec!(1000.00));
+    assert_eq!(
+        paid.goods_amount(),
+        dec!(1000.00),
+        "the shopper paid the basket; the shop gave up the difference"
+    );
+
+    let mut tx = shop.begin().await;
+    let collection = payment::collection(&mut tx, &ctx, paid.payment_collection_id)
+        .await
+        .expect("the collection");
+    tx.commit().await.expect("to commit");
+
+    assert_eq!(collection.status(), CollectionStatus::Authorized);
+    assert_eq!(collection.charged(), dec!(1000.00));
+    assert_eq!(collection.surcharge_amount, dec!(0));
+    assert_eq!(collection.merchant_surcharge_amount, dec!(60.00));
+
+    shop.close().await;
+}
+
+/// A refund settles on the rail that charged, so half the goods gives half the
+/// charge back — the difference included, in proportion.
+#[tokio::test]
+async fn a_partial_refund_gives_back_its_share_of_the_charge() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let session = open_session(&shop, try_(dec!(1000.00))).await;
+
+    let provider = FakeProvider::on_instalments(
+        try_(dec!(1090.00)),
+        3,
+        try_(dec!(90.00)),
+        SurchargeBearer::Customer,
+    );
+    let paid = authorize(&shop, &provider, session)
+        .await
+        .payment()
+        .expect("a payment");
+
+    let share = paid
+        .charge_for_goods(try_(dec!(500.00)))
+        .expect("a share of the charge");
+    assert_eq!(share.amount, dec!(545.00));
+
+    let whole = paid
+        .charge_for_goods(try_(dec!(1000.00)))
+        .expect("the whole charge");
+    assert_eq!(
+        whole.amount,
+        dec!(1090.00),
+        "giving all the goods back gives all the money back"
+    );
+
+    let mut tx = shop.begin().await;
+    payment::capture(&mut tx, &ctx, paid.id, try_(dec!(1090.00)), None)
+        .await
+        .expect("the capture");
+    payment::refund(&mut tx, &ctx, paid.id, share, None, None)
+        .await
+        .expect("the refund to be within what was charged");
+    tx.commit().await.expect("to commit");
 
     shop.close().await;
 }

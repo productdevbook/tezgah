@@ -16,6 +16,15 @@
 //! triggers from those same rows, so a back office can filter on a column that
 //! no caller is able to set wrong.
 //!
+//! The ledger settles against what the card is charged rather than against the
+//! price tag, because on an instalment sale the two are different numbers and
+//! the bank statement is the one money actually moved by. The price tag is
+//! what an invoice is issued for, which is why [`Ledger`] carries both.
+//!
+//! **A document issued about an order is recorded, not produced.** [`OrderInvoice`]
+//! holds the number and the authority's identifier so a second request cannot
+//! become a second invoice; making the document is the host's.
+//!
 //! **One mechanism changes an order.** [`request_change`], [`add_action`] and
 //! [`confirm_change`] are it. Returns, exchanges and claims each open their own
 //! rows and then hand the work to that mechanism; none of them is a second way
@@ -36,9 +45,10 @@ use uuid::Uuid;
 use crate::cart::{CartTotals, TotalsLine, TotalsShipping, compute};
 use crate::error::{Error, Result};
 use crate::id::{
-    AddressId, CaptureId, ClaimId, CustomerId, ExchangeId, LineItemId, OrderChangeId, OrderId,
-    OrderItemId, OrderTransactionId, OrderTransferId, PaymentCollectionId, PromotionId, RefundId,
-    RegionId, ReturnId, SalesChannelId, ShippingOptionId, StockLocationId, VariantId,
+    AddressId, AgreementVersionId, CaptureId, ClaimId, CustomerId, ExchangeId, LineItemId,
+    OrderAgreementId, OrderChangeId, OrderId, OrderInvoiceId, OrderItemId, OrderTransactionId,
+    OrderTransferId, PaymentCollectionId, PromotionId, RefundId, RegionId, ReturnId,
+    SalesChannelId, ShippingOptionId, StockLocationId, VariantId,
 };
 use crate::money::{Currency, Money};
 use crate::page::{Cursor, Page, Paging};
@@ -54,7 +64,8 @@ const LINE_COLUMNS: &str = "id, order_id, variant_id, product_id, title, subtitl
                             product_title, product_handle, variant_title, variant_sku, \
                             variant_option_values, unit_price, compare_at_unit_price, \
                             currency_code, requires_shipping, is_tax_inclusive, is_discountable, \
-                            is_giftcard, metadata, created_at, updated_at";
+                            is_giftcard, withdrawal_eligible, withdrawal_exclusion_reason, \
+                            metadata, created_at, updated_at";
 
 const ITEM_COLUMNS: &str = "id, order_id, order_line_item_id, version, unit_price, \
                             compare_at_unit_price, currency_code, quantity, fulfilled_quantity, \
@@ -74,7 +85,8 @@ const ACTION_COLUMNS: &str = "id, order_change_id, order_id, order_return_id, or
 
 const RETURN_COLUMNS: &str = "id, order_id, order_version, display_id, status, location_id, \
                               refund_amount, currency_code, no_notification, created_by, \
-                              requested_at, received_at, canceled_at, metadata, created_at, \
+                              requested_at, received_at, canceled_at, notified_at, \
+                              goods_returned_at, refund_due_by, metadata, created_at, \
                               updated_at";
 
 const EXCHANGE_COLUMNS: &str = "id, order_id, order_return_id, order_version, display_id, \
@@ -187,8 +199,15 @@ pub struct Ledger {
     pub refunded: Money,
     /// Captured less refunded: what the shop is actually holding.
     pub paid: Money,
-    /// What the order comes to less what is paid. Negative means over-refunded.
+    /// What the card is being charged less what is paid. Negative means
+    /// over-refunded.
     pub due: Money,
+    /// The instalment difference the shopper agreed to carry on top of the
+    /// order — zero for everything that is not an instalment sale.
+    pub surcharge: Money,
+    /// The order's total plus that difference: what the card is charged, and
+    /// what the ledger settles against.
+    pub charged: Money,
     pub state: PaymentState,
 }
 
@@ -255,6 +274,10 @@ pub struct OrderLineItem {
     pub is_tax_inclusive: bool,
     pub is_discountable: bool,
     pub is_giftcard: bool,
+    /// Whether this line could be walked away from, as the rule read on the
+    /// day it was bought. Never derived again afterwards.
+    pub withdrawal_eligible: bool,
+    pub withdrawal_exclusion_reason: Option<String>,
     pub metadata: Option<Value>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
@@ -381,6 +404,11 @@ pub struct Return {
     pub requested_at: Option<chrono::DateTime<chrono::Utc>>,
     pub received_at: Option<chrono::DateTime<chrono::Utc>>,
     pub canceled_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// When the buyer said they were withdrawing, which is what starts the
+    /// clock on the refund rather than when the goods arrive back.
+    pub notified_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub goods_returned_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub refund_due_by: Option<chrono::DateTime<chrono::Utc>>,
     pub metadata: Option<Value>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
@@ -565,6 +593,10 @@ pub struct NewOrderLine {
     pub requires_shipping: bool,
     pub adjustments: Vec<NewAdjustment>,
     pub tax_lines: Vec<NewTaxLine>,
+    /// Why this line is outside the withdrawal right, decided here because the
+    /// list of exemptions moves and the answer wanted is the one that held on
+    /// the day of the sale. `None` is the ordinary case: it may be sent back.
+    pub withdrawal_exclusion: Option<WithdrawalExclusion>,
     /// The cart line whose reservations this line inherits. Without it the
     /// stock a checkout held is unreachable from the order that holds it.
     pub reserved_for: Option<LineItemId>,
@@ -591,6 +623,7 @@ impl NewOrderLine {
             requires_shipping: true,
             adjustments: Vec::new(),
             tax_lines: Vec::new(),
+            withdrawal_exclusion: None,
             reserved_for: None,
         }
     }
@@ -759,9 +792,10 @@ async fn place(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewOrder, draft: bool) -> Re
                  (id, scope, order_id, variant_id, product_id, title, subtitle, thumbnail,
                   product_title, product_handle, variant_title, variant_sku,
                   variant_option_values, unit_price, compare_at_unit_price, currency_code,
-                  requires_shipping, is_tax_inclusive, is_discountable)
+                  requires_shipping, is_tax_inclusive, is_discountable,
+                  withdrawal_eligible, withdrawal_exclusion_reason)
              values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
-                     $17, $18, $19)",
+                     $17, $18, $19, $20, $21)",
         )
         .bind(line_id.as_uuid())
         .bind(ctx.scope.0)
@@ -782,6 +816,8 @@ async fn place(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewOrder, draft: bool) -> Re
         .bind(line.requires_shipping)
         .bind(line.is_tax_inclusive)
         .bind(line.is_discountable)
+        .bind(line.withdrawal_exclusion.is_none())
+        .bind(line.withdrawal_exclusion.map(WithdrawalExclusion::as_str))
         .execute(&mut **tx)
         .await?;
 
@@ -1546,6 +1582,24 @@ pub async fn ledger(tx: &mut Tx<'_>, ctx: &Ctx<'_>, order_id: OrderId) -> Result
     let owed = totals.total.amount;
     let paid = captured - refunded;
 
+    // The ledger settles against what the card is charged, not against the
+    // price tag: on an instalment sale the two differ by the vade farkı and a
+    // `due` computed from the price tag would read a paid order as overpaid.
+    // The price tag is still the number the invoice is issued for, which is
+    // why both are returned.
+    let surcharge: Decimal = match order.payment_collection_id {
+        Some(collection) => sqlx::query_scalar(
+            "select surcharge_amount from payment_collection where scope = $1 and id = $2",
+        )
+        .bind(ctx.scope.0)
+        .bind(collection.as_uuid())
+        .fetch_optional(&mut **tx)
+        .await?
+        .unwrap_or(Decimal::ZERO),
+        None => Decimal::ZERO,
+    };
+    let charged = owed + surcharge;
+
     let state = if refunded > Decimal::ZERO && refunded >= captured {
         PaymentState::Refunded
     } else if refunded > Decimal::ZERO {
@@ -1567,9 +1621,378 @@ pub async fn ledger(tx: &mut Tx<'_>, ctx: &Ctx<'_>, order_id: OrderId) -> Result
         captured: Money::new(captured, currency),
         refunded: Money::new(refunded, currency),
         paid: Money::new(paid, currency),
-        due: Money::new(owed - paid, currency),
+        due: Money::new(charged - paid, currency),
+        surcharge: Money::new(surcharge, currency),
+        charged: Money::new(charged, currency),
         state,
     })
+}
+
+// ---------------------------------------------------------------------------
+// Invoices
+// ---------------------------------------------------------------------------
+
+/// The document a tax authority issued about an order.
+///
+/// tezgah does not make one. Rendering UBL, talking to an integrator or to
+/// GİB, producing a PDF and sending it are the host's, and `GOAL.md` says so.
+/// What is here is the reference: which document was issued for this sale, so
+/// asking twice cannot produce two invoices for one order, and so a credit
+/// note has something to name.
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct OrderInvoice {
+    pub id: OrderInvoiceId,
+    pub order_id: OrderId,
+    pub order_version: i32,
+    pub kind: String,
+    /// The human-readable serial the shop or the authority allocated.
+    pub number: String,
+    /// The authority's own identifier — an ETTN in Turkey, a `DocCode`
+    /// elsewhere. A different thing from the serial, and the idempotency key.
+    pub external_id: Option<String>,
+    pub provider: Option<String>,
+    pub status: String,
+    pub issued_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub document_url: Option<String>,
+    pub total_amount: Decimal,
+    pub currency_code: String,
+    pub replaces_invoice_id: Option<OrderInvoiceId>,
+    pub metadata: Option<Value>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl OrderInvoice {
+    pub fn currency(&self) -> Result<Currency> {
+        Currency::parse(&self.currency_code)
+    }
+
+    pub fn total(&self) -> Result<Money> {
+        Ok(Money::new(self.total_amount, self.currency()?))
+    }
+
+    pub fn kind(&self) -> InvoiceKind {
+        InvoiceKind::parse(&self.kind)
+    }
+
+    pub fn status(&self) -> Result<InvoiceStatus> {
+        InvoiceStatus::parse(&self.status)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InvoiceKind {
+    Invoice,
+    CreditNote,
+}
+
+impl InvoiceKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            InvoiceKind::Invoice => "invoice",
+            InvoiceKind::CreditNote => "credit_note",
+        }
+    }
+
+    pub fn parse(text: &str) -> InvoiceKind {
+        match text {
+            "credit_note" => InvoiceKind::CreditNote,
+            _ => InvoiceKind::Invoice,
+        }
+    }
+}
+
+/// Where the document has got to. The answer from a tax authority arrives
+/// after the request, so `requested` is a real state rather than a moment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InvoiceStatus {
+    Requested,
+    Issued,
+    Accepted,
+    Rejected,
+    Cancelled,
+}
+
+impl InvoiceStatus {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            InvoiceStatus::Requested => "requested",
+            InvoiceStatus::Issued => "issued",
+            InvoiceStatus::Accepted => "accepted",
+            InvoiceStatus::Rejected => "rejected",
+            InvoiceStatus::Cancelled => "cancelled",
+        }
+    }
+
+    pub fn parse(text: &str) -> Result<InvoiceStatus> {
+        Ok(match text {
+            "requested" => InvoiceStatus::Requested,
+            "issued" => InvoiceStatus::Issued,
+            "accepted" => InvoiceStatus::Accepted,
+            "rejected" => InvoiceStatus::Rejected,
+            "cancelled" => InvoiceStatus::Cancelled,
+            other => {
+                return Err(Error::invalid(format!(
+                    "{other:?} is not an invoice status"
+                )));
+            }
+        })
+    }
+}
+
+/// What the host was given by whoever issued the document.
+#[derive(Debug, Clone)]
+pub struct NewInvoice {
+    pub number: String,
+    pub external_id: Option<String>,
+    pub provider: Option<String>,
+    pub status: InvoiceStatus,
+    pub total: Money,
+    pub issued_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub document_url: Option<String>,
+    pub metadata: Option<Value>,
+}
+
+const INVOICE_COLUMNS: &str = "id, order_id, order_version, kind, number, external_id, provider, \
+                               status, issued_at, document_url, total_amount, currency_code, \
+                               replaces_invoice_id, metadata, created_at";
+
+/// Records that an invoice was issued for the order.
+///
+/// The unique keys are the point: a second call carrying the same serial, or
+/// the same identifier from the authority, is refused rather than allowed to
+/// become a second invoice for one sale. Unwinding that is a tax problem, not
+/// a software one.
+pub async fn record_invoice(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order_id: OrderId,
+    new: NewInvoice,
+) -> Result<OrderInvoice> {
+    write_invoice(tx, ctx, order_id, InvoiceKind::Invoice, None, new).await
+}
+
+/// Records the document that reverses one already issued.
+///
+/// The original is read first: a credit note against an invoice that was never
+/// issued, or against one that was cancelled, is refused.
+pub async fn record_credit_note(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order_id: OrderId,
+    replaces: OrderInvoiceId,
+    new: NewInvoice,
+) -> Result<OrderInvoice> {
+    let original = invoice(tx, ctx, replaces).await?;
+
+    if original.order_id != order_id {
+        return Err(Error::invalid("that invoice belongs to another order"));
+    }
+    if original.kind() != InvoiceKind::Invoice {
+        return Err(Error::invalid("a credit note reverses an invoice"));
+    }
+    if original.status()? == InvoiceStatus::Cancelled {
+        return Err(Error::conflict(
+            "that invoice was cancelled, so there is nothing to reverse",
+        ));
+    }
+
+    write_invoice(
+        tx,
+        ctx,
+        order_id,
+        InvoiceKind::CreditNote,
+        Some(replaces),
+        new,
+    )
+    .await
+}
+
+async fn write_invoice(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order_id: OrderId,
+    kind: InvoiceKind,
+    replaces: Option<OrderInvoiceId>,
+    new: NewInvoice,
+) -> Result<OrderInvoice> {
+    let order = read(tx, ctx, order_id).await?;
+
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Order {
+            id: order_id.as_uuid(),
+            customer: order.customer_id.map(CustomerId::as_uuid),
+        },
+    )?;
+
+    if new.number.trim().is_empty() {
+        return Err(Error::invalid("an invoice carries a number"));
+    }
+    if new.total.currency.as_str() != order.currency_code {
+        return Err(Error::invalid("an invoice is in the order's currency"));
+    }
+    if new.total.is_negative() {
+        return Err(Error::invalid(
+            "an invoice is for a positive amount; what reverses one is a credit note",
+        ));
+    }
+
+    let id = OrderInvoiceId::new();
+    let written = sqlx::query_as::<_, OrderInvoice>(&format!(
+        "insert into order_invoice (
+             id, scope, order_id, order_version, kind, number, external_id, provider,
+             status, issued_at, document_url, total_amount, currency_code,
+             replaces_invoice_id, metadata
+         )
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+         on conflict do nothing
+         returning {INVOICE_COLUMNS}"
+    ))
+    .bind(id.as_uuid())
+    .bind(ctx.scope.0)
+    .bind(order_id.as_uuid())
+    .bind(order.version)
+    .bind(kind.as_str())
+    .bind(new.number.trim())
+    .bind(new.external_id.as_deref())
+    .bind(new.provider.as_deref())
+    .bind(new.status.as_str())
+    .bind(new.issued_at)
+    .bind(new.document_url.as_deref())
+    .bind(new.total.amount)
+    .bind(new.total.currency.as_str())
+    .bind(replaces.map(OrderInvoiceId::as_uuid))
+    .bind(new.metadata)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::conflict("that document is already recorded against this order"))?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "order_invoice",
+            entity_id: id.as_uuid(),
+            summary: serde_json::json!({
+                "order": order_id.to_string(),
+                "kind": kind.as_str(),
+                "number": written.number,
+            }),
+        },
+    )
+    .await?;
+
+    ctx.emit(
+        tx,
+        Event {
+            name: "order.invoice_recorded",
+            entity_id: order_id.as_uuid(),
+            payload: serde_json::json!({
+                "invoice": id.to_string(),
+                "kind": kind.as_str(),
+                "status": new.status.as_str(),
+            }),
+        },
+    )
+    .await?;
+
+    Ok(written)
+}
+
+/// Writes down what the authority answered, which arrives after the request.
+pub async fn set_invoice_status(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderInvoiceId,
+    status: InvoiceStatus,
+) -> Result<OrderInvoice> {
+    let existing = invoice(tx, ctx, id).await?;
+
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Order {
+            id: existing.order_id.as_uuid(),
+            customer: None,
+        },
+    )?;
+
+    let updated = sqlx::query_as::<_, OrderInvoice>(&format!(
+        "update order_invoice set status = $3
+         where scope = $1 and id = $2
+         returning {INVOICE_COLUMNS}"
+    ))
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .bind(status.as_str())
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("order invoice"))?;
+
+    ctx.emit(
+        tx,
+        Event {
+            name: "order.invoice_status_changed",
+            entity_id: updated.order_id.as_uuid(),
+            payload: serde_json::json!({
+                "invoice": id.to_string(),
+                "status": status.as_str(),
+            }),
+        },
+    )
+    .await?;
+
+    Ok(updated)
+}
+
+/// The lookup answers nothing until the permit is taken, and the permit is
+/// taken against the order the row turned out to belong to.
+pub async fn invoice(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: OrderInvoiceId) -> Result<OrderInvoice> {
+    let found = sqlx::query_as::<_, OrderInvoice>(&format!(
+        "select {INVOICE_COLUMNS} from order_invoice where scope = $1 and id = $2"
+    ))
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("order invoice"))?;
+
+    let _: Permit = ctx.permit(
+        Action::View,
+        Resource::Order {
+            id: found.order_id.as_uuid(),
+            customer: None,
+        },
+    )?;
+
+    Ok(found)
+}
+
+pub async fn invoices(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order_id: OrderId,
+) -> Result<Vec<OrderInvoice>> {
+    let _: Permit = ctx.permit(
+        Action::View,
+        Resource::Order {
+            id: order_id.as_uuid(),
+            customer: None,
+        },
+    )?;
+
+    Ok(sqlx::query_as::<_, OrderInvoice>(&format!(
+        "select {INVOICE_COLUMNS} from order_invoice
+         where scope = $1 and order_id = $2
+         order by created_at, id limit $3"
+    ))
+    .bind(ctx.scope.0)
+    .bind(order_id.as_uuid())
+    .bind(MAX_LINES)
+    .fetch_all(&mut **tx)
+    .await?)
 }
 
 // ---------------------------------------------------------------------------
@@ -2192,7 +2615,9 @@ pub async fn receive_return(
 
     let settled = sqlx::query_as::<_, Return>(&format!(
         "update order_return
-         set status = $3, received_at = case when $3 = 'received' then $4 else received_at end
+         set status = $3,
+             received_at = case when $3 = 'received' then $4 else received_at end,
+             goods_returned_at = coalesce(goods_returned_at, $4)
          where scope = $1 and id = $2
          returning {RETURN_COLUMNS}"
     ))
@@ -2416,6 +2841,598 @@ pub async fn return_items(
     .bind(MAX_LINES)
     .fetch_all(&mut **tx)
     .await?)
+}
+
+// ---------------------------------------------------------------------------
+// What was agreed, and how long there is to change one's mind
+// ---------------------------------------------------------------------------
+
+/// Days a consumer has to walk away from a distance sale, counted from
+/// delivery rather than from the order.
+pub const WITHDRAWAL_DAYS: i64 = 14;
+
+/// Days the seller then has to give the money back, counted from the notice
+/// rather than from the goods arriving.
+pub const REFUND_DAYS: i64 = 14;
+
+pub const MAX_AGREEMENTS: i64 = 50;
+
+/// Which document was accepted. The text of each is the host's to write;
+/// tezgah only keeps which one was shown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AgreementKind {
+    /// The prior-information form a distance seller must present before the
+    /// order is placed.
+    PreContract,
+    /// The distance sale contract itself.
+    DistanceSale,
+    Other,
+}
+
+impl AgreementKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            AgreementKind::PreContract => "pre_contract",
+            AgreementKind::DistanceSale => "distance_sale",
+            AgreementKind::Other => "other",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self> {
+        match value {
+            "pre_contract" => Ok(AgreementKind::PreContract),
+            "distance_sale" => Ok(AgreementKind::DistanceSale),
+            "other" => Ok(AgreementKind::Other),
+            _ => Err(Error::invalid("that is not a kind of agreement")),
+        }
+    }
+}
+
+/// Why a line is outside the withdrawal right. Which goods fall in the list
+/// changes — telephones, tablets and computers returned to the Turkish one on
+/// 1 January 2026 — so this is recorded at the sale and never worked out again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WithdrawalExclusion {
+    CustomMade,
+    Hygiene,
+    Perishable,
+    DigitalUnsealed,
+    DigitalDelivered,
+    Periodical,
+    ServiceStarted,
+    Other,
+}
+
+impl WithdrawalExclusion {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            WithdrawalExclusion::CustomMade => "custom_made",
+            WithdrawalExclusion::Hygiene => "hygiene",
+            WithdrawalExclusion::Perishable => "perishable",
+            WithdrawalExclusion::DigitalUnsealed => "digital_unsealed",
+            WithdrawalExclusion::DigitalDelivered => "digital_delivered",
+            WithdrawalExclusion::Periodical => "periodical",
+            WithdrawalExclusion::ServiceStarted => "service_started",
+            WithdrawalExclusion::Other => "other",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self> {
+        match value {
+            "custom_made" => Ok(WithdrawalExclusion::CustomMade),
+            "hygiene" => Ok(WithdrawalExclusion::Hygiene),
+            "perishable" => Ok(WithdrawalExclusion::Perishable),
+            "digital_unsealed" => Ok(WithdrawalExclusion::DigitalUnsealed),
+            "digital_delivered" => Ok(WithdrawalExclusion::DigitalDelivered),
+            "periodical" => Ok(WithdrawalExclusion::Periodical),
+            "service_started" => Ok(WithdrawalExclusion::ServiceStarted),
+            "other" => Ok(WithdrawalExclusion::Other),
+            _ => Err(Error::invalid("that is not a withdrawal exclusion")),
+        }
+    }
+}
+
+/// One rendering of one document, as it read the day it was published.
+///
+/// `body` is the whole text rather than a key into a template: a template is
+/// editable, and editing it would destroy the evidence for every order that
+/// pointed at it. Rows here are written once and the database refuses to
+/// change them.
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct AgreementVersion {
+    pub id: AgreementVersionId,
+    pub kind: String,
+    pub locale: String,
+    pub body: String,
+    pub body_hash: String,
+    pub effective_from: chrono::DateTime<chrono::Utc>,
+    pub metadata: Option<Value>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+const AGREEMENT_COLUMNS: &str =
+    "id, kind, locale, body, body_hash, effective_from, metadata, created_at";
+
+/// That one order's buyer accepted one version, and what was known about them
+/// as they did.
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct OrderAgreement {
+    pub id: OrderAgreementId,
+    pub order_id: OrderId,
+    pub agreement_version_id: AgreementVersionId,
+    pub kind: String,
+    pub body_hash: String,
+    pub accepted_at: chrono::DateTime<chrono::Utc>,
+    pub ip: Option<String>,
+    pub user_agent: Option<String>,
+    pub metadata: Option<Value>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+const ORDER_AGREEMENT_COLUMNS: &str = "id, order_id, agreement_version_id, kind, body_hash, \
+                                       accepted_at, ip, user_agent, metadata, created_at";
+
+/// A document to publish. The text arrives rendered: tezgah has no template
+/// engine, no translations of its own and no opinion about wording.
+#[derive(Debug, Clone)]
+pub struct NewAgreement {
+    pub kind: AgreementKind,
+    pub locale: String,
+    pub body: String,
+    pub effective_from: Option<chrono::DateTime<chrono::Utc>>,
+    pub metadata: Option<Value>,
+}
+
+/// Writes a version of a document. Publishing again writes another version;
+/// nothing edits one that exists.
+pub async fn publish_agreement(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    new: NewAgreement,
+) -> Result<AgreementVersion> {
+    let _: Permit = ctx.permit(Action::Write, Resource::Store)?;
+
+    if new.body.trim().is_empty() {
+        return Err(Error::invalid("an agreement with no text in it"));
+    }
+    if new.locale.trim().is_empty() {
+        return Err(Error::invalid("an agreement needs the language it is in"));
+    }
+
+    let id = AgreementVersionId::new();
+    let version = sqlx::query_as::<_, AgreementVersion>(&format!(
+        "insert into agreement_version
+             (id, scope, kind, locale, body, body_hash, effective_from, metadata)
+         values ($1, $2, $3, $4, $5, $6, $7, $8)
+         returning {AGREEMENT_COLUMNS}"
+    ))
+    .bind(id.as_uuid())
+    .bind(ctx.scope.0)
+    .bind(new.kind.as_str())
+    .bind(new.locale.trim())
+    .bind(&new.body)
+    .bind(digest(&new.body))
+    .bind(new.effective_from.unwrap_or_else(|| ctx.now()))
+    .bind(new.metadata)
+    .fetch_one(&mut **tx)
+    .await?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "agreement_version",
+            entity_id: id.as_uuid(),
+            summary: serde_json::json!({
+                "kind": new.kind.as_str(),
+                "locale": version.locale,
+                "hash": version.body_hash,
+            }),
+        },
+    )
+    .await?;
+
+    Ok(version)
+}
+
+pub async fn agreement_versions(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    kind: Option<AgreementKind>,
+    paging: Paging,
+) -> Result<Page<AgreementVersion>> {
+    let _: Permit = ctx.permit(Action::View, Resource::Store)?;
+
+    let rows = sqlx::query_as::<_, AgreementVersion>(&format!(
+        "select {AGREEMENT_COLUMNS} from agreement_version
+         where scope = $1
+           and ($2::text is null or kind = $2)
+           and ($3::timestamptz is null or (created_at, id) > ($3, $4))
+         order by created_at, id
+         limit $5"
+    ))
+    .bind(ctx.scope.0)
+    .bind(kind.map(AgreementKind::as_str))
+    .bind(paging.after.map(|c| c.at))
+    .bind(paging.after.map(|c| c.id))
+    .bind(paging.probe())
+    .fetch_all(&mut **tx)
+    .await?;
+
+    Ok(Page::build(rows, paging, |row| Cursor {
+        at: row.created_at,
+        id: row.id.as_uuid(),
+    }))
+}
+
+pub async fn agreement_version(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: AgreementVersionId,
+) -> Result<AgreementVersion> {
+    let _: Permit = ctx.permit(Action::View, Resource::Store)?;
+
+    read_agreement(tx, ctx, id).await
+}
+
+/// What the buyer did, and everything about the moment worth keeping.
+#[derive(Debug, Clone)]
+pub struct Acceptance {
+    pub agreement_version_id: AgreementVersionId,
+    pub accepted_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub ip: Option<String>,
+    pub user_agent: Option<String>,
+    pub metadata: Option<Value>,
+}
+
+impl Acceptance {
+    pub fn of(version: AgreementVersionId) -> Self {
+        Acceptance {
+            agreement_version_id: version,
+            accepted_at: None,
+            ip: None,
+            user_agent: None,
+            metadata: None,
+        }
+    }
+}
+
+/// Records that this order's buyer accepted that version.
+///
+/// The kind and the hash are copied off the version rather than taken from the
+/// caller: what is being proved is that this text was accepted, and a caller
+/// free to name the text is not proof of anything.
+pub async fn accept_agreement(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order_id: OrderId,
+    acceptance: Acceptance,
+) -> Result<OrderAgreement> {
+    let order = read(tx, ctx, order_id).await?;
+
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Order {
+            id: order_id.as_uuid(),
+            customer: order.customer_id.map(CustomerId::as_uuid),
+        },
+    )?;
+
+    let version = read_agreement(tx, ctx, acceptance.agreement_version_id).await?;
+
+    let id = OrderAgreementId::new();
+    let accepted = sqlx::query_as::<_, OrderAgreement>(&format!(
+        "insert into order_agreement
+             (id, scope, order_id, agreement_version_id, kind, body_hash, accepted_at,
+              ip, user_agent, metadata)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         returning {ORDER_AGREEMENT_COLUMNS}"
+    ))
+    .bind(id.as_uuid())
+    .bind(ctx.scope.0)
+    .bind(order_id.as_uuid())
+    .bind(version.id.as_uuid())
+    .bind(&version.kind)
+    .bind(&version.body_hash)
+    .bind(acceptance.accepted_at.unwrap_or_else(|| ctx.now()))
+    .bind(acceptance.ip)
+    .bind(acceptance.user_agent)
+    .bind(acceptance.metadata)
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(|error| match &error {
+        sqlx::Error::Database(failure) if failure.is_unique_violation() => {
+            Error::conflict("that order has already accepted a document of that kind")
+        }
+        _ => Error::from(error),
+    })?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "order_agreement",
+            entity_id: id.as_uuid(),
+            summary: serde_json::json!({
+                "order": order_id,
+                "kind": accepted.kind,
+                "hash": accepted.body_hash,
+            }),
+        },
+    )
+    .await?;
+
+    ctx.emit(
+        tx,
+        Event {
+            name: "order.agreement_accepted",
+            entity_id: order_id.as_uuid(),
+            payload: serde_json::json!({ "kind": accepted.kind }),
+        },
+    )
+    .await?;
+
+    Ok(accepted)
+}
+
+pub async fn agreements(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order_id: OrderId,
+) -> Result<Vec<OrderAgreement>> {
+    let order = read(tx, ctx, order_id).await?;
+
+    let _: Permit = ctx.permit(
+        Action::View,
+        Resource::Order {
+            id: order_id.as_uuid(),
+            customer: order.customer_id.map(CustomerId::as_uuid),
+        },
+    )?;
+
+    Ok(sqlx::query_as::<_, OrderAgreement>(&format!(
+        "select {ORDER_AGREEMENT_COLUMNS} from order_agreement
+         where scope = $1 and order_id = $2
+         order by accepted_at, id
+         limit $3"
+    ))
+    .bind(ctx.scope.0)
+    .bind(order_id.as_uuid())
+    .bind(MAX_AGREEMENTS)
+    .fetch_all(&mut **tx)
+    .await?)
+}
+
+/// The text this order's buyer actually read, whatever has been published
+/// since. This is the answer to the only question a regulator asks.
+pub async fn accepted_text(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order_id: OrderId,
+    kind: AgreementKind,
+) -> Result<AgreementVersion> {
+    let order = read(tx, ctx, order_id).await?;
+
+    let _: Permit = ctx.permit(
+        Action::View,
+        Resource::Order {
+            id: order_id.as_uuid(),
+            customer: order.customer_id.map(CustomerId::as_uuid),
+        },
+    )?;
+
+    sqlx::query_as::<_, AgreementVersion>(
+        "select v.id, v.kind, v.locale, v.body, v.body_hash, v.effective_from,
+                v.metadata, v.created_at
+         from agreement_version v
+         join order_agreement a
+           on a.scope = v.scope and a.agreement_version_id = v.id
+         where v.scope = $1 and a.order_id = $2 and a.kind = $3",
+    )
+    .bind(ctx.scope.0)
+    .bind(order_id.as_uuid())
+    .bind(kind.as_str())
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("accepted agreement"))
+}
+
+/// One line's right to be sent back, and by when.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LineWithdrawal {
+    pub order_line_item_id: LineItemId,
+    pub eligible: bool,
+    pub exclusion_reason: Option<String>,
+    /// The last delivery of this line, which is what the clock runs from.
+    pub delivered_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// `None` when nothing has been delivered — the clock has not started —
+    /// and `None` for a line outside the right, which never had one.
+    pub deadline: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(FromRow)]
+struct WithdrawalRow {
+    order_line_item_id: LineItemId,
+    withdrawal_eligible: bool,
+    withdrawal_exclusion_reason: Option<String>,
+    delivered_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+/// When each line's fourteen days run out.
+///
+/// Computed, never stored: the clock starts at delivery, a delivery can be
+/// corrected, and a column written at checkout would be the one thing that did
+/// not move with it.
+pub async fn withdrawal_deadline(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order_id: OrderId,
+) -> Result<Vec<LineWithdrawal>> {
+    let order = read(tx, ctx, order_id).await?;
+
+    let _: Permit = ctx.permit(
+        Action::View,
+        Resource::Order {
+            id: order_id.as_uuid(),
+            customer: order.customer_id.map(CustomerId::as_uuid),
+        },
+    )?;
+
+    let rows = sqlx::query_as::<_, WithdrawalRow>(
+        "select l.id as order_line_item_id,
+                l.withdrawal_eligible,
+                l.withdrawal_exclusion_reason,
+                (select max(f.delivered_at)
+                 from fulfillment f
+                 join fulfillment_item fi
+                   on fi.scope = f.scope and fi.fulfillment_id = f.id
+                 join order_item oi
+                   on oi.scope = fi.scope and oi.id = fi.line_item_id
+                 where f.scope = l.scope
+                   and oi.order_line_item_id = l.id
+                   and f.canceled_at is null) as delivered_at
+         from order_line_item l
+         where l.scope = $1 and l.order_id = $2
+         order by l.created_at, l.id
+         limit $3",
+    )
+    .bind(ctx.scope.0)
+    .bind(order_id.as_uuid())
+    .bind(MAX_LINES)
+    .fetch_all(&mut **tx)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| LineWithdrawal {
+            order_line_item_id: row.order_line_item_id,
+            eligible: row.withdrawal_eligible,
+            exclusion_reason: row.withdrawal_exclusion_reason,
+            delivered_at: row.delivered_at,
+            deadline: row
+                .delivered_at
+                .filter(|_| row.withdrawal_eligible)
+                .map(|at| at + chrono::Duration::days(WITHDRAWAL_DAYS)),
+        })
+        .collect())
+}
+
+/// The buyer says they are withdrawing.
+///
+/// This is the moment the money starts being owed: every line on the return is
+/// checked against its own deadline first, and the refund is due fourteen days
+/// from here rather than from the goods coming back.
+pub async fn notify_withdrawal(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    return_id: ReturnId,
+) -> Result<Return> {
+    let order_return = read_return(tx, ctx, return_id).await?;
+    let order = read(tx, ctx, order_return.order_id).await?;
+
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Order {
+            id: order.id.as_uuid(),
+            customer: order.customer_id.map(CustomerId::as_uuid),
+        },
+    )?;
+
+    if order_return.canceled_at.is_some() || order_return.status == "canceled" {
+        return Err(Error::conflict("that return was cancelled"));
+    }
+    if order_return.notified_at.is_some() {
+        return Err(Error::conflict("that withdrawal was already notified"));
+    }
+
+    let now = ctx.now();
+    let windows = withdrawal_deadline(tx, ctx, order.id).await?;
+    let lines = return_items(tx, ctx, return_id).await?;
+    if lines.is_empty() {
+        return Err(Error::invalid("a withdrawal needs something on it"));
+    }
+
+    for line in &lines {
+        let window = windows
+            .iter()
+            .find(|w| w.order_line_item_id == line.order_line_item_id)
+            .ok_or_else(|| Error::not_found("line item"))?;
+
+        if !window.eligible {
+            return Err(Error::conflict(
+                "that line is outside the right of withdrawal",
+            ));
+        }
+        match window.deadline {
+            None => {
+                return Err(Error::conflict(
+                    "nothing on that line has been delivered, so no window has opened",
+                ));
+            }
+            Some(deadline) if deadline < now => {
+                return Err(Error::conflict("the withdrawal window has closed"));
+            }
+            Some(_) => {}
+        }
+    }
+
+    let notified = sqlx::query_as::<_, Return>(&format!(
+        "update order_return
+         set notified_at = $3, refund_due_by = $4
+         where scope = $1 and id = $2 and notified_at is null
+         returning {RETURN_COLUMNS}"
+    ))
+    .bind(ctx.scope.0)
+    .bind(return_id.as_uuid())
+    .bind(now)
+    .bind(now + chrono::Duration::days(REFUND_DAYS))
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::conflict("that withdrawal was already notified"))?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "order_return",
+            entity_id: return_id.as_uuid(),
+            summary: serde_json::json!({ "withdrawal": true, "refund_due_by": notified.refund_due_by }),
+        },
+    )
+    .await?;
+
+    ctx.emit(
+        tx,
+        Event {
+            name: "order.withdrawal_notified",
+            entity_id: order.id.as_uuid(),
+            payload: serde_json::json!({
+                "return": return_id,
+                "refund_due_by": notified.refund_due_by,
+            }),
+        },
+    )
+    .await?;
+
+    Ok(notified)
+}
+
+async fn read_agreement(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: AgreementVersionId,
+) -> Result<AgreementVersion> {
+    sqlx::query_as::<_, AgreementVersion>(&format!(
+        "select {AGREEMENT_COLUMNS} from agreement_version where scope = $1 and id = $2"
+    ))
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("agreement version"))
 }
 
 // ---------------------------------------------------------------------------

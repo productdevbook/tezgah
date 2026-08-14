@@ -46,8 +46,8 @@ use crate::id::PaymentSessionId;
 use crate::money::Money;
 use crate::payment::{
     Authorization, AuthorizationStatus, AuthorizeRequest, CancelRequest, CaptureRequest,
-    CaptureResult, PaymentProvider, RefundRequest, RefundResult, SessionRequest, SessionResponse,
-    SessionStatus, WebhookEvent, WebhookKind,
+    CaptureResult, Installment, PaymentProvider, RefundRequest, RefundResult, SessionRequest,
+    SessionResponse, SessionStatus, SurchargeBearer, WebhookEvent, WebhookKind,
 };
 use crate::providers::{
     DEFAULT_TIMEOUT, Exponents, header, http_client, same_secret, to_decimal_string,
@@ -277,14 +277,7 @@ impl PaymentProvider for Iyzico {
 
         match payment_status {
             "SUCCESS" => {
-                let paid = detail["paidPrice"]
-                    .as_str()
-                    .and_then(|raw| Decimal::from_str(raw).ok())
-                    .or_else(|| {
-                        detail["paidPrice"]
-                            .as_f64()
-                            .and_then(Decimal::from_f64_retain)
-                    })
+                let paid = decimal(detail, "paidPrice")
                     .map(|amount| Money::new(amount, req.amount.currency));
                 Ok(Authorization {
                     status: AuthorizationStatus::Authorized,
@@ -292,6 +285,7 @@ impl PaymentProvider for Iyzico {
                     data,
                     redirect: None,
                     message: None,
+                    installment: plan(detail, req.amount.currency),
                 })
             }
             "INIT_THREEDS" | "CALLBACK_THREEDS" | "PENDING_CREDIT" | "" => Ok(Authorization {
@@ -300,6 +294,7 @@ impl PaymentProvider for Iyzico {
                 data,
                 redirect: detail["paymentPageUrl"].as_str().map(str::to_owned),
                 message: None,
+                installment: None,
             }),
             _ => Ok(Authorization {
                 status: AuthorizationStatus::Error,
@@ -307,6 +302,7 @@ impl PaymentProvider for Iyzico {
                 data,
                 redirect: None,
                 message: Some(format!("iyzico left the payment {payment_status:?}")),
+                installment: None,
             }),
         }
     }
@@ -476,6 +472,34 @@ fn field(payload: &Value, key: &str) -> String {
         Value::Number(number) => number.to_string(),
         _ => String::new(),
     }
+}
+
+/// iyzico writes an amount as a string in some answers and as a number in
+/// others.
+fn decimal(value: &Value, key: &str) -> Option<Decimal> {
+    value[key]
+        .as_str()
+        .and_then(|raw| Decimal::from_str(raw).ok())
+        .or_else(|| value[key].as_f64().and_then(Decimal::from_f64_retain))
+}
+
+/// `price` is what the basket came to and `paidPrice` what the card is
+/// charged. The difference is the vade farkı the shopper agreed to for
+/// splitting it, and it is the reason an instalment sale authorises more than
+/// the order total.
+fn plan(detail: &Value, currency: crate::money::Currency) -> Option<Installment> {
+    let count = detail["installment"].as_i64().unwrap_or(1) as i32;
+    if count < 2 {
+        return None;
+    }
+    let basket = decimal(detail, "price")?;
+    let charged = decimal(detail, "paidPrice")?;
+    Some(Installment {
+        count,
+        surcharge: Money::new((charged - basket).max(Decimal::ZERO), currency),
+        bearer: SurchargeBearer::Customer,
+        campaign: text(detail, "binNumber").map(str::to_owned),
+    })
 }
 
 fn text<'a>(value: &'a Value, key: &str) -> Option<&'a str> {

@@ -619,6 +619,9 @@ impl Step for CreateOrder {
                         .remove(&line.id.as_uuid())
                         .unwrap_or_default(),
                     tax_lines: line_taxes.remove(&line.id.as_uuid()).unwrap_or_default(),
+                    // A cart line carries no exemption, so a checkout sells
+                    // nothing it claims is outside the withdrawal right.
+                    withdrawal_exclusion: None,
                 })
                 .collect(),
             shipping: methods
@@ -711,6 +714,7 @@ impl Step for AuthorizePayment {
                 provider_code: self.provider.code().to_string(),
                 amount: owed,
                 context: Some(serde_json::json!({ "order_id": order_id })),
+                installment_count: None,
             },
         )
         .await
@@ -739,6 +743,7 @@ impl Step for AuthorizePayment {
                 amount: owed,
                 data: session.data.clone(),
                 context: serde_json::json!({ "order_id": order_id }),
+                installment_count: session.installment_count,
             })
             .await
             .map_err(Failure::Retry)?;

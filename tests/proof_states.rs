@@ -412,6 +412,7 @@ async fn a_payment_session_holds_only_the_statuses_the_code_knows() {
                 provider_code: "fake".into(),
                 amount: Money::new(dec!(100.00), lira()),
                 context: None,
+                installment_count: None,
             },
         )
         .await
@@ -486,6 +487,7 @@ async fn an_authorised_session_cannot_be_walked_back_to_an_open_one() {
                 provider_code: "fake".into(),
                 amount: Money::new(dec!(100.00), lira()),
                 context: None,
+                installment_count: None,
             },
         )
         .await

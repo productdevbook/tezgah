@@ -255,6 +255,7 @@ impl PaymentProvider for Stripe {
                 data,
                 redirect: None,
                 message: None,
+                installment: None,
             }),
             "requires_action"
             | "requires_confirmation"
@@ -265,6 +266,7 @@ impl PaymentProvider for Stripe {
                 data,
                 redirect: session["url"].as_str().map(str::to_owned),
                 message: None,
+                installment: None,
             }),
             _ => Ok(Authorization {
                 status: AuthorizationStatus::Error,
@@ -272,6 +274,7 @@ impl PaymentProvider for Stripe {
                 data,
                 redirect: None,
                 message: Some(format!("stripe left the intent {status:?}")),
+                installment: None,
             }),
         }
     }

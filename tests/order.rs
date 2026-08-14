@@ -1481,3 +1481,261 @@ async fn another_scope_sees_none_of_a_line_s_charges() -> tezgah::Result<()> {
     shop.close().await;
     Ok(())
 }
+
+/// The instalment sale as the order sees it: the ledger settles against what
+/// the card was charged, and the price tag is still there to invoice for.
+#[tokio::test]
+async fn an_instalment_sale_reconciles_against_what_the_card_was_charged() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    seed_currency(&mut tx, shop.here).await;
+
+    let placed = order::create(&mut tx, &ctx, an_order(vec![a_line(2, dec!(500))])).await?;
+    let totals = order::totals(&mut tx, &ctx, placed.id, placed.version).await?;
+    assert_eq!(totals.total.amount, dec!(1000.00));
+
+    let collection = tezgah::payment::create_collection(
+        &mut tx,
+        &ctx,
+        tezgah::payment::NewCollection {
+            amount: totals.total,
+            cart_id: None,
+            metadata: None,
+        },
+    )
+    .await?;
+    sqlx::query(
+        "update payment_collection set surcharge_amount = $3, charged_amount = $4,
+                installment_count = 3
+         where scope = $1 and id = $2",
+    )
+    .bind(shop.here.0)
+    .bind(collection.id.as_uuid())
+    .bind(dec!(90.00))
+    .bind(dec!(1090.00))
+    .execute(&mut *tx)
+    .await
+    .expect("the plan the bank accepted");
+
+    sqlx::query(r#"update "order" set payment_collection_id = $3 where scope = $1 and id = $2"#)
+        .bind(shop.here.0)
+        .bind(placed.id.as_uuid())
+        .bind(collection.id.as_uuid())
+        .execute(&mut *tx)
+        .await
+        .expect("the collection to be the order's");
+
+    let owing = order::ledger(&mut tx, &ctx, placed.id).await?;
+    assert_eq!(owing.surcharge.amount, dec!(90.00));
+    assert_eq!(owing.charged.amount, dec!(1090.00));
+    assert_eq!(owing.due.amount, dec!(1090.00));
+
+    order::record_transaction(
+        &mut tx,
+        &ctx,
+        placed.id,
+        money(dec!(1090.00)),
+        "capture",
+        Uuid::now_v7(),
+    )
+    .await?;
+
+    let settled = order::ledger(&mut tx, &ctx, placed.id).await?;
+    assert_eq!(
+        settled.due.amount,
+        dec!(0),
+        "a correctly paid instalment sale read as overpaid"
+    );
+    assert_eq!(settled.state, order::PaymentState::Captured);
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
+}
+
+fn an_invoice(number: &str, external: &str, total: Decimal) -> order::NewInvoice {
+    order::NewInvoice {
+        number: number.to_owned(),
+        external_id: Some(external.to_owned()),
+        provider: Some("an-integrator".into()),
+        status: order::InvoiceStatus::Issued,
+        total: money(total),
+        issued_at: None,
+        document_url: None,
+        metadata: None,
+    }
+}
+
+#[tokio::test]
+async fn one_invoice_cannot_be_recorded_against_an_order_twice() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    seed_currency(&mut tx, shop.here).await;
+
+    let placed = order::create(&mut tx, &ctx, an_order(vec![a_line(1, dec!(100))])).await?;
+
+    let first = order::record_invoice(
+        &mut tx,
+        &ctx,
+        placed.id,
+        an_invoice(
+            "ABC2026000000001",
+            "1b0f4a6e-0000-4000-8000-000000000001",
+            dec!(100.00),
+        ),
+    )
+    .await?;
+    assert_eq!(first.kind(), order::InvoiceKind::Invoice);
+    assert_eq!(first.status()?, order::InvoiceStatus::Issued);
+
+    let again = order::record_invoice(
+        &mut tx,
+        &ctx,
+        placed.id,
+        an_invoice(
+            "ABC2026000000001",
+            "1b0f4a6e-0000-4000-8000-000000000002",
+            dec!(100.00),
+        ),
+    )
+    .await;
+    assert!(
+        again.is_err(),
+        "the same serial went on the same order twice, which is two invoices for one sale"
+    );
+
+    let elsewhere = order::record_invoice(
+        &mut tx,
+        &ctx,
+        placed.id,
+        an_invoice(
+            "ABC2026000000002",
+            "1b0f4a6e-0000-4000-8000-000000000001",
+            dec!(100.00),
+        ),
+    )
+    .await;
+    assert!(
+        elsewhere.is_err(),
+        "the authority's own identifier landed twice"
+    );
+
+    assert_eq!(order::invoices(&mut tx, &ctx, placed.id).await?.len(), 1);
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_credit_note_names_the_invoice_it_reverses() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    seed_currency(&mut tx, shop.here).await;
+
+    let placed = order::create(&mut tx, &ctx, an_order(vec![a_line(1, dec!(100))])).await?;
+    let other = order::create(&mut tx, &ctx, an_order(vec![a_line(1, dec!(100))])).await?;
+
+    let issued = order::record_invoice(
+        &mut tx,
+        &ctx,
+        placed.id,
+        an_invoice(
+            "ABC2026000000010",
+            "1b0f4a6e-0000-4000-8000-000000000010",
+            dec!(100.00),
+        ),
+    )
+    .await?;
+
+    let note = order::record_credit_note(
+        &mut tx,
+        &ctx,
+        placed.id,
+        issued.id,
+        an_invoice(
+            "IAD2026000000001",
+            "1b0f4a6e-0000-4000-8000-000000000011",
+            dec!(40.00),
+        ),
+    )
+    .await?;
+
+    assert_eq!(note.kind(), order::InvoiceKind::CreditNote);
+    assert_eq!(note.replaces_invoice_id, Some(issued.id));
+
+    let strayed = order::record_credit_note(
+        &mut tx,
+        &ctx,
+        other.id,
+        issued.id,
+        an_invoice(
+            "IAD2026000000002",
+            "1b0f4a6e-0000-4000-8000-000000000012",
+            dec!(40.00),
+        ),
+    )
+    .await;
+    assert!(
+        strayed.is_err(),
+        "a credit note reversed a document belonging to another order"
+    );
+
+    // A credit note has nothing to reverse but an invoice.
+    let doubled = order::record_credit_note(
+        &mut tx,
+        &ctx,
+        placed.id,
+        note.id,
+        an_invoice(
+            "IAD2026000000003",
+            "1b0f4a6e-0000-4000-8000-000000000013",
+            dec!(10.00),
+        ),
+    )
+    .await;
+    assert!(doubled.is_err());
+
+    let accepted =
+        order::set_invoice_status(&mut tx, &ctx, issued.id, order::InvoiceStatus::Accepted).await?;
+    assert_eq!(accepted.status()?, order::InvoiceStatus::Accepted);
+
+    assert_eq!(order::invoices(&mut tx, &ctx, placed.id).await?.len(), 2);
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn another_shop_cannot_see_an_invoice() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut mine = shop.begin().await;
+    let ctx = shop.ctx();
+    seed_currency(&mut mine, shop.here).await;
+
+    let placed = order::create(&mut mine, &ctx, an_order(vec![a_line(1, dec!(100))])).await?;
+    let issued = order::record_invoice(
+        &mut mine,
+        &ctx,
+        placed.id,
+        an_invoice(
+            "ABC2026000000020",
+            "1b0f4a6e-0000-4000-8000-000000000020",
+            dec!(100.00),
+        ),
+    )
+    .await?;
+    mine.commit().await.expect("to commit");
+
+    let mut theirs = shop.begin_as(shop.elsewhere).await;
+    let seen = order::invoice(&mut theirs, &shop.theirs(), issued.id).await;
+    assert!(seen.is_err(), "another shop read an invoice of this one's");
+    theirs.rollback().await.expect("to roll back");
+
+    shop.close().await;
+    Ok(())
+}

@@ -484,6 +484,7 @@ async fn one_step(
                     provider_code: "fake".into(),
                     amount: total,
                     context: None,
+                    installment_count: None,
                 },
             )
             .await?;
@@ -497,6 +498,7 @@ async fn one_step(
                     data: json!({}),
                     redirect: None,
                     message: None,
+                    installment: None,
                 },
             )
             .await?

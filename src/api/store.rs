@@ -1905,6 +1905,7 @@ pub async fn create_payment_session(
                 currency,
             },
             context: input.context,
+            installment_count: None,
         },
     )
     .await?;

@@ -153,6 +153,7 @@ async fn a_held_payment(tx: &mut Tx<'_>, ctx: &Ctx<'_>, total: Money) -> Payment
             provider_code: PROVIDER.to_owned(),
             amount: total,
             context: None,
+            installment_count: None,
         },
     )
     .await
@@ -180,6 +181,7 @@ async fn a_held_payment(tx: &mut Tx<'_>, ctx: &Ctx<'_>, total: Money) -> Payment
             data: json!({}),
             redirect: None,
             message: None,
+            installment: None,
         },
     )
     .await

@@ -26,6 +26,17 @@
 //! `mismatch` and `payment.amount_mismatch` is emitted — and somebody is told.
 //! See [`flag_mismatch`].
 //!
+//! What counts as a disagreement is not "the amounts differ". A card split
+//! into instalments is authorised for the basket plus a bank-set difference —
+//! "vade farkı" — which the shopper agreed to, so the guard compares what was
+//! held against what was agreed: the order total plus the surcharge in
+//! [`Installment`]. An unexplained difference is still a mismatch.
+//!
+//! Nothing here validates the plan itself. Which counts a card may be split
+//! into is a regulator's table, revised several times a year and applied by
+//! sector; a library that carried it would refuse sales a bank allowed. What
+//! is stored is what the provider said it accepted.
+//!
 //! # Webhooks
 //!
 //! [`record_webhook`] writes the event before anything acts on it, and the
@@ -90,6 +101,17 @@ pub struct PaymentCollection {
     pub status: String,
     pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
     pub created_at: chrono::DateTime<chrono::Utc>,
+    /// What the shopper chose to split the card into, as the provider accepted
+    /// it. No ceiling is held here: the counts a card may be split into are a
+    /// regulator's, they change several times a year, and a library carrying
+    /// last year's table would refuse a sale a bank allowed.
+    pub installment_count: Option<i32>,
+    /// The instalment difference the shopper pays on top — "vade farkı".
+    pub surcharge_amount: Decimal,
+    /// The instalment difference the shop pays out of its settlement instead.
+    pub merchant_surcharge_amount: Decimal,
+    /// `amount` plus the customer-borne surcharge: what the card is charged.
+    pub charged_amount: Option<Decimal>,
 }
 
 impl PaymentCollection {
@@ -116,6 +138,17 @@ impl PaymentCollection {
     pub fn authorized(&self) -> Decimal {
         self.authorized_amount.unwrap_or(Decimal::ZERO)
     }
+
+    /// What the card is charged: the basket plus whatever instalment
+    /// difference the shopper agreed to carry.
+    pub fn charged(&self) -> Decimal {
+        self.charged_amount
+            .unwrap_or(self.amount + self.surcharge_amount)
+    }
+
+    pub fn charged_total(&self) -> Result<Money> {
+        Ok(Money::new(self.charged(), self.currency()?))
+    }
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
@@ -130,6 +163,9 @@ pub struct PaymentSession {
     pub context: Option<Value>,
     pub authorized_at: Option<chrono::DateTime<chrono::Utc>>,
     pub created_at: chrono::DateTime<chrono::Utc>,
+    /// What the shopper asked the card to be split into, before the bank
+    /// answered.
+    pub installment_count: Option<i32>,
 }
 
 impl PaymentSession {
@@ -153,11 +189,21 @@ pub struct Payment {
     pub payment_session_id: Option<PaymentSessionId>,
     pub payment_provider_id: PaymentProviderId,
     pub currency_code: String,
+    /// What the card was charged, instalment difference included. The goods
+    /// are worth `amount - surcharge_amount` when the shopper carried it, and
+    /// both numbers are needed: the invoice is for the goods and the bank
+    /// statement is for the charge.
     pub amount: Decimal,
     pub data: Option<Value>,
     pub captured_at: Option<chrono::DateTime<chrono::Utc>>,
     pub canceled_at: Option<chrono::DateTime<chrono::Utc>>,
     pub created_at: chrono::DateTime<chrono::Utc>,
+    pub installment_count: Option<i32>,
+    pub surcharge_amount: Decimal,
+    pub surcharge_bearer: Option<String>,
+    /// The provider's own name for the campaign or the card range it applied.
+    /// Opaque: whose card qualifies for which plan is the bank's business.
+    pub installment_campaign: Option<String>,
 }
 
 impl Payment {
@@ -168,6 +214,85 @@ impl Payment {
     pub fn money(&self) -> Result<Money> {
         Ok(Money::new(self.amount, self.currency()?))
     }
+
+    pub fn bearer(&self) -> Option<SurchargeBearer> {
+        self.surcharge_bearer.as_deref().map(SurchargeBearer::parse)
+    }
+
+    /// What the goods came to: the charge less any difference the shopper
+    /// carried for splitting it. A merchant-funded plan does not move this —
+    /// the shop gave up part of the settlement, and the buyer paid the basket.
+    pub fn goods_amount(&self) -> Decimal {
+        match self.bearer() {
+            Some(SurchargeBearer::Customer) => self.amount - self.surcharge_amount,
+            _ => self.amount,
+        }
+    }
+
+    /// What to give back on the card when `goods` worth of the sale is being
+    /// undone.
+    ///
+    /// A refund is settled against what the card was charged, not against the
+    /// price tag: the bank credits the rail it debited, and refunding the
+    /// goods alone would leave the shopper paying a difference for instalments
+    /// they no longer have. So the surcharge is returned in the same
+    /// proportion as the goods.
+    pub fn charge_for_goods(&self, goods: Money) -> Result<Money> {
+        let currency = self.currency()?;
+        if goods.currency != currency {
+            return Err(Error::bug("a refund met another currency"));
+        }
+        let whole = self.goods_amount();
+        if whole <= Decimal::ZERO || goods.amount >= whole {
+            return Ok(Money::new(self.amount, currency));
+        }
+        let share = (self.amount * goods.amount / whole).round_dp(6);
+        Ok(Money::new(share, currency))
+    }
+}
+
+/// Who pays for splitting a card into instalments.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SurchargeBearer {
+    /// The shopper, on top of the basket: the card is charged more than the
+    /// order came to, and that is not a mismatch.
+    Customer,
+    /// The shop, out of the settlement: the card is charged the basket and
+    /// less money arrives.
+    Merchant,
+}
+
+impl SurchargeBearer {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SurchargeBearer::Customer => "customer",
+            SurchargeBearer::Merchant => "merchant",
+        }
+    }
+
+    pub fn parse(text: &str) -> SurchargeBearer {
+        match text {
+            "customer" => SurchargeBearer::Customer,
+            _ => SurchargeBearer::Merchant,
+        }
+    }
+}
+
+/// What a provider says it did about splitting the card.
+///
+/// No count, ceiling or sector rule is validated here. Which counts a card may
+/// be split into is set by a regulator — in Turkey by sector and card range,
+/// revised several times a year — and belongs to whoever talks to the bank.
+/// tezgah records what was accepted.
+#[derive(Debug, Clone)]
+pub struct Installment {
+    pub count: i32,
+    /// The difference, in the collection's currency. Zero for an interest-free
+    /// plan nobody funded.
+    pub surcharge: Money,
+    pub bearer: SurchargeBearer,
+    pub campaign: Option<String>,
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
@@ -385,6 +510,8 @@ pub struct AuthorizeRequest {
     pub data: Value,
     /// What came back from the shopper's browser after a redirect.
     pub context: Value,
+    /// What the shopper asked the card to be split into, when they did.
+    pub installment_count: Option<i32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -406,6 +533,10 @@ pub struct Authorization {
     /// Where to send the shopper next, when `status` is `RequiresMore`.
     pub redirect: Option<String>,
     pub message: Option<String>,
+    /// The plan the bank accepted, when the card was split. Its surcharge is
+    /// what makes an amount larger than the order total an agreed price rather
+    /// than a mismatch.
+    pub installment: Option<Installment>,
 }
 
 #[derive(Debug, Clone)]
@@ -512,6 +643,9 @@ pub struct NewSession {
     pub provider_code: String,
     pub amount: Money,
     pub context: Option<Value>,
+    /// What the shopper chose to split the card into. Unchecked here on
+    /// purpose: the bank decides what it will accept.
+    pub installment_count: Option<i32>,
 }
 
 #[derive(Debug, Clone)]
@@ -655,7 +789,9 @@ pub async fn create_collection(
         "insert into payment_collection (id, scope, cart_id, currency_code, amount, metadata)
          values ($1, $2, $3, $4, $5, $6)
          returning id, cart_id, currency_code, amount, authorized_amount, captured_amount,
-                   refunded_amount, status, completed_at, created_at",
+                   refunded_amount, status, completed_at, created_at,
+                   installment_count, surcharge_amount, merchant_surcharge_amount,
+                   charged_amount",
     )
     .bind(id.as_uuid())
     .bind(ctx.scope.0)
@@ -717,7 +853,9 @@ pub async fn flag_mismatch(
         "update payment_collection set status = 'mismatch'
          where scope = $1 and id = $2
          returning id, cart_id, currency_code, amount, authorized_amount, captured_amount,
-                   refunded_amount, status, completed_at, created_at",
+                   refunded_amount, status, completed_at, created_at,
+                   installment_count, surcharge_amount, merchant_surcharge_amount,
+                   charged_amount",
     )
     .bind(ctx.scope.0)
     .bind(id.as_uuid())
@@ -798,11 +936,12 @@ pub async fn create_session(
     let session = sqlx::query_as::<_, PaymentSession>(
         "insert into payment_session (
              id, scope, payment_collection_id, payment_provider_id,
-             currency_code, amount, context
+             currency_code, amount, context, installment_count
          )
-         values ($1, $2, $3, $4, $5, $6, $7)
+         values ($1, $2, $3, $4, $5, $6, $7, $8)
          returning id, payment_collection_id, payment_provider_id, currency_code,
-                   amount, status, data, context, authorized_at, created_at",
+                   amount, status, data, context, authorized_at, created_at,
+                   installment_count",
     )
     .bind(id.as_uuid())
     .bind(ctx.scope.0)
@@ -811,6 +950,7 @@ pub async fn create_session(
     .bind(new.amount.currency.as_str())
     .bind(new.amount.amount)
     .bind(new.context)
+    .bind(new.installment_count)
     .fetch_one(&mut **tx)
     .await?;
 
@@ -871,7 +1011,7 @@ pub async fn sessions(
 
     let rows = sqlx::query_as::<_, PaymentSession>(
         "select id, payment_collection_id, payment_provider_id, currency_code,
-                amount, status, data, context, authorized_at, created_at
+                amount, status, data, context, authorized_at, created_at, installment_count
          from payment_session
          where scope = $1
            and payment_collection_id = $2
@@ -964,16 +1104,43 @@ pub async fn authorize(
                 return Err(Error::bug("a provider authorised another currency"));
             }
 
+            let plan = auth.installment.clone();
+            if let Some(plan) = &plan {
+                if plan.surcharge.currency != asked.currency {
+                    return Err(Error::bug("an instalment difference met another currency"));
+                }
+                if plan.count < 1 {
+                    return Err(Error::invalid(
+                        "an instalment plan is for one payment or more",
+                    ));
+                }
+                if plan.surcharge.amount.is_sign_negative() {
+                    return Err(Error::invalid("an instalment difference is not a discount"));
+                }
+            }
+
+            // The shopper carries the difference on top of the basket; the shop
+            // carries it out of the settlement and the card still sees the
+            // basket. Only the first changes what may be authorised.
+            let surcharge = match &plan {
+                Some(plan) if plan.bearer == SurchargeBearer::Customer => plan.surcharge.amount,
+                _ => Decimal::ZERO,
+            };
+            let agreed = Money::new(asked.amount + surcharge, asked.currency);
+
             let now = ctx.now();
             let payment_id = PaymentId::new();
             let payment = sqlx::query_as::<_, Payment>(
                 "insert into payment (
                      id, scope, payment_collection_id, payment_session_id,
-                     payment_provider_id, currency_code, amount, data
+                     payment_provider_id, currency_code, amount, data,
+                     installment_count, surcharge_amount, surcharge_bearer, installment_campaign
                  )
-                 values ($1, $2, $3, $4, $5, $6, $7, $8)
+                 values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
                  returning id, payment_collection_id, payment_session_id, payment_provider_id,
-                           currency_code, amount, data, captured_at, canceled_at, created_at",
+                           currency_code, amount, data, captured_at, canceled_at, created_at,
+                           installment_count, surcharge_amount, surcharge_bearer,
+                           installment_campaign",
             )
             .bind(payment_id.as_uuid())
             .bind(ctx.scope.0)
@@ -983,6 +1150,10 @@ pub async fn authorize(
             .bind(held.currency.as_str())
             .bind(held.amount)
             .bind(auth.data.clone())
+            .bind(plan.as_ref().map(|p| p.count))
+            .bind(plan.as_ref().map_or(Decimal::ZERO, |p| p.surcharge.amount))
+            .bind(plan.as_ref().map(|p| p.bearer.as_str()))
+            .bind(plan.as_ref().and_then(|p| p.campaign.clone()))
             .fetch_one(&mut **tx)
             .await?;
 
@@ -998,8 +1169,12 @@ pub async fn authorize(
 
             recompute(tx, ctx, session.payment_collection_id).await?;
 
-            if held.amount != asked.amount {
-                flag_mismatch(tx, ctx, session.payment_collection_id, asked, held).await?;
+            // An instalment sale is authorised for more than the order came to
+            // by agreement, so the guard asks whether the difference is
+            // explained rather than whether there is one. An unexplained
+            // difference is still a mismatch.
+            if held.amount != agreed.amount {
+                flag_mismatch(tx, ctx, session.payment_collection_id, agreed, held).await?;
             }
 
             ctx.audit(
@@ -1241,7 +1416,8 @@ pub async fn cancel(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: PaymentId) -> Result<Pay
         "update payment set canceled_at = coalesce(canceled_at, $3)
          where scope = $1 and id = $2
          returning id, payment_collection_id, payment_session_id, payment_provider_id,
-                   currency_code, amount, data, captured_at, canceled_at, created_at",
+                   currency_code, amount, data, captured_at, canceled_at, created_at,
+                   installment_count, surcharge_amount, surcharge_bearer, installment_campaign",
     )
     .bind(ctx.scope.0)
     .bind(id.as_uuid())
@@ -1617,11 +1793,13 @@ async fn read_collection(
 ) -> Result<PaymentCollection> {
     let sql = if lock {
         "select id, cart_id, currency_code, amount, authorized_amount, captured_amount,
-                refunded_amount, status, completed_at, created_at
+                refunded_amount, status, completed_at, created_at,
+                installment_count, surcharge_amount, merchant_surcharge_amount, charged_amount
          from payment_collection where scope = $1 and id = $2 for update"
     } else {
         "select id, cart_id, currency_code, amount, authorized_amount, captured_amount,
-                refunded_amount, status, completed_at, created_at
+                refunded_amount, status, completed_at, created_at,
+                installment_count, surcharge_amount, merchant_surcharge_amount, charged_amount
          from payment_collection where scope = $1 and id = $2"
     };
 
@@ -1641,11 +1819,11 @@ async fn read_session(
 ) -> Result<PaymentSession> {
     let sql = if lock {
         "select id, payment_collection_id, payment_provider_id, currency_code,
-                amount, status, data, context, authorized_at, created_at
+                amount, status, data, context, authorized_at, created_at, installment_count
          from payment_session where scope = $1 and id = $2 for update"
     } else {
         "select id, payment_collection_id, payment_provider_id, currency_code,
-                amount, status, data, context, authorized_at, created_at
+                amount, status, data, context, authorized_at, created_at, installment_count
          from payment_session where scope = $1 and id = $2"
     };
 
@@ -1665,11 +1843,13 @@ async fn read_payment(
 ) -> Result<Payment> {
     let sql = if lock {
         "select id, payment_collection_id, payment_session_id, payment_provider_id,
-                currency_code, amount, data, captured_at, canceled_at, created_at
+                currency_code, amount, data, captured_at, canceled_at, created_at,
+                installment_count, surcharge_amount, surcharge_bearer, installment_campaign
          from payment where scope = $1 and id = $2 for update"
     } else {
         "select id, payment_collection_id, payment_session_id, payment_provider_id,
-                currency_code, amount, data, captured_at, canceled_at, created_at
+                currency_code, amount, data, captured_at, canceled_at, created_at,
+                installment_count, surcharge_amount, surcharge_bearer, installment_campaign
          from payment where scope = $1 and id = $2"
     };
 
@@ -1688,7 +1868,8 @@ async fn payment_for_session(
 ) -> Result<Option<Payment>> {
     let found = sqlx::query_as::<_, Payment>(
         "select id, payment_collection_id, payment_session_id, payment_provider_id,
-                currency_code, amount, data, captured_at, canceled_at, created_at
+                currency_code, amount, data, captured_at, canceled_at, created_at,
+                installment_count, surcharge_amount, surcharge_bearer, installment_campaign
          from payment
          where scope = $1 and payment_session_id = $2",
     )
@@ -1715,7 +1896,8 @@ async fn set_session_status(
              authorized_at = coalesce($5::timestamptz, authorized_at)
          where scope = $1 and id = $2
          returning id, payment_collection_id, payment_provider_id, currency_code,
-                   amount, status, data, context, authorized_at, created_at",
+                   amount, status, data, context, authorized_at, created_at,
+                   installment_count",
     )
     .bind(ctx.scope.0)
     .bind(id.as_uuid())
@@ -1760,6 +1942,24 @@ async fn recompute(
 ) -> Result<PaymentCollection> {
     let collection = read_collection(tx, ctx, id, true).await?;
 
+    let plan: (Decimal, Decimal, Option<i32>) = sqlx::query_as(
+        "select
+             coalesce(sum(p.surcharge_amount) filter (where p.surcharge_bearer = 'customer'), 0),
+             coalesce(sum(p.surcharge_amount) filter (where p.surcharge_bearer = 'merchant'), 0),
+             coalesce(max(p.installment_count),
+                      (select max(s.installment_count) from payment_session s
+                       where s.scope = $1 and s.payment_collection_id = $2))
+         from payment p
+         where p.scope = $1 and p.payment_collection_id = $2 and p.canceled_at is null",
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .fetch_one(&mut **tx)
+    .await?;
+
+    let (customer_surcharge, merchant_surcharge, installments) = plan;
+    let charged = collection.amount + customer_surcharge;
+
     let sums: (Decimal, Decimal, Decimal, i64, i64) = sqlx::query_as(
         "select
              coalesce((select sum(p.amount) from payment p
@@ -1790,11 +1990,11 @@ async fn recompute(
         CollectionStatus::Refunded
     } else if refunded > Decimal::ZERO {
         CollectionStatus::PartiallyRefunded
-    } else if captured >= collection.amount && captured > Decimal::ZERO {
+    } else if captured >= charged && captured > Decimal::ZERO {
         CollectionStatus::Captured
     } else if captured > Decimal::ZERO {
         CollectionStatus::PartiallyCaptured
-    } else if authorized >= collection.amount && authorized > Decimal::ZERO {
+    } else if authorized >= charged && authorized > Decimal::ZERO {
         CollectionStatus::Authorized
     } else if authorized > Decimal::ZERO {
         CollectionStatus::PartiallyAuthorized
@@ -1817,10 +2017,16 @@ async fn recompute(
              captured_amount = $4,
              refunded_amount = $5,
              status = $6,
-             completed_at = case when $7 then coalesce(completed_at, $8) else null end
+             completed_at = case when $7 then coalesce(completed_at, $8) else null end,
+             surcharge_amount = $9,
+             merchant_surcharge_amount = $10,
+             charged_amount = $11,
+             installment_count = $12
          where scope = $1 and id = $2
          returning id, cart_id, currency_code, amount, authorized_amount, captured_amount,
-                   refunded_amount, status, completed_at, created_at",
+                   refunded_amount, status, completed_at, created_at,
+                   installment_count, surcharge_amount, merchant_surcharge_amount,
+                   charged_amount",
     )
     .bind(ctx.scope.0)
     .bind(id.as_uuid())
@@ -1830,6 +2036,10 @@ async fn recompute(
     .bind(status.as_str())
     .bind(done)
     .bind(ctx.now())
+    .bind(customer_surcharge)
+    .bind(merchant_surcharge)
+    .bind(charged)
+    .bind(installments)
     .fetch_one(&mut **tx)
     .await?;
 

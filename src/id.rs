@@ -125,6 +125,8 @@ ids! {
     OrderItemId => "order item",
     OrderChangeId => "order change",
     OrderTransferId => "order transfer",
+    AgreementVersionId => "agreement version",
+    OrderAgreementId => "order agreement",
     PaymentCollectionId => "payment collection",
     PaymentSessionId => "payment session",
     PaymentProviderId => "payment provider",
@@ -161,6 +163,7 @@ ids! {
     TaxLineId => "tax line",
     ShippingMethodId => "shipping method",
     AccountHolderId => "account holder",
+    OrderInvoiceId => "order invoice",
     OrderTransactionId => "order transaction",
     WorkflowRunId => "workflow run",
 }
