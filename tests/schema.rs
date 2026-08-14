@@ -134,7 +134,7 @@ async fn no_table_stores_money_without_saying_which() {
                select 1 from information_schema.columns k
                where k.table_schema = 'public'
                  and k.table_name = c.table_name
-                 and k.column_name = 'currency'
+                 and k.column_name = 'currency_code'
            )
          order by 1, 2",
     )

@@ -33,7 +33,7 @@ create table cart (
     customer_id         uuid references customer (id) on delete set null,
     email               text,
     region_id           uuid references region (id) on delete restrict,
-    currency            char(3) not null,
+    currency_code            char(3) not null,
     sales_channel_id    uuid references sales_channel (id) on delete set null,
     shipping_address_id uuid references cart_address (id) on delete set null,
     billing_address_id  uuid references cart_address (id) on delete set null,
@@ -44,7 +44,7 @@ create table cart (
     -- Passing it releases whatever the cart reserved; the sweeper is a job.
     expires_at          timestamptz,
     metadata            jsonb,
-    constraint cart_currency_valid check (currency = upper(currency) and currency ~ '^[A-Z]{3}$'),
+    constraint cart_currency_valid check (currency_code = upper(currency_code) and currency_code ~ '^[A-Z]{3}$'),
     constraint cart_email_valid check (email is null or email = lower(email))
 );
 call tezgah_register('cart');
@@ -78,7 +78,7 @@ create table cart_line_item (
     quantity                integer not null,
     unit_price              numeric(20, 6) not null,
     compare_at_unit_price   numeric(20, 6),
-    currency                char(3) not null,
+    currency_code                char(3) not null,
     is_tax_inclusive        boolean not null default false,
     is_discountable         boolean not null default true,
     requires_shipping       boolean not null default true,
@@ -86,7 +86,7 @@ create table cart_line_item (
     constraint cart_line_item_quantity_valid check (quantity > 0),
     constraint cart_line_item_unit_price_valid check (unit_price >= 0),
     constraint cart_line_item_currency_valid
-        check (currency = upper(currency) and currency ~ '^[A-Z]{3}$')
+        check (currency_code = upper(currency_code) and currency_code ~ '^[A-Z]{3}$')
 );
 call tezgah_register('cart_line_item');
 
@@ -109,14 +109,14 @@ create table cart_line_item_adjustment (
     promotion_id        uuid,
     code                text,
     amount              numeric(20, 6) not null,
-    currency            char(3) not null,
+    currency_code            char(3) not null,
     description         text,
     is_tax_inclusive    boolean not null default false,
     provider_id         text,
     metadata            jsonb,
     constraint cart_line_item_adjustment_amount_valid check (amount >= 0),
     constraint cart_line_item_adjustment_currency_valid
-        check (currency = upper(currency) and currency ~ '^[A-Z]{3}$')
+        check (currency_code = upper(currency_code) and currency_code ~ '^[A-Z]{3}$')
 );
 call tezgah_register('cart_line_item_adjustment');
 
@@ -155,13 +155,13 @@ create table cart_shipping_method (
     name                text not null,
     description         text,
     amount              numeric(20, 6) not null,
-    currency            char(3) not null,
+    currency_code            char(3) not null,
     is_tax_inclusive    boolean not null default false,
     data                jsonb,
     metadata            jsonb,
     constraint cart_shipping_method_amount_valid check (amount >= 0),
     constraint cart_shipping_method_currency_valid
-        check (currency = upper(currency) and currency ~ '^[A-Z]{3}$')
+        check (currency_code = upper(currency_code) and currency_code ~ '^[A-Z]{3}$')
 );
 call tezgah_register('cart_shipping_method');
 
@@ -180,14 +180,14 @@ create table cart_shipping_method_adjustment (
     promotion_id                uuid,
     code                        text,
     amount                      numeric(20, 6) not null,
-    currency                    char(3) not null,
+    currency_code                    char(3) not null,
     description                 text,
     is_tax_inclusive            boolean not null default false,
     provider_id                 text,
     metadata                    jsonb,
     constraint cart_shipping_method_adjustment_amount_valid check (amount >= 0),
     constraint cart_shipping_method_adjustment_currency_valid
-        check (currency = upper(currency) and currency ~ '^[A-Z]{3}$')
+        check (currency_code = upper(currency_code) and currency_code ~ '^[A-Z]{3}$')
 );
 call tezgah_register('cart_shipping_method_adjustment');
 

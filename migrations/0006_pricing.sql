@@ -66,7 +66,7 @@ create table price (
     price_list_id uuid references price_list (id) on delete cascade,
     title         text,
     amount        numeric(20, 6) not null,
-    currency      char(3) not null,
+    currency_code      char(3) not null,
     min_quantity  integer,
     max_quantity  integer,
     rules_count   integer not null default 0,
@@ -88,12 +88,12 @@ call tezgah_register('price');
 -- Candidate gathering: one set, one currency, best-first by rule count, then
 -- the quantity band. Descending so the most specific row is read first.
 create index price_resolution_idx
-    on price (scope, price_set_id, currency, rules_count desc, min_quantity)
+    on price (scope, price_set_id, currency_code, rules_count desc, min_quantity)
     where deleted_at is null;
 
 -- The floor underneath every resolution: the ruleless, listless default.
 create index price_default_idx
-    on price (scope, price_set_id, currency, min_quantity)
+    on price (scope, price_set_id, currency_code, min_quantity)
     where deleted_at is null and price_list_id is null and rules_count = 0;
 
 create index price_list_idx
@@ -101,7 +101,7 @@ create index price_list_idx
     where deleted_at is null;
 
 create index price_currency_idx
-    on price (scope, currency)
+    on price (scope, currency_code)
     where deleted_at is null;
 
 create table price_rule (

@@ -138,11 +138,17 @@ pub struct Shop {
     pub elsewhere: Scope,
     pub host: Arc<Recorder>,
     name: String,
+    role: String,
     admin: PgPool,
 }
 
 impl Shop {
     /// A fresh database with the migrations applied and two scopes in it.
+    ///
+    /// Connects as a role that is neither the superuser nor the owner of the
+    /// tables. Both of those bypass row-level security — a superuser always,
+    /// an owner unless the policy is forced — so a test that connected as
+    /// either would prove nothing about isolation while appearing to.
     pub async fn open() -> Shop {
         let url = std::env::var("DATABASE_URL")
             .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/postgres".into());
@@ -162,26 +168,53 @@ impl Shop {
         let mut its_url = url::Url::parse(&url).expect("a database url");
         its_url.set_path(&name);
 
-        let pool = PgPoolOptions::new()
-            .max_connections(8)
+        let owner = PgPoolOptions::new()
+            .max_connections(1)
             .connect(its_url.as_str())
             .await
             .expect("its own database");
 
         tezgah::MIGRATIONS
-            .run(&pool)
+            .run(&owner)
             .await
             .expect("the migrations to apply");
+
+        // What a host should deploy as, and therefore what to test as.
+        let role = format!("{name}_app");
+        for statement in [
+            format!(r#"create role "{role}" login password 'app'"#),
+            format!(r#"grant usage on schema public to "{role}""#),
+            format!(
+                r#"grant select, insert, update, delete on all tables in schema public to "{role}""#
+            ),
+            format!(r#"grant execute on all functions in schema public to "{role}""#),
+        ] {
+            owner
+                .execute(statement.as_str())
+                .await
+                .expect("to make the application role");
+        }
 
         let here = Scope(Uuid::now_v7());
         let elsewhere = Scope(Uuid::now_v7());
         for scope in [here, elsewhere] {
             sqlx::query("insert into tezgah_scope (id) values ($1)")
                 .bind(scope.0)
-                .execute(&pool)
+                .execute(&owner)
                 .await
                 .expect("a scope");
         }
+        owner.close().await;
+
+        let mut app_url = its_url.clone();
+        app_url.set_username(&role).expect("a username");
+        app_url.set_password(Some("app")).expect("a password");
+
+        let pool = PgPoolOptions::new()
+            .max_connections(8)
+            .connect(app_url.as_str())
+            .await
+            .expect("to connect as the application role");
 
         Shop {
             pool,
@@ -189,6 +222,7 @@ impl Shop {
             elsewhere,
             host: Recorder::new(),
             name,
+            role,
             admin,
         }
     }
@@ -226,14 +260,23 @@ impl Shop {
         tx
     }
 
-    /// Drops the database. Called by the test, because a `Drop` cannot await.
+    /// Drops the database and the role. Called by the test, because a `Drop`
+    /// cannot await.
     pub async fn close(self) {
         let Shop {
-            pool, admin, name, ..
+            pool,
+            admin,
+            name,
+            role,
+            ..
         } = self;
         pool.close().await;
         let _ = admin
             .execute(format!(r#"drop database if exists "{name}" with (force)"#).as_str())
+            .await;
+        // Roles are cluster-wide, so one is left behind per test otherwise.
+        let _ = admin
+            .execute(format!(r#"drop role if exists "{role}""#).as_str())
             .await;
     }
 }

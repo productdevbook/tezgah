@@ -32,8 +32,8 @@ the name into `tezgah_table` so the schema test can find it.
   `restrict` for something a person must deal with first (a product with
   orders), `set null` for a reference that may go away (a promotion on a
   historical order).
-- **Money is two columns**: `amount_total numeric(20, 6)` beside
-  `currency char(3)`. Never one without the other, never a float, never minor
+- **Money is two columns**: `amount numeric(20, 6)` beside
+  `currency_code char(3)`. Never one without the other, never a float, never minor
   units.
 - **Quantities are `integer` with `check (quantity > 0)`.** A zero line item is
   a deleted line item.

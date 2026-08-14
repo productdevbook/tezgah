@@ -33,7 +33,7 @@ create table campaign_budget (
     type        text not null,
     "limit"     numeric(20, 6),
     used        numeric(20, 6) not null default 0,
-    currency    char(3),
+    currency_code    char(3),
     constraint campaign_budget_type_valid
         check (type in ('spend', 'usage')),
     constraint campaign_budget_used_valid
@@ -43,7 +43,7 @@ create table campaign_budget (
     constraint campaign_budget_within_limit_valid
         check ("limit" is null or used <= "limit"),
     constraint campaign_budget_currency_valid
-        check (type <> 'spend' or currency is not null)
+        check (type <> 'spend' or currency_code is not null)
 );
 call tezgah_register('campaign_budget');
 
@@ -95,7 +95,7 @@ create table application_method (
     target_type            text not null,
     allocation             text,
     value                  numeric(20, 6),
-    currency               char(3),
+    currency_code               char(3),
     max_quantity           integer,
     apply_to_quantity      integer,
     buy_rules_min_quantity integer,
@@ -111,7 +111,7 @@ create table application_method (
         check (type <> 'percentage' or (value is not null and value <= 100)),
     -- A fixed amount is money, and money is never one column without the other.
     constraint application_method_currency_valid
-        check (type <> 'fixed' or currency is not null),
+        check (type <> 'fixed' or currency_code is not null),
     constraint application_method_max_quantity_valid
         check (max_quantity is null or max_quantity > 0),
     constraint application_method_apply_to_quantity_valid

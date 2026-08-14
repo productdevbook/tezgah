@@ -216,6 +216,9 @@ create index product_variant_option_value_scope_value_idx
     on product_variant_option_value (scope, option_value_id);
 create index product_variant_option_value_scope_option_idx
     on product_variant_option_value (scope, option_id);
+-- Covers the composite foreign key, which the two single-column indexes do not.
+create index product_variant_option_value_value_option_idx
+    on product_variant_option_value (option_value_id, option_id);
 
 create table product_image (
     id          uuid primary key,
