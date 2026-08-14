@@ -1,11 +1,20 @@
 #![forbid(unsafe_code)]
 
+pub mod cart;
+pub mod catalogue;
+pub mod customer;
 pub mod error;
+pub mod fulfilment;
 pub mod id;
+pub mod inventory;
 pub mod money;
 pub mod page;
+pub mod payment;
 pub mod ports;
+pub mod pricing;
+pub mod promotion;
 pub mod store;
+pub mod tax;
 pub mod workflow;
 
 pub use error::{Error, Result};
