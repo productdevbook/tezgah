@@ -683,9 +683,18 @@ async fn all<F: Future>(futures: Vec<F>) -> Vec<F::Output> {
     done.into_iter().flatten().collect()
 }
 
+#[derive(sqlx::FromRow)]
+struct HeadRow {
+    state: String,
+    input: Value,
+    output: Option<Value>,
+    failure: Option<String>,
+    transaction_key: String,
+}
+
 async fn head(pool: &PgPool, ctx: &Ctx<'_>, id: WorkflowRunId) -> Result<Head> {
     let mut tx = scoped(pool, ctx).await?;
-    let row: Option<(String, Value, Option<Value>, Option<String>, String)> = sqlx::query_as(
+    let row: Option<HeadRow> = sqlx::query_as(
         "select state, input, output, failure, transaction_key from workflow_run where id = $1",
     )
     .bind(id.as_uuid())
@@ -693,8 +702,13 @@ async fn head(pool: &PgPool, ctx: &Ctx<'_>, id: WorkflowRunId) -> Result<Head> {
     .await?;
     tx.commit().await?;
 
-    let (state, input, output, failure, transaction_key) =
-        row.ok_or_else(|| Error::not_found("workflow run"))?;
+    let HeadRow {
+        state,
+        input,
+        output,
+        failure,
+        transaction_key,
+    } = row.ok_or_else(|| Error::not_found("workflow run"))?;
     Ok(Head {
         state: State::parse(&state)?,
         input,
