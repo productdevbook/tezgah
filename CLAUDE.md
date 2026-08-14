@@ -56,6 +56,27 @@ under each, and the difference shows up in production rather than in CI.
 Concurrency claims are tested concurrently — two connections, at the same time.
 A test that simulates a race by doing one thing after another proves nothing.
 
+## Commits and pull requests
+
+Conventional Commits. The subject is `<type>(<scope>): <summary>`, lower case,
+imperative, no full stop, under 72 characters.
+
+Types: `feat`, `fix`, `perf`, `refactor`, `test`, `docs`, `build`, `ci`,
+`chore`, `revert`. The scope is the domain or module the change lands in —
+`order`, `cart`, `workflow`, `schema`, `ports` — and is left out only when the
+change is genuinely across the whole crate.
+
+    feat(inventory): reserve stock without decrementing it
+    fix(cart): stop a second add from leaving two rows for one variant
+    test(workflow): interrupt a checkout at every step in turn
+
+A breaking change is marked `feat(order)!: ...` and explained in the body under
+`BREAKING CHANGE:`.
+
+The body is where the reasoning goes: what was wrong, what it does now, and why
+that way. A pull request title follows the same rule, because it becomes the
+squashed commit.
+
 ## Comments
 
 Default: don't. Write a comment only for something the code cannot say —
