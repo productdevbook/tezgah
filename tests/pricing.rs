@@ -107,7 +107,7 @@ async fn a_price_matching_the_whole_context_beats_one_matching_part_of_it() {
         &ctx,
         NewPrice {
             rules: vec![
-                NewPriceRule::eq("currency_code", "try"),
+                NewPriceRule::eq("currency_code", "TRY"),
                 NewPriceRule::eq("region_id", region.to_string()),
                 NewPriceRule::eq("customer_group_id", group.to_string()),
             ],
@@ -748,7 +748,7 @@ async fn a_preference_says_whether_a_context_is_priced_with_tax_in_it() {
         "no preference should mean tax is added on top"
     );
 
-    pricing::set_price_preference(&mut tx, &ctx, "currency_code", Some("try".into()), true)
+    pricing::set_price_preference(&mut tx, &ctx, "currency_code", Some("TRY".into()), true)
         .await
         .expect("a preference");
 
@@ -770,7 +770,7 @@ async fn a_preference_says_whether_a_context_is_priced_with_tax_in_it() {
         "the region's answer did not beat the currency's"
     );
 
-    let read = pricing::price_preference(&mut tx, &ctx, "currency_code", Some("try"))
+    let read = pricing::price_preference(&mut tx, &ctx, "currency_code", Some("TRY"))
         .await
         .expect("to read one")
         .expect("the one that was written");
