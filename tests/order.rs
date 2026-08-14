@@ -861,7 +861,7 @@ async fn a_cancelled_order_gives_the_promotion_use_back() -> tezgah::Result<()> 
     .await
     .expect("an adjustment");
 
-    promotion::claim(&mut tx, &ctx, promo.id, None).await?;
+    promotion::claim(&mut tx, &ctx, promo.id, None, Money::new(dec!(0), lira())).await?;
     let claimed = promotion::promotion(&mut tx, &ctx, promo.id).await?;
     assert_eq!(claimed.used, 1);
 
