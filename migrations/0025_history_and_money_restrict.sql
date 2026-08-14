@@ -54,7 +54,7 @@ begin
             where i.indrelid = child
               and array[scope_att, col_att]::smallint[] <@ (i.indkey::smallint[])
         ) then
-            execute format('create index %I on %I (scope, %I)',
+            execute format('create index if not exists %I on %I (scope, %I)',
                            p_child || '_' || p_col || '_scope_idx', p_child, p_col);
         end if;
     else

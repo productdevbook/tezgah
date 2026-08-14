@@ -84,6 +84,9 @@ Each domain owns a number, so parallel work does not collide.
 | `0019_order_transfer` | handing an order to another customer: the claim, its token hash and its expiry |
 | `0021_order_line_money` | an order line's and a shipping method's adjustments and tax lines, a row per promotion and per rate |
 | `0022_order_operator_status` | triggers that keep `order.payment_status` and `order.fulfillment_status`, and the constraint pairing a cancelled return with its timestamp |
+| `0024_order_status_backfill` | 0022's backfills, run again naming each scope, and its cancelled-return constraint validated after them |
+| `0025_history_and_money_restrict` | `tezgah_fk`, and `restrict` on the tables that are a record of what happened rather than a thing that cannot exist alone |
+| `0026_scoped_foreign_keys` | `unique (scope, id)` on every registered table, and `(scope, x_id)` keys down the order and money path |
 | `0023_payment_collection_cart` | which cart a payment collection was opened for, so a collection says whose it is |
 
 Migrations are append-only once merged. A change to a shipped table is a new
@@ -96,6 +99,17 @@ Migrations set `lock_timeout` and `statement_timeout` at the top and create
 indexes concurrently where the table may already be large. `alter table ... set
 not null` scans the whole table: add the column nullable, backfill in batches,
 add a `not null` check as `not valid`, then validate it.
+
+## Backfilling a scoped table
+
+Row-level security is forced and nothing sets `app.scope` before a migration,
+so a plain `update` or `select` against a scoped table in a migration matches
+nothing. Loop `tezgah_scope` and `set_config('app.scope', s::text, true)` each
+one in turn — `0024_order_status_backfill` is the shape to copy.
+
+Constraint validation is not a policy-filtered read: `add constraint` checks
+rows the backfill above it could not see. Add it `not valid` and `validate` it
+after, so the two are separate failures.
 
 ## Rust side
 

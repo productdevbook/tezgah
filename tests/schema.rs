@@ -8,6 +8,192 @@
 mod common;
 
 use common::Shop;
+use sqlx::Executor;
+
+#[tokio::test]
+async fn every_registered_table_is_unique_on_scope_and_id() {
+    let shop = Shop::open().await;
+
+    // Without this a foreign key cannot name `(scope, id)`, and every
+    // reference in the schema is free to cross a tenant boundary.
+    let loose: Vec<String> = sqlx::query_scalar(
+        "select t.name
+         from tezgah_table t
+         where not exists (
+             select 1
+             from pg_constraint con
+             join pg_class c on c.oid = con.conrelid and c.relname = t.name
+             join pg_namespace n on n.oid = c.relnamespace and n.nspname = 'public'
+             where con.contype in ('u', 'p')
+               and (select array_agg(a.attname::text order by a.attname)
+                    from pg_attribute a
+                    where a.attrelid = con.conrelid and a.attnum = any (con.conkey))
+                   = array['id', 'scope']
+         )
+         order by t.name",
+    )
+    .fetch_all(&shop.pool)
+    .await
+    .expect("to read pg_constraint");
+
+    assert!(
+        loose.is_empty(),
+        "these tables have no unique (scope, id), so nothing can key to them by scope: {loose:?}"
+    );
+
+    shop.close().await;
+}
+
+#[tokio::test]
+async fn no_key_on_the_order_and_money_path_can_cross_a_scope() {
+    let shop = Shop::open().await;
+
+    let bare: Vec<(String, String)> = sqlx::query_as(
+        "select c.relname::text, con.conname::text
+         from tezgah_scoped_fk_table f
+         join pg_class c on c.relname = f.name
+         join pg_namespace n on n.oid = c.relnamespace and n.nspname = 'public'
+         join pg_constraint con on con.conrelid = c.oid and con.contype = 'f'
+         where not exists (
+             select 1 from pg_attribute a
+             where a.attrelid = con.conrelid
+               and a.attname = 'scope'
+               and a.attnum = any (con.conkey)
+         )
+         order by 1, 2",
+    )
+    .fetch_all(&shop.pool)
+    .await
+    .expect("to read pg_constraint");
+
+    assert!(
+        bare.is_empty(),
+        "these keys are single-column on a table whose keys must carry the scope, \
+         so Postgres — which checks a foreign key with row security bypassed — \
+         would let one shop point at another's row: {bare:?}"
+    );
+
+    shop.close().await;
+}
+
+#[tokio::test]
+async fn nothing_cascades_away_a_record_of_what_happened() {
+    let shop = Shop::open().await;
+
+    let doomed: Vec<(String, String)> = sqlx::query_as(
+        "select c.relname::text, con.conname::text
+         from tezgah_evidence_table e
+         join pg_class c on c.relname = e.name
+         join pg_namespace n on n.oid = c.relnamespace and n.nspname = 'public'
+         join pg_constraint con on con.conrelid = c.oid and con.contype = 'f'
+         where con.confdeltype = 'c'
+         order by 1, 2",
+    )
+    .fetch_all(&shop.pool)
+    .await
+    .expect("to read pg_constraint");
+
+    assert!(
+        doomed.is_empty(),
+        "these tables exist to be the record of a thing that happened, and a delete \
+         upstream would take them with it without anybody saying so: {doomed:?}"
+    );
+
+    shop.close().await;
+}
+
+/// 0022's backfills ran under forced row-level security with no `app.scope`,
+/// so they matched nothing, and the constraint that followed validated every
+/// row regardless — which raises on any database that had one.
+///
+/// Every other test here runs the migrations against an empty database, which
+/// is exactly why nothing saw it. This one writes the row first.
+#[tokio::test]
+async fn a_migration_backfills_a_database_that_already_has_rows() {
+    let shop = Shop::open().await;
+
+    let order = uuid::Uuid::now_v7();
+    let returned = uuid::Uuid::now_v7();
+
+    let mut mine = shop.begin().await;
+    sqlx::query(r#"insert into "order" (id, scope, currency_code) values ($1, $2, 'TRY')"#)
+        .bind(order)
+        .bind(shop.here.0)
+        .execute(&mut *mine)
+        .await
+        .expect("an order");
+    sqlx::query(
+        "insert into order_return (id, scope, order_id, order_version, status, currency_code)
+         values ($1, $2, $3, 1, 'open', 'TRY')",
+    )
+    .bind(returned)
+    .bind(shop.here.0)
+    .bind(order)
+    .execute(&mut *mine)
+    .await
+    .expect("a return");
+    mine.commit().await.expect("to commit");
+
+    let owner = shop.migrator().await;
+
+    // The row as it was legal to write before 0022: canceled, with no moment.
+    owner
+        .execute("alter table order_return drop constraint order_return_canceled_valid")
+        .await
+        .expect("to put the table back as 0022 found it");
+
+    let mut mine = shop.begin().await;
+    sqlx::query(
+        "update order_return set status = 'canceled', canceled_at = null
+         where scope = $1 and id = $2",
+    )
+    .bind(shop.here.0)
+    .bind(returned)
+    .execute(&mut *mine)
+    .await
+    .expect("to cancel it");
+    mine.commit().await.expect("to commit");
+
+    // 0022's backfill verbatim, as a migration runs it.
+    let blind = sqlx::query(
+        "update order_return set canceled_at = now()
+         where status = 'canceled' and canceled_at is null",
+    )
+    .execute(&owner)
+    .await
+    .expect("to run");
+
+    assert_eq!(
+        blind.rows_affected(),
+        0,
+        "a migration reached a row without naming a scope, so this test no longer \
+         proves what 0024 is for"
+    );
+
+    // 0024, which names each scope and then validates what 0022 added blind.
+    owner
+        .execute(include_str!("../migrations/0024_order_status_backfill.sql"))
+        .await
+        .expect("0024 to apply to a database that has rows in it");
+
+    let mut mine = shop.begin().await;
+    let stamped: Option<chrono::DateTime<chrono::Utc>> =
+        sqlx::query_scalar("select canceled_at from order_return where scope = $1 and id = $2")
+            .bind(shop.here.0)
+            .bind(returned)
+            .fetch_one(&mut *mine)
+            .await
+            .expect("to read the return back");
+    mine.commit().await.expect("to commit");
+
+    assert!(
+        stamped.is_some(),
+        "the backfill did not reach the row it was written for"
+    );
+
+    owner.close().await;
+    shop.close().await;
+}
 
 #[tokio::test]
 async fn the_migrations_apply_to_an_empty_database() {
@@ -31,11 +217,13 @@ async fn the_migrations_apply_to_an_empty_database() {
 /// Tables that carry no scope on purpose: the scope registry itself, the table
 /// registry, sqlx's own, and the order transitions, which are the library's
 /// rules rather than a shop's.
-const UNSCOPED: [&str; 4] = [
+const UNSCOPED: [&str; 6] = [
     "tezgah_scope",
     "tezgah_table",
     "_sqlx_migrations",
     "tezgah_order_status_move",
+    "tezgah_evidence_table",
+    "tezgah_scoped_fk_table",
 ];
 
 #[tokio::test]

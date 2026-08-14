@@ -60,8 +60,9 @@ async fn describe(shop: &Shop) -> Vec<Table> {
     .await
     .expect("to read information_schema.columns");
 
-    // Single-column foreign keys pointing at a primary key called `id`; the
-    // rest are left to fail the insert and be reported as uncovered.
+    // Foreign keys pointing at a primary key called `id`, whether they name
+    // the scope alongside it or not; the rest are left to fail the insert and
+    // be reported as uncovered.
     let keys: Vec<(String, String, String, String)> = sqlx::query_as(
         "select c.relname::text, a.attname::text, f.relname::text, fa.attname::text
          from pg_constraint con
@@ -72,7 +73,17 @@ async fn describe(shop: &Shop) -> Vec<Table> {
          join pg_attribute a on a.attrelid = con.conrelid and a.attnum = k.att
          join unnest(con.confkey) as fk(att) on true
          join pg_attribute fa on fa.attrelid = con.confrelid and fa.attnum = fk.att
-         where con.contype = 'f' and cardinality(con.conkey) = 1",
+         where con.contype = 'f'
+           and fa.attname = 'id'
+           and a.attname <> 'scope'
+           and (cardinality(con.conkey) = 1
+                or (cardinality(con.conkey) = 2
+                    and exists (
+                        select 1 from pg_attribute s
+                        where s.attrelid = con.conrelid
+                          and s.attname = 'scope'
+                          and s.attnum = any (con.conkey)
+                    )))",
     )
     .fetch_all(&shop.pool)
     .await
@@ -599,4 +610,42 @@ async fn every_registered_table_can_be_seeded_so_isolation_is_actually_asked() {
         mended.is_empty(),
         "these can be seeded now and should come off NOT_YET_SEEDED: {mended:?}"
     );
+}
+
+/// Reading somebody else's row is refused by the policy. Pointing at it was
+/// not: Postgres checks a foreign key with row security bypassed, so the
+/// reference was invisible to every read and entirely real to the constraint —
+/// and `restrict` and `set null` fired across the boundary.
+#[tokio::test]
+async fn a_row_cannot_reference_another_scopes_row() {
+    let shop = Shop::open().await;
+
+    let theirs = Uuid::now_v7();
+    let mut elsewhere = shop.begin_as(shop.elsewhere).await;
+    sqlx::query(r#"insert into "order" (id, scope, currency_code) values ($1, $2, 'TRY')"#)
+        .bind(theirs)
+        .bind(shop.elsewhere.0)
+        .execute(&mut *elsewhere)
+        .await
+        .expect("an order in the other shop");
+    elsewhere.commit().await.expect("to commit");
+
+    let mut mine = shop.begin().await;
+    let refused = sqlx::query(
+        "insert into order_status_history (id, scope, order_id, was, became)
+         values ($1, $2, $3, 'pending', 'completed')",
+    )
+    .bind(Uuid::now_v7())
+    .bind(shop.here.0)
+    .bind(theirs)
+    .execute(&mut *mine)
+    .await;
+    mine.rollback().await.expect("to give the connection back");
+
+    assert!(
+        refused.is_err(),
+        "a row in one scope referenced an order in another"
+    );
+
+    shop.close().await;
 }

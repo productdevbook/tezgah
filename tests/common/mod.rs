@@ -140,6 +140,9 @@ pub struct Shop {
     name: String,
     role: String,
     admin: PgPool,
+    its_url: String,
+    /// Roles a test made for itself, dropped with the database.
+    extra_roles: parking_lot::Mutex<Vec<String>>,
 }
 
 impl Shop {
@@ -224,7 +227,53 @@ impl Shop {
             name,
             role,
             admin,
+            its_url: its_url.to_string(),
+            extra_roles: parking_lot::Mutex::new(Vec::new()),
         }
+    }
+
+    /// A connection as a non-superuser owner of every table — what a host runs
+    /// migrations as, and the only role forced row-level security applies to.
+    ///
+    /// The role `Shop::open` used is the cluster superuser, which bypasses row
+    /// security outright, so a migration tested through it proves nothing
+    /// about what a host's migration will reach.
+    pub async fn migrator(&self) -> PgPool {
+        let owner = format!("{}_owner", self.name);
+        self.extra_roles.lock().push(owner.clone());
+
+        for statement in [
+            format!(r#"create role "{owner}" login password 'owner'"#),
+            format!(r#"grant usage, create on schema public to "{owner}""#),
+            format!(
+                r#"do $$ declare r record; begin
+                     for r in select tablename from pg_tables where schemaname = 'public' loop
+                       execute format('alter table public.%I owner to "{owner}"', r.tablename);
+                     end loop;
+                   end $$"#
+            ),
+        ] {
+            let admin = PgPoolOptions::new()
+                .max_connections(1)
+                .connect(&self.its_url)
+                .await
+                .expect("the test database");
+            admin
+                .execute(statement.as_str())
+                .await
+                .expect("to hand the tables to a plain owner");
+            admin.close().await;
+        }
+
+        let mut url = url::Url::parse(&self.its_url).expect("a database url");
+        url.set_username(&owner).expect("a username");
+        url.set_password(Some("owner")).expect("a password");
+
+        PgPoolOptions::new()
+            .max_connections(1)
+            .connect(url.as_str())
+            .await
+            .expect("to connect as the owner")
     }
 
     pub fn ctx(&self) -> Ctx<'_> {
@@ -268,6 +317,7 @@ impl Shop {
             admin,
             name,
             role,
+            extra_roles,
             ..
         } = self;
         pool.close().await;
@@ -278,5 +328,10 @@ impl Shop {
         let _ = admin
             .execute(format!(r#"drop role if exists "{role}""#).as_str())
             .await;
+        for extra in extra_roles.into_inner() {
+            let _ = admin
+                .execute(format!(r#"drop role if exists "{extra}""#).as_str())
+                .await;
+        }
     }
 }

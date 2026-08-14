@@ -2953,6 +2953,28 @@ async fn apply_action(
                 .and_then(Value::as_str)
                 .ok_or_else(|| Error::invalid("removed shipping needs a name"))?;
 
+            // The adjustments and tax lines are `on delete restrict` since
+            // 0025, so what a promotion gave against this line and what tax
+            // was charged on it go deliberately rather than by cascade.
+            for table in [
+                "order_shipping_method_adjustment",
+                "order_shipping_method_tax_line",
+            ] {
+                sqlx::query(&format!(
+                    "delete from {table}
+                     where scope = $1 and order_shipping_method_id in (
+                         select id from order_shipping_method
+                         where scope = $1 and order_id = $2 and version = $3 and name = $4
+                     )"
+                ))
+                .bind(ctx.scope.0)
+                .bind(order.id.as_uuid())
+                .bind(version)
+                .bind(name)
+                .execute(&mut **tx)
+                .await?;
+            }
+
             sqlx::query(
                 "delete from order_shipping_method
                  where scope = $1 and order_id = $2 and version = $3 and name = $4",
