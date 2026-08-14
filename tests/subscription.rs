@@ -25,8 +25,8 @@ use tezgah::payment::{
     SessionResponse, SessionStatus, StoredChargeRequest, WebhookEvent,
 };
 use tezgah::ports::{
-    Action, Actor, AuditEntry, AuditSink, Authorizer, Clock, Ctx, Event, EventSink, Host, JobSpec,
-    Jobs, Permit, Resource, Tx,
+    Action, Actor, AuditEntry, AuditSink, Authorizer, Clock, Event, EventSink, Host, JobSpec, Jobs,
+    Permit, Resource, Tx,
 };
 use tezgah::subscription::{self, NewLine, NewPlan, NewPlanGroup, NewSubscription, Renewals};
 use tezgah::{Paging, inventory, pricing};
