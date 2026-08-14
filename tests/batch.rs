@@ -269,6 +269,7 @@ async fn a_stock_take_applies_the_rows_it_can_and_names_the_rest() {
         &ctx,
         tezgah::inventory::NewStockLocation {
             name: "a warehouse".into(),
+            address: None,
         },
     )
     .await

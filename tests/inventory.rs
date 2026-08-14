@@ -25,6 +25,7 @@ async fn seed(shop: &Shop, stocked: i32) -> (InventoryItemId, StockLocationId, V
         &ctx,
         inventory::NewStockLocation {
             name: format!("warehouse {}", uuid::Uuid::now_v7()),
+            address: None,
         },
     )
     .await
@@ -463,6 +464,7 @@ async fn lot_seed(
         &ctx,
         inventory::NewStockLocation {
             name: format!("warehouse {}", uuid::Uuid::now_v7()),
+            address: None,
         },
     )
     .await
@@ -1164,14 +1166,23 @@ async fn a_refused_write_says_which_of_the_three_it_was_and_the_transaction_live
     inventory::create_stock_location(
         &mut tx,
         &ctx,
-        inventory::NewStockLocation { name: name.clone() },
+        inventory::NewStockLocation {
+            name: name.clone(),
+            address: None,
+        },
     )
     .await
     .expect("a location");
-    let taken =
-        inventory::create_stock_location(&mut tx, &ctx, inventory::NewStockLocation { name })
-            .await
-            .expect_err("that name is taken");
+    let taken = inventory::create_stock_location(
+        &mut tx,
+        &ctx,
+        inventory::NewStockLocation {
+            name,
+            address: None,
+        },
+    )
+    .await
+    .expect_err("that name is taken");
     assert!(taken.is_conflict());
 
     // A location stock is still counted at is a conflict too, and the condition

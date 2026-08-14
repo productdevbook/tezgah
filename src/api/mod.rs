@@ -26,6 +26,7 @@ pub mod credit;
 pub mod inventory_lot;
 pub mod openapi;
 pub mod store;
+pub mod tax_identity;
 
 use crate::id::{CartId, CustomerId, OrderId};
 use crate::ports::{Action, Actor, Ctx, Resource, Tx};
@@ -137,7 +138,8 @@ pub fn routes() -> Vec<Route> {
             + admin_rest::ROUTES.len()
             + agreement::ROUTES.len()
             + credit::ROUTES.len()
-            + inventory_lot::ROUTES.len(),
+            + inventory_lot::ROUTES.len()
+            + tax_identity::ROUTES.len(),
     );
     all.extend_from_slice(store::ROUTES);
     all.extend_from_slice(admin::ROUTES);
@@ -147,6 +149,7 @@ pub fn routes() -> Vec<Route> {
     all.extend_from_slice(agreement::ROUTES);
     all.extend_from_slice(credit::ROUTES);
     all.extend_from_slice(inventory_lot::ROUTES);
+    all.extend_from_slice(tax_identity::ROUTES);
     all
 }
 

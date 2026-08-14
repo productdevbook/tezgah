@@ -386,6 +386,7 @@ async fn a_checked_vat_number_across_a_border_moves_the_charge_to_the_buyer() {
             source: "billing_address".into(),
             country_code: "DE".into(),
         }],
+        None,
     )
     .await
     .expect("a subject");
@@ -448,7 +449,7 @@ async fn a_certificate_exempts_a_buyer_until_it_runs_out() {
     .await
     .expect("a certificate");
 
-    let subject = tax::subject_for(&mut tx, &ctx, Some(buyer), true, Vec::new())
+    let subject = tax::subject_for(&mut tx, &ctx, Some(buyer), true, Vec::new(), None)
         .await
         .expect("a subject");
 
@@ -476,7 +477,7 @@ async fn a_certificate_exempts_a_buyer_until_it_runs_out() {
     .await
     .expect("to end it");
 
-    let after = tax::subject_for(&mut tx, &ctx, Some(buyer), true, Vec::new())
+    let after = tax::subject_for(&mut tx, &ctx, Some(buyer), true, Vec::new(), None)
         .await
         .expect("a subject");
     let charged = tax::calculate(

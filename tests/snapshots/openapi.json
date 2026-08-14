@@ -1921,6 +1921,158 @@
         "x-tezgah-permission": "settle"
       }
     },
+    "/admin/customers/{id}/tax-exemptions": {
+      "get": {
+        "operationId": "getAdminCustomersByIdTaxExemptions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "List the certificates a customer holds",
+        "tags": [
+          "tax"
+        ],
+        "x-tezgah-permission": "view"
+      },
+      "post": {
+        "operationId": "postAdminCustomersByIdTaxExemptions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "File a certificate that exempts a customer",
+        "tags": [
+          "tax"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/customers/{id}/tax-ids": {
+      "get": {
+        "operationId": "getAdminCustomersByIdTaxIds",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "List the tax numbers a customer has given",
+        "tags": [
+          "tax"
+        ],
+        "x-tezgah-permission": "view"
+      },
+      "post": {
+        "operationId": "postAdminCustomersByIdTaxIds",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Record a customer's tax number and what checking it returned",
+        "tags": [
+          "tax"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
     "/admin/draft-orders": {
       "get": {
         "operationId": "getAdminDraftOrders",
@@ -9239,6 +9391,129 @@
         "x-tezgah-permission": "write"
       }
     },
+    "/admin/regions/{id}/countries": {
+      "get": {
+        "operationId": "getAdminRegionsByIdCountries",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "List the countries a region serves",
+        "tags": [
+          "store"
+        ],
+        "x-tezgah-permission": "view"
+      },
+      "post": {
+        "operationId": "postAdminRegionsByIdCountries",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Put a country under a region",
+        "tags": [
+          "store"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/regions/{id}/countries/{country_code}": {
+      "delete": {
+        "operationId": "deleteAdminRegionsByIdCountriesByCountryCode",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "country_code",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Take a country out of its region",
+        "tags": [
+          "store"
+        ],
+        "x-tezgah-permission": "delete"
+      }
+    },
     "/admin/reservations": {
       "get": {
         "operationId": "getAdminReservations",
@@ -10692,6 +10967,82 @@
         "x-tezgah-permission": "write"
       }
     },
+    "/admin/stock-locations/{id}/address": {
+      "get": {
+        "operationId": "getAdminStockLocationsByIdAddress",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Read where a stock location is",
+        "tags": [
+          "inventory"
+        ],
+        "x-tezgah-permission": "view"
+      },
+      "post": {
+        "operationId": "postAdminStockLocationsByIdAddress",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Say where a stock location is",
+        "tags": [
+          "inventory"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
     "/admin/stock-locations/{id}/sales-channels": {
       "post": {
         "operationId": "postAdminStockLocationsByIdSalesChannels",
@@ -10873,6 +11224,84 @@
           "store"
         ],
         "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/tax-exemptions/{id}/revoke": {
+      "post": {
+        "operationId": "postAdminTaxExemptionsByIdRevoke",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Stop a certificate applying from a given moment",
+        "tags": [
+          "tax"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/tax-ids/{id}": {
+      "delete": {
+        "operationId": "deleteAdminTaxIdsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Forget a customer's tax number",
+        "tags": [
+          "tax"
+        ],
+        "x-tezgah-permission": "delete"
       }
     },
     "/admin/tax-rates": {
@@ -11338,6 +11767,103 @@
           "tax"
         ],
         "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/tax-registrations": {
+      "get": {
+        "operationId": "getAdminTaxRegistrations",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "List where the shop is registered and what it files under",
+        "tags": [
+          "tax"
+        ],
+        "x-tezgah-permission": "view"
+      },
+      "post": {
+        "operationId": "postAdminTaxRegistrations",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Record where the shop is registered",
+        "tags": [
+          "tax"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/tax-registrations/{id}": {
+      "delete": {
+        "operationId": "deleteAdminTaxRegistrationsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Take a registration off the shop",
+        "tags": [
+          "tax"
+        ],
+        "x-tezgah-permission": "delete"
       }
     },
     "/admin/workflow-dead-letters": {
@@ -12068,6 +12594,45 @@
         "summary": "Say this cart will pay from my balance",
         "tags": [
           "credit"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/store/carts/{id}/tax-evidence": {
+      "post": {
+        "operationId": "postStoreCartsByIdTaxEvidence",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "publishableKey": []
+          }
+        ],
+        "summary": "Price the cart again with what the host knows about where the buyer is",
+        "tags": [
+          "tax"
         ],
         "x-tezgah-permission": "write"
       }

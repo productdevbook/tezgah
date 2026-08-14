@@ -1795,6 +1795,87 @@ pub async fn list_stock_locations(
 #[serde(deny_unknown_fields)]
 pub struct CreateStockLocation {
     pub name: String,
+    pub address: Option<StockLocationAddressIn>,
+}
+
+/// Where a location is. The country is what makes it the origin of a supply,
+/// so it is required and the rest of the address is not.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StockLocationAddressIn {
+    pub address_1: String,
+    pub address_2: Option<String>,
+    pub company: Option<String>,
+    pub city: Option<String>,
+    pub country_code: String,
+    pub province: Option<String>,
+    pub postal_code: Option<String>,
+    pub phone: Option<String>,
+}
+
+impl From<StockLocationAddressIn> for inventory::NewStockLocationAddress {
+    fn from(body: StockLocationAddressIn) -> Self {
+        inventory::NewStockLocationAddress {
+            address_1: body.address_1,
+            address_2: body.address_2,
+            company: body.company,
+            city: body.city,
+            country_code: body.country_code,
+            province: body.province,
+            postal_code: body.postal_code,
+            phone: body.phone,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StockLocationAddressView {
+    pub id: uuid::Uuid,
+    pub address_1: String,
+    pub address_2: Option<String>,
+    pub company: Option<String>,
+    pub city: Option<String>,
+    pub country_code: String,
+    pub province: Option<String>,
+    pub postal_code: Option<String>,
+    pub phone: Option<String>,
+}
+
+impl From<inventory::StockLocationAddress> for StockLocationAddressView {
+    fn from(row: inventory::StockLocationAddress) -> Self {
+        StockLocationAddressView {
+            id: row.id,
+            address_1: row.address_1,
+            address_2: row.address_2,
+            company: row.company,
+            city: row.city,
+            country_code: row.country_code,
+            province: row.province,
+            postal_code: row.postal_code,
+            phone: row.phone,
+        }
+    }
+}
+
+pub async fn set_stock_location_address(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: StockLocationId,
+    body: StockLocationAddressIn,
+) -> Result<StockLocationAddressView> {
+    Ok(StockLocationAddressView::from(
+        inventory::set_stock_location_address(tx, ctx, id, body.into()).await?,
+    ))
+}
+
+pub async fn get_stock_location_address(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: StockLocationId,
+) -> Result<Option<StockLocationAddressView>> {
+    Ok(inventory::stock_location_address(tx, ctx, id)
+        .await?
+        .map(StockLocationAddressView::from))
 }
 
 pub async fn create_stock_location(
@@ -1802,7 +1883,10 @@ pub async fn create_stock_location(
     ctx: &Ctx<'_>,
     body: CreateStockLocation,
 ) -> Result<StockLocationView> {
-    let new = inventory::NewStockLocation { name: body.name };
+    let new = inventory::NewStockLocation {
+        name: body.name,
+        address: body.address.map(Into::into),
+    };
     Ok(StockLocationView::from(
         inventory::create_stock_location(tx, ctx, new).await?,
     ))
@@ -2955,6 +3039,22 @@ pub(super) static ROUTES: &[Route] = &[
         action: Action::Delete,
         domain: INVENTORY,
         summary: "Delete a stock location",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Get,
+        path: "/admin/stock-locations/{id}/address",
+        action: Action::View,
+        domain: INVENTORY,
+        summary: "Read where a stock location is",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Post,
+        path: "/admin/stock-locations/{id}/address",
+        action: Action::Write,
+        domain: INVENTORY,
+        summary: "Say where a stock location is",
     },
     Route {
         surface: Surface::Admin,

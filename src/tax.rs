@@ -216,6 +216,36 @@ pub struct TaxEvidence {
     pub country_code: String,
 }
 
+impl TaxEvidence {
+    /// What the buyer said the invoice goes to.
+    pub const BILLING_ADDRESS: &'static str = "billing_address";
+    /// Where the parcel is going, which is a separate statement from the one
+    /// above and is why the two together count as two.
+    pub const SHIPPING_ADDRESS: &'static str = "shipping_address";
+    /// The region the cart is priced in, and only where that region covers one
+    /// country — a region covering twelve places nobody.
+    pub const REGION: &'static str = "region";
+
+    pub fn new(source: impl Into<String>, country_code: impl Into<String>) -> Self {
+        TaxEvidence {
+            source: source.into(),
+            country_code: country_code.into(),
+        }
+    }
+
+    pub fn billing_address(country_code: impl Into<String>) -> Self {
+        TaxEvidence::new(TaxEvidence::BILLING_ADDRESS, country_code)
+    }
+
+    pub fn shipping_address(country_code: impl Into<String>) -> Self {
+        TaxEvidence::new(TaxEvidence::SHIPPING_ADDRESS, country_code)
+    }
+
+    pub fn region(country_code: impl Into<String>) -> Self {
+        TaxEvidence::new(TaxEvidence::REGION, country_code)
+    }
+}
+
 /// A number the buyer gave, and what was known about it when it was checked.
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct CustomerTaxId {
@@ -311,6 +341,10 @@ pub struct TaxSubject {
     pub exemptions: Vec<TaxExemption>,
     /// Where the shop is established, and under which schemes it files.
     pub registrations: Vec<TaxRegistration>,
+    /// Where the goods leave from, when the shop has not said where it is
+    /// established. A supply starts somewhere whether or not anybody filed for
+    /// it, and the warehouse is the only other place that knows.
+    pub origin_country: Option<String>,
     /// The non-contradictory pieces that placed the buyer, for a distance sale.
     pub evidence: Vec<TaxEvidence>,
 }
@@ -321,6 +355,7 @@ impl TaxSubject {
             .iter()
             .find(|row| row.is_home)
             .map(|row| row.country_code.as_str())
+            .or(self.origin_country.as_deref())
     }
 
     fn files_under(&self, scheme: &str) -> bool {
@@ -1881,6 +1916,25 @@ pub async fn registrations(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<Vec<TaxRegi
     .await?)
 }
 
+/// Takes a registration off the shop. Deleted rather than ended: a
+/// registration is where the shop files today, and the orders already placed
+/// carry their own treatment and the number that was used.
+pub async fn delete_registration(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: Uuid) -> Result<()> {
+    let _: Permit = ctx.permit(Action::Delete, Resource::Tax)?;
+
+    let done = sqlx::query("delete from tax_registration where scope = $1 and id = $2")
+        .bind(ctx.scope.0)
+        .bind(id)
+        .execute(&mut **tx)
+        .await?;
+
+    if done.rows_affected() == 0 {
+        return Err(Error::not_found("tax registration"));
+    }
+
+    Ok(())
+}
+
 /// The taxability code each of these variants is sold under, the product's
 /// standing in where the variant names none.
 ///
@@ -1932,6 +1986,7 @@ pub async fn subject_for(
     customer_id: Option<CustomerId>,
     is_business: bool,
     evidence: Vec<TaxEvidence>,
+    origin_country: Option<String>,
 ) -> Result<TaxSubject> {
     let registrations = registrations(tx, ctx).await?;
 
@@ -1949,6 +2004,10 @@ pub async fn subject_for(
         tax_ids,
         exemptions,
         registrations,
+        origin_country: match origin_country {
+            Some(code) => Some(country_code(&code)?),
+            None => None,
+        },
         evidence,
     })
 }

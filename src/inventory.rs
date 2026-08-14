@@ -50,6 +50,75 @@ pub struct StockLocation {
 #[derive(Debug, Clone)]
 pub struct NewStockLocation {
     pub name: String,
+    pub address: Option<NewStockLocationAddress>,
+}
+
+/// Where a location is, which is where a supply leaves from.
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct StockLocationAddress {
+    pub id: uuid::Uuid,
+    pub address_1: String,
+    pub address_2: Option<String>,
+    pub company: Option<String>,
+    pub city: Option<String>,
+    pub country_code: String,
+    pub province: Option<String>,
+    pub postal_code: Option<String>,
+    pub phone: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct NewStockLocationAddress {
+    pub address_1: String,
+    pub address_2: Option<String>,
+    pub company: Option<String>,
+    pub city: Option<String>,
+    pub country_code: String,
+    pub province: Option<String>,
+    pub postal_code: Option<String>,
+    pub phone: Option<String>,
+}
+
+const STOCK_LOCATION_ADDRESS_COLUMNS: &str = "id, address_1, address_2, company, city,
+     country_code, province, postal_code, phone";
+
+fn country_code(text: &str) -> Result<String> {
+    let trimmed = text.trim();
+    if trimmed.len() != 2 || !trimmed.bytes().all(|byte| byte.is_ascii_alphabetic()) {
+        return Err(Error::invalid("a country code is two letters"));
+    }
+    Ok(trimmed.to_ascii_uppercase())
+}
+
+async fn write_address(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    new: NewStockLocationAddress,
+) -> Result<StockLocationAddress> {
+    if new.address_1.trim().is_empty() {
+        return Err(Error::invalid("an address needs a first line"));
+    }
+    let country = country_code(&new.country_code)?;
+
+    Ok(sqlx::query_as::<_, StockLocationAddress>(&format!(
+        "insert into stock_location_address
+             (id, scope, address_1, address_2, company, city, country_code, province,
+              postal_code, phone)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         returning {STOCK_LOCATION_ADDRESS_COLUMNS}"
+    ))
+    .bind(uuid::Uuid::now_v7())
+    .bind(ctx.scope.0)
+    .bind(new.address_1.trim())
+    .bind(new.address_2)
+    .bind(new.company)
+    .bind(new.city)
+    .bind(&country)
+    .bind(new.province)
+    .bind(new.postal_code)
+    .bind(new.phone)
+    .fetch_one(&mut **tx)
+    .await?)
 }
 
 /// What is counted, which is not what is sold: several variants may be the same
@@ -125,17 +194,22 @@ pub async fn create_stock_location(
     }
 
     let id = StockLocationId::new();
+    let address_id = match new.address {
+        Some(address) => Some(write_address(tx, ctx, address).await?.id),
+        None => None,
+    };
     // `on conflict` rather than catching the violation after it happened: a
     // caught unique violation has already aborted the caller's transaction.
     let location = sqlx::query_as::<_, StockLocation>(
-        "insert into stock_location (id, scope, name)
-         values ($1, $2, $3)
+        "insert into stock_location (id, scope, name, address_id)
+         values ($1, $2, $3, $4)
          on conflict (scope, name) do nothing
          returning id, name, address_id, created_at",
     )
     .bind(id.as_uuid())
     .bind(ctx.scope.0)
     .bind(new.name.trim())
+    .bind(address_id)
     .fetch_optional(&mut **tx)
     .await?
     .ok_or_else(|| Error::conflict("a stock location by that name is already here"))?;
@@ -205,6 +279,133 @@ pub async fn stock_locations(
         at: row.created_at,
         id: row.id.as_uuid(),
     }))
+}
+
+/// Gives a location its address, or replaces the one it has.
+///
+/// Replaced in place rather than by a second row: a location has one address,
+/// and the despatch address of an order that already shipped is on the order.
+pub async fn set_stock_location_address(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: StockLocationId,
+    new: NewStockLocationAddress,
+) -> Result<StockLocationAddress> {
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Inventory {
+            id: Some(id.as_uuid()),
+        },
+    )?;
+
+    let existing = sqlx::query_as::<_, (Option<uuid::Uuid>,)>(
+        "select address_id from stock_location where scope = $1 and id = $2",
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("stock location"))?
+    .0;
+
+    let address = match existing {
+        Some(address_id) => {
+            let country = country_code(&new.country_code)?;
+            if new.address_1.trim().is_empty() {
+                return Err(Error::invalid("an address needs a first line"));
+            }
+            sqlx::query_as::<_, StockLocationAddress>(&format!(
+                "update stock_location_address set
+                     address_1 = $3, address_2 = $4, company = $5, city = $6,
+                     country_code = $7, province = $8, postal_code = $9, phone = $10
+                 where scope = $1 and id = $2
+                 returning {STOCK_LOCATION_ADDRESS_COLUMNS}"
+            ))
+            .bind(ctx.scope.0)
+            .bind(address_id)
+            .bind(new.address_1.trim())
+            .bind(new.address_2)
+            .bind(new.company)
+            .bind(new.city)
+            .bind(&country)
+            .bind(new.province)
+            .bind(new.postal_code)
+            .bind(new.phone)
+            .fetch_optional(&mut **tx)
+            .await?
+            .ok_or_else(|| Error::not_found("stock location address"))?
+        }
+        None => {
+            let written = write_address(tx, ctx, new).await?;
+            sqlx::query("update stock_location set address_id = $3 where scope = $1 and id = $2")
+                .bind(ctx.scope.0)
+                .bind(id.as_uuid())
+                .bind(written.id)
+                .execute(&mut **tx)
+                .await?;
+            written
+        }
+    };
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "stock_location_address",
+            entity_id: address.id,
+            summary: serde_json::json!({ "country_code": address.country_code }),
+        },
+    )
+    .await?;
+
+    Ok(address)
+}
+
+pub async fn stock_location_address(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: StockLocationId,
+) -> Result<Option<StockLocationAddress>> {
+    let _: Permit = ctx.permit(
+        Action::View,
+        Resource::Inventory {
+            id: Some(id.as_uuid()),
+        },
+    )?;
+
+    Ok(sqlx::query_as::<_, StockLocationAddress>(&format!(
+        "select {STOCK_LOCATION_ADDRESS_COLUMNS}
+         from stock_location_address a
+         join stock_location l on l.scope = a.scope and l.address_id = a.id
+         where a.scope = $1 and l.id = $2"
+    ))
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?)
+}
+
+/// Where a supply leaves from, when nothing else says.
+///
+/// The oldest location that has an address, because a shop that keeps stock in
+/// two countries has to say where it is registered rather than let the tax
+/// decision be settled by which warehouse was made first.
+pub async fn origin_country(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<Option<String>> {
+    let _: Permit = ctx.permit(Action::View, Resource::Inventory { id: None })?;
+
+    Ok(sqlx::query_as::<_, (String,)>(
+        "select a.country_code
+             from stock_location l
+             join stock_location_address a on a.scope = l.scope and a.id = l.address_id
+             where l.scope = $1
+             order by l.created_at, l.id
+             limit 1",
+    )
+    .bind(ctx.scope.0)
+    .fetch_optional(&mut **tx)
+    .await?
+    .map(|row| row.0))
 }
 
 pub async fn rename_stock_location(

@@ -402,6 +402,194 @@ pub async fn regions(tx: &mut Tx<'_>, ctx: &Ctx<'_>, paging: Paging) -> Result<P
     }))
 }
 
+/// One ISO 3166-1 country, and the region it is served from.
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct RegionCountry {
+    pub id: Uuid,
+    pub iso_2: String,
+    pub iso_3: String,
+    pub numeric_code: String,
+    pub name: String,
+    pub display_name: String,
+    pub region_id: Option<RegionId>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewRegionCountry {
+    pub iso_2: String,
+    pub iso_3: String,
+    pub numeric_code: String,
+    pub name: String,
+    pub display_name: Option<String>,
+}
+
+const REGION_COUNTRY_COLUMNS: &str =
+    "id, iso_2, iso_3, numeric_code, name, display_name, region_id, created_at";
+
+fn iso_2(text: &str) -> Result<String> {
+    let trimmed = text.trim();
+    if trimmed.len() != 2 || !trimmed.bytes().all(|byte| byte.is_ascii_alphabetic()) {
+        return Err(Error::invalid("a country code is two letters"));
+    }
+    Ok(trimmed.to_ascii_uppercase())
+}
+
+/// Puts a country under a region, moving it if it was under another one: a
+/// country is served from one place, and two regions claiming it is two
+/// currencies for one address.
+pub async fn add_region_country(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    region_id: RegionId,
+    new: NewRegionCountry,
+) -> Result<RegionCountry> {
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Channel {
+            id: Some(region_id.as_uuid()),
+        },
+    )?;
+
+    let code = iso_2(&new.iso_2)?;
+    let iso_3 = new.iso_3.trim().to_ascii_uppercase();
+    if iso_3.len() != 3 || !iso_3.bytes().all(|byte| byte.is_ascii_alphabetic()) {
+        return Err(Error::invalid("an alpha-3 country code is three letters"));
+    }
+    let numeric = new.numeric_code.trim().to_string();
+    if numeric.len() != 3 || !numeric.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err(Error::invalid("a numeric country code is three digits"));
+    }
+    let name = new.name.trim().to_string();
+    if name.is_empty() {
+        return Err(Error::invalid("a country needs a name"));
+    }
+    let display = new
+        .display_name
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| name.clone());
+
+    let row = sqlx::query_as::<_, RegionCountry>(&format!(
+        "insert into region_country
+             (id, scope, iso_2, iso_3, numeric_code, name, display_name, region_id)
+         values ($1, $2, $3, $4, $5, $6, $7, $8)
+         on conflict (scope, iso_2) do update set
+             iso_3 = excluded.iso_3,
+             numeric_code = excluded.numeric_code,
+             name = excluded.name,
+             display_name = excluded.display_name,
+             region_id = excluded.region_id
+         returning {REGION_COUNTRY_COLUMNS}"
+    ))
+    .bind(Uuid::now_v7())
+    .bind(ctx.scope.0)
+    .bind(&code)
+    .bind(&iso_3)
+    .bind(&numeric)
+    .bind(&name)
+    .bind(&display)
+    .bind(region_id.as_uuid())
+    .fetch_one(&mut **tx)
+    .await?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "region_country",
+            entity_id: row.id,
+            summary: serde_json::json!({ "iso_2": row.iso_2, "region_id": region_id.as_uuid() }),
+        },
+    )
+    .await?;
+
+    Ok(row)
+}
+
+/// Takes a country out of its region without deleting it: ISO 3166-1 is a
+/// fixed list, and the row is the list rather than the shop's decision.
+pub async fn remove_region_country(tx: &mut Tx<'_>, ctx: &Ctx<'_>, code: &str) -> Result<()> {
+    let _: Permit = ctx.permit(Action::Write, Resource::Channel { id: None })?;
+
+    let code = iso_2(code)?;
+    let done = sqlx::query(
+        "update region_country set region_id = null
+         where scope = $1 and iso_2 = $2 and region_id is not null",
+    )
+    .bind(ctx.scope.0)
+    .bind(&code)
+    .execute(&mut **tx)
+    .await?;
+
+    if done.rows_affected() == 0 {
+        return Err(Error::not_found("region country"));
+    }
+
+    Ok(())
+}
+
+pub async fn region_countries(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    region_id: RegionId,
+    paging: Paging,
+) -> Result<Page<RegionCountry>> {
+    let _: Permit = ctx.permit(
+        Action::View,
+        Resource::Channel {
+            id: Some(region_id.as_uuid()),
+        },
+    )?;
+
+    let rows = sqlx::query_as::<_, RegionCountry>(&format!(
+        "select {REGION_COUNTRY_COLUMNS}
+         from region_country
+         where scope = $1 and region_id = $2
+           and ($3::timestamptz is null or (created_at, id) > ($3, $4))
+         order by created_at, id
+         limit $5"
+    ))
+    .bind(ctx.scope.0)
+    .bind(region_id.as_uuid())
+    .bind(paging.after.map(|c| c.at))
+    .bind(paging.after.map(|c| c.id))
+    .bind(paging.probe())
+    .fetch_all(&mut **tx)
+    .await?;
+
+    Ok(Page::build(rows, paging, |row| Cursor {
+        at: row.created_at,
+        id: row.id,
+    }))
+}
+
+/// Which region serves a delivery country, and `None` while nobody has said.
+///
+/// `None` is not an error: a shop that has never filled the table in is every
+/// shop running today, and the answer there is that the country decides
+/// nothing rather than that the sale is refused.
+pub async fn region_for_country(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    code: &str,
+) -> Result<Option<Region>> {
+    let _: Permit = ctx.permit(Action::View, Resource::Channel { id: None })?;
+
+    let code = iso_2(code)?;
+    Ok(sqlx::query_as::<_, Region>(
+        "select r.id, r.name, r.currency_code, r.is_tax_inclusive, r.created_at
+         from region_country c
+         join region r on r.scope = c.scope and r.id = c.region_id
+         where c.scope = $1 and c.iso_2 = $2",
+    )
+    .bind(ctx.scope.0)
+    .bind(&code)
+    .fetch_optional(&mut **tx)
+    .await?)
+}
+
 #[derive(Debug, Clone)]
 pub struct NewSalesChannel {
     pub name: String,

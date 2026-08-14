@@ -257,6 +257,7 @@ async fn stock_the_shelf(shop: &Shop, run: u64) -> Shelf {
         &ctx,
         NewStockLocation {
             name: format!("shelf-{run}"),
+            address: None,
         },
     )
     .await

@@ -32,7 +32,9 @@ use crate::id::{
 use crate::money::{Currency, Money};
 use crate::page::{Cursor, Page, Paging};
 use crate::ports::{Action, Actor, Ctx, Resource, Tx};
-use crate::{cart, catalogue, checkout, customer, fulfilment, order, payment, pricing, store, tax};
+use crate::{
+    cart, catalogue, checkout, customer, fulfilment, inventory, order, payment, pricing, store, tax,
+};
 
 use super::{Method, Route, Surface, own_cart, own_order, signed_in};
 
@@ -633,6 +635,10 @@ pub struct DeliveryInput {
     pub province_code: Option<String>,
     pub city: Option<String>,
     pub postal_code: Option<String>,
+    /// What the host knows about where the buyer is, beside what the cart
+    /// says. A quote for a country abroad is refused without it.
+    #[serde(default)]
+    pub evidence: Vec<EvidenceInput>,
 }
 
 // ---------------------------------------------------------------------------
@@ -685,6 +691,88 @@ async fn option_price(
     Ok(pricing::resolve(tx, ctx, set, at)
         .await?
         .map(|price| price.calculated))
+}
+
+/// What this crate can say about where the buyer is, each piece naming where
+/// it came from.
+///
+/// Three at most, and never one dressed as two: the two addresses are separate
+/// statements, and the region counts only where it covers a single country —
+/// a region spanning twelve places nobody. A host that knows more — the
+/// country a card was issued in, the country an address resolved to — hands
+/// those in and they are kept beside these.
+async fn evidence_for(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    holding: &cart::Cart,
+    shipping: Option<String>,
+    billing: Option<String>,
+    host: Vec<tax::TaxEvidence>,
+) -> Result<Vec<tax::TaxEvidence>> {
+    let mut found = Vec::new();
+
+    if let Some(country) = billing {
+        found.push(tax::TaxEvidence::billing_address(country));
+    }
+    if let Some(country) = shipping {
+        found.push(tax::TaxEvidence::shipping_address(country));
+    }
+
+    if let Some(region_id) = holding.region_id {
+        let covered = store::region_countries(tx, ctx, region_id, Paging::first(2)).await?;
+        if let [only] = covered.items.as_slice() {
+            found.push(tax::TaxEvidence::region(only.iso_2.clone()));
+        }
+    }
+
+    found.extend(host);
+    Ok(found)
+}
+
+/// The buyer, as the tax decision needs them: what they are, what places them,
+/// and where the goods leave from when the shop has not registered anywhere.
+async fn subject_for(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    holding: &cart::Cart,
+    evidence: Vec<tax::TaxEvidence>,
+) -> Result<tax::TaxSubject> {
+    let origin = inventory::origin_country(tx, ctx).await?;
+    // A buyer who put a tax number on file is buying as a business; that is the
+    // only signal a storefront has, and it is what the reverse charge turns on.
+    let mut subject =
+        tax::subject_for(tx, ctx, holding.customer_id, false, evidence, origin).await?;
+    subject.is_business = !subject.tax_ids.is_empty();
+    Ok(subject)
+}
+
+/// Whether the cart's currency is the one that country is served in.
+///
+/// Asked when an address is set rather than at the till: it is the moment both
+/// halves are known and the last one at which the shopper can still start
+/// again. A country under no region answers nothing — every shop running
+/// today has an empty `region_country`, and a rule that refused there would
+/// refuse every sale.
+async fn currency_agrees_with(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    holding: &cart::Cart,
+    country_code: &str,
+) -> Result<()> {
+    let Some(region) = store::region_for_country(tx, ctx, country_code).await? else {
+        return Ok(());
+    };
+
+    if !region
+        .currency_code
+        .eq_ignore_ascii_case(&holding.currency_code)
+    {
+        return Err(Error::invalid(
+            "that country is served in another currency; start a cart in it",
+        ));
+    }
+
+    Ok(())
 }
 
 fn price_context(row: &cart::Cart, currency: Currency) -> pricing::PriceContext {
@@ -1023,6 +1111,18 @@ pub async fn update_cart(
     }
 
     let moved = input.shipping_address.is_some() || input.billing_address.is_some();
+    if moved {
+        let holding = cart::get(tx, ctx, id).await?;
+        let going = input
+            .shipping_address
+            .as_ref()
+            .or(input.billing_address.as_ref())
+            .and_then(|address| address.country_code.clone());
+        if let Some(country) = going {
+            currency_agrees_with(tx, ctx, &holding, &country).await?;
+        }
+    }
+
     let changed = if moved {
         cart::set_addresses(
             tx,
@@ -1163,7 +1263,48 @@ pub async fn remove_line_item(
 /// would make the crate's module graph a cycle.
 pub async fn reprice(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: CartId) -> Result<()> {
     crate::promotion::apply(tx, ctx, id).await?;
-    retax(tx, ctx, id).await
+    retax(tx, ctx, id, Vec::new()).await
+}
+
+/// One thing a host knows about where the buyer is and this crate does not:
+/// the country a card was issued in, the country an address resolved to, the
+/// country a telephone number belongs to.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EvidenceInput {
+    pub source: String,
+    pub country_code: String,
+}
+
+impl From<EvidenceInput> for tax::TaxEvidence {
+    fn from(input: EvidenceInput) -> Self {
+        tax::TaxEvidence::new(input.source, input.country_code)
+    }
+}
+
+/// Prices the cart again with what the host knows added to what the cart says.
+///
+/// A distance sale to a consumer abroad is placed by two agreeing pieces from
+/// different sources, and a cart carrying only one address has only one. This
+/// is where the second comes from when the host has it.
+pub async fn reprice_with_evidence(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: CartId,
+    evidence: Vec<EvidenceInput>,
+) -> Result<TotalsView> {
+    own_cart(tx, ctx, id, Action::Write).await?;
+
+    crate::promotion::apply(tx, ctx, id).await?;
+    retax(
+        tx,
+        ctx,
+        id,
+        evidence.into_iter().map(tax::TaxEvidence::from).collect(),
+    )
+    .await?;
+
+    Ok(TotalsView::from(cart::totals(tx, ctx, id).await?))
 }
 
 fn variant_ids(lines: &[cart::LineItem]) -> Vec<Uuid> {
@@ -1176,7 +1317,12 @@ fn variant_ids(lines: &[cart::LineItem]) -> Vec<Uuid> {
 /// No address, no jurisdiction: the tax lines go and the cart is untaxed until
 /// somebody says where it is going. Checkout is what refuses to take money
 /// without an address, not this.
-async fn retax(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: CartId) -> Result<()> {
+async fn retax(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: CartId,
+    host: Vec<tax::TaxEvidence>,
+) -> Result<()> {
     let holding = cart::get(tx, ctx, id).await?;
     let currency = cart_currency(&holding)?;
 
@@ -1200,10 +1346,9 @@ async fn retax(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: CartId) -> Result<()> {
             postal_code: at.postal_code,
         });
 
-    // A buyer who put a tax number on file is buying as a business; that is the
-    // only signal a storefront has, and it is what the reverse charge turns on.
-    let mut subject = tax::subject_for(tx, ctx, holding.customer_id, false, Vec::new()).await?;
-    subject.is_business = !subject.tax_ids.is_empty();
+    let seen = cart::countries(tx, ctx, id).await?;
+    let evidence = evidence_for(tx, ctx, &holding, seen.shipping, seen.billing, host).await?;
+    let subject = subject_for(tx, ctx, &holding, evidence).await?;
 
     let held = cart::lines(tx, ctx, id).await?;
     let codes = tax::tax_codes(tx, ctx, &variant_ids(&held)).await?;
@@ -1351,8 +1496,21 @@ pub async fn quote_taxes(
         postal_code: None,
     };
 
-    let mut subject = tax::subject_for(tx, ctx, holding.customer_id, false, Vec::new()).await?;
-    subject.is_business = !subject.tax_ids.is_empty();
+    let seen = cart::countries(tx, ctx, id).await?;
+    let evidence = evidence_for(
+        tx,
+        ctx,
+        &holding,
+        Some(address.country_code.clone()),
+        seen.billing,
+        input
+            .evidence
+            .into_iter()
+            .map(tax::TaxEvidence::from)
+            .collect(),
+    )
+    .await?;
+    let subject = subject_for(tx, ctx, &holding, evidence).await?;
 
     let inclusive = pricing::is_tax_inclusive(tx, ctx, &price_context(&holding, currency)).await?;
     let found = tax::calculate(tx, ctx, &lines, &address, Some(&subject), inclusive).await?;
@@ -2179,6 +2337,14 @@ pub(super) static ROUTES: &[Route] = &[
         action: Action::Write,
         domain: "tax",
         summary: "Quote the tax the cart would carry to an address",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Post,
+        path: "/store/carts/{id}/tax-evidence",
+        action: Action::Write,
+        domain: "tax",
+        summary: "Price the cart again with what the host knows about where the buyer is",
     },
     Route {
         surface: Surface::Store,

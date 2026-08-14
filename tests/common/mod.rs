@@ -395,6 +395,7 @@ pub async fn a_cart_ready(shop: &Shop, stocked: i32, quantity: i32) -> Shelf {
         &ctx,
         inventory::NewStockLocation {
             name: format!("warehouse {}", Uuid::now_v7()),
+            address: None,
         },
     )
     .await

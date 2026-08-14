@@ -189,6 +189,7 @@ async fn ready_with(shop: &Shop, stocked: i32, quantity: i32, ships: bool) -> Re
         &ctx,
         inventory::NewStockLocation {
             name: format!("warehouse {}", Uuid::now_v7()),
+            address: None,
         },
     )
     .await

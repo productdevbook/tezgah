@@ -83,6 +83,7 @@ async fn a_shelf(
         ctx,
         inventory::NewStockLocation {
             name: format!("warehouse {}", Uuid::now_v7()),
+            address: None,
         },
     )
     .await

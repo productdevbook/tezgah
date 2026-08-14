@@ -1273,6 +1273,84 @@ pub async fn update_region(
     ))
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegionCountryView {
+    pub id: Uuid,
+    pub iso_2: String,
+    pub iso_3: String,
+    pub numeric_code: String,
+    pub name: String,
+    pub display_name: String,
+    pub region_id: Option<RegionId>,
+}
+
+impl From<store::RegionCountry> for RegionCountryView {
+    fn from(row: store::RegionCountry) -> Self {
+        RegionCountryView {
+            id: row.id,
+            iso_2: row.iso_2,
+            iso_3: row.iso_3,
+            numeric_code: row.numeric_code,
+            name: row.name,
+            display_name: row.display_name,
+            region_id: row.region_id,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AddRegionCountry {
+    pub iso_2: String,
+    pub iso_3: String,
+    pub numeric_code: String,
+    pub name: String,
+    pub display_name: Option<String>,
+}
+
+pub async fn list_region_countries(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: RegionId,
+    query: List,
+) -> Result<Page<RegionCountryView>> {
+    Ok(map(
+        store::region_countries(tx, ctx, id, query.paging()?).await?,
+        RegionCountryView::from,
+    ))
+}
+
+pub async fn add_region_country(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: RegionId,
+    body: AddRegionCountry,
+) -> Result<RegionCountryView> {
+    Ok(RegionCountryView::from(
+        store::add_region_country(
+            tx,
+            ctx,
+            id,
+            store::NewRegionCountry {
+                iso_2: body.iso_2,
+                iso_3: body.iso_3,
+                numeric_code: body.numeric_code,
+                name: body.name,
+                display_name: body.display_name,
+            },
+        )
+        .await?,
+    ))
+}
+
+pub async fn remove_region_country(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    country_code: String,
+) -> Result<()> {
+    store::remove_region_country(tx, ctx, &country_code).await
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CreateSalesChannel {
@@ -2155,6 +2233,30 @@ pub(super) static ROUTES: &[Route] = &[
         action: Action::Write,
         domain: "store",
         summary: "Change a region's name, currency or tax inclusiveness",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Get,
+        path: "/admin/regions/{id}/countries",
+        action: Action::View,
+        domain: "store",
+        summary: "List the countries a region serves",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Post,
+        path: "/admin/regions/{id}/countries",
+        action: Action::Write,
+        domain: "store",
+        summary: "Put a country under a region",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Delete,
+        path: "/admin/regions/{id}/countries/{country_code}",
+        action: Action::Delete,
+        domain: "store",
+        summary: "Take a country out of its region",
     },
     Route {
         surface: Surface::Admin,

@@ -487,6 +487,50 @@ pub async fn place_of_supply(
     .await
 }
 
+/// What each of the cart's two addresses says its country is. Two answers
+/// rather than one because they are two statements: agreeing, they are two
+/// pieces of evidence for where the buyer is, and one of them alone is not.
+#[derive(Debug, Clone, Default)]
+pub struct CartCountries {
+    pub shipping: Option<String>,
+    pub billing: Option<String>,
+}
+
+pub async fn countries(tx: &mut Tx<'_>, ctx: &Ctx<'_>, cart_id: CartId) -> Result<CartCountries> {
+    let _: Permit = ctx.permit(
+        Action::View,
+        Resource::Cart {
+            id: cart_id.as_uuid(),
+            customer: None,
+        },
+    )?;
+
+    #[derive(FromRow)]
+    struct Row {
+        shipping: Option<String>,
+        billing: Option<String>,
+    }
+
+    let row = sqlx::query_as::<_, Row>(
+        "select s.country_code as shipping, b.country_code as billing
+         from cart c
+         left join cart_address s on s.scope = c.scope and s.id = c.shipping_address_id
+         left join cart_address b on b.scope = c.scope and b.id = c.billing_address_id
+         where c.scope = $1 and c.id = $2",
+    )
+    .bind(ctx.scope.0)
+    .bind(cart_id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    Ok(row
+        .map(|row| CartCountries {
+            shipping: row.shipping,
+            billing: row.billing,
+        })
+        .unwrap_or_default())
+}
+
 async fn address_of(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
