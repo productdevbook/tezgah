@@ -203,9 +203,10 @@ async fn one_card_spent_twice_at_once_comes_off_once() {
         second.location_id,
     );
 
+    let ctx = shop.ctx();
     let (left, right) = tokio::join!(
-        one.place(&shop.pool, &shop.ctx(), first.cart_id),
-        two.place(&shop.pool, &shop.ctx(), second.cart_id),
+        one.place(&shop.pool, &ctx, first.cart_id),
+        two.place(&shop.pool, &ctx, second.cart_id),
     );
 
     let mut spent = Decimal::ZERO;
