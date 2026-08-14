@@ -263,6 +263,10 @@ pub async fn create_plan(
     ))
 }
 
+pub async fn get_plan(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: SellingPlanId) -> Result<PlanView> {
+    Ok(PlanView::from(subscription::plan(tx, ctx, id).await?))
+}
+
 pub async fn list_plans(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -565,6 +569,14 @@ pub(super) static ROUTES: &[Route] = &[
         action: Action::View,
         domain: "subscription",
         summary: "List a group's plans",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Get,
+        path: "/admin/selling-plans/{id}",
+        action: Action::View,
+        domain: "subscription",
+        summary: "One plan and how often it bills",
     },
     Route {
         surface: Surface::Admin,

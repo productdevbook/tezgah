@@ -136,6 +136,7 @@ fn every_admin_domain_is_one_the_crate_has() {
         "pricing",
         "promotion",
         "store",
+        "subscription",
         "tax",
         "workflow",
     ];

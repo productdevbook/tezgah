@@ -10682,6 +10682,45 @@
         "x-tezgah-permission": "write"
       }
     },
+    "/admin/selling-plans/{id}": {
+      "get": {
+        "operationId": "getAdminSellingPlansById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "One plan and how often it bills",
+        "tags": [
+          "subscription"
+        ],
+        "x-tezgah-permission": "view"
+      }
+    },
     "/admin/selling-plans/{id}/variants": {
       "post": {
         "operationId": "postAdminSellingPlansByIdVariants",
