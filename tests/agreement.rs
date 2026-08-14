@@ -33,7 +33,8 @@ fn money(amount: Decimal) -> Money {
 async fn seed_currency(tx: &mut Tx<'_>, scope: Scope) {
     sqlx::query(
         "insert into currency (id, scope, code, exponent, symbol, symbol_native, name)
-         values ($1, $2, 'TRY', 2, 'x', 'x', 'Turkish lira')",
+         values ($1, $2, 'TRY', 2, 'x', 'x', 'Turkish lira')
+         on conflict do nothing",
     )
     .bind(Uuid::now_v7())
     .bind(scope.0)

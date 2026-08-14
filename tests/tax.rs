@@ -25,7 +25,8 @@ fn lira() -> Currency {
 async fn seed_currency(tx: &mut Tx<'_>, scope: uuid::Uuid) {
     sqlx::query(
         "insert into currency (id, scope, code, exponent, symbol, symbol_native, name)
-         values ($1, $2, 'TRY', 2, '₺', '₺', 'Turkish lira')",
+         values ($1, $2, 'TRY', 2, '₺', '₺', 'Turkish lira')
+         on conflict do nothing",
     )
     .bind(Uuid::now_v7())
     .bind(scope)

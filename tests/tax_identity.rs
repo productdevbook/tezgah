@@ -546,7 +546,8 @@ async fn a_cart_priced_in_one_currency_is_not_delivered_to_another_region() {
     seed_euro(&mut tx, shop.here.0).await;
     sqlx::query(
         "insert into currency (id, scope, code, exponent, symbol, symbol_native, name)
-         values ($1, $2, 'TRY', 2, '₺', '₺', 'Turkish lira')",
+         values ($1, $2, 'TRY', 2, '₺', '₺', 'Turkish lira')
+         on conflict do nothing",
     )
     .bind(Uuid::now_v7())
     .bind(shop.here.0)

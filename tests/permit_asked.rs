@@ -23,16 +23,11 @@ use std::path::Path;
 
 /// Functions that run a query without a permit anywhere beneath them, each
 /// with the reason it is not a hole. Adding to this is not a fix.
-const TOLERATED: [(&str, &str); 4] = [
+const TOLERATED: [(&str, &str); 3] = [
     (
         "payment::recompute",
         "derives a collection's amounts from rows already written; `pub(crate)` \
          so credit can call it, and every in-crate caller asked before reaching it",
-    ),
-    (
-        "order::write_summary",
-        "derives a summary row from rows its caller already read; in-crate \
-         callers all asked before reaching it",
     ),
     (
         "workflow::recover",
