@@ -1,7 +1,10 @@
 # Schema conventions
 
 Every migration follows these. `migrations/0002_conventions.sql` provides the
-machinery and `tests/schema.rs` proves nothing escaped it.
+machinery, `tests/schema.rs` proves nothing escaped it — including that no
+table exists which never called `tezgah_register` — and `tests/isolation.rs`
+puts a row in every registered table and asks a second scope to read, change
+and delete it.
 
 ## Every table
 
@@ -98,4 +101,7 @@ add a `not null` check as `not valid`, then validate it.
   what still holds if a host connects as a table owner or a superuser, both of
   which bypass policies. It costs nothing — the index starts with `scope`.
 - Audit rows, events and jobs go through `Ctx`, in the same transaction.
-- Listing returns a `Page<T>` with a cursor. There is no unbounded list.
+- Listing returns a `Page<T>` with a cursor. There is no unbounded list, and
+  `tests/no_unbounded_list.rs` reads `src/` to say so: a public function
+  returning a `Vec` must take a `Paging`, cap its query with a named `MAX_*`
+  constant, or touch no database at all.

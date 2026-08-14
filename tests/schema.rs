@@ -26,6 +26,37 @@ async fn the_migrations_apply_to_an_empty_database() {
     shop.close().await;
 }
 
+/// The registry's own tables and sqlx's bookkeeping. Nothing else belongs
+/// here: a table outside it is one no policy guards and no test looks at.
+const UNSCOPED: [&str; 3] = ["tezgah_scope", "tezgah_table", "_sqlx_migrations"];
+
+#[tokio::test]
+async fn no_table_exists_that_the_registry_has_never_heard_of() {
+    let shop = Shop::open().await;
+
+    let strays: Vec<String> = sqlx::query_scalar(
+        "select c.relname::text
+         from pg_class c
+         join pg_namespace n on n.oid = c.relnamespace and n.nspname = 'public'
+         where c.relkind = 'r'
+           and not exists (select 1 from tezgah_table t where t.name = c.relname)
+           and c.relname <> all($1)
+         order by 1",
+    )
+    .bind(UNSCOPED.to_vec())
+    .fetch_all(&shop.pool)
+    .await
+    .expect("to read pg_class");
+
+    assert!(
+        strays.is_empty(),
+        "these tables exist but never called tezgah_register, so they carry no scope, \
+         no policy and no test: {strays:?}"
+    );
+
+    shop.close().await;
+}
+
 #[tokio::test]
 async fn every_registered_table_forces_row_level_security() {
     let shop = Shop::open().await;

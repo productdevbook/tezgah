@@ -26,8 +26,31 @@
 //! A step's compensation is given what the step chose to keep, not what it
 //! returned. Undoing a charge needs the charge's id even when the step returned
 //! nothing worth showing anybody.
+//!
+//! # Steps that do not have to wait for each other
+//!
+//! [`Workflow::parallel`] takes a set of steps that run at once. The next step
+//! begins when all of them have finished, and is handed their outputs as an
+//! array in the order they were declared. Unwinding is unaffected: it walks
+//! back through every step that succeeded, one at a time, latest first, inside
+//! a parallel set as much as outside one.
+//!
+//! # Workflows inside workflows
+//!
+//! [`Workflow::nest`] folds another workflow's steps into this one. They share
+//! the run, the transaction key and the unwinding, so a nested workflow is one
+//! unit rather than a run of its own to reconcile afterwards.
+//!
+//! # One at a time on the same thing
+//!
+//! [`Workflow::locked_by`] derives a Postgres advisory lock from the input, so
+//! two checkouts of one cart cannot interleave. A run that cannot take the lock
+//! within [`Workflow::lock_wait`] fails rather than queueing behind it.
 
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::Poll;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
@@ -41,6 +64,12 @@ use crate::ports::{Ctx, Tx};
 
 /// How long a claim on a step is good for. A step still working extends it.
 pub const LEASE: Duration = Duration::seconds(300);
+
+/// How long [`run`] waits for a lock before giving up, unless told otherwise.
+pub const LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// How long a [`work`] loop sleeps when it found nothing to do.
+pub const IDLE: std::time::Duration = std::time::Duration::from_millis(250);
 
 /// What a step kept: what to hand the next step, and what its own compensation
 /// will need.
@@ -117,9 +146,22 @@ pub trait Step: Send + Sync {
     }
 }
 
+/// Puts a step behind the pointer [`Workflow::parallel`] takes, so a set can
+/// hold steps of different types.
+pub fn step(one: impl Step + 'static) -> Arc<dyn Step> {
+    Arc::new(one)
+}
+
+/// Reads the run's input and says what must not be touched at the same time,
+/// or `None` for a run that needs no lock.
+type LockKey = Arc<dyn Fn(&Value) -> Option<Uuid> + Send + Sync>;
+
 pub struct Workflow {
     name: &'static str,
-    steps: Vec<Arc<dyn Step>>,
+    /// Each entry is a set of steps that run at once; most hold one.
+    slots: Vec<Vec<Arc<dyn Step>>>,
+    lock: Option<LockKey>,
+    lock_wait: std::time::Duration,
 }
 
 impl std::fmt::Debug for Workflow {
@@ -128,27 +170,87 @@ impl std::fmt::Debug for Workflow {
             .field("name", &self.name)
             .field(
                 "steps",
-                &self.steps.iter().map(|s| s.name()).collect::<Vec<_>>(),
+                &self
+                    .slots
+                    .iter()
+                    .map(|slot| slot.iter().map(|s| s.name()).collect::<Vec<_>>())
+                    .collect::<Vec<_>>(),
             )
+            .field("locked", &self.lock.is_some())
             .finish()
     }
+}
+
+/// One set of steps that run together, and where they sit in the run.
+struct Slot<'a> {
+    group: i32,
+    at: i32,
+    steps: &'a [Arc<dyn Step>],
 }
 
 impl Workflow {
     pub fn new(name: &'static str) -> Self {
         Workflow {
             name,
-            steps: Vec::new(),
+            slots: Vec::new(),
+            lock: None,
+            lock_wait: LOCK_WAIT,
         }
     }
 
-    pub fn then(mut self, step: impl Step + 'static) -> Self {
-        self.steps.push(Arc::new(step));
+    pub fn then(mut self, one: impl Step + 'static) -> Self {
+        self.slots.push(vec![Arc::new(one)]);
+        self
+    }
+
+    /// Steps that run at once. The next step is handed their outputs as an
+    /// array, in the order given here.
+    pub fn parallel(mut self, steps: Vec<Arc<dyn Step>>) -> Self {
+        if !steps.is_empty() {
+            self.slots.push(steps);
+        }
+        self
+    }
+
+    /// Another workflow's steps, run as part of this one: same run, same
+    /// transaction key, unwound together. The inner workflow's own lock is not
+    /// carried over — the run that owns the steps owns the lock.
+    pub fn nest(mut self, inner: Workflow) -> Self {
+        self.slots.extend(inner.slots);
+        self
+    }
+
+    /// What this run must have to itself, derived from the run's input.
+    pub fn locked_by(
+        mut self,
+        key: impl Fn(&Value) -> Option<Uuid> + Send + Sync + 'static,
+    ) -> Self {
+        self.lock = Some(Arc::new(key));
+        self
+    }
+
+    /// How long to wait for that lock before failing. Never forever.
+    pub fn lock_wait(mut self, wait: std::time::Duration) -> Self {
+        self.lock_wait = wait;
         self
     }
 
     pub fn name(&self) -> &'static str {
         self.name
+    }
+
+    fn plan(&self) -> Vec<Slot<'_>> {
+        let mut at = 0;
+        let mut plan = Vec::with_capacity(self.slots.len());
+        for (group, steps) in self.slots.iter().enumerate() {
+            plan.push(Slot {
+                group: group as i32,
+                at,
+                steps,
+            });
+            at += steps.len() as i32;
+        }
+        plan
     }
 }
 
@@ -186,6 +288,10 @@ impl State {
             _ => return Err(Error::bug("a workflow run holds a state nothing writes")),
         })
     }
+
+    fn settled(self) -> bool {
+        matches!(self, State::Done | State::Reverted | State::Failed)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -208,8 +314,33 @@ pub async fn run(
     transaction_key: &str,
     input: Value,
 ) -> Result<Run> {
-    let id = claim(pool, ctx, workflow, transaction_key, input).await?;
-    drive(pool, ctx, workflow, id).await
+    let guard = match workflow.lock.as_ref().and_then(|key| key(&input)) {
+        Some(key) => Some(acquire(pool, key, workflow.lock_wait).await?),
+        None => None,
+    };
+
+    let outcome = async {
+        let id = claim(pool, ctx, workflow, transaction_key, input).await?;
+        drive(pool, ctx, workflow, id).await
+    }
+    .await;
+
+    if let Some(tx) = guard {
+        tx.rollback().await?;
+    }
+    outcome
+}
+
+/// Writes the run and its steps without running any of them, for a caller that
+/// wants a [`work`] loop to do it.
+pub async fn start(
+    pool: &PgPool,
+    ctx: &Ctx<'_>,
+    workflow: &Workflow,
+    transaction_key: &str,
+    input: Value,
+) -> Result<WorkflowRunId> {
+    claim(pool, ctx, workflow, transaction_key, input).await
 }
 
 async fn scoped(
@@ -222,6 +353,48 @@ async fn scoped(
         .execute(&mut *tx)
         .await?;
     Ok(tx)
+}
+
+/// Folds a uuid into the one integer an advisory lock is named by. Only the
+/// entity goes in, not the workflow: two different workflows on one cart are
+/// exactly what this is for.
+fn advisory_key(id: Uuid) -> i64 {
+    let (high, low) = id.as_u64_pair();
+    (high ^ low) as i64
+}
+
+/// Holds the lock in an open transaction, because the engine's own
+/// transactions are one per step and a lock taken in one would be gone by the
+/// next. Losing the connection releases it, which is the point of not using a
+/// row.
+async fn acquire(
+    pool: &PgPool,
+    key: Uuid,
+    wait: std::time::Duration,
+) -> Result<sqlx::Transaction<'static, sqlx::Postgres>> {
+    let key = advisory_key(key);
+    let deadline = std::time::Instant::now() + wait;
+
+    loop {
+        let mut tx = pool.begin().await?;
+        let taken: bool = sqlx::query_scalar("select pg_try_advisory_xact_lock($1)")
+            .bind(key)
+            .fetch_one(&mut *tx)
+            .await?;
+
+        if taken {
+            return Ok(tx);
+        }
+
+        tx.rollback().await?;
+
+        if std::time::Instant::now() >= deadline {
+            return Err(Error::conflict(
+                "something else is already working on this; try again",
+            ));
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
 }
 
 /// Inserts the run and its steps, or finds the run this key already made.
@@ -261,19 +434,23 @@ async fn claim(
     .execute(&mut *tx)
     .await?;
 
-    for (at, step) in workflow.steps.iter().enumerate() {
-        sqlx::query(
-            "insert into workflow_step (id, scope, run_id, name, ordering, max_attempts)
-             values ($1, $2, $3, $4, $5, $6)",
-        )
-        .bind(Uuid::now_v7())
-        .bind(ctx.scope.0)
-        .bind(id.as_uuid())
-        .bind(step.name())
-        .bind(at as i32)
-        .bind(step.max_attempts())
-        .execute(&mut *tx)
-        .await?;
+    for slot in workflow.plan() {
+        for (k, one) in slot.steps.iter().enumerate() {
+            sqlx::query(
+                "insert into workflow_step
+                     (id, scope, run_id, name, ordering, group_ordering, max_attempts)
+                 values ($1, $2, $3, $4, $5, $6, $7)",
+            )
+            .bind(Uuid::now_v7())
+            .bind(ctx.scope.0)
+            .bind(id.as_uuid())
+            .bind(one.name())
+            .bind(slot.at + k as i32)
+            .bind(slot.group)
+            .bind(one.max_attempts())
+            .execute(&mut *tx)
+            .await?;
+        }
     }
 
     tx.commit().await?;
@@ -289,6 +466,13 @@ struct StepRow {
     compensate_input: Option<Value>,
 }
 
+struct Head {
+    state: State,
+    input: Value,
+    output: Value,
+    failure: Option<String>,
+}
+
 /// Invokes what has not run, then unwinds if something refuses to.
 async fn drive(
     pool: &PgPool,
@@ -296,23 +480,78 @@ async fn drive(
     workflow: &Workflow,
     id: WorkflowRunId,
 ) -> Result<Run> {
-    let mut carried = run_input(pool, ctx, id).await?;
+    let head = head(pool, ctx, id).await?;
 
-    for (at, step) in workflow.steps.iter().enumerate() {
-        let row = step_row(pool, ctx, id, at as i32).await?;
+    if head.state.settled() {
+        return Ok(Run {
+            id,
+            state: head.state,
+            output: head.output,
+            failure: head.failure,
+        });
+    }
 
-        if row.state == "done" {
-            carried = row.output.unwrap_or(Value::Null);
-            continue;
-        }
+    if head.state == State::Compensating {
+        let why = head
+            .failure
+            .unwrap_or_else(|| "the run was already unwinding".into());
+        return unwind(pool, ctx, workflow, id, why).await;
+    }
 
-        match invoke(pool, ctx, id, at as i32, step.as_ref(), &carried, &row).await {
-            Ok(outcome) => carried = outcome,
-            Err(failure) => {
-                let message = failure.error().to_string();
-                return unwind(pool, ctx, workflow, id, step.name(), message).await;
+    let mut carried = head.input;
+
+    for slot in workflow.plan() {
+        let rows = step_rows(pool, ctx, id, slot.at, slot.steps.len()).await?;
+
+        let mut outputs = vec![Value::Null; slot.steps.len()];
+        let mut waiting = Vec::new();
+        for (k, row) in rows.iter().enumerate() {
+            if row.state == "done" {
+                outputs[k] = row.output.clone().unwrap_or(Value::Null);
+            } else {
+                waiting.push(k);
             }
         }
+
+        if !waiting.is_empty() {
+            let running = waiting
+                .iter()
+                .map(|&k| {
+                    invoke(
+                        pool,
+                        ctx,
+                        id,
+                        slot.at + k as i32,
+                        slot.steps[k].as_ref(),
+                        &carried,
+                        &rows[k],
+                    )
+                })
+                .collect();
+
+            let mut failed: Option<(&'static str, Failure)> = None;
+            for (&k, result) in waiting.iter().zip(all(running).await) {
+                match result {
+                    Ok(output) => outputs[k] = output,
+                    Err(failure) => {
+                        if failed.is_none() {
+                            failed = Some((slot.steps[k].name(), failure));
+                        }
+                    }
+                }
+            }
+
+            if let Some((name, failure)) = failed {
+                let why = format!("{name}: {}", failure.error());
+                return unwind(pool, ctx, workflow, id, why).await;
+            }
+        }
+
+        carried = if outputs.len() == 1 {
+            outputs.into_iter().next().unwrap_or(Value::Null)
+        } else {
+            Value::Array(outputs)
+        };
     }
 
     finish(pool, ctx, id, State::Done, Some(carried.clone()), None).await?;
@@ -324,30 +563,85 @@ async fn drive(
     })
 }
 
-async fn run_input(pool: &PgPool, ctx: &Ctx<'_>, id: WorkflowRunId) -> Result<Value> {
-    let mut tx = scoped(pool, ctx).await?;
-    let input: Value = sqlx::query_scalar("select input from workflow_run where id = $1")
-        .bind(id.as_uuid())
-        .fetch_optional(&mut *tx)
-        .await?
-        .ok_or_else(|| Error::not_found("workflow run"))?;
-    tx.commit().await?;
-    Ok(input)
+/// Runs every one of them at once. A parallel set holds a handful of steps, so
+/// waking all of them to find the one that moved costs less than it saves.
+async fn all<F: Future>(futures: Vec<F>) -> Vec<F::Output> {
+    let mut futures: Vec<Pin<Box<F>>> = futures.into_iter().map(Box::pin).collect();
+    let mut done: Vec<Option<F::Output>> = futures.iter().map(|_| None).collect();
+
+    std::future::poll_fn(|cx| {
+        let mut pending = false;
+        for (slot, future) in done.iter_mut().zip(futures.iter_mut()) {
+            if slot.is_some() {
+                continue;
+            }
+            match future.as_mut().poll(cx) {
+                Poll::Ready(value) => *slot = Some(value),
+                Poll::Pending => pending = true,
+            }
+        }
+        if pending {
+            Poll::Pending
+        } else {
+            Poll::Ready(())
+        }
+    })
+    .await;
+
+    done.into_iter().flatten().collect()
 }
 
-async fn step_row(pool: &PgPool, ctx: &Ctx<'_>, id: WorkflowRunId, at: i32) -> Result<StepRow> {
+async fn head(pool: &PgPool, ctx: &Ctx<'_>, id: WorkflowRunId) -> Result<Head> {
     let mut tx = scoped(pool, ctx).await?;
-    let row: StepRow = sqlx::query_as(
+    let row: Option<(String, Value, Option<Value>, Option<String>)> =
+        sqlx::query_as("select state, input, output, failure from workflow_run where id = $1")
+            .bind(id.as_uuid())
+            .fetch_optional(&mut *tx)
+            .await?;
+    tx.commit().await?;
+
+    let (state, input, output, failure) = row.ok_or_else(|| Error::not_found("workflow run"))?;
+    Ok(Head {
+        state: State::parse(&state)?,
+        input,
+        output: output.unwrap_or(Value::Null),
+        failure,
+    })
+}
+
+async fn step_rows(
+    pool: &PgPool,
+    ctx: &Ctx<'_>,
+    id: WorkflowRunId,
+    at: i32,
+    count: usize,
+) -> Result<Vec<StepRow>> {
+    let mut tx = scoped(pool, ctx).await?;
+    let rows: Vec<StepRow> = sqlx::query_as(
         "select state, attempts, max_attempts, output, compensate_input
-         from workflow_step where run_id = $1 and ordering = $2",
+         from workflow_step
+         where run_id = $1 and ordering >= $2 and ordering < $3
+         order by ordering",
     )
     .bind(id.as_uuid())
     .bind(at)
-    .fetch_optional(&mut *tx)
-    .await?
-    .ok_or_else(|| Error::bug("a workflow lost a step it wrote"))?;
+    .bind(at + count as i32)
+    .fetch_all(&mut *tx)
+    .await?;
     tx.commit().await?;
-    Ok(row)
+
+    if rows.len() != count {
+        return Err(Error::bug("a workflow lost a step it wrote"));
+    }
+    Ok(rows)
+}
+
+async fn step_row(pool: &PgPool, ctx: &Ctx<'_>, id: WorkflowRunId, at: i32) -> Result<StepRow> {
+    step_rows(pool, ctx, id, at, 1)
+        .await?
+        .into_iter()
+        .next()
+        .ok_or_else(|| Error::bug("a workflow lost a step it wrote"))
 }
 
 /// Runs one step, retrying while it says to and the ceiling allows.
@@ -361,6 +655,12 @@ async fn invoke(
     row: &StepRow,
 ) -> std::result::Result<Value, Failure> {
     let mut attempts = row.attempts;
+
+    if attempts >= row.max_attempts {
+        return Err(Failure::Final(Error::conflict(
+            "this step has already used every attempt it had",
+        )));
+    }
 
     loop {
         attempts += 1;
@@ -438,56 +738,59 @@ async fn backoff(attempt: i32) {
     tokio::time::sleep(std::time::Duration::from_millis(millis)).await;
 }
 
-/// Walks back through the steps that finished, undoing each.
+/// Walks back through the steps that finished, undoing each. Latest first, one
+/// at a time, whether or not they were started together.
 async fn unwind(
     pool: &PgPool,
     ctx: &Ctx<'_>,
     workflow: &Workflow,
     id: WorkflowRunId,
-    failed_at: &str,
     failure: String,
 ) -> Result<Run> {
-    set_state(pool, ctx, id, State::Compensating).await?;
+    set_state(pool, ctx, id, State::Compensating, Some(&failure)).await?;
 
     let mut ok = true;
+    let mut at = workflow.slots.iter().map(Vec::len).sum::<usize>() as i32;
 
-    for (at, step) in workflow.steps.iter().enumerate().rev() {
-        let row = step_row(pool, ctx, id, at as i32).await?;
-        if row.state != "done" {
-            continue;
-        }
-
-        let kept = row.compensate_input.unwrap_or(Value::Null);
-        let mut tx = scoped(pool, ctx).await?;
-
-        match step.compensate(&mut tx, ctx, &kept).await {
-            Ok(()) => {
-                sqlx::query(
-                    "update workflow_step set state = 'reverted' where run_id = $1 and ordering = $2",
-                )
-                .bind(id.as_uuid())
-                .bind(at as i32)
-                .execute(&mut *tx)
-                .await?;
-                tx.commit().await?;
+    for slot in workflow.plan().into_iter().rev() {
+        for one in slot.steps.iter().rev() {
+            at -= 1;
+            let row = step_row(pool, ctx, id, at).await?;
+            if row.state != "done" {
+                continue;
             }
-            Err(err) => {
-                drop(tx);
-                ok = false;
-                dead_letter(pool, ctx, id, step.name(), &err.to_string()).await?;
+
+            let kept = row.compensate_input.unwrap_or(Value::Null);
+            let mut tx = scoped(pool, ctx).await?;
+
+            match one.compensate(&mut tx, ctx, &kept).await {
+                Ok(()) => {
+                    sqlx::query(
+                        "update workflow_step set state = 'reverted' where run_id = $1 and ordering = $2",
+                    )
+                    .bind(id.as_uuid())
+                    .bind(at)
+                    .execute(&mut *tx)
+                    .await?;
+                    tx.commit().await?;
+                }
+                Err(err) => {
+                    drop(tx);
+                    ok = false;
+                    dead_letter(pool, ctx, id, one.name(), &err.to_string()).await?;
+                }
             }
         }
     }
 
     let state = if ok { State::Reverted } else { State::Failed };
-    let message = format!("{failed_at}: {failure}");
-    finish(pool, ctx, id, state, None, Some(message.clone())).await?;
+    finish(pool, ctx, id, state, None, Some(failure.clone())).await?;
 
     Ok(Run {
         id,
         state,
         output: Value::Null,
-        failure: Some(message),
+        failure: Some(failure),
     })
 }
 
@@ -515,13 +818,22 @@ async fn dead_letter(
     Ok(())
 }
 
-async fn set_state(pool: &PgPool, ctx: &Ctx<'_>, id: WorkflowRunId, state: State) -> Result<()> {
+async fn set_state(
+    pool: &PgPool,
+    ctx: &Ctx<'_>,
+    id: WorkflowRunId,
+    state: State,
+    failure: Option<&str>,
+) -> Result<()> {
     let mut tx = scoped(pool, ctx).await?;
-    sqlx::query("update workflow_run set state = $2 where id = $1")
-        .bind(id.as_uuid())
-        .bind(state.as_str())
-        .execute(&mut *tx)
-        .await?;
+    sqlx::query(
+        "update workflow_run set state = $2, failure = coalesce($3::text, failure) where id = $1",
+    )
+    .bind(id.as_uuid())
+    .bind(state.as_str())
+    .bind(failure)
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
     Ok(())
 }
@@ -552,20 +864,12 @@ async fn finish(
 
 /// Reads a run back, for a caller that wants to know how one it started ended.
 pub async fn get(pool: &PgPool, ctx: &Ctx<'_>, id: WorkflowRunId) -> Result<Run> {
-    let mut tx = scoped(pool, ctx).await?;
-    let row: Option<(String, Option<Value>, Option<String>)> =
-        sqlx::query_as("select state, output, failure from workflow_run where id = $1")
-            .bind(id.as_uuid())
-            .fetch_optional(&mut *tx)
-            .await?;
-    tx.commit().await?;
-
-    let (state, output, failure) = row.ok_or_else(|| Error::not_found("workflow run"))?;
+    let head = head(pool, ctx, id).await?;
     Ok(Run {
         id,
-        state: State::parse(&state)?,
-        output: output.unwrap_or(Value::Null),
-        failure,
+        state: head.state,
+        output: head.output,
+        failure: head.failure,
     })
 }
 
@@ -577,7 +881,7 @@ pub async fn recover(pool: &PgPool, ctx: &Ctx<'_>) -> Result<u64> {
     let mut tx = scoped(pool, ctx).await?;
     let done = sqlx::query(
         "update workflow_step
-         set state = 'pending', lease_until = null
+         set state = 'pending', lease_until = null, locked_by = null
          where state = 'invoking' and lease_until < now()",
     )
     .execute(&mut *tx)
@@ -600,5 +904,145 @@ pub async fn extend(
         .bind(until)
         .execute(&mut **tx)
         .await?;
+    Ok(())
+}
+
+/// Takes runs that are waiting and drives them, until told to stop.
+///
+/// A run is claimed by leasing its due steps: another worker asking a moment
+/// later finds nothing unleased belonging to it and looks elsewhere. The lease
+/// is extended while the run is being driven, so it means "somebody is holding
+/// this" rather than "this is slow".
+///
+/// Returns when `shutdown` resolves, after whatever run is in hand has
+/// finished. Only the workflows given can be picked up; a run of anything else
+/// is left for the worker that knows it.
+pub async fn work(
+    pool: &PgPool,
+    ctx: &Ctx<'_>,
+    workflows: &[&Workflow],
+    shutdown: impl Future<Output = ()> + Send,
+) -> Result<()> {
+    let names: Vec<String> = workflows.iter().map(|w| w.name().to_string()).collect();
+    let mut shutdown = std::pin::pin!(shutdown);
+
+    loop {
+        let stopping = tokio::select! {
+            biased;
+            _ = &mut shutdown => true,
+            _ = std::future::ready(()) => false,
+        };
+        if stopping {
+            return Ok(());
+        }
+
+        recover(pool, ctx).await?;
+
+        match take(pool, ctx, &names).await? {
+            Some(id) => {
+                let name = run_name(pool, ctx, id).await?;
+                let Some(workflow) = workflows.iter().find(|w| w.name() == name) else {
+                    continue;
+                };
+                held(pool, ctx, workflow, id).await?;
+            }
+            None => {
+                tokio::select! {
+                    _ = &mut shutdown => return Ok(()),
+                    _ = tokio::time::sleep(IDLE) => {}
+                }
+            }
+        }
+    }
+}
+
+/// Drives one run, keeping its lease alive for as long as that takes.
+async fn held(pool: &PgPool, ctx: &Ctx<'_>, workflow: &Workflow, id: WorkflowRunId) -> Result<()> {
+    let driving = drive(pool, ctx, workflow, id);
+    tokio::pin!(driving);
+
+    let beat = std::time::Duration::from_millis((LEASE.num_milliseconds() / 3).max(1) as u64);
+
+    loop {
+        tokio::select! {
+            outcome = &mut driving => {
+                outcome?;
+                return Ok(());
+            }
+            _ = tokio::time::sleep(beat) => {
+                touch(pool, ctx, id).await?;
+            }
+        }
+    }
+}
+
+/// Leases every due step of one waiting run, which is what claiming a run is.
+async fn take(pool: &PgPool, ctx: &Ctx<'_>, names: &[String]) -> Result<Option<WorkflowRunId>> {
+    let mut tx = scoped(pool, ctx).await?;
+
+    let claimed: Option<Uuid> = sqlx::query_scalar(
+        "with candidate as (
+             select r.id
+             from workflow_run r
+             where r.state in ('running', 'compensating')
+               and r.name = any($1::text[])
+               and exists (
+                   select 1 from workflow_step s
+                   where s.run_id = r.id
+                     and s.state in ('pending', 'compensating')
+                     and s.run_after <= now()
+                     and (s.lease_until is null or s.lease_until < now())
+               )
+             order by r.created_at
+             limit 1
+         ),
+         taken as (
+             select s.id
+             from workflow_step s
+             join candidate c on c.id = s.run_id
+             where s.state in ('pending', 'compensating')
+             for update of s skip locked
+         )
+         leased as (
+             update workflow_step s
+             set lease_until = $2, locked_by = $3
+             from taken t
+             where s.id = t.id
+             returning s.run_id
+         )
+         select distinct run_id from leased",
+    )
+    .bind(names)
+    .bind(Utc::now() + LEASE)
+    .bind(Uuid::now_v7().to_string())
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+    Ok(claimed.map(WorkflowRunId::from_uuid))
+}
+
+async fn run_name(pool: &PgPool, ctx: &Ctx<'_>, id: WorkflowRunId) -> Result<String> {
+    let mut tx = scoped(pool, ctx).await?;
+    let name: Option<String> = sqlx::query_scalar("select name from workflow_run where id = $1")
+        .bind(id.as_uuid())
+        .fetch_optional(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    name.ok_or_else(|| Error::not_found("workflow run"))
+}
+
+/// Pushes the lease out for everything this run is holding.
+async fn touch(pool: &PgPool, ctx: &Ctx<'_>, id: WorkflowRunId) -> Result<()> {
+    let mut tx = scoped(pool, ctx).await?;
+    sqlx::query(
+        "update workflow_step set lease_until = $2
+         where run_id = $1 and state in ('pending', 'invoking', 'compensating')",
+    )
+    .bind(id.as_uuid())
+    .bind(Utc::now() + LEASE)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
     Ok(())
 }

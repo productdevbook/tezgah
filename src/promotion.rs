@@ -710,6 +710,95 @@ pub async fn claim_spend(
     take(tx, ctx, promotion_id, customer_id, Some(spend)).await
 }
 
+/// Gives a claim back, for a checkout that did not become an order.
+///
+/// The inverse of [`claim`], and clamped at zero rather than trusting the
+/// caller: a compensation that ran twice must leave a promotion with fewer
+/// uses than it started with in neither direction.
+pub async fn release(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    promotion_id: PromotionId,
+    customer_id: Option<CustomerId>,
+    spend: Option<Money>,
+) -> Result<()> {
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Promotion {
+            id: Some(promotion_id.as_uuid()),
+        },
+    )?;
+
+    let campaign_id: Option<Option<Uuid>> = sqlx::query_scalar(
+        "update promotion
+         set used = greatest(used - 1, 0)
+         where scope = $1 and id = $2
+         returning campaign_id",
+    )
+    .bind(ctx.scope.0)
+    .bind(promotion_id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    let Some(campaign_id) = campaign_id else {
+        return Ok(());
+    };
+
+    if let Some(customer_id) = customer_id {
+        sqlx::query(
+            "update promotion_usage
+             set used = greatest(used - 1, 0)
+             where scope = $1 and promotion_id = $2 and customer_id = $3",
+        )
+        .bind(ctx.scope.0)
+        .bind(promotion_id.as_uuid())
+        .bind(customer_id.as_uuid())
+        .execute(&mut **tx)
+        .await?;
+    }
+
+    if let Some(campaign_id) = campaign_id {
+        let (kind, amount, currency) = match spend {
+            Some(money) => (
+                BudgetKind::Spend,
+                money.amount,
+                Some(money.currency.as_str().to_string()),
+            ),
+            None => (BudgetKind::Usage, Decimal::ONE, None),
+        };
+
+        sqlx::query(
+            "update campaign_budget
+             set used = greatest(used - $4, 0)
+             where scope = $1
+               and campaign_id = $2
+               and type = $3
+               and ($5::text is null or currency_code = $5)",
+        )
+        .bind(ctx.scope.0)
+        .bind(campaign_id)
+        .bind(kind.as_str())
+        .bind(amount)
+        .bind(currency)
+        .execute(&mut **tx)
+        .await?;
+    }
+
+    ctx.emit(
+        tx,
+        Event {
+            name: "promotion.released",
+            entity_id: promotion_id.as_uuid(),
+            payload: serde_json::json!({
+                "customer_id": customer_id.map(CustomerId::as_uuid),
+            }),
+        },
+    )
+    .await?;
+
+    Ok(())
+}
+
 async fn take(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,

@@ -18,7 +18,7 @@ host's name in the code, and no feature shaped for one caller.
 
 That machine serves other people's sites and a build taking every core has
 taken it off the air before. Do not run `cargo build`, `cargo test`,
-`cargo clippy` or `cargo check` there. Branch, write, commit, open the pull
+`cargo nextest run`, `cargo clippy` or `cargo check` there. Branch, write, commit, open the pull
 request, and read what CI says. `.github/workflows/ci.yml` runs the formatter,
 clippy with warnings denied, the tests against a real Postgres, the doctests,
 a dependency audit and a secret scan.
@@ -49,6 +49,16 @@ table without both fails the schema test.
 constraints, not comments. Two writers always turn up.
 
 ## Tests
+
+CI runs them with `cargo nextest run --profile ci`, one process per test, with
+a test group holding the database-backed ones to eight at a time — each holds
+up to ten Postgres connections. `.config/nextest.toml` carries the arithmetic.
+nextest does not run doctests, so `cargo test --doc` is a separate step and is
+not redundant.
+
+The tests that check a rule against every table — `tests/schema.rs`,
+`tests/isolation.rs` — read the catalogue rather than a list somebody keeps up
+to date, so a table added tomorrow is covered the day it is added.
 
 Against a real Postgres. Never SQLite: the same query returns different things
 under each, and the difference shows up in production rather than in CI.

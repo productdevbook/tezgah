@@ -19,6 +19,7 @@ env:
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:18
@@ -39,10 +40,17 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@nextest
       - run: cargo fmt --all -- --check
       - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo test
+      - run: cargo nextest run --profile ci --all-features
+      # nextest does not run doctests. This step is not redundant.
       - run: cargo test --doc
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: junit
+          path: target/nextest/ci/junit.xml
 
   audit:
     runs-on: ubuntu-latest

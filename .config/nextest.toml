@@ -1,0 +1,29 @@
+[test-groups]
+# Each test holds up to 10 connections (1 admin + 1 owner + an 8-wide app
+# pool); Postgres gives out 97. Eight at a time leaves headroom.
+postgres = { max-threads = 8 }
+
+[[profile.default.overrides]]
+# Every integration target, so a new file in tests/ joins the group by itself.
+filter = 'kind(test)'
+test-group = 'postgres'
+# A deadlock between two transactions is what these tests provoke on purpose;
+# without this the job runs to GitHub's six-hour limit with no output.
+slow-timeout = { period = "30s", terminate-after = 4 }
+
+[profile.default]
+failure-output = "immediate-final"
+status-level = "fail"
+
+[profile.ci]
+# Tests are not run before pushing, so stopping at the first failure turns one
+# push into one problem.
+fail-fast = false
+# Concurrency is what this crate claims to get right; a retry would hide
+# exactly the bug worth finding.
+retries = 0
+failure-output = "immediate-final"
+final-status-level = "slow"
+
+[profile.ci.junit]
+path = "junit.xml"
