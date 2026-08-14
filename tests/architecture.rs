@@ -179,6 +179,11 @@ fn a_domain_reaches_only_for_the_kernel_and_what_is_declared_shared() {
             &["cart", "inventory", "order", "payment", "promotion"][..],
         ),
         ("providers", &["payment"][..]),
+        // promotion::apply reads a cart's lines and bounds them by the ceiling
+        // cart owns. This is the edge that would become a cycle the day cart
+        // asks promotion what a line is worth, so if that is ever wanted, the
+        // shared part moves to the kernel rather than the arrow being reversed.
+        ("promotion", &["cart"][..]),
     ]);
 
     let mut wrong = Vec::new();
