@@ -379,7 +379,6 @@ const NOT_YET_SEEDED: &[&str] = &[
     "price_list_rule",
     "product_translation",
     "promotion_rule",
-    "promotion_target_rule",
     "store",
 ];
 
