@@ -39,7 +39,7 @@ use std::path::{Path, PathBuf};
 
 /// Public functions nothing in the crate calls, each with the reason.
 /// Adding to this is not a fix.
-const TOLERATED: [(&str, &str); 59] = [
+const TOLERATED: [(&str, &str); 50] = [
     (
         "batch::import_workflow",
         "the import workflow a host runs through the runner when a file is large \
@@ -261,46 +261,6 @@ const TOLERATED: [(&str, &str); 59] = [
          tezgah's; a host wires its provider in",
     ),
     (
-        "tax::record_tax_id",
-        "the tax identity tables have no route and no in-crate caller; shipped \
-         unwired, see #107",
-    ),
-    (
-        "tax::tax_ids",
-        "the tax identity tables have no route and no in-crate caller; shipped \
-         unwired, see #107",
-    ),
-    (
-        "tax::delete_tax_id",
-        "the tax identity tables have no route and no in-crate caller; shipped \
-         unwired, see #107",
-    ),
-    (
-        "tax::grant_exemption",
-        "the tax identity tables have no route and no in-crate caller; shipped \
-         unwired, see #107",
-    ),
-    (
-        "tax::exemptions",
-        "the tax identity tables have no route and no in-crate caller; shipped \
-         unwired, see #107",
-    ),
-    (
-        "tax::revoke_exemption",
-        "the tax identity tables have no route and no in-crate caller; shipped \
-         unwired, see #107",
-    ),
-    (
-        "tax::register_shop",
-        "the tax identity tables have no route and no in-crate caller; shipped \
-         unwired, see #107",
-    ),
-    (
-        "tax::registrations",
-        "the tax identity tables have no route and no in-crate caller; shipped \
-         unwired, see #107",
-    ),
-    (
         "workflow::step",
         "boxes a step for `Workflow::parallel`; a host composing its own workflow \
          calls it",
@@ -326,21 +286,11 @@ const TOLERATED: [(&str, &str); 59] = [
 ];
 
 /// Tables no code in `src/` writes to, each with the reason.
-const TOLERATED_TABLES: [(&str, &str); 8] = [
+const TOLERATED_TABLES: [(&str, &str); 6] = [
     (
         "product_sales_channel",
         "which channels a product is sold on; the table shipped and nothing \
          ever wrote a row, see #109",
-    ),
-    (
-        "region_country",
-        "the countries a region covers; created with the region tables and \
-         never written",
-    ),
-    (
-        "stock_location_address",
-        "a warehouse's address; created with the location tables and never \
-         written",
     ),
     (
         "tezgah_table",
