@@ -33,7 +33,9 @@ create unique index if not exists gift_card_issued_line_key
     on gift_card (scope, issued_line_item_id, issued_line_ordinal)
     where issued_line_item_id is not null;
 
-call tezgah_fk('gift_card', 'issued_line_item_id', 'order_line_item', 'set null', true);
+-- Restrict rather than set null: nulling the line would leave the ordinal
+-- behind, and a card that forgot which line printed it could be printed again.
+call tezgah_fk('gift_card', 'issued_line_item_id', 'order_line_item', 'restrict', true);
 
 -- `order_change` is a proposal: a set of acts with an ordering, an `applied`
 -- flag, and a status that can be confirmed, declined or canceled. A parcel
