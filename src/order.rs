@@ -32,7 +32,7 @@ use uuid::Uuid;
 use crate::cart::{CartTotals, TotalsLine, TotalsShipping, compute};
 use crate::error::{Error, Result};
 use crate::id::{
-    ClaimId, CustomerId, ExchangeId, LineItemId, OrderChangeId, OrderId, OrderItemId,
+    AddressId, ClaimId, CustomerId, ExchangeId, LineItemId, OrderChangeId, OrderId, OrderItemId,
     OrderTransactionId, PaymentCollectionId, RegionId, ReturnId, SalesChannelId, ShippingOptionId,
     StockLocationId, VariantId,
 };
@@ -443,6 +443,43 @@ pub struct OrderAddress {
     pub postal_code: Option<String>,
     pub country_code: Option<String>,
     pub phone: Option<String>,
+}
+
+/// Copies an address onto the order rather than pointing at one.
+///
+/// A customer editing their address book years later must not rewrite what a
+/// parcel was sent to, so there is no foreign key here and nothing to follow.
+async fn write_address(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    customer_id: Option<CustomerId>,
+    address: &OrderAddress,
+) -> Result<AddressId> {
+    let id = AddressId::new();
+
+    sqlx::query(
+        "insert into order_address
+             (id, scope, customer_id, company, first_name, last_name, address_1, address_2,
+              city, country_code, province, postal_code, phone)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
+    )
+    .bind(id.as_uuid())
+    .bind(ctx.scope.0)
+    .bind(customer_id.map(|c| c.as_uuid()))
+    .bind(address.company.as_deref())
+    .bind(address.first_name.as_deref())
+    .bind(address.last_name.as_deref())
+    .bind(address.address_1.as_deref())
+    .bind(address.address_2.as_deref())
+    .bind(address.city.as_deref())
+    .bind(address.country_code.as_deref().map(str::to_uppercase))
+    .bind(address.province.as_deref())
+    .bind(address.postal_code.as_deref())
+    .bind(address.phone.as_deref())
+    .execute(&mut **tx)
+    .await?;
+
+    Ok(id)
 }
 
 /// One line as the order will keep it: a snapshot, plus what the promotions
