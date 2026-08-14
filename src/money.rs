@@ -54,17 +54,17 @@ impl Money {
 
     /// Adding two currencies is a bug rather than a validation failure, so it
     /// is refused rather than silently converted.
-    pub fn add(self, other: Money) -> Result<Money> {
+    pub fn plus(self, other: Money) -> Result<Money> {
         self.same_currency(other)?;
         Ok(Money::new(self.amount + other.amount, self.currency))
     }
 
-    pub fn sub(self, other: Money) -> Result<Money> {
+    pub fn minus(self, other: Money) -> Result<Money> {
         self.same_currency(other)?;
         Ok(Money::new(self.amount - other.amount, self.currency))
     }
 
-    pub fn mul(self, by: Decimal) -> Money {
+    pub fn times(self, by: Decimal) -> Money {
         Money::new(self.amount * by, self.currency)
     }
 
@@ -141,7 +141,7 @@ mod tests {
     fn two_currencies_do_not_add() {
         let lira = Money::new(dec!(10), try_("TRY"));
         let euro = Money::new(dec!(10), try_("EUR"));
-        assert!(lira.add(euro).is_err());
+        assert!(lira.plus(euro).is_err());
     }
 
     #[test]

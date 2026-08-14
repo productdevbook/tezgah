@@ -89,7 +89,7 @@ impl Paging {
 
     /// One more than asked for, so a full page tells us another exists without
     /// a second query counting the rest.
-    pub(crate) fn probe(&self) -> i64 {
+    pub fn probe(&self) -> i64 {
         i64::from(self.limit()) + 1
     }
 }
@@ -102,7 +102,7 @@ pub struct Page<T> {
 
 impl<T> Page<T> {
     /// Trims the probe row and turns it into the cursor for the next page.
-    pub(crate) fn build(mut items: Vec<T>, paging: Paging, cursor: impl Fn(&T) -> Cursor) -> Self {
+    pub fn build(mut items: Vec<T>, paging: Paging, cursor: impl Fn(&T) -> Cursor) -> Self {
         let limit = paging.limit() as usize;
         let more = items.len() > limit;
         items.truncate(limit);

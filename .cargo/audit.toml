@@ -1,0 +1,20 @@
+# Advisories against crates that appear in Cargo.lock but are never built.
+#
+# sqlx's `migrate` and `macros` features pull sqlx-macros, whose own manifest
+# enables all three drivers unconditionally, so sqlx-mysql and sqlx-sqlite land
+# in the lockfile even though this crate asks only for postgres. Neither is in
+# the build graph — `cargo tree -i rsa --target all` and the same for rkyv both
+# print nothing.
+#
+# Re-check when sqlx 0.9 lands: it needs a newer Rust than the MSRV here, and
+# its macro crate may have stopped doing this.
+[advisories]
+ignore = [
+    # rsa: Marvin timing attack. Reached only through sqlx-mysql's
+    # authentication, which is not compiled. No patched version exists.
+    "RUSTSEC-2023-0071",
+    # rkyv: out-of-bounds read validating untrusted archives. Reached only
+    # through sqlx-sqlite, which is not compiled, and nothing here reads an
+    # rkyv archive from anywhere.
+    "RUSTSEC-2026-0235",
+]

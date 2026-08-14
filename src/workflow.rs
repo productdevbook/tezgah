@@ -282,7 +282,6 @@ async fn claim(
 
 #[derive(sqlx::FromRow)]
 struct StepRow {
-    ordering: i32,
     state: String,
     attempts: i32,
     max_attempts: i32,
@@ -339,7 +338,7 @@ async fn run_input(pool: &PgPool, ctx: &Ctx<'_>, id: WorkflowRunId) -> Result<Va
 async fn step_row(pool: &PgPool, ctx: &Ctx<'_>, id: WorkflowRunId, at: i32) -> Result<StepRow> {
     let mut tx = scoped(pool, ctx).await?;
     let row: StepRow = sqlx::query_as(
-        "select ordering, state, attempts, max_attempts, output, compensate_input
+        "select state, attempts, max_attempts, output, compensate_input
          from workflow_step where run_id = $1 and ordering = $2",
     )
     .bind(id.as_uuid())
@@ -367,7 +366,7 @@ async fn invoke(
         attempts += 1;
         let leased = Utc::now() + LEASE;
 
-        let mut tx = scoped(pool, ctx).await.map_err(|err| Failure::Final(err))?;
+        let mut tx = scoped(pool, ctx).await.map_err(Failure::Final)?;
 
         sqlx::query(
             "update workflow_step
@@ -414,7 +413,7 @@ async fn invoke(
                     Failure::Retry(err) | Failure::Final(err) => err.to_string(),
                 };
 
-                let mut tx = scoped(pool, ctx).await.map_err(|err| Failure::Final(err))?;
+                let mut tx = scoped(pool, ctx).await.map_err(Failure::Final)?;
                 let _ = sqlx::query(
                     "update workflow_step
                      set state = 'failed', attempts = $3, failure = $4, lease_until = null

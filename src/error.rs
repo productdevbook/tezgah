@@ -43,15 +43,15 @@ impl Error {
         }
     }
 
-    pub(crate) fn invalid(what: impl Into<String>) -> Self {
+    pub fn invalid(what: impl Into<String>) -> Self {
         Error::new(Cause::Invalid(what.into()))
     }
 
-    pub(crate) fn conflict(what: impl Into<String>) -> Self {
+    pub fn conflict(what: impl Into<String>) -> Self {
         Error::new(Cause::Conflict(what.into()))
     }
 
-    pub(crate) fn not_found(entity: &'static str) -> Self {
+    pub fn not_found(entity: &'static str) -> Self {
         Error::new(Cause::NotFound { entity })
     }
 
@@ -115,6 +115,15 @@ impl Error {
     pub fn out_of_stock(&self) -> Option<Uuid> {
         match *self.cause {
             Cause::OutOfStock { variant } => Some(variant),
+            _ => None,
+        }
+    }
+
+    /// The note left with a bug, for a log. Never for a response body.
+    pub fn detail(&self) -> Option<&str> {
+        match &*self.cause {
+            Cause::Bug(what) => Some(what),
+            Cause::Provider { message, .. } => Some(message),
             _ => None,
         }
     }
