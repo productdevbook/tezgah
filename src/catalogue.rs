@@ -1900,7 +1900,7 @@ pub async fn create_category(
     }
 
     let id = CategoryId::new();
-    let row = sqlx::query_as::<_, ProductCategory>((
+    let row = sqlx::query_as::<_, ProductCategory>(concat!(
         "insert into product_category
              (id, scope, parent_id, name, handle, description, rank, is_active, is_internal, \
          metadata)
