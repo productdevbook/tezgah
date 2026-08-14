@@ -240,6 +240,7 @@ async fn stock_is_set_read_back_and_adjusted() {
         &ctx,
         admin::CreateStockLocation {
             name: "The shed".into(),
+            address: None,
         },
     )
     .await
