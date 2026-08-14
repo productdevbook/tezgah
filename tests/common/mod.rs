@@ -1,3 +1,6 @@
+// Shared by every test binary, so each one leaves some of it unused.
+#![allow(dead_code)]
+
 //! A real Postgres, two scopes, and a host that says yes.
 //!
 //! Every test gets its own database. Not a transaction rolled back at the end:
@@ -42,11 +45,11 @@ impl Recorder {
     }
 
     pub fn emitted(&self, name: &str) -> bool {
-        self.events.lock().iter().any(|seen| *seen == name)
+        self.events.lock().contains(&name)
     }
 
     pub fn queued(&self, kind: &str) -> bool {
-        self.jobs.lock().iter().any(|seen| *seen == kind)
+        self.jobs.lock().contains(&kind)
     }
 
     pub fn audited(&self, entity: &str) -> bool {
