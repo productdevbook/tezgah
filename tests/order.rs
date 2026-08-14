@@ -1423,7 +1423,8 @@ async fn shipping_keeps_its_rates_across_a_version() -> tezgah::Result<()> {
     let before = order::totals(&mut tx, &ctx, placed.id, placed.version).await?;
     assert_eq!(before.shipping.amount, dec!(100));
     assert_eq!(before.discount.amount, dec!(20));
-    assert_eq!(before.tax.amount, dec!(9));
+    // A hundred less the twenty off, taxed at ten per cent.
+    assert_eq!(before.tax.amount, dec!(8));
 
     let change = order::request_change(
         &mut tx,

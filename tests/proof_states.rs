@@ -933,9 +933,10 @@ async fn a_fulfilment_in(
         .id;
 
     let location = StockLocationId::new();
-    sqlx::query("insert into stock_location (id, scope, name) values ($1, $2, 'Depot')")
+    sqlx::query("insert into stock_location (id, scope, name) values ($1, $2, $3)")
         .bind(location.as_uuid())
         .bind(shop.here.0)
+        .bind(format!("Depot {location}"))
         .execute(&mut *tx)
         .await
         .expect("a location");

@@ -1027,6 +1027,16 @@ async fn the_order_copies_the_cart_s_adjustments_and_rates() -> Result<()> {
     let promotion = Uuid::now_v7();
 
     let mut tx = shop.begin().await;
+    sqlx::query(
+        "insert into promotion (id, scope, code, type, status, usage_limit, used)
+         values ($1, $2, 'COPIED', 'standard', 'active', 10, 0)",
+    )
+    .bind(promotion)
+    .bind(shop.here.0)
+    .execute(&mut *tx)
+    .await
+    .expect("a promotion with uses left");
+
     for (rate, code, name) in [(dec!(18), "kdv", "KDV"), (dec!(8), "city", "City levy")] {
         sqlx::query(
             "insert into cart_line_item_tax_line
