@@ -251,17 +251,18 @@ async fn one_step_runs_once_however_many_drivers_want_it() {
         .await
         .expect("the run to be written");
 
+    let known = [&flow];
     let (_, _, driven) = tokio::join!(
         workflow::work(
             &shop.pool,
             &ctx,
-            &[&flow],
+            &known,
             until_settled(&shop.pool, &ctx, id)
         ),
         workflow::work(
             &shop.pool,
             &ctx,
-            &[&flow],
+            &known,
             until_settled(&shop.pool, &ctx, id)
         ),
         workflow::run(&shop.pool, &ctx, &flow, "contended-1", json!({})),
