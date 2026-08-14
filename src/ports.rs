@@ -47,6 +47,7 @@ impl std::fmt::Display for Scope {
 /// Whoever is asking. tezgah does not model roles; it hands this to an
 /// [`Authorizer`].
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum Actor {
     /// Somebody in the shop's own back office.
     Staff { id: Uuid },
@@ -59,6 +60,7 @@ pub enum Actor {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Action {
     View,
     Write,
@@ -70,7 +72,11 @@ pub enum Action {
 
 /// What is being reached for, carrying the ids an authorizer needs to judge
 /// ownership without loading the row first.
+///
+/// Non-exhaustive: a host matches with a default arm, and a domain added later
+/// is denied by that arm rather than failing to compile.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum Resource {
     Product {
         id: Option<Uuid>,

@@ -82,6 +82,12 @@ payment is taken — **open it on kasapay**, not here. What belongs here is the
 mapping onto its `Provider` trait, and what tezgah does with the answer: the
 collection, the ledger, the webhook table that makes a redelivery land once.
 
+A capability a provider may or may not have arrives as an extension trait —
+`trait RecurringProvider: PaymentProvider` — never as a method on
+`PaymentProvider` itself, which every implementor would have to grow. A provider
+that does not implement it cannot sell the thing that needs it, and says so at
+compile time rather than at the till.
+
 `src/providers/` predates that repository and is on its way out; see the issue
 tracking it.
 
