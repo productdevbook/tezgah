@@ -517,7 +517,7 @@ async fn one_step(
                 return Ok(());
             };
             let amount = rng.money(1, 60);
-            let capture = payment::capture(tx, ctx, paid, amount, None).await?;
+            let capture = payment::capture_only(tx, ctx, paid, amount, None).await?;
             order::record_transaction(tx, ctx, order, amount, "capture", capture.id.as_uuid())
                 .await?;
             Ok(())
@@ -527,7 +527,7 @@ async fn one_step(
                 return Ok(());
             };
             let amount = rng.money(1, 40);
-            let refund = payment::refund(tx, ctx, paid, amount, None, None).await?;
+            let refund = payment::refund_only(tx, ctx, paid, amount, None, None).await?;
             // The ledger reads a refund as money leaving, so it is signed.
             order::record_transaction(
                 tx,

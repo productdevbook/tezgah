@@ -20,6 +20,7 @@ pub mod ports;
 pub mod pricing;
 pub mod promotion;
 pub mod providers;
+pub mod settlement;
 pub mod store;
 pub mod subscription;
 pub mod tax;

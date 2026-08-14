@@ -64,6 +64,13 @@ and ships row-level security policies reading it. A single-shop host uses one
 fixed scope and never thinks about it again. A multi-tenant host sets
 `app.scope` on its transaction and Postgres enforces the rest.
 
+**The entry point for money arriving is `settlement::capture`.** A route calls
+it, and so does a host's own webhook handler — never `payment::capture_only`
+directly, which takes the money and nothing more. `settlement::capture` calls
+that and then everything a captured payment obligates the shop to: a
+purchased gift card printed, a digital entitlement granted, a subscription's
+first period started. `settlement::refund` is its mirror.
+
 ## Decisions
 
 **One Postgres, real foreign keys.** Medusa isolates its modules so completely

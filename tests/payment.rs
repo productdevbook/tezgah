@@ -305,7 +305,7 @@ async fn deliver(shop: &Shop, provider: &FakeProvider, body: &str, paid: Payment
     };
 
     let mut tx = shop.begin().await;
-    match payment::capture(&mut tx, &ctx, paid, try_(dec!(100.00)), None).await {
+    match payment::capture_only(&mut tx, &ctx, paid, try_(dec!(100.00)), None).await {
         Ok(_) => {
             payment::mark_processed(&mut tx, &ctx, id)
                 .await
@@ -390,7 +390,7 @@ async fn a_capture_arriving_before_its_authorisation_waits_to_be_replayed() {
     );
 
     let mut tx = shop.begin().await;
-    payment::capture(&mut tx, &ctx, paid, try_(dec!(100.00)), None)
+    payment::capture_only(&mut tx, &ctx, paid, try_(dec!(100.00)), None)
         .await
         .expect("the replay to capture");
     payment::mark_processed(&mut tx, &ctx, event)
@@ -420,13 +420,13 @@ async fn more_cannot_be_refunded_than_was_captured() {
     let paid = authorized_payment(&shop, try_(dec!(100.00))).await;
 
     let mut tx = shop.begin().await;
-    payment::capture(&mut tx, &ctx, paid, try_(dec!(40.00)), None)
+    payment::capture_only(&mut tx, &ctx, paid, try_(dec!(40.00)), None)
         .await
         .expect("a partial capture");
     tx.commit().await.expect("to commit");
 
     let mut tx = shop.begin().await;
-    let refused = payment::refund(&mut tx, &ctx, paid, try_(dec!(40.01)), None, None).await;
+    let refused = payment::refund_only(&mut tx, &ctx, paid, try_(dec!(40.01)), None, None).await;
     tx.rollback().await.expect("to roll back");
 
     let err = refused.expect_err("refunding more than was taken");
@@ -449,7 +449,7 @@ async fn nothing_can_be_captured_beyond_what_was_authorised() {
     let paid = authorized_payment(&shop, try_(dec!(100.00))).await;
 
     let mut tx = shop.begin().await;
-    let refused = payment::capture(&mut tx, &ctx, paid, try_(dec!(100.01)), None).await;
+    let refused = payment::capture_only(&mut tx, &ctx, paid, try_(dec!(100.01)), None).await;
     tx.rollback().await.expect("to roll back");
 
     assert!(
@@ -474,13 +474,13 @@ async fn partial_captures_and_partial_refunds_add_up() {
         .id;
 
     let mut tx = shop.begin().await;
-    payment::capture(&mut tx, &ctx, paid, try_(dec!(30.00)), None)
+    payment::capture_only(&mut tx, &ctx, paid, try_(dec!(30.00)), None)
         .await
         .expect("the first capture");
-    payment::capture(&mut tx, &ctx, paid, try_(dec!(25.50)), None)
+    payment::capture_only(&mut tx, &ctx, paid, try_(dec!(25.50)), None)
         .await
         .expect("the second capture");
-    payment::refund(&mut tx, &ctx, paid, try_(dec!(5.50)), None, None)
+    payment::refund_only(&mut tx, &ctx, paid, try_(dec!(5.50)), None, None)
         .await
         .expect("a partial refund");
     tx.commit().await.expect("to commit");
@@ -535,13 +535,13 @@ async fn capturing_asks_a_permission_authorising_did_not() {
         .expect("a payment")
         .id;
 
-    let refused = payment::capture(&mut tx, &ctx, paid, try_(dec!(100.00)), None).await;
+    let refused = payment::capture_only(&mut tx, &ctx, paid, try_(dec!(100.00)), None).await;
     assert!(
         refused.expect_err("capture to be refused").is_denied(),
         "a role that may authorise could also capture"
     );
 
-    let refused = payment::refund(&mut tx, &ctx, paid, try_(dec!(1.00)), None, None).await;
+    let refused = payment::refund_only(&mut tx, &ctx, paid, try_(dec!(1.00)), None, None).await;
     assert!(refused.expect_err("refund to be refused").is_denied());
 
     tx.rollback().await.expect("to roll back");
@@ -653,7 +653,7 @@ async fn another_scope_sees_none_of_this() {
     let missing = payment::balance(&mut tx, &theirs, paid).await;
     assert!(missing.expect_err("somebody else's balance").is_not_found());
 
-    let refused = payment::capture(&mut tx, &theirs, paid, try_(dec!(1.00)), None).await;
+    let refused = payment::capture_only(&mut tx, &theirs, paid, try_(dec!(1.00)), None).await;
     assert!(
         refused.expect_err("somebody else's money").is_not_found(),
         "another scope could capture the payment"
@@ -706,7 +706,7 @@ async fn capture_on(
     paid: PaymentId,
     amount: Money,
 ) -> Result<()> {
-    match payment::capture(&mut tx, &ctx, paid, amount, None).await {
+    match payment::capture_only(&mut tx, &ctx, paid, amount, None).await {
         Ok(_) => {
             tx.commit().await.map_err(Error::from)?;
             Ok(())
@@ -724,7 +724,7 @@ async fn refund_on(
     paid: PaymentId,
     amount: Money,
 ) -> Result<()> {
-    match payment::refund(&mut tx, &ctx, paid, amount, None, None).await {
+    match payment::refund_only(&mut tx, &ctx, paid, amount, None, None).await {
         Ok(_) => {
             tx.commit().await.map_err(Error::from)?;
             Ok(())
@@ -826,7 +826,7 @@ async fn two_refunds_race_for_what_was_captured() {
         .id;
 
     let mut tx = shop.begin().await;
-    payment::capture(&mut tx, &ctx, paid, try_(dec!(100.00)), None)
+    payment::capture_only(&mut tx, &ctx, paid, try_(dec!(100.00)), None)
         .await
         .expect("the money to be taken");
     tx.commit().await.expect("to commit");
@@ -879,7 +879,7 @@ async fn a_capture_and_a_refund_at_the_same_time_leave_the_ledger_whole() {
         .id;
 
     let mut tx = shop.begin().await;
-    payment::capture(&mut tx, &ctx, paid, try_(dec!(60.00)), None)
+    payment::capture_only(&mut tx, &ctx, paid, try_(dec!(60.00)), None)
         .await
         .expect("the first capture");
     tx.commit().await.expect("to commit");
@@ -1063,10 +1063,10 @@ async fn a_partial_refund_gives_back_its_share_of_the_charge() {
     );
 
     let mut tx = shop.begin().await;
-    payment::capture(&mut tx, &ctx, paid.id, try_(dec!(1090.00)), None)
+    payment::capture_only(&mut tx, &ctx, paid.id, try_(dec!(1090.00)), None)
         .await
         .expect("the capture");
-    payment::refund(&mut tx, &ctx, paid.id, share, None, None)
+    payment::refund_only(&mut tx, &ctx, paid.id, share, None, None)
         .await
         .expect("the refund to be within what was charged");
     tx.commit().await.expect("to commit");
@@ -1187,7 +1187,7 @@ async fn an_order_whose_money_was_taken_is_refunded_before_it_is_cancelled() {
     let placed = an_order_paying(&shop, session, total, paid).await;
 
     let mut tx = shop.begin().await;
-    payment::capture(&mut tx, &ctx, paid, total, None)
+    payment::capture_only(&mut tx, &ctx, paid, total, None)
         .await
         .expect("the capture");
     tx.commit().await.expect("to commit");
@@ -1200,7 +1200,7 @@ async fn an_order_whose_money_was_taken_is_refunded_before_it_is_cancelled() {
     tx.rollback().await.expect("to roll back");
 
     let mut tx = shop.begin().await;
-    payment::refund(&mut tx, &ctx, paid, total, None, None)
+    payment::refund_only(&mut tx, &ctx, paid, total, None, None)
         .await
         .expect("the refund");
     order::cancel(&mut tx, &ctx, placed)

@@ -1,5 +1,12 @@
 //! Taking money, and being able to say afterwards exactly what was taken.
 //!
+//! **This module is not the entry point.** [`capture_only`] and
+//! [`refund_only`] take the money and write the row; the entry point for
+//! money arriving is [`settlement::capture`](crate::settlement::capture),
+//! which calls this and then everything that must happen because a payment
+//! landed. A route or a host's webhook handler calls `settlement`, never this
+//! module directly.
+//!
 //! The shape is [`store`](crate::store)'s: transaction first, context second,
 //! a [`Permit`] before any row is touched, `scope` named in every predicate,
 //! and audit rows and events written in the caller's transaction.
@@ -14,7 +21,7 @@
 //! thereby a role that can charge one.
 //!
 //! **A capture has no compensation.** Nothing in this module will undo one: a
-//! captured amount is given back by a [`refund`], which is another row and
+//! captured amount is given back by a [`refund_only`], which is another row and
 //! another provider call, and pretending otherwise would leave the ledger
 //! disagreeing with the bank.
 //!
@@ -49,7 +56,9 @@
 //!    the provider 200 — or [`WebhookOutcome::Fresh`]. That transaction commits
 //!    on its own: an event row that rolls back with the work it was recording
 //!    is an event nobody will ever deliver again.
-//! 3. The caller acts on it, in a transaction of its own.
+//! 3. The caller acts on it, in a transaction of its own — calling
+//!    [`settlement::capture`](crate::settlement::capture) or
+//!    [`settlement::refund`](crate::settlement::refund), not this module.
 //! 4. [`mark_processed`] on success, [`mark_failed`] on failure.
 //!
 //! A failed event keeps `processed_at` null, which is what [`unprocessed`]
@@ -1084,7 +1093,7 @@ pub async fn sessions(
 /// Writes down what [`PaymentProvider::authorize`] answered.
 ///
 /// [`Action::Write`] rather than [`Action::Settle`]: an authorisation is a hold,
-/// and taking the money is [`capture`], which asks separately.
+/// and taking the money is [`capture_only`], which asks separately.
 ///
 /// Authorising the same session twice returns the payment the first call wrote
 /// rather than a second one — a webhook and a browser redirect routinely both
@@ -1259,16 +1268,19 @@ pub async fn authorize(
 // Capture and refund
 // ---------------------------------------------------------------------------
 
-/// Records money actually taken, in part or in whole.
+/// Records money actually taken, in part or in whole. Not the entry point:
+/// what happens *because* money arrived — a purchased gift card printed, a
+/// digital entitlement granted, a subscription's first period started — is
+/// [`settlement::capture`](crate::settlement::capture)'s. This is the row.
 ///
 /// [`Action::Settle`], asked separately from the authorisation that made it
 /// possible.
 ///
 /// **There is no compensation for this.** A workflow step that captures does
 /// not undo itself when a later step fails; the money is out of the cardholder's
-/// account and the only way back is [`refund`], which is another provider call
-/// and another row.
-pub async fn capture(
+/// account and the only way back is [`refund_only`], which is another provider
+/// call and another row.
+pub async fn capture_only(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
     id: PaymentId,
@@ -1365,7 +1377,10 @@ pub async fn capture(
 
 /// Gives back money that was taken. Never more than was taken, and the check is
 /// made with the payment row locked because two refunds always turn up at once.
-pub async fn refund(
+///
+/// Not the entry point: revoking a digital entitlement is
+/// [`settlement::refund`](crate::settlement::refund)'s. This is the row.
+pub async fn refund_only(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
     id: PaymentId,

@@ -16,8 +16,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::credit;
-use crate::digital;
 use crate::error::{Error, Result};
 use crate::fulfilment;
 use crate::id::{
@@ -30,6 +28,7 @@ use crate::order;
 use crate::page::{Cursor, Page, Paging};
 use crate::payment;
 use crate::ports::{Action, Ctx, Permit, Resource, Tx};
+use crate::settlement;
 
 use super::{Method, Route, Surface};
 
@@ -2487,9 +2486,9 @@ pub struct CapturePayment {
 
 /// Takes money that was only being held.
 ///
-/// [`Action::Settle`], asked by `payment::capture` before it reads anything.
-/// There is no compensation for this one: the only way back is a refund, which
-/// is another provider call and another row.
+/// [`Action::Settle`], asked by `settlement::capture` before it reads
+/// anything. There is no compensation for this one: the only way back is a
+/// refund, which is another provider call and another row.
 pub async fn capture_payment(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -2497,16 +2496,7 @@ pub async fn capture_payment(
     input: CapturePayment,
 ) -> Result<CaptureView> {
     let amount = input.amount.money()?;
-    let collection = payment::payment(tx, ctx, id).await?.payment_collection_id;
-    let capture = payment::capture(tx, ctx, id, amount, input.metadata).await?;
-
-    let written = order::record_capture(tx, ctx, collection, capture.id, amount).await?;
-
-    if let Some(transaction) = written {
-        credit::issue_purchased(tx, ctx, transaction.order_id).await?;
-        digital::grant(tx, ctx, transaction.order_id).await?;
-    }
-
+    let capture = settlement::capture(tx, ctx, id, amount, input.metadata).await?;
     Ok(capture.into())
 }
 
@@ -2518,8 +2508,10 @@ pub struct RefundPayment {
     pub note: Option<String>,
 }
 
-/// Gives money back. Never more than was captured: `payment::refund` checks it
-/// with the payment row locked, because two refunds always turn up at once.
+/// Gives money back. Never more than was captured: `settlement::refund` checks
+/// it with the payment row locked, because two refunds always turn up at once.
+/// Leaves a captured-then-printed gift card alone; see `settlement`'s module
+/// docs.
 pub async fn refund_payment(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -2527,18 +2519,7 @@ pub async fn refund_payment(
     input: RefundPayment,
 ) -> Result<RefundView> {
     let amount = input.amount.money()?;
-    let collection = payment::payment(tx, ctx, id).await?.payment_collection_id;
-    let refund = payment::refund(tx, ctx, id, amount, input.reason_id, input.note).await?;
-
-    let written = order::record_refund(tx, ctx, collection, refund.id, amount).await?;
-
-    // In the transaction that gives the money back, never after it: a refund
-    // that leaves the file downloadable is the line every hand-rolled version
-    // forgets.
-    if let Some(transaction) = written {
-        digital::revoke(tx, ctx, transaction.order_id, Some("refunded")).await?;
-    }
-
+    let refund = settlement::refund(tx, ctx, id, amount, input.reason_id, input.note).await?;
     Ok(refund.into())
 }
 

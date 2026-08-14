@@ -173,6 +173,7 @@ fn a_domain_reaches_only_for_the_kernel_and_what_is_declared_shared() {
                 "credit",
                 "digital",
                 "promotion",
+                "settlement",
                 "subscription",
                 "tax",
             ][..],
@@ -224,6 +225,13 @@ fn a_domain_reaches_only_for_the_kernel_and_what_is_declared_shared() {
             &["inventory", "order", "payment", "pricing", "tax"][..],
         ),
         ("providers", &["payment"][..]),
+        // The top of the graph: everything that must happen because money
+        // arrived, so it reaches for the domains that decide what that is.
+        // Nothing reaches back — see `no_module_depends_on_settlement` below.
+        (
+            "settlement",
+            &["credit", "digital", "order", "payment", "subscription"][..],
+        ),
         // promotion::apply reads a cart's lines and bounds them by the ceiling
         // cart owns. This is the edge that would become a cycle the day cart
         // asks promotion what a line is worth, so if that is ever wanted, the
@@ -252,5 +260,28 @@ fn a_domain_reaches_only_for_the_kernel_and_what_is_declared_shared() {
         wrong.is_empty(),
         "a domain reached for another that was not declared. If the dependency is \
          right, add it to `allowed` in this test and say why: {wrong:?}"
+    );
+}
+
+#[test]
+fn nothing_depends_on_settlement() {
+    let edges = graph();
+    let mut wrong = Vec::new();
+
+    for (module, used) in &edges {
+        // `api` is the surface a route lives on, and calling settlement from a
+        // route is the whole point — see `README.md`'s port table.
+        if module == "settlement" || module == "api" {
+            continue;
+        }
+        if used.contains("settlement") {
+            wrong.push(module.clone());
+        }
+    }
+
+    assert!(
+        wrong.is_empty(),
+        "settlement is the top of the graph — nothing calls it but a route, and no \
+         domain reaches for it: {wrong:?}"
     );
 }
