@@ -39,7 +39,7 @@ use std::path::{Path, PathBuf};
 
 /// Public functions nothing in the crate calls, each with the reason.
 /// Adding to this is not a fix.
-const TOLERATED: [(&str, &str); 60] = [
+const TOLERATED: [(&str, &str); 59] = [
     (
         "batch::import_workflow",
         "the import workflow a host runs through the runner when a file is large \
