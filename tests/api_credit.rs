@@ -209,12 +209,18 @@ async fn one_card_spent_twice_at_once_comes_off_once() {
         two.place(&shop.pool, &ctx, second.cart_id),
     );
 
+    // The loser may unwind rather than place: what is not allowed is both of
+    // them spending the same fifteen lira.
     let mut spent = Decimal::ZERO;
+    let mut orders = 0;
     for placed in [left.expect("a checkout"), right.expect("a checkout")] {
-        let order = placed.order_id.expect("an order");
-        let (_, amount) = credit_lines(&shop, order.as_uuid()).await;
-        spent += amount;
+        if let Some(order) = placed.order_id {
+            orders += 1;
+            let (_, amount) = credit_lines(&shop, order.as_uuid()).await;
+            spent += amount;
+        }
     }
+    assert!(orders >= 1, "neither checkout placed anything");
     assert_eq!(spent, dec!(15), "the card paid for more than it was worth");
 
     let mut tx = shop.begin().await;
