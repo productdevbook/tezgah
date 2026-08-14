@@ -1900,13 +1900,13 @@ pub async fn create_category(
     }
 
     let id = CategoryId::new();
-    let row = sqlx::query_as::<_, ProductCategory>(concat!(
+    let row = sqlx::query_as::<_, ProductCategory>((
         "insert into product_category
              (id, scope, parent_id, name, handle, description, rank, is_active, is_internal, \
          metadata)
          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          returning ",
-        category_columns!()
+        category_columns!(),
     ))
     .bind(id.as_uuid())
     .bind(ctx.scope.0)
@@ -2205,15 +2205,15 @@ pub async fn product_categories(
         },
     )?;
 
-    let rows = sqlx::query_as::<_, ProductCategory>(concat!(
+    let rows = sqlx::query_as::<_, ProductCategory>(
         "select c.id, c.parent_id, c.mpath, c.name, c.handle, c.description, c.rank, c.is_active, \
          c.is_internal, c.metadata, c.created_at, c.updated_at
          from product_category_link l
          join product_category c on c.id = l.category_id and c.scope = l.scope
          where l.scope = $1 and l.product_id = $2 and c.deleted_at is null
          order by c.mpath
-         limit $3"
-    ))
+         limit $3",
+    )
     .bind(ctx.scope.0)
     .bind(product_id.as_uuid())
     .bind(MAX_ATTACHED)

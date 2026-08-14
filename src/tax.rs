@@ -561,10 +561,11 @@ pub async fn calculate(
 
     let mut exponents: HashMap<Currency, u32> = HashMap::new();
     for line in lines {
-        if !exponents.contains_key(&line.amount.currency) {
+        if let std::collections::hash_map::Entry::Vacant(slot) =
+            exponents.entry(line.amount.currency)
+        {
             let row = store::currency(tx, ctx, line.amount.currency).await?;
-            let exponent = u32::try_from(row.exponent).unwrap_or(2);
-            exponents.insert(line.amount.currency, exponent);
+            slot.insert(u32::try_from(row.exponent).unwrap_or(2));
         }
     }
 

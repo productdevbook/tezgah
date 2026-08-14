@@ -1418,7 +1418,7 @@ fn postcode_matches(zone: &GeoZone, postal_code: Option<&str>) -> bool {
         return true;
     }
 
-    codes.iter().any(|one| *one == code) || prefixes.iter().any(|prefix| code.starts_with(prefix))
+    codes.contains(&code.to_string()) || prefixes.iter().any(|prefix| code.starts_with(prefix))
 }
 
 fn country_code(text: &str) -> Result<String> {
