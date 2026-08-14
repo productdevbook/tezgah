@@ -491,6 +491,14 @@ struct Head {
     failure: Option<String>,
 }
 
+/// Which step of which run this driver is holding.
+#[derive(Clone, Copy)]
+struct Claim<'a> {
+    id: WorkflowRunId,
+    at: i32,
+    worker: &'a str,
+}
+
 /// What stopped a step short of an outcome.
 enum Stop {
     /// The row is no longer ours: somebody else leased it, or the attempts are
@@ -589,12 +597,14 @@ async fn drive(
                     invoke(
                         pool,
                         ctx,
-                        id,
-                        slot.at + k as i32,
+                        Claim {
+                            id,
+                            at: slot.at + k as i32,
+                            worker,
+                        },
                         slot.steps[k].as_ref(),
                         &carried,
                         &rows[k],
-                        worker,
                     )
                 })
                 .collect::<Vec<_>>();
@@ -726,13 +736,12 @@ async fn step_row(pool: &PgPool, ctx: &Ctx<'_>, id: WorkflowRunId, at: i32) -> R
 async fn invoke(
     pool: &PgPool,
     ctx: &Ctx<'_>,
-    id: WorkflowRunId,
-    at: i32,
+    held: Claim<'_>,
     step: &dyn Step,
     input: &Value,
     row: &StepRow,
-    worker: &str,
 ) -> std::result::Result<Value, Stop> {
+    let Claim { id, at, worker } = held;
     if row.attempts >= row.max_attempts {
         return Err(Stop::Refused(Failure::Final(Error::conflict(
             "this step has already used every attempt it had",

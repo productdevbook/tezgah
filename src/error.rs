@@ -7,7 +7,6 @@
 use std::backtrace::Backtrace;
 use std::fmt;
 
-use sqlx::error::DatabaseError;
 use uuid::Uuid;
 
 pub type Result<T> = std::result::Result<T, Error>;
