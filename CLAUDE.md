@@ -66,6 +66,20 @@ under each, and the difference shows up in production rather than in CI.
 Concurrency claims are tested concurrently — two connections, at the same time.
 A test that simulates a race by doing one thing after another proves nothing.
 
+## Payments belong to kasapay
+
+Providers are not tezgah's to write. [kasapay](https://github.com/productdevbook/kasapay)
+is one payment API in Rust over any provider — Stripe and iyzico today, the rest
+the same shape — and tezgah is a consumer of it.
+
+So: a provider bug, a missing capability, a new provider, anything about how a
+payment is taken — **open it on kasapay**, not here. What belongs here is the
+mapping onto its `Provider` trait, and what tezgah does with the answer: the
+collection, the ledger, the webhook table that makes a redelivery land once.
+
+`src/providers/` predates that repository and is on its way out; see the issue
+tracking it.
+
 ## Commits and pull requests
 
 Conventional Commits. The subject is `<type>(<scope>): <summary>`, lower case,

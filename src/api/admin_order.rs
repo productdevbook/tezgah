@@ -1,0 +1,4051 @@
+//! What a back office may ask about orders and the money on them.
+//!
+//! Two rules shape everything here and are not per-route decisions.
+//!
+//! **Taking money is not editing an order.** A capture or a refund asks for
+//! [`Action::Settle`]; everything else asks for [`Action::Write`]. A role that
+//! may correct an address is not thereby a role that may move funds.
+//!
+//! **A return, an exchange and a claim are all one mechanism.** Each opens an
+//! [`order::OrderChange`], hangs actions on it and confirms it. Nothing here
+//! moves a quantity its own way, because two mechanisms disagree the first time
+//! one of them is fixed.
+
+use rust_decimal::Decimal;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use uuid::Uuid;
+
+use crate::error::{Error, Result};
+use crate::fulfilment;
+use crate::id::{
+    ClaimId, ExchangeId, ExchangeLineId, FulfillmentId, FulfillmentSetId, InventoryItemId,
+    LineItemId, OrderChangeId, OrderId, OrderItemId, PaymentCollectionId, PaymentId,
+    PaymentSessionId, RefundReasonId, ReturnId, ServiceZoneId, ShippingOptionId, ShippingProfileId,
+    StockLocationId,
+};
+use crate::money::{Currency, Money};
+use crate::order;
+use crate::page::{Cursor, Page, Paging};
+use crate::payment;
+use crate::ports::{Action, Ctx, Permit, Resource, Tx};
+
+use super::{Method, Route, Surface};
+
+// ---------------------------------------------------------------------------
+// Shared input
+// ---------------------------------------------------------------------------
+
+/// Where a page starts and how long it is. Every list here takes one.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Listing {
+    pub after: Option<String>,
+    pub limit: Option<u32>,
+}
+
+impl Listing {
+    fn paging(&self) -> Result<Paging> {
+        let limit = self.limit.unwrap_or(crate::page::DEFAULT_LIMIT);
+        match &self.after {
+            Some(text) => Ok(Paging::after(Cursor::decode(text)?, limit)),
+            None => Ok(Paging::first(limit)),
+        }
+    }
+}
+
+/// An amount as it arrives over the wire. Never a float, and the currency is
+/// carried with it so nothing has to guess which shop's money this is.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MoneyIn {
+    pub amount: Decimal,
+    pub currency: String,
+}
+
+impl MoneyIn {
+    fn money(&self) -> Result<Money> {
+        Ok(Money::new(self.amount, Currency::parse(&self.currency)?))
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MoneyView {
+    pub amount: Decimal,
+    pub currency: String,
+}
+
+impl From<Money> for MoneyView {
+    fn from(money: Money) -> Self {
+        MoneyView {
+            amount: money.amount,
+            currency: money.currency.as_str().to_owned(),
+        }
+    }
+}
+
+fn amount_view(amount: Decimal, currency: &str) -> MoneyView {
+    MoneyView {
+        amount,
+        currency: currency.to_owned(),
+    }
+}
+
+/// The permission question for one order. Asking it needs the customer, and
+/// the customer needs a read, so the read happens first everywhere below.
+fn order_resource(id: OrderId, customer: Option<Uuid>) -> Resource {
+    Resource::Order {
+        id: id.as_uuid(),
+        customer,
+    }
+}
+
+/// Rows that are the shop's own setup rather than anybody's data: the reason
+/// lists, the shipping profiles, the option types. Judged as configuration,
+/// the way `payment::providers` already is.
+fn config() -> Resource {
+    Resource::Pricing
+}
+
+// ---------------------------------------------------------------------------
+// Views
+// ---------------------------------------------------------------------------
+
+/// An order as a back office sees it. Not `order::Order`: that is a row, it
+/// grows a column whenever a migration says so, and it carries the scope.
+#[derive(Debug, Clone, Serialize)]
+pub struct OrderView {
+    pub id: OrderId,
+    pub display_id: Option<i64>,
+    pub email: Option<String>,
+    pub currency_code: String,
+    pub version: i32,
+    pub status: String,
+    pub fulfillment_status: String,
+    pub is_draft: bool,
+    pub payment_collection_id: Option<PaymentCollectionId>,
+    pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub canceled_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl From<order::Order> for OrderView {
+    fn from(row: order::Order) -> Self {
+        OrderView {
+            id: row.id,
+            display_id: row.display_id,
+            email: row.email,
+            currency_code: row.currency_code,
+            version: row.version,
+            status: row.status,
+            fulfillment_status: row.fulfillment_status,
+            is_draft: row.is_draft,
+            payment_collection_id: row.payment_collection_id,
+            completed_at: row.completed_at,
+            canceled_at: row.canceled_at,
+            created_at: row.created_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LineItemView {
+    pub id: LineItemId,
+    pub title: String,
+    pub variant_sku: Option<String>,
+    pub unit_price: MoneyView,
+    pub requires_shipping: bool,
+}
+
+impl From<order::OrderLineItem> for LineItemView {
+    fn from(row: order::OrderLineItem) -> Self {
+        LineItemView {
+            unit_price: amount_view(row.unit_price, &row.currency_code),
+            id: row.id,
+            title: row.title,
+            variant_sku: row.variant_sku,
+            requires_shipping: row.requires_shipping,
+        }
+    }
+}
+
+/// One line at one version, with every quantity that has moved on it.
+#[derive(Debug, Clone, Serialize)]
+pub struct OrderItemView {
+    pub id: OrderItemId,
+    pub order_line_item_id: LineItemId,
+    pub version: i32,
+    pub quantity: i32,
+    pub fulfilled_quantity: i32,
+    pub shipped_quantity: i32,
+    pub delivered_quantity: i32,
+    pub return_requested_quantity: i32,
+    pub return_received_quantity: i32,
+    pub return_dismissed_quantity: i32,
+    pub written_off_quantity: i32,
+}
+
+impl From<order::OrderItem> for OrderItemView {
+    fn from(row: order::OrderItem) -> Self {
+        OrderItemView {
+            id: row.id,
+            order_line_item_id: row.order_line_item_id,
+            version: row.version,
+            quantity: row.quantity,
+            fulfilled_quantity: row.fulfilled_quantity,
+            shipped_quantity: row.shipped_quantity,
+            delivered_quantity: row.delivered_quantity,
+            return_requested_quantity: row.return_requested_quantity,
+            return_received_quantity: row.return_received_quantity,
+            return_dismissed_quantity: row.return_dismissed_quantity,
+            written_off_quantity: row.written_off_quantity,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ShippingMethodView {
+    pub id: Uuid,
+    pub version: i32,
+    pub name: String,
+    pub amount: MoneyView,
+    pub shipping_option_id: Option<ShippingOptionId>,
+}
+
+impl From<order::OrderShippingMethod> for ShippingMethodView {
+    fn from(row: order::OrderShippingMethod) -> Self {
+        ShippingMethodView {
+            amount: amount_view(row.amount, &row.currency_code),
+            id: row.id,
+            version: row.version,
+            name: row.name,
+            shipping_option_id: row.shipping_option_id,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TotalsView {
+    pub subtotal: MoneyView,
+    pub discount: MoneyView,
+    pub shipping: MoneyView,
+    pub tax: MoneyView,
+    pub total: MoneyView,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SummaryView {
+    pub order_id: OrderId,
+    pub version: i32,
+    pub currency_code: String,
+    pub totals: Value,
+}
+
+/// What the money on an order comes to. Worked out from the transactions
+/// rather than stored, so it cannot drift from them.
+#[derive(Debug, Clone, Serialize)]
+pub struct LedgerView {
+    pub authorized: MoneyView,
+    pub captured: MoneyView,
+    pub refunded: MoneyView,
+    pub paid: MoneyView,
+    pub due: MoneyView,
+    pub state: &'static str,
+}
+
+impl From<order::Ledger> for LedgerView {
+    fn from(ledger: order::Ledger) -> Self {
+        LedgerView {
+            authorized: ledger.authorized.into(),
+            captured: ledger.captured.into(),
+            refunded: ledger.refunded.into(),
+            paid: ledger.paid.into(),
+            due: ledger.due.into(),
+            state: ledger.state.as_str(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TransactionView {
+    pub id: crate::id::OrderTransactionId,
+    pub order_id: OrderId,
+    pub version: i32,
+    pub amount: MoneyView,
+    pub reference: Option<String>,
+    pub reference_id: Option<Uuid>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl From<order::OrderTransaction> for TransactionView {
+    fn from(row: order::OrderTransaction) -> Self {
+        TransactionView {
+            amount: amount_view(row.amount, &row.currency_code),
+            id: row.id,
+            order_id: row.order_id,
+            version: row.version,
+            reference: row.reference,
+            reference_id: row.reference_id,
+            created_at: row.created_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ChangeView {
+    pub id: OrderChangeId,
+    pub order_id: OrderId,
+    pub order_return_id: Option<ReturnId>,
+    pub order_exchange_id: Option<ExchangeId>,
+    pub order_claim_id: Option<ClaimId>,
+    pub version: i32,
+    pub change_type: String,
+    pub status: String,
+    pub description: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl From<order::OrderChange> for ChangeView {
+    fn from(row: order::OrderChange) -> Self {
+        ChangeView {
+            id: row.id,
+            order_id: row.order_id,
+            order_return_id: row.order_return_id,
+            order_exchange_id: row.order_exchange_id,
+            order_claim_id: row.order_claim_id,
+            version: row.version,
+            change_type: row.change_type,
+            status: row.status,
+            description: row.description,
+            created_at: row.created_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ChangeActionView {
+    pub id: Uuid,
+    pub order_change_id: Option<OrderChangeId>,
+    pub ordering: i32,
+    pub action: String,
+    pub reference_id: Option<Uuid>,
+    pub details: Value,
+    pub amount: Option<MoneyView>,
+    pub applied: bool,
+}
+
+impl From<order::OrderChangeAction> for ChangeActionView {
+    fn from(row: order::OrderChangeAction) -> Self {
+        let amount = match (row.amount, row.currency_code.as_ref()) {
+            (Some(amount), Some(currency)) => Some(amount_view(amount, currency)),
+            _ => None,
+        };
+        ChangeActionView {
+            amount,
+            id: row.id,
+            order_change_id: row.order_change_id,
+            ordering: row.ordering,
+            action: row.action,
+            reference_id: row.reference_id,
+            details: row.details,
+            applied: row.applied,
+        }
+    }
+}
+
+/// A change with its actions, which is the only shape anybody looks at one in.
+#[derive(Debug, Clone, Serialize)]
+pub struct ChangeDetailView {
+    pub change: ChangeView,
+    pub actions: Vec<ChangeActionView>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ReturnView {
+    pub id: ReturnId,
+    pub order_id: OrderId,
+    pub order_version: i32,
+    pub display_id: Option<i64>,
+    pub status: String,
+    pub location_id: Option<Uuid>,
+    pub refund_amount: Option<MoneyView>,
+    pub requested_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub received_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub canceled_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl From<order::Return> for ReturnView {
+    fn from(row: order::Return) -> Self {
+        ReturnView {
+            refund_amount: row
+                .refund_amount
+                .map(|amount| amount_view(amount, &row.currency_code)),
+            id: row.id,
+            order_id: row.order_id,
+            order_version: row.order_version,
+            display_id: row.display_id,
+            status: row.status,
+            location_id: row.location_id,
+            requested_at: row.requested_at,
+            received_at: row.received_at,
+            canceled_at: row.canceled_at,
+            created_at: row.created_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ReturnItemView {
+    pub id: Uuid,
+    pub order_line_item_id: LineItemId,
+    pub return_reason_id: Option<Uuid>,
+    pub quantity: i32,
+    pub received_quantity: i32,
+    pub damaged_quantity: i32,
+    pub note: Option<String>,
+}
+
+impl From<order::ReturnItem> for ReturnItemView {
+    fn from(row: order::ReturnItem) -> Self {
+        ReturnItemView {
+            id: row.id,
+            order_line_item_id: row.order_line_item_id,
+            return_reason_id: row.return_reason_id,
+            quantity: row.quantity,
+            received_quantity: row.received_quantity,
+            damaged_quantity: row.damaged_quantity,
+            note: row.note,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ExchangeView {
+    pub id: ExchangeId,
+    pub order_id: OrderId,
+    pub order_return_id: Option<ReturnId>,
+    pub order_version: i32,
+    pub display_id: Option<i64>,
+    pub difference_due: Option<MoneyView>,
+    pub allow_backorder: bool,
+    pub canceled_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl From<order::Exchange> for ExchangeView {
+    fn from(row: order::Exchange) -> Self {
+        ExchangeView {
+            difference_due: row
+                .difference_due
+                .map(|amount| amount_view(amount, &row.currency_code)),
+            id: row.id,
+            order_id: row.order_id,
+            order_return_id: row.order_return_id,
+            order_version: row.order_version,
+            display_id: row.display_id,
+            allow_backorder: row.allow_backorder,
+            canceled_at: row.canceled_at,
+            created_at: row.created_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ClaimView {
+    pub id: ClaimId,
+    pub order_id: OrderId,
+    pub order_return_id: Option<ReturnId>,
+    pub order_version: i32,
+    pub display_id: Option<i64>,
+    pub claim_type: String,
+    pub refund_amount: Option<MoneyView>,
+    pub canceled_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl From<order::Claim> for ClaimView {
+    fn from(row: order::Claim) -> Self {
+        ClaimView {
+            refund_amount: row
+                .refund_amount
+                .map(|amount| amount_view(amount, &row.currency_code)),
+            id: row.id,
+            order_id: row.order_id,
+            order_return_id: row.order_return_id,
+            order_version: row.order_version,
+            display_id: row.display_id,
+            claim_type: row.claim_type,
+            canceled_at: row.canceled_at,
+            created_at: row.created_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PaymentView {
+    pub id: PaymentId,
+    pub payment_collection_id: PaymentCollectionId,
+    pub payment_session_id: Option<PaymentSessionId>,
+    pub amount: MoneyView,
+    pub captured_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub canceled_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl From<payment::Payment> for PaymentView {
+    fn from(row: payment::Payment) -> Self {
+        PaymentView {
+            amount: amount_view(row.amount, &row.currency_code),
+            id: row.id,
+            payment_collection_id: row.payment_collection_id,
+            payment_session_id: row.payment_session_id,
+            captured_at: row.captured_at,
+            canceled_at: row.canceled_at,
+            created_at: row.created_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CaptureView {
+    pub id: crate::id::CaptureId,
+    pub payment_id: PaymentId,
+    pub amount: MoneyView,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl From<payment::Capture> for CaptureView {
+    fn from(row: payment::Capture) -> Self {
+        CaptureView {
+            amount: amount_view(row.amount, &row.currency_code),
+            id: row.id,
+            payment_id: row.payment_id,
+            created_at: row.created_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RefundView {
+    pub id: crate::id::RefundId,
+    pub payment_id: PaymentId,
+    pub refund_reason_id: Option<RefundReasonId>,
+    pub amount: MoneyView,
+    pub note: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl From<payment::Refund> for RefundView {
+    fn from(row: payment::Refund) -> Self {
+        RefundView {
+            amount: amount_view(row.amount, &row.currency_code),
+            id: row.id,
+            payment_id: row.payment_id,
+            refund_reason_id: row.refund_reason_id,
+            note: row.note,
+            created_at: row.created_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CollectionView {
+    pub id: PaymentCollectionId,
+    pub currency_code: String,
+    pub amount: Decimal,
+    pub authorized_amount: Decimal,
+    pub captured_amount: Decimal,
+    pub refunded_amount: Decimal,
+    pub status: String,
+    pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl From<payment::PaymentCollection> for CollectionView {
+    fn from(row: payment::PaymentCollection) -> Self {
+        CollectionView {
+            authorized_amount: row.authorized(),
+            captured_amount: row.captured(),
+            refunded_amount: row.refunded(),
+            id: row.id,
+            currency_code: row.currency_code,
+            amount: row.amount,
+            status: row.status,
+            completed_at: row.completed_at,
+            created_at: row.created_at,
+        }
+    }
+}
+
+/// A session without its `data`: that is the provider's, and it has held a
+/// client secret before now.
+#[derive(Debug, Clone, Serialize)]
+pub struct SessionView {
+    pub id: PaymentSessionId,
+    pub payment_collection_id: PaymentCollectionId,
+    pub amount: MoneyView,
+    pub status: String,
+    pub authorized_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl From<payment::PaymentSession> for SessionView {
+    fn from(row: payment::PaymentSession) -> Self {
+        SessionView {
+            amount: amount_view(row.amount, &row.currency_code),
+            id: row.id,
+            payment_collection_id: row.payment_collection_id,
+            status: row.status,
+            authorized_at: row.authorized_at,
+            created_at: row.created_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProviderView {
+    pub id: Uuid,
+    pub code: String,
+    pub is_enabled: bool,
+}
+
+/// A refund reason or a return reason. The two tables differ by a column name
+/// and nothing a caller cares about.
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct ReasonView {
+    pub id: Uuid,
+    pub code: String,
+    pub label: String,
+    pub description: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FulfillmentView {
+    pub id: FulfillmentId,
+    pub location_id: StockLocationId,
+    pub shipping_option_id: Option<ShippingOptionId>,
+    pub requires_shipping: bool,
+    pub packed_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub shipped_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub delivered_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub canceled_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl From<fulfilment::Fulfillment> for FulfillmentView {
+    fn from(row: fulfilment::Fulfillment) -> Self {
+        FulfillmentView {
+            id: row.id,
+            location_id: row.location_id,
+            shipping_option_id: row.shipping_option_id,
+            requires_shipping: row.requires_shipping,
+            packed_at: row.packed_at,
+            shipped_at: row.shipped_at,
+            delivered_at: row.delivered_at,
+            canceled_at: row.canceled_at,
+            created_at: row.created_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FulfillmentItemView {
+    pub id: Uuid,
+    pub title: String,
+    pub sku: Option<String>,
+    pub quantity: i32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LabelView {
+    pub id: Uuid,
+    pub tracking_number: String,
+    pub tracking_url: Option<String>,
+    pub label_url: Option<String>,
+}
+
+/// A fulfilment with what is in the box and what is on the outside of it.
+#[derive(Debug, Clone, Serialize)]
+pub struct FulfillmentDetailView {
+    pub fulfillment: FulfillmentView,
+    pub items: Vec<FulfillmentItemView>,
+    pub labels: Vec<LabelView>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FulfillmentSetView {
+    pub id: FulfillmentSetId,
+    pub name: String,
+    pub kind: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl From<fulfilment::FulfillmentSet> for FulfillmentSetView {
+    fn from(row: fulfilment::FulfillmentSet) -> Self {
+        FulfillmentSetView {
+            id: row.id,
+            name: row.name,
+            kind: row.kind,
+            created_at: row.created_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ServiceZoneView {
+    pub id: ServiceZoneId,
+    pub name: String,
+    pub fulfillment_set_id: FulfillmentSetId,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ShippingOptionView {
+    pub id: ShippingOptionId,
+    pub name: String,
+    pub price_type: String,
+    pub service_zone_id: ServiceZoneId,
+    pub shipping_profile_id: Option<ShippingProfileId>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl From<fulfilment::ShippingOption> for ShippingOptionView {
+    fn from(row: fulfilment::ShippingOption) -> Self {
+        ShippingOptionView {
+            id: row.id,
+            name: row.name,
+            price_type: row.price_type,
+            service_zone_id: row.service_zone_id,
+            shipping_profile_id: row.shipping_profile_id,
+            created_at: row.created_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ShippingOptionRuleView {
+    pub id: Uuid,
+    pub shipping_option_id: ShippingOptionId,
+    pub attribute: String,
+    pub operator: String,
+    pub value: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct ShippingProfileView {
+    pub id: ShippingProfileId,
+    pub name: String,
+    #[sqlx(rename = "type")]
+    pub kind: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct ShippingOptionTypeView {
+    pub id: Uuid,
+    pub label: String,
+    pub code: String,
+    pub description: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+// ---------------------------------------------------------------------------
+// Reads the domain does not offer
+// ---------------------------------------------------------------------------
+
+const RETURN_COLUMNS: &str = "id, order_id, order_version, display_id, status, location_id, \
+                              refund_amount, currency_code, no_notification, created_by, \
+                              requested_at, received_at, canceled_at, metadata, created_at, \
+                              updated_at";
+
+const EXCHANGE_COLUMNS: &str = "id, order_id, order_return_id, order_version, display_id, \
+                                difference_due, currency_code, allow_backorder, no_notification, \
+                                created_by, canceled_at, metadata, created_at, updated_at";
+
+const CLAIM_COLUMNS: &str = "id, order_id, order_return_id, order_version, display_id, \
+                             claim_type, refund_amount, currency_code, no_notification, \
+                             created_by, canceled_at, metadata, created_at, updated_at";
+
+const CHANGE_COLUMNS: &str = "id, order_id, order_return_id, order_exchange_id, order_claim_id, \
+                              version, change_type, status, description, internal_note, \
+                              created_by, requested_by, requested_at, confirmed_by, confirmed_at, \
+                              declined_by, declined_at, declined_reason, metadata, created_at, \
+                              updated_at";
+
+const PAYMENT_COLUMNS: &str = "id, payment_collection_id, payment_session_id, \
+                               payment_provider_id, currency_code, amount, data, captured_at, \
+                               canceled_at, created_at";
+
+/// Which of a change's three possible parents is being asked about. A literal
+/// from this enum reaches the query; nothing a caller sent ever does.
+#[derive(Debug, Clone, Copy)]
+enum Parent {
+    Return,
+    Exchange,
+    Claim,
+}
+
+impl Parent {
+    const fn column(self) -> &'static str {
+        match self {
+            Parent::Return => "order_return_id",
+            Parent::Exchange => "order_exchange_id",
+            Parent::Claim => "order_claim_id",
+        }
+    }
+
+    const fn entity(self) -> &'static str {
+        match self {
+            Parent::Return => "return",
+            Parent::Exchange => "exchange",
+            Parent::Claim => "claim",
+        }
+    }
+}
+
+async fn read_return(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ReturnId) -> Result<order::Return> {
+    sqlx::query_as::<_, order::Return>(&format!(
+        "select {RETURN_COLUMNS} from order_return where scope = $1 and id = $2"
+    ))
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("return"))
+}
+
+async fn read_exchange(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ExchangeId) -> Result<order::Exchange> {
+    sqlx::query_as::<_, order::Exchange>(&format!(
+        "select {EXCHANGE_COLUMNS} from order_exchange where scope = $1 and id = $2"
+    ))
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("exchange"))
+}
+
+async fn read_claim(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ClaimId) -> Result<order::Claim> {
+    sqlx::query_as::<_, order::Claim>(&format!(
+        "select {CLAIM_COLUMNS} from order_claim where scope = $1 and id = $2"
+    ))
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("claim"))
+}
+
+async fn read_change(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderChangeId,
+) -> Result<order::OrderChange> {
+    sqlx::query_as::<_, order::OrderChange>(&format!(
+        "select {CHANGE_COLUMNS} from order_change where scope = $1 and id = $2"
+    ))
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("order change"))
+}
+
+/// The one change still open against a return, an exchange or a claim.
+///
+/// A partial unique index keeps there from being two, so this is the change
+/// that further actions belong on.
+async fn open_change(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    parent: Parent,
+    id: Uuid,
+) -> Result<order::OrderChange> {
+    sqlx::query_as::<_, order::OrderChange>(&format!(
+        "select {CHANGE_COLUMNS} from order_change
+         where scope = $1 and {} = $2 and status in ('pending', 'requested')
+         order by created_at desc
+         limit 1",
+        parent.column()
+    ))
+    .bind(ctx.scope.0)
+    .bind(id)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::conflict(format!("that {} has no change open on it", parent.entity())))
+}
+
+/// The change open against an order that has no return, exchange or claim
+/// behind it: an edit.
+async fn open_edit(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: OrderId) -> Result<order::OrderChange> {
+    sqlx::query_as::<_, order::OrderChange>(&format!(
+        "select {CHANGE_COLUMNS} from order_change
+         where scope = $1 and order_id = $2 and change_type = 'edit'
+           and status in ('pending', 'requested')
+         order by created_at desc
+         limit 1"
+    ))
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::conflict("that order has no edit open on it"))
+}
+
+/// Takes an action off a change that has not been settled yet.
+///
+/// An applied action is not removed: the quantity it moved is already in the
+/// next version, and deleting the row would leave nothing saying why.
+async fn drop_action(tx: &mut Tx<'_>, ctx: &Ctx<'_>, change: OrderChangeId, id: Uuid) -> Result<()> {
+    let removed = sqlx::query(
+        "delete from order_change_action
+         where scope = $1 and order_change_id = $2 and id = $3 and not applied",
+    )
+    .bind(ctx.scope.0)
+    .bind(change.as_uuid())
+    .bind(id)
+    .execute(&mut **tx)
+    .await?;
+
+    if removed.rows_affected() == 0 {
+        return Err(Error::conflict("that action is gone or already applied"));
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Orders
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ListOrders {
+    pub after: Option<String>,
+    pub limit: Option<u32>,
+    pub customer_id: Option<crate::id::CustomerId>,
+}
+
+impl ListOrders {
+    fn listing(&self) -> Listing {
+        Listing {
+            after: self.after.clone(),
+            limit: self.limit,
+        }
+    }
+}
+
+/// Everything but the drafts: those have their own list, because a back office
+/// looking at orders is not looking at quotes.
+pub async fn list_orders(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    query: ListOrders,
+) -> Result<Page<OrderView>> {
+    let page = order::list(
+        tx,
+        ctx,
+        query.customer_id,
+        Some(false),
+        query.listing().paging()?,
+    )
+    .await?;
+
+    Ok(Page {
+        items: page.items.into_iter().map(OrderView::from).collect(),
+        next: page.next,
+    })
+}
+
+pub async fn get_order(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: OrderId) -> Result<OrderView> {
+    Ok(order::get(tx, ctx, id).await?.into())
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NewLineIn {
+    pub variant_id: Option<crate::id::VariantId>,
+    pub product_id: Option<Uuid>,
+    pub title: String,
+    pub quantity: i32,
+    pub unit_price: MoneyIn,
+    #[serde(default)]
+    pub requires_shipping: bool,
+    #[serde(default)]
+    pub is_tax_inclusive: bool,
+    #[serde(default)]
+    pub discount: Decimal,
+    #[serde(default)]
+    pub tax_rate: Decimal,
+}
+
+impl NewLineIn {
+    fn line(self) -> Result<order::NewOrderLine> {
+        Ok(order::NewOrderLine {
+            variant_id: self.variant_id,
+            product_id: self.product_id,
+            title: self.title,
+            subtitle: None,
+            thumbnail: None,
+            product_title: None,
+            product_handle: None,
+            variant_title: None,
+            variant_sku: None,
+            variant_option_values: None,
+            quantity: self.quantity,
+            unit_price: self.unit_price.money()?,
+            compare_at_unit_price: None,
+            is_tax_inclusive: self.is_tax_inclusive,
+            is_discountable: true,
+            requires_shipping: self.requires_shipping,
+            discount: self.discount,
+            tax_rate: self.tax_rate,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NewShippingIn {
+    pub name: String,
+    pub amount: MoneyIn,
+    pub shipping_option_id: Option<ShippingOptionId>,
+    #[serde(default)]
+    pub is_tax_inclusive: bool,
+    #[serde(default)]
+    pub discount: Decimal,
+    #[serde(default)]
+    pub tax_rate: Decimal,
+}
+
+impl NewShippingIn {
+    fn shipping(self) -> Result<order::NewOrderShipping> {
+        Ok(order::NewOrderShipping {
+            name: self.name,
+            description: None,
+            shipping_option_id: self.shipping_option_id,
+            amount: self.amount.money()?,
+            is_tax_inclusive: self.is_tax_inclusive,
+            data: None,
+            discount: self.discount,
+            tax_rate: self.tax_rate,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CreateOrder {
+    pub currency: String,
+    pub email: Option<String>,
+    pub customer_id: Option<crate::id::CustomerId>,
+    pub region_id: Option<crate::id::RegionId>,
+    pub sales_channel_id: Option<crate::id::SalesChannelId>,
+    pub locale: Option<String>,
+    pub lines: Vec<NewLineIn>,
+    #[serde(default)]
+    pub shipping: Vec<NewShippingIn>,
+    pub metadata: Option<Value>,
+}
+
+impl CreateOrder {
+    fn new_order(self) -> Result<order::NewOrder> {
+        let mut lines = Vec::with_capacity(self.lines.len());
+        for line in self.lines {
+            lines.push(line.line()?);
+        }
+        let mut shipping = Vec::with_capacity(self.shipping.len());
+        for one in self.shipping {
+            shipping.push(one.shipping()?);
+        }
+
+        Ok(order::NewOrder {
+            region_id: self.region_id,
+            sales_channel_id: self.sales_channel_id,
+            customer_id: self.customer_id,
+            email: self.email,
+            currency_code: Currency::parse(&self.currency)?,
+            locale: self.locale,
+            payment_collection_id: None,
+            shipping_address: None,
+            billing_address: None,
+            lines,
+            shipping,
+            no_notification: None,
+            metadata: self.metadata,
+        })
+    }
+}
+
+pub async fn create_order(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    input: CreateOrder,
+) -> Result<OrderView> {
+    Ok(order::create(tx, ctx, input.new_order()?).await?.into())
+}
+
+/// Moves an order to a status, refusing a move the state machine forbids.
+///
+/// `order::set_status` is the one place that decides; a route that wrote the
+/// column itself would be a second state machine.
+async fn move_order(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderId,
+    to: order::OrderStatus,
+) -> Result<OrderView> {
+    Ok(order::set_status(tx, ctx, id, to).await?.into())
+}
+
+pub async fn complete_order(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: OrderId) -> Result<OrderView> {
+    move_order(tx, ctx, id, order::OrderStatus::Completed).await
+}
+
+pub async fn cancel_order(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: OrderId) -> Result<OrderView> {
+    move_order(tx, ctx, id, order::OrderStatus::Canceled).await
+}
+
+pub async fn archive_order(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: OrderId) -> Result<OrderView> {
+    move_order(tx, ctx, id, order::OrderStatus::Archived).await
+}
+
+pub async fn order_line_items(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderId,
+) -> Result<Vec<LineItemView>> {
+    let rows = order::line_items(tx, ctx, id).await?;
+    Ok(rows.into_iter().map(LineItemView::from).collect())
+}
+
+/// The lines at one version. The version is the caller's because an order that
+/// has been edited has more than one, and the old one is what a refund is
+/// argued from.
+pub async fn order_items(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderId,
+    version: Option<i32>,
+) -> Result<Vec<OrderItemView>> {
+    let version = match version {
+        Some(version) => version,
+        None => order::get(tx, ctx, id).await?.version,
+    };
+    let rows = order::items(tx, ctx, id, version).await?;
+    Ok(rows.into_iter().map(OrderItemView::from).collect())
+}
+
+pub async fn order_shipping_methods(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderId,
+    version: Option<i32>,
+) -> Result<Vec<ShippingMethodView>> {
+    let version = match version {
+        Some(version) => version,
+        None => order::get(tx, ctx, id).await?.version,
+    };
+    let rows = order::shipping_methods(tx, ctx, id, version).await?;
+    Ok(rows.into_iter().map(ShippingMethodView::from).collect())
+}
+
+pub async fn order_summary(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderId,
+    version: Option<i32>,
+) -> Result<SummaryView> {
+    let version = match version {
+        Some(version) => version,
+        None => order::get(tx, ctx, id).await?.version,
+    };
+    let row = order::summary(tx, ctx, id, version).await?;
+    Ok(SummaryView {
+        order_id: row.order_id,
+        version: row.version,
+        currency_code: row.currency_code,
+        totals: row.totals,
+    })
+}
+
+pub async fn order_totals(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderId,
+    version: Option<i32>,
+) -> Result<TotalsView> {
+    let version = match version {
+        Some(version) => version,
+        None => order::get(tx, ctx, id).await?.version,
+    };
+    let totals = order::totals(tx, ctx, id, version).await?;
+    Ok(TotalsView {
+        subtotal: totals.subtotal.into(),
+        discount: totals.discount.into(),
+        shipping: totals.shipping.into(),
+        tax: totals.tax.into(),
+        total: totals.total.into(),
+    })
+}
+
+pub async fn order_ledger(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: OrderId) -> Result<LedgerView> {
+    Ok(order::ledger(tx, ctx, id).await?.into())
+}
+
+pub async fn order_transactions(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderId,
+) -> Result<Vec<TransactionView>> {
+    let rows = order::transactions(tx, ctx, id).await?;
+    Ok(rows.into_iter().map(TransactionView::from).collect())
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RecordTransaction {
+    pub amount: MoneyIn,
+    pub reference: String,
+    pub reference_id: Uuid,
+}
+
+/// Writes down that money moved outside tezgah — a bank transfer, a cash sale.
+/// [`Action::Settle`], asked by `order::record_transaction`, because the
+/// ledger is what a refund is measured against.
+pub async fn record_transaction(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderId,
+    input: RecordTransaction,
+) -> Result<TransactionView> {
+    let row = order::record_transaction(
+        tx,
+        ctx,
+        id,
+        input.amount.money()?,
+        &input.reference,
+        input.reference_id,
+    )
+    .await?;
+    Ok(row.into())
+}
+
+pub async fn order_changes(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderId,
+    query: Listing,
+) -> Result<Page<ChangeView>> {
+    let page = order::changes(tx, ctx, id, query.paging()?).await?;
+    Ok(Page {
+        items: page.items.into_iter().map(ChangeView::from).collect(),
+        next: page.next,
+    })
+}
+
+pub async fn order_returns(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderId,
+    query: Listing,
+) -> Result<Page<ReturnView>> {
+    let page = order::returns(tx, ctx, id, query.paging()?).await?;
+    Ok(Page {
+        items: page.items.into_iter().map(ReturnView::from).collect(),
+        next: page.next,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Draft orders
+// ---------------------------------------------------------------------------
+
+pub async fn list_draft_orders(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    query: ListOrders,
+) -> Result<Page<OrderView>> {
+    let page = order::list(
+        tx,
+        ctx,
+        query.customer_id,
+        Some(true),
+        query.listing().paging()?,
+    )
+    .await?;
+
+    Ok(Page {
+        items: page.items.into_iter().map(OrderView::from).collect(),
+        next: page.next,
+    })
+}
+
+pub async fn get_draft_order(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: OrderId) -> Result<OrderView> {
+    let row = order::get(tx, ctx, id).await?;
+    if !row.is_draft {
+        return Err(Error::not_found("draft order"));
+    }
+    Ok(row.into())
+}
+
+pub async fn create_draft_order(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    input: CreateOrder,
+) -> Result<OrderView> {
+    Ok(order::create_draft(tx, ctx, input.new_order()?)
+        .await?
+        .into())
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConvertDraft {
+    pub payment_collection_id: PaymentCollectionId,
+}
+
+/// A draft leaves the back office. Nothing is re-priced: the summary drawn up
+/// with it is the one it goes out with.
+pub async fn convert_draft_order(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderId,
+    input: ConvertDraft,
+) -> Result<OrderView> {
+    Ok(
+        order::send_draft_for_payment(tx, ctx, id, input.payment_collection_id)
+            .await?
+            .into(),
+    )
+}
+
+pub async fn cancel_draft_order(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: OrderId) -> Result<OrderView> {
+    let row = order::get(tx, ctx, id).await?;
+    if !row.is_draft {
+        return Err(Error::conflict("that order is not a draft"));
+    }
+    move_order(tx, ctx, id, order::OrderStatus::Canceled).await
+}
+
+// ---------------------------------------------------------------------------
+// Edits — the one mechanism, wearing four names
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OpenEdit {
+    pub description: Option<String>,
+}
+
+pub async fn open_order_edit(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderId,
+    input: OpenEdit,
+) -> Result<ChangeView> {
+    let change = order::request_change(tx, ctx, id, order::ChangeType::Edit, input.description)
+        .await?;
+    Ok(change.into())
+}
+
+pub async fn list_order_edits(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderId,
+    query: Listing,
+) -> Result<Page<ChangeView>> {
+    let page = order::changes(tx, ctx, id, query.paging()?).await?;
+    Ok(Page {
+        items: page
+            .items
+            .into_iter()
+            .filter(|row| row.change_type == order::ChangeType::Edit.as_str())
+            .map(ChangeView::from)
+            .collect(),
+        next: page.next,
+    })
+}
+
+pub async fn get_order_edit(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderChangeId,
+) -> Result<ChangeDetailView> {
+    get_order_change(tx, ctx, id).await
+}
+
+/// One change and its actions. The only shape a change is ever looked at in,
+/// because a change without its actions says nothing.
+pub async fn get_order_change(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderChangeId,
+) -> Result<ChangeDetailView> {
+    let _: Permit = ctx.permit(Action::View, order_resource(OrderId::from_uuid(Uuid::nil()), None))?;
+
+    let change = read_change(tx, ctx, id).await?;
+    let actions = order::change_actions(tx, ctx, id).await?;
+
+    Ok(ChangeDetailView {
+        change: change.into(),
+        actions: actions.into_iter().map(ChangeActionView::from).collect(),
+    })
+}
+
+/// What a caller may ask a change to do to a line.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ItemAction {
+    Add,
+    Update,
+    Remove,
+    WriteOff,
+}
+
+impl ItemAction {
+    fn change_action(self) -> order::ChangeAction {
+        match self {
+            ItemAction::Add => order::ChangeAction::ItemAdd,
+            ItemAction::Update => order::ChangeAction::ItemUpdate,
+            ItemAction::Remove => order::ChangeAction::ItemRemove,
+            ItemAction::WriteOff => order::ChangeAction::WriteOffItem,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AddItemAction {
+    pub action: ItemAction,
+    pub order_line_item_id: LineItemId,
+    pub quantity: i32,
+    pub unit_price: Option<MoneyIn>,
+    pub internal_note: Option<String>,
+}
+
+impl AddItemAction {
+    fn new_action(self) -> Result<order::NewAction> {
+        let mut details = serde_json::json!({ "quantity": self.quantity });
+        let amount = match &self.unit_price {
+            Some(price) => {
+                let money = price.money()?;
+                if let Some(map) = details.as_object_mut() {
+                    map.insert(
+                        "unit_price".into(),
+                        Value::String(money.amount.to_string()),
+                    );
+                    map.insert(
+                        "currency_code".into(),
+                        Value::String(money.currency.as_str().to_owned()),
+                    );
+                }
+                Some(money)
+            }
+            None => None,
+        };
+
+        Ok(order::NewAction {
+            action: self.action.change_action(),
+            order_line_item_id: Some(self.order_line_item_id),
+            details,
+            amount,
+            internal_note: self.internal_note,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AddShippingAction {
+    pub name: String,
+    pub amount: MoneyIn,
+    pub internal_note: Option<String>,
+}
+
+impl AddShippingAction {
+    fn new_action(self) -> Result<order::NewAction> {
+        let money = self.amount.money()?;
+        Ok(order::NewAction {
+            action: order::ChangeAction::ShippingAdd,
+            order_line_item_id: None,
+            details: serde_json::json!({
+                "name": self.name,
+                "amount": money.amount.to_string(),
+                "currency_code": money.currency.as_str(),
+            }),
+            amount: Some(money),
+            internal_note: self.internal_note,
+        })
+    }
+}
+
+pub async fn add_order_edit_item(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderChangeId,
+    input: AddItemAction,
+) -> Result<ChangeActionView> {
+    Ok(order::add_action(tx, ctx, id, input.new_action()?)
+        .await?
+        .into())
+}
+
+pub async fn remove_order_edit_item(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderChangeId,
+    action_id: Uuid,
+) -> Result<()> {
+    let change = read_change(tx, ctx, id).await?;
+    let _: Permit = ctx.permit(Action::Write, order_resource(change.order_id, None))?;
+    drop_action(tx, ctx, id, action_id).await
+}
+
+pub async fn add_order_edit_shipping(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderChangeId,
+    input: AddShippingAction,
+) -> Result<ChangeActionView> {
+    Ok(order::add_action(tx, ctx, id, input.new_action()?)
+        .await?
+        .into())
+}
+
+pub async fn remove_order_edit_shipping(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderChangeId,
+    action_id: Uuid,
+) -> Result<()> {
+    remove_order_edit_item(tx, ctx, id, action_id).await
+}
+
+/// Carries the change into the order's next version. Everything it does lands
+/// in the caller's transaction, so a failure halfway leaves no half-edit.
+pub async fn confirm_order_edit(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderChangeId,
+) -> Result<OrderView> {
+    Ok(order::confirm_change(tx, ctx, id).await?.into())
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DeclineChange {
+    pub reason: Option<String>,
+}
+
+pub async fn decline_order_edit(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderChangeId,
+    input: DeclineChange,
+) -> Result<ChangeView> {
+    Ok(order::decline_change(tx, ctx, id, input.reason)
+        .await?
+        .into())
+}
+
+// The same edit, reached through a draft order's own paths.
+
+pub async fn open_draft_edit(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderId,
+    input: OpenEdit,
+) -> Result<ChangeView> {
+    open_order_edit(tx, ctx, id, input).await
+}
+
+pub async fn get_draft_edit(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderId,
+) -> Result<ChangeDetailView> {
+    let change = open_edit(tx, ctx, id).await?;
+    get_order_change(tx, ctx, change.id).await
+}
+
+pub async fn add_draft_edit_item(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderId,
+    input: AddItemAction,
+) -> Result<ChangeActionView> {
+    let change = open_edit(tx, ctx, id).await?;
+    add_order_edit_item(tx, ctx, change.id, input).await
+}
+
+pub async fn remove_draft_edit_item(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderId,
+    action_id: Uuid,
+) -> Result<()> {
+    let change = open_edit(tx, ctx, id).await?;
+    remove_order_edit_item(tx, ctx, change.id, action_id).await
+}
+
+pub async fn add_draft_edit_shipping(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderId,
+    input: AddShippingAction,
+) -> Result<ChangeActionView> {
+    let change = open_edit(tx, ctx, id).await?;
+    add_order_edit_shipping(tx, ctx, change.id, input).await
+}
+
+pub async fn remove_draft_edit_shipping(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderId,
+    action_id: Uuid,
+) -> Result<()> {
+    remove_draft_edit_item(tx, ctx, id, action_id).await
+}
+
+pub async fn confirm_draft_edit(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: OrderId) -> Result<OrderView> {
+    let change = open_edit(tx, ctx, id).await?;
+    confirm_order_edit(tx, ctx, change.id).await
+}
+
+pub async fn decline_draft_edit(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderId,
+    input: DeclineChange,
+) -> Result<ChangeView> {
+    let change = open_edit(tx, ctx, id).await?;
+    decline_order_edit(tx, ctx, change.id, input).await
+}
+
+// ---------------------------------------------------------------------------
+// Returns
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReturnLineIn {
+    pub order_line_item_id: LineItemId,
+    pub quantity: i32,
+    pub return_reason_id: Option<Uuid>,
+    pub note: Option<String>,
+}
+
+impl ReturnLineIn {
+    fn line(self) -> order::ReturnLine {
+        order::ReturnLine {
+            order_line_item_id: self.order_line_item_id,
+            quantity: self.quantity,
+            return_reason_id: self.return_reason_id,
+            note: self.note,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RequestReturn {
+    pub order_id: OrderId,
+    pub location_id: Option<StockLocationId>,
+    pub lines: Vec<ReturnLineIn>,
+}
+
+pub async fn request_return(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    input: RequestReturn,
+) -> Result<ReturnView> {
+    let lines = input.lines.into_iter().map(ReturnLineIn::line).collect();
+    Ok(
+        order::request_return(tx, ctx, input.order_id, input.location_id, lines)
+            .await?
+            .into(),
+    )
+}
+
+/// Every return in the shop, newest last.
+pub async fn list_returns(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    query: Listing,
+) -> Result<Page<ReturnView>> {
+    let _: Permit = ctx.permit(Action::View, order_resource(OrderId::from_uuid(Uuid::nil()), None))?;
+    let paging = query.paging()?;
+
+    let rows = sqlx::query_as::<_, order::Return>(&format!(
+        "select {RETURN_COLUMNS} from order_return
+         where scope = $1 and ($2::timestamptz is null or (created_at, id) > ($2, $3))
+         order by created_at, id
+         limit $4"
+    ))
+    .bind(ctx.scope.0)
+    .bind(paging.after.map(|c| c.at))
+    .bind(paging.after.map(|c| c.id))
+    .bind(paging.probe())
+    .fetch_all(&mut **tx)
+    .await?;
+
+    let page = Page::build(rows, paging, |row| Cursor {
+        at: row.created_at,
+        id: row.id.as_uuid(),
+    });
+
+    Ok(Page {
+        items: page.items.into_iter().map(ReturnView::from).collect(),
+        next: page.next,
+    })
+}
+
+pub async fn get_return(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ReturnId) -> Result<ReturnView> {
+    let row = read_return(tx, ctx, id).await?;
+    let _: Permit = ctx.permit(Action::View, order_resource(row.order_id, None))?;
+    Ok(row.into())
+}
+
+pub async fn return_items(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ReturnId,
+) -> Result<Vec<ReturnItemView>> {
+    let rows = order::return_items(tx, ctx, id).await?;
+    Ok(rows.into_iter().map(ReturnItemView::from).collect())
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReceivedLineIn {
+    pub order_line_item_id: LineItemId,
+    pub quantity: i32,
+    #[serde(default)]
+    pub damaged: i32,
+}
+
+impl ReceivedLineIn {
+    fn line(self) -> order::ReceivedLine {
+        order::ReceivedLine {
+            order_line_item_id: self.order_line_item_id,
+            quantity: self.quantity,
+            damaged: self.damaged,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReceiveReturn {
+    pub lines: Vec<ReceivedLineIn>,
+}
+
+pub async fn receive_return(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ReturnId,
+    input: ReceiveReturn,
+) -> Result<ReturnView> {
+    let lines = input.lines.into_iter().map(ReceivedLineIn::line).collect();
+    Ok(order::receive_return(tx, ctx, id, lines).await?.into())
+}
+
+pub async fn dismiss_return_items(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ReturnId,
+    input: ReceiveReturn,
+) -> Result<ReturnView> {
+    let lines = input.lines.into_iter().map(ReceivedLineIn::line).collect();
+    Ok(order::dismiss_return(tx, ctx, id, lines).await?.into())
+}
+
+/// Declines the change still open on a return and closes it.
+pub async fn cancel_return(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ReturnId) -> Result<ReturnView> {
+    let order_return = read_return(tx, ctx, id).await?;
+    let _: Permit = ctx.permit(Action::Write, order_resource(order_return.order_id, None))?;
+
+    if order_return.received_at.is_some() {
+        return Err(Error::conflict("that return has already arrived"));
+    }
+    if order_return.canceled_at.is_some() {
+        return Ok(order_return.into());
+    }
+
+    if let Ok(change) = open_change(tx, ctx, Parent::Return, id.as_uuid()).await {
+        order::decline_change(tx, ctx, change.id, Some("the return was canceled".into())).await?;
+    }
+
+    sqlx::query(
+        "update order_return set status = 'canceled', canceled_at = $3
+         where scope = $1 and id = $2 and canceled_at is null",
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .bind(ctx.now())
+    .execute(&mut **tx)
+    .await?;
+
+    Ok(read_return(tx, ctx, id).await?.into())
+}
+
+/// Hangs one more action on the change a return already has open. There is no
+/// second path: `order_change` is how a quantity moves.
+async fn add_parent_action(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    parent: Parent,
+    id: Uuid,
+    new: order::NewAction,
+) -> Result<ChangeActionView> {
+    let change = open_change(tx, ctx, parent, id).await?;
+    Ok(order::add_action(tx, ctx, change.id, new).await?.into())
+}
+
+async fn drop_parent_action(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    parent: Parent,
+    id: Uuid,
+    action_id: Uuid,
+) -> Result<()> {
+    let change = open_change(tx, ctx, parent, id).await?;
+    let _: Permit = ctx.permit(Action::Write, order_resource(change.order_id, None))?;
+    drop_action(tx, ctx, change.id, action_id).await
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LineQuantity {
+    pub order_line_item_id: LineItemId,
+    pub quantity: i32,
+}
+
+pub async fn add_return_request_item(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ReturnId,
+    input: LineQuantity,
+) -> Result<ChangeActionView> {
+    let new = order::NewAction::on(
+        order::ChangeAction::ReturnItem,
+        input.order_line_item_id,
+        input.quantity,
+    );
+    add_parent_action(tx, ctx, Parent::Return, id.as_uuid(), new).await
+}
+
+pub async fn remove_return_request_item(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ReturnId,
+    action_id: Uuid,
+) -> Result<()> {
+    drop_parent_action(tx, ctx, Parent::Return, id.as_uuid(), action_id).await
+}
+
+pub async fn add_return_receive_item(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ReturnId,
+    input: LineQuantity,
+) -> Result<ChangeActionView> {
+    let new = order::NewAction::on(
+        order::ChangeAction::ReceiveReturnItem,
+        input.order_line_item_id,
+        input.quantity,
+    );
+    add_parent_action(tx, ctx, Parent::Return, id.as_uuid(), new).await
+}
+
+pub async fn remove_return_receive_item(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ReturnId,
+    action_id: Uuid,
+) -> Result<()> {
+    drop_parent_action(tx, ctx, Parent::Return, id.as_uuid(), action_id).await
+}
+
+pub async fn add_return_shipping(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ReturnId,
+    input: AddShippingAction,
+) -> Result<ChangeActionView> {
+    add_parent_action(tx, ctx, Parent::Return, id.as_uuid(), input.new_action()?).await
+}
+
+pub async fn remove_return_shipping(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ReturnId,
+    action_id: Uuid,
+) -> Result<()> {
+    drop_parent_action(tx, ctx, Parent::Return, id.as_uuid(), action_id).await
+}
+
+/// Settles the return's open change: the quantities land at the next version.
+pub async fn confirm_return_request(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ReturnId,
+) -> Result<ReturnView> {
+    let change = open_change(tx, ctx, Parent::Return, id.as_uuid()).await?;
+    order::confirm_change(tx, ctx, change.id).await?;
+    Ok(read_return(tx, ctx, id).await?.into())
+}
+
+// ---------------------------------------------------------------------------
+// Exchanges
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExchangeLineIn {
+    pub order_line_item_id: LineItemId,
+    pub quantity: i32,
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RequestExchange {
+    pub order_id: OrderId,
+    pub returning: Vec<ReturnLineIn>,
+    pub outbound: Vec<ExchangeLineIn>,
+    pub location_id: Option<StockLocationId>,
+    #[serde(default)]
+    pub allow_backorder: bool,
+    pub difference_due: Option<MoneyIn>,
+}
+
+pub async fn request_exchange(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    input: RequestExchange,
+) -> Result<ExchangeView> {
+    let difference_due = match &input.difference_due {
+        Some(money) => Some(money.money()?),
+        None => None,
+    };
+
+    let request = order::ExchangeRequest {
+        returning: input.returning.into_iter().map(ReturnLineIn::line).collect(),
+        outbound: input
+            .outbound
+            .into_iter()
+            .map(|line| order::ExchangeLine {
+                order_line_item_id: line.order_line_item_id,
+                quantity: line.quantity,
+                note: line.note,
+            })
+            .collect(),
+        location_id: input.location_id,
+        allow_backorder: input.allow_backorder,
+        difference_due,
+    };
+
+    Ok(order::request_exchange(tx, ctx, input.order_id, request)
+        .await?
+        .into())
+}
+
+pub async fn list_exchanges(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    query: Listing,
+) -> Result<Page<ExchangeView>> {
+    let _: Permit = ctx.permit(Action::View, order_resource(OrderId::from_uuid(Uuid::nil()), None))?;
+    let paging = query.paging()?;
+
+    let rows = sqlx::query_as::<_, order::Exchange>(&format!(
+        "select {EXCHANGE_COLUMNS} from order_exchange
+         where scope = $1 and ($2::timestamptz is null or (created_at, id) > ($2, $3))
+         order by created_at, id
+         limit $4"
+    ))
+    .bind(ctx.scope.0)
+    .bind(paging.after.map(|c| c.at))
+    .bind(paging.after.map(|c| c.id))
+    .bind(paging.probe())
+    .fetch_all(&mut **tx)
+    .await?;
+
+    let page = Page::build(rows, paging, |row| Cursor {
+        at: row.created_at,
+        id: row.id.as_uuid(),
+    });
+
+    Ok(Page {
+        items: page.items.into_iter().map(ExchangeView::from).collect(),
+        next: page.next,
+    })
+}
+
+pub async fn get_exchange(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ExchangeId) -> Result<ExchangeView> {
+    let row = read_exchange(tx, ctx, id).await?;
+    let _: Permit = ctx.permit(Action::View, order_resource(row.order_id, None))?;
+    Ok(row.into())
+}
+
+pub async fn exchange_actions(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ExchangeId,
+) -> Result<ChangeDetailView> {
+    let change = open_change(tx, ctx, Parent::Exchange, id.as_uuid()).await?;
+    get_order_change(tx, ctx, change.id).await
+}
+
+pub async fn cancel_exchange(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ExchangeId,
+) -> Result<ExchangeView> {
+    let exchange = read_exchange(tx, ctx, id).await?;
+    let _: Permit = ctx.permit(Action::Write, order_resource(exchange.order_id, None))?;
+
+    if exchange.canceled_at.is_some() {
+        return Ok(exchange.into());
+    }
+
+    if let Ok(change) = open_change(tx, ctx, Parent::Exchange, id.as_uuid()).await {
+        order::decline_change(tx, ctx, change.id, Some("the exchange was canceled".into())).await?;
+    }
+
+    sqlx::query(
+        "update order_exchange set canceled_at = $3
+         where scope = $1 and id = $2 and canceled_at is null",
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .bind(ctx.now())
+    .execute(&mut **tx)
+    .await?;
+
+    Ok(read_exchange(tx, ctx, id).await?.into())
+}
+
+pub async fn add_exchange_inbound_item(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ExchangeId,
+    input: LineQuantity,
+) -> Result<ChangeActionView> {
+    let new = order::NewAction::on(
+        order::ChangeAction::ReturnItem,
+        input.order_line_item_id,
+        input.quantity,
+    );
+    add_parent_action(tx, ctx, Parent::Exchange, id.as_uuid(), new).await
+}
+
+pub async fn remove_exchange_inbound_item(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ExchangeId,
+    action_id: Uuid,
+) -> Result<()> {
+    drop_parent_action(tx, ctx, Parent::Exchange, id.as_uuid(), action_id).await
+}
+
+pub async fn add_exchange_inbound_shipping(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ExchangeId,
+    input: AddShippingAction,
+) -> Result<ChangeActionView> {
+    add_parent_action(tx, ctx, Parent::Exchange, id.as_uuid(), input.new_action()?).await
+}
+
+pub async fn add_exchange_outbound_item(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ExchangeId,
+    input: LineQuantity,
+) -> Result<ChangeActionView> {
+    let new = order::NewAction::on(
+        order::ChangeAction::ItemAdd,
+        input.order_line_item_id,
+        input.quantity,
+    );
+    add_parent_action(tx, ctx, Parent::Exchange, id.as_uuid(), new).await
+}
+
+pub async fn remove_exchange_outbound_item(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ExchangeId,
+    action_id: Uuid,
+) -> Result<()> {
+    drop_parent_action(tx, ctx, Parent::Exchange, id.as_uuid(), action_id).await
+}
+
+pub async fn add_exchange_outbound_shipping(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ExchangeId,
+    input: AddShippingAction,
+) -> Result<ChangeActionView> {
+    add_parent_action(tx, ctx, Parent::Exchange, id.as_uuid(), input.new_action()?).await
+}
+
+pub async fn confirm_exchange_request(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ExchangeId,
+) -> Result<ExchangeView> {
+    let change = open_change(tx, ctx, Parent::Exchange, id.as_uuid()).await?;
+    order::confirm_change(tx, ctx, change.id).await?;
+    Ok(read_exchange(tx, ctx, id).await?.into())
+}
+
+// ---------------------------------------------------------------------------
+// Claims
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClaimKind {
+    Refund,
+    Replace,
+}
+
+impl ClaimKind {
+    fn claim_type(self) -> order::ClaimType {
+        match self {
+            ClaimKind::Refund => order::ClaimType::Refund,
+            ClaimKind::Replace => order::ClaimType::Replace,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ClaimLineIn {
+    pub order_line_item_id: LineItemId,
+    pub quantity: i32,
+    pub reason: Option<String>,
+    pub note: Option<String>,
+}
+
+impl ClaimLineIn {
+    fn line(self) -> order::ClaimLine {
+        order::ClaimLine {
+            order_line_item_id: self.order_line_item_id,
+            quantity: self.quantity,
+            reason: self.reason,
+            note: self.note,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RequestClaim {
+    pub order_id: OrderId,
+    pub claim_type: ClaimKind,
+    pub faulty: Vec<ClaimLineIn>,
+    #[serde(default)]
+    pub replacements: Vec<ClaimLineIn>,
+    #[serde(default)]
+    pub collect: bool,
+    pub location_id: Option<StockLocationId>,
+    pub refund_amount: Option<MoneyIn>,
+}
+
+pub async fn request_claim(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    input: RequestClaim,
+) -> Result<ClaimView> {
+    let refund_amount = match &input.refund_amount {
+        Some(money) => Some(money.money()?),
+        None => None,
+    };
+
+    let request = order::ClaimRequest {
+        claim_type: input.claim_type.claim_type(),
+        faulty: input.faulty.into_iter().map(ClaimLineIn::line).collect(),
+        replacements: input
+            .replacements
+            .into_iter()
+            .map(ClaimLineIn::line)
+            .collect(),
+        collect: input.collect,
+        location_id: input.location_id,
+        refund_amount,
+    };
+
+    Ok(order::request_claim(tx, ctx, input.order_id, request)
+        .await?
+        .into())
+}
+
+pub async fn list_claims(tx: &mut Tx<'_>, ctx: &Ctx<'_>, query: Listing) -> Result<Page<ClaimView>> {
+    let _: Permit = ctx.permit(Action::View, order_resource(OrderId::from_uuid(Uuid::nil()), None))?;
+    let paging = query.paging()?;
+
+    let rows = sqlx::query_as::<_, order::Claim>(&format!(
+        "select {CLAIM_COLUMNS} from order_claim
+         where scope = $1 and ($2::timestamptz is null or (created_at, id) > ($2, $3))
+         order by created_at, id
+         limit $4"
+    ))
+    .bind(ctx.scope.0)
+    .bind(paging.after.map(|c| c.at))
+    .bind(paging.after.map(|c| c.id))
+    .bind(paging.probe())
+    .fetch_all(&mut **tx)
+    .await?;
+
+    let page = Page::build(rows, paging, |row| Cursor {
+        at: row.created_at,
+        id: row.id.as_uuid(),
+    });
+
+    Ok(Page {
+        items: page.items.into_iter().map(ClaimView::from).collect(),
+        next: page.next,
+    })
+}
+
+pub async fn get_claim(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ClaimId) -> Result<ClaimView> {
+    let row = read_claim(tx, ctx, id).await?;
+    let _: Permit = ctx.permit(Action::View, order_resource(row.order_id, None))?;
+    Ok(row.into())
+}
+
+pub async fn claim_actions(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ClaimId,
+) -> Result<ChangeDetailView> {
+    let change = open_change(tx, ctx, Parent::Claim, id.as_uuid()).await?;
+    get_order_change(tx, ctx, change.id).await
+}
+
+pub async fn cancel_claim(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ClaimId) -> Result<ClaimView> {
+    let claim = read_claim(tx, ctx, id).await?;
+    let _: Permit = ctx.permit(Action::Write, order_resource(claim.order_id, None))?;
+
+    if claim.canceled_at.is_some() {
+        return Ok(claim.into());
+    }
+
+    if let Ok(change) = open_change(tx, ctx, Parent::Claim, id.as_uuid()).await {
+        order::decline_change(tx, ctx, change.id, Some("the claim was canceled".into())).await?;
+    }
+
+    sqlx::query(
+        "update order_claim set canceled_at = $3
+         where scope = $1 and id = $2 and canceled_at is null",
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .bind(ctx.now())
+    .execute(&mut **tx)
+    .await?;
+
+    Ok(read_claim(tx, ctx, id).await?.into())
+}
+
+/// What went wrong, written off where it stands rather than expected back.
+pub async fn add_claim_item(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ClaimId,
+    input: LineQuantity,
+) -> Result<ChangeActionView> {
+    let new = order::NewAction::on(
+        order::ChangeAction::WriteOffItem,
+        input.order_line_item_id,
+        input.quantity,
+    );
+    add_parent_action(tx, ctx, Parent::Claim, id.as_uuid(), new).await
+}
+
+pub async fn remove_claim_item(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ClaimId,
+    action_id: Uuid,
+) -> Result<()> {
+    drop_parent_action(tx, ctx, Parent::Claim, id.as_uuid(), action_id).await
+}
+
+/// The faulty goods are wanted back after all.
+pub async fn add_claim_inbound_item(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ClaimId,
+    input: LineQuantity,
+) -> Result<ChangeActionView> {
+    let new = order::NewAction::on(
+        order::ChangeAction::ReturnItem,
+        input.order_line_item_id,
+        input.quantity,
+    );
+    add_parent_action(tx, ctx, Parent::Claim, id.as_uuid(), new).await
+}
+
+pub async fn remove_claim_inbound_item(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ClaimId,
+    action_id: Uuid,
+) -> Result<()> {
+    drop_parent_action(tx, ctx, Parent::Claim, id.as_uuid(), action_id).await
+}
+
+pub async fn add_claim_inbound_shipping(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ClaimId,
+    input: AddShippingAction,
+) -> Result<ChangeActionView> {
+    add_parent_action(tx, ctx, Parent::Claim, id.as_uuid(), input.new_action()?).await
+}
+
+pub async fn add_claim_outbound_item(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ClaimId,
+    input: LineQuantity,
+) -> Result<ChangeActionView> {
+    let new = order::NewAction::on(
+        order::ChangeAction::ItemAdd,
+        input.order_line_item_id,
+        input.quantity,
+    );
+    add_parent_action(tx, ctx, Parent::Claim, id.as_uuid(), new).await
+}
+
+pub async fn remove_claim_outbound_item(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ClaimId,
+    action_id: Uuid,
+) -> Result<()> {
+    drop_parent_action(tx, ctx, Parent::Claim, id.as_uuid(), action_id).await
+}
+
+pub async fn add_claim_outbound_shipping(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ClaimId,
+    input: AddShippingAction,
+) -> Result<ChangeActionView> {
+    add_parent_action(tx, ctx, Parent::Claim, id.as_uuid(), input.new_action()?).await
+}
+
+pub async fn confirm_claim_request(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ClaimId,
+) -> Result<ClaimView> {
+    let change = open_change(tx, ctx, Parent::Claim, id.as_uuid()).await?;
+    order::confirm_change(tx, ctx, change.id).await?;
+    Ok(read_claim(tx, ctx, id).await?.into())
+}
+
+// ---------------------------------------------------------------------------
+// Payments — the two that move money
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ListPayments {
+    pub after: Option<String>,
+    pub limit: Option<u32>,
+    pub payment_collection_id: Option<PaymentCollectionId>,
+}
+
+pub async fn list_payments(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    query: ListPayments,
+) -> Result<Page<PaymentView>> {
+    let _: Permit = ctx.permit(
+        Action::View,
+        Resource::Payment {
+            id: Uuid::nil(),
+            order: Uuid::nil(),
+        },
+    )?;
+
+    let paging = match &query.after {
+        Some(text) => Paging::after(
+            Cursor::decode(text)?,
+            query.limit.unwrap_or(crate::page::DEFAULT_LIMIT),
+        ),
+        None => Paging::first(query.limit.unwrap_or(crate::page::DEFAULT_LIMIT)),
+    };
+
+    let rows = sqlx::query_as::<_, payment::Payment>(&format!(
+        "select {PAYMENT_COLUMNS} from payment
+         where scope = $1
+           and ($2::uuid is null or payment_collection_id = $2)
+           and ($3::timestamptz is null or (created_at, id) > ($3, $4))
+         order by created_at, id
+         limit $5"
+    ))
+    .bind(ctx.scope.0)
+    .bind(query.payment_collection_id.map(PaymentCollectionId::as_uuid))
+    .bind(paging.after.map(|c| c.at))
+    .bind(paging.after.map(|c| c.id))
+    .bind(paging.probe())
+    .fetch_all(&mut **tx)
+    .await?;
+
+    let page = Page::build(rows, paging, |row| Cursor {
+        at: row.created_at,
+        id: row.id.as_uuid(),
+    });
+
+    Ok(Page {
+        items: page.items.into_iter().map(PaymentView::from).collect(),
+        next: page.next,
+    })
+}
+
+pub async fn get_payment(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: PaymentId) -> Result<PaymentView> {
+    Ok(payment::payment(tx, ctx, id).await?.into())
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CapturePayment {
+    pub amount: MoneyIn,
+    pub metadata: Option<Value>,
+}
+
+/// Takes money that was only being held.
+///
+/// [`Action::Settle`], asked by `payment::capture` before it reads anything.
+/// There is no compensation for this one: the only way back is a refund, which
+/// is another provider call and another row.
+pub async fn capture_payment(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: PaymentId,
+    input: CapturePayment,
+) -> Result<CaptureView> {
+    Ok(
+        payment::capture(tx, ctx, id, input.amount.money()?, input.metadata)
+            .await?
+            .into(),
+    )
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RefundPayment {
+    pub amount: MoneyIn,
+    pub reason_id: Option<RefundReasonId>,
+    pub note: Option<String>,
+}
+
+/// Gives money back. Never more than was captured: `payment::refund` checks it
+/// with the payment row locked, because two refunds always turn up at once.
+pub async fn refund_payment(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: PaymentId,
+    input: RefundPayment,
+) -> Result<RefundView> {
+    Ok(payment::refund(
+        tx,
+        ctx,
+        id,
+        input.amount.money()?,
+        input.reason_id,
+        input.note,
+    )
+    .await?
+    .into())
+}
+
+pub async fn payment_providers(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<Vec<ProviderView>> {
+    let rows = payment::providers(tx, ctx).await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| ProviderView {
+            id: row.id.as_uuid(),
+            code: row.code,
+            is_enabled: row.is_enabled,
+        })
+        .collect())
+}
+
+// ---------------------------------------------------------------------------
+// Payment collections
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CreateCollection {
+    pub amount: MoneyIn,
+    pub metadata: Option<Value>,
+}
+
+pub async fn create_payment_collection(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    input: CreateCollection,
+) -> Result<CollectionView> {
+    let new = payment::NewCollection {
+        amount: input.amount.money()?,
+        metadata: input.metadata,
+    };
+    Ok(payment::create_collection(tx, ctx, new).await?.into())
+}
+
+pub async fn get_payment_collection(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: PaymentCollectionId,
+) -> Result<CollectionView> {
+    Ok(payment::collection(tx, ctx, id).await?.into())
+}
+
+pub async fn payment_sessions(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: PaymentCollectionId,
+    query: Listing,
+) -> Result<Page<SessionView>> {
+    let page = payment::sessions(tx, ctx, id, query.paging()?).await?;
+    Ok(Page {
+        items: page.items.into_iter().map(SessionView::from).collect(),
+        next: page.next,
+    })
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CreateSession {
+    pub provider_code: String,
+    pub amount: MoneyIn,
+    pub context: Option<Value>,
+}
+
+pub async fn create_payment_session(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: PaymentCollectionId,
+    input: CreateSession,
+) -> Result<SessionView> {
+    let new = payment::NewSession {
+        collection_id: id,
+        provider_code: input.provider_code,
+        amount: input.amount.money()?,
+        context: input.context,
+    };
+    Ok(payment::create_session(tx, ctx, new).await?.into())
+}
+
+// ---------------------------------------------------------------------------
+// Reasons
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NewReason {
+    pub code: String,
+    pub label: String,
+    pub description: Option<String>,
+}
+
+pub async fn list_refund_reasons(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    query: Listing,
+) -> Result<Page<ReasonView>> {
+    let _: Permit = ctx.permit(Action::View, config())?;
+    let paging = query.paging()?;
+
+    let rows = sqlx::query_as::<_, ReasonView>(
+        "select id, code, label, description, created_at from refund_reason
+         where scope = $1 and ($2::timestamptz is null or (created_at, id) > ($2, $3))
+         order by created_at, id
+         limit $4",
+    )
+    .bind(ctx.scope.0)
+    .bind(paging.after.map(|c| c.at))
+    .bind(paging.after.map(|c| c.id))
+    .bind(paging.probe())
+    .fetch_all(&mut **tx)
+    .await?;
+
+    Ok(Page::build(rows, paging, |row| Cursor {
+        at: row.created_at,
+        id: row.id,
+    }))
+}
+
+pub async fn create_refund_reason(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    input: NewReason,
+) -> Result<ReasonView> {
+    let _: Permit = ctx.permit(Action::Write, config())?;
+
+    if input.code.trim().is_empty() {
+        return Err(Error::invalid("a refund reason needs a code"));
+    }
+
+    Ok(sqlx::query_as::<_, ReasonView>(
+        "insert into refund_reason (id, scope, code, label, description)
+         values ($1, $2, $3, $4, $5)
+         returning id, code, label, description, created_at",
+    )
+    .bind(RefundReasonId::new().as_uuid())
+    .bind(ctx.scope.0)
+    .bind(input.code.trim())
+    .bind(input.label)
+    .bind(input.description)
+    .fetch_one(&mut **tx)
+    .await?)
+}
+
+/// The same shape, and a different column: a return reason's code is `value`.
+pub async fn list_return_reasons(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    query: Listing,
+) -> Result<Page<ReasonView>> {
+    let _: Permit = ctx.permit(Action::View, config())?;
+    let paging = query.paging()?;
+
+    let rows = sqlx::query_as::<_, ReasonView>(
+        "select id, value as code, label, description, created_at from return_reason
+         where scope = $1 and ($2::timestamptz is null or (created_at, id) > ($2, $3))
+         order by created_at, id
+         limit $4",
+    )
+    .bind(ctx.scope.0)
+    .bind(paging.after.map(|c| c.at))
+    .bind(paging.after.map(|c| c.id))
+    .bind(paging.probe())
+    .fetch_all(&mut **tx)
+    .await?;
+
+    Ok(Page::build(rows, paging, |row| Cursor {
+        at: row.created_at,
+        id: row.id,
+    }))
+}
+
+pub async fn create_return_reason(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    input: NewReason,
+) -> Result<ReasonView> {
+    let _: Permit = ctx.permit(Action::Write, config())?;
+
+    if input.code.trim().is_empty() {
+        return Err(Error::invalid("a return reason needs a value"));
+    }
+
+    Ok(sqlx::query_as::<_, ReasonView>(
+        "insert into return_reason (id, scope, value, label, description)
+         values ($1, $2, $3, $4, $5)
+         returning id, value as code, label, description, created_at",
+    )
+    .bind(Uuid::now_v7())
+    .bind(ctx.scope.0)
+    .bind(input.code.trim())
+    .bind(input.label)
+    .bind(input.description)
+    .fetch_one(&mut **tx)
+    .await?)
+}
+
+// ---------------------------------------------------------------------------
+// Fulfilment
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NewFulfillmentItemIn {
+    pub order_item_id: OrderItemId,
+    pub inventory_item_id: Option<InventoryItemId>,
+    pub title: String,
+    pub sku: Option<String>,
+    pub barcode: Option<String>,
+    pub quantity: i32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CreateFulfillment {
+    pub location_id: StockLocationId,
+    pub shipping_option_id: Option<ShippingOptionId>,
+    pub provider_id: Option<Uuid>,
+    #[serde(default = "yes")]
+    pub requires_shipping: bool,
+    pub data: Option<Value>,
+    pub items: Vec<NewFulfillmentItemIn>,
+}
+
+fn yes() -> bool {
+    true
+}
+
+pub async fn create_fulfillment(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order_id: OrderId,
+    input: CreateFulfillment,
+) -> Result<FulfillmentView> {
+    let new = fulfilment::NewFulfillment {
+        location_id: input.location_id,
+        shipping_option_id: input.shipping_option_id,
+        provider_id: input.provider_id,
+        requires_shipping: input.requires_shipping,
+        created_by: None,
+        data: input.data,
+        items: input
+            .items
+            .into_iter()
+            .map(|item| fulfilment::NewFulfillmentItem {
+                order_item_id: item.order_item_id,
+                inventory_item_id: item.inventory_item_id,
+                title: item.title,
+                sku: item.sku,
+                barcode: item.barcode,
+                quantity: item.quantity,
+            })
+            .collect(),
+    };
+
+    Ok(fulfilment::create_fulfillment(tx, ctx, order_id, new)
+        .await?
+        .into())
+}
+
+/// Every parcel on one order. Read through the fulfilment items, because a
+/// `fulfillment` row does not carry the order it belongs to.
+pub async fn order_fulfillments(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order_id: OrderId,
+    query: Listing,
+) -> Result<Page<FulfillmentView>> {
+    let _: Permit = ctx.permit(
+        Action::View,
+        Resource::Fulfillment {
+            id: Uuid::nil(),
+            order: order_id.as_uuid(),
+        },
+    )?;
+    let paging = query.paging()?;
+
+    let rows = sqlx::query_as::<_, fulfilment::Fulfillment>(
+        "select f.id, f.location_id, f.shipping_option_id, f.provider_id, f.requires_shipping,
+                f.packed_at, f.shipped_at, f.delivered_at, f.canceled_at, f.created_at
+         from fulfillment f
+         where f.scope = $1
+           and exists (
+               select 1 from fulfillment_item i
+               join order_line_item l on l.scope = i.scope and l.id = i.line_item_id
+               where i.scope = f.scope and i.fulfillment_id = f.id and l.order_id = $2
+           )
+           and ($3::timestamptz is null or (f.created_at, f.id) > ($3, $4))
+         order by f.created_at, f.id
+         limit $5",
+    )
+    .bind(ctx.scope.0)
+    .bind(order_id.as_uuid())
+    .bind(paging.after.map(|c| c.at))
+    .bind(paging.after.map(|c| c.id))
+    .bind(paging.probe())
+    .fetch_all(&mut **tx)
+    .await?;
+
+    let page = Page::build(rows, paging, |row| Cursor {
+        at: row.created_at,
+        id: row.id.as_uuid(),
+    });
+
+    Ok(Page {
+        items: page.items.into_iter().map(FulfillmentView::from).collect(),
+        next: page.next,
+    })
+}
+
+pub async fn get_fulfillment(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order_id: OrderId,
+    id: FulfillmentId,
+) -> Result<FulfillmentDetailView> {
+    let row = fulfilment::fulfillment(tx, ctx, order_id, id).await?;
+    let items = fulfilment::fulfillment_items(tx, ctx, order_id, id).await?;
+    let labels = fulfilment::labels(tx, ctx, order_id, id).await?;
+
+    Ok(FulfillmentDetailView {
+        fulfillment: row.into(),
+        items: items
+            .into_iter()
+            .map(|item| FulfillmentItemView {
+                id: item.id,
+                title: item.title,
+                sku: item.sku,
+                quantity: item.quantity,
+            })
+            .collect(),
+        labels: labels
+            .into_iter()
+            .map(|label| LabelView {
+                id: label.id,
+                tracking_number: label.tracking_number,
+                tracking_url: label.tracking_url,
+                label_url: label.label_url,
+            })
+            .collect(),
+    })
+}
+
+pub async fn pack_fulfillment(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order_id: OrderId,
+    id: FulfillmentId,
+) -> Result<FulfillmentView> {
+    Ok(fulfilment::mark_packed(tx, ctx, order_id, id).await?.into())
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ShipFulfillment {
+    #[serde(default)]
+    pub labels: Vec<NewLabelIn>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NewLabelIn {
+    pub tracking_number: String,
+    pub tracking_url: Option<String>,
+    pub label_url: Option<String>,
+}
+
+/// The parcel left. The labels go on in the same transaction, so a shipment
+/// that rolls back does not leave a tracking number pointing at nothing.
+pub async fn ship_fulfillment(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order_id: OrderId,
+    id: FulfillmentId,
+    input: ShipFulfillment,
+) -> Result<FulfillmentDetailView> {
+    for label in input.labels {
+        fulfilment::add_label(
+            tx,
+            ctx,
+            order_id,
+            id,
+            fulfilment::NewLabel {
+                tracking_number: label.tracking_number,
+                tracking_url: label.tracking_url,
+                label_url: label.label_url,
+            },
+        )
+        .await?;
+    }
+
+    fulfilment::mark_shipped(tx, ctx, order_id, id, None).await?;
+    get_fulfillment(tx, ctx, order_id, id).await
+}
+
+pub async fn deliver_fulfillment(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order_id: OrderId,
+    id: FulfillmentId,
+) -> Result<FulfillmentView> {
+    Ok(fulfilment::mark_delivered(tx, ctx, order_id, id)
+        .await?
+        .into())
+}
+
+/// Cancelling a parcel puts its stock back, which is why `fulfilment` asks for
+/// [`Action::Settle`] rather than [`Action::Write`].
+pub async fn cancel_fulfillment(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order_id: OrderId,
+    id: FulfillmentId,
+) -> Result<FulfillmentView> {
+    Ok(fulfilment::cancel_fulfillment(tx, ctx, order_id, id)
+        .await?
+        .into())
+}
+
+// ---------------------------------------------------------------------------
+// Fulfilment configuration
+// ---------------------------------------------------------------------------
+
+pub async fn list_fulfillment_sets(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    query: Listing,
+) -> Result<Page<FulfillmentSetView>> {
+    let page = fulfilment::sets(tx, ctx, query.paging()?).await?;
+    Ok(Page {
+        items: page.items.into_iter().map(FulfillmentSetView::from).collect(),
+        next: page.next,
+    })
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SetKindIn {
+    Shipping,
+    Pickup,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CreateFulfillmentSet {
+    pub name: String,
+    pub kind: SetKindIn,
+}
+
+pub async fn create_fulfillment_set(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    input: CreateFulfillmentSet,
+) -> Result<FulfillmentSetView> {
+    let new = fulfilment::NewFulfillmentSet {
+        name: input.name,
+        kind: match input.kind {
+            SetKindIn::Shipping => fulfilment::SetKind::Shipping,
+            SetKindIn::Pickup => fulfilment::SetKind::Pickup,
+        },
+    };
+    Ok(fulfilment::create_set(tx, ctx, new).await?.into())
+}
+
+pub async fn delete_fulfillment_set(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: FulfillmentSetId,
+) -> Result<()> {
+    fulfilment::delete_set(tx, ctx, id).await
+}
+
+pub async fn service_zones(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: FulfillmentSetId,
+) -> Result<Vec<ServiceZoneView>> {
+    let rows = fulfilment::service_zones(tx, ctx, id).await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| ServiceZoneView {
+            id: row.id,
+            name: row.name,
+            fulfillment_set_id: row.fulfillment_set_id,
+        })
+        .collect())
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CreateServiceZone {
+    pub name: String,
+}
+
+pub async fn create_service_zone(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: FulfillmentSetId,
+    input: CreateServiceZone,
+) -> Result<ServiceZoneView> {
+    let zone = fulfilment::create_service_zone(
+        tx,
+        ctx,
+        fulfilment::NewServiceZone {
+            name: input.name,
+            fulfillment_set_id: id,
+        },
+    )
+    .await?;
+
+    Ok(ServiceZoneView {
+        id: zone.id,
+        name: zone.name,
+        fulfillment_set_id: zone.fulfillment_set_id,
+    })
+}
+
+pub async fn fulfillment_providers(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+) -> Result<Vec<ProviderView>> {
+    let rows = fulfilment::providers(tx, ctx).await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| ProviderView {
+            id: row.id,
+            code: row.name,
+            is_enabled: row.is_enabled,
+        })
+        .collect())
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RegisterProvider {
+    pub name: String,
+}
+
+pub async fn register_fulfillment_provider(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    input: RegisterProvider,
+) -> Result<ProviderView> {
+    let row = fulfilment::register_provider(tx, ctx, &input.name).await?;
+    Ok(ProviderView {
+        id: row.id,
+        code: row.name,
+        is_enabled: row.is_enabled,
+    })
+}
+
+pub async fn list_shipping_options(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    query: Listing,
+) -> Result<Page<ShippingOptionView>> {
+    let _: Permit = ctx.permit(Action::View, config())?;
+    let paging = query.paging()?;
+
+    let rows = sqlx::query_as::<_, fulfilment::ShippingOption>(
+        "select id, name, price_type, service_zone_id, shipping_profile_id, provider_id,
+                data, created_at
+         from shipping_option
+         where scope = $1 and ($2::timestamptz is null or (created_at, id) > ($2, $3))
+         order by created_at, id
+         limit $4",
+    )
+    .bind(ctx.scope.0)
+    .bind(paging.after.map(|c| c.at))
+    .bind(paging.after.map(|c| c.id))
+    .bind(paging.probe())
+    .fetch_all(&mut **tx)
+    .await?;
+
+    let page = Page::build(rows, paging, |row| Cursor {
+        at: row.created_at,
+        id: row.id.as_uuid(),
+    });
+
+    Ok(Page {
+        items: page.items.into_iter().map(ShippingOptionView::from).collect(),
+        next: page.next,
+    })
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PriceKindIn {
+    Flat,
+    Calculated,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CreateShippingOption {
+    pub name: String,
+    pub price_type: PriceKindIn,
+    pub service_zone_id: ServiceZoneId,
+    pub shipping_profile_id: Option<ShippingProfileId>,
+    pub provider_id: Option<Uuid>,
+    pub data: Option<Value>,
+}
+
+pub async fn create_shipping_option(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    input: CreateShippingOption,
+) -> Result<ShippingOptionView> {
+    let new = fulfilment::NewShippingOption {
+        name: input.name,
+        price_type: match input.price_type {
+            PriceKindIn::Flat => fulfilment::PriceKind::Flat,
+            PriceKindIn::Calculated => fulfilment::PriceKind::Calculated,
+        },
+        service_zone_id: input.service_zone_id,
+        shipping_profile_id: input.shipping_profile_id,
+        provider_id: input.provider_id,
+        data: input.data,
+    };
+    Ok(fulfilment::create_shipping_option(tx, ctx, new).await?.into())
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CreateShippingOptionRule {
+    pub attribute: String,
+    pub operator: String,
+    pub value: Value,
+}
+
+pub async fn create_shipping_option_rule(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ShippingOptionId,
+    input: CreateShippingOptionRule,
+) -> Result<ShippingOptionRuleView> {
+    let new = fulfilment::NewShippingOptionRule {
+        shipping_option_id: id,
+        attribute: input.attribute,
+        operator: fulfilment::Operator::parse(&input.operator)?,
+        value: input.value,
+    };
+    let rule = fulfilment::create_shipping_option_rule(tx, ctx, new).await?;
+
+    Ok(ShippingOptionRuleView {
+        id: rule.id,
+        shipping_option_id: rule.shipping_option_id,
+        attribute: rule.attribute,
+        operator: rule.operator,
+        value: rule.value,
+    })
+}
+
+/// Which options reach one order's address, priced or not.
+pub async fn order_shipping_options(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order_id: OrderId,
+    country_code: &str,
+) -> Result<Vec<ShippingOptionView>> {
+    let row = order::get(tx, ctx, order_id).await?;
+
+    let address = fulfilment::DeliveryAddress {
+        country_code: country_code.to_owned(),
+        ..Default::default()
+    };
+
+    let options = fulfilment::options_for(tx, ctx, &address, row.sales_channel_id, &[]).await?;
+    Ok(options.into_iter().map(ShippingOptionView::from).collect())
+}
+
+pub async fn list_shipping_profiles(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    query: Listing,
+) -> Result<Page<ShippingProfileView>> {
+    let _: Permit = ctx.permit(Action::View, config())?;
+    let paging = query.paging()?;
+
+    let rows = sqlx::query_as::<_, ShippingProfileView>(
+        "select id, name, type, created_at from shipping_profile
+         where scope = $1 and ($2::timestamptz is null or (created_at, id) > ($2, $3))
+         order by created_at, id
+         limit $4",
+    )
+    .bind(ctx.scope.0)
+    .bind(paging.after.map(|c| c.at))
+    .bind(paging.after.map(|c| c.id))
+    .bind(paging.probe())
+    .fetch_all(&mut **tx)
+    .await?;
+
+    Ok(Page::build(rows, paging, |row| Cursor {
+        at: row.created_at,
+        id: row.id.as_uuid(),
+    }))
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CreateShippingProfile {
+    pub name: String,
+    pub kind: String,
+}
+
+pub async fn create_shipping_profile(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    input: CreateShippingProfile,
+) -> Result<ShippingProfileView> {
+    let id = fulfilment::create_shipping_profile(tx, ctx, &input.name, &input.kind).await?;
+
+    sqlx::query_as::<_, ShippingProfileView>(
+        "select id, name, type, created_at from shipping_profile where scope = $1 and id = $2",
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("shipping profile"))
+}
+
+pub async fn list_shipping_option_types(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    query: Listing,
+) -> Result<Page<ShippingOptionTypeView>> {
+    let _: Permit = ctx.permit(Action::View, config())?;
+    let paging = query.paging()?;
+
+    let rows = sqlx::query_as::<_, ShippingOptionTypeView>(
+        "select id, label, code, description, created_at from shipping_option_type
+         where scope = $1 and ($2::timestamptz is null or (created_at, id) > ($2, $3))
+         order by created_at, id
+         limit $4",
+    )
+    .bind(ctx.scope.0)
+    .bind(paging.after.map(|c| c.at))
+    .bind(paging.after.map(|c| c.id))
+    .bind(paging.probe())
+    .fetch_all(&mut **tx)
+    .await?;
+
+    Ok(Page::build(rows, paging, |row| Cursor {
+        at: row.created_at,
+        id: row.id,
+    }))
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CreateShippingOptionType {
+    pub label: String,
+    pub code: String,
+    pub description: Option<String>,
+}
+
+pub async fn create_shipping_option_type(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    input: CreateShippingOptionType,
+) -> Result<ShippingOptionTypeView> {
+    let _: Permit = ctx.permit(Action::Write, config())?;
+
+    if input.code.trim().is_empty() {
+        return Err(Error::invalid("a shipping option type needs a code"));
+    }
+
+    Ok(sqlx::query_as::<_, ShippingOptionTypeView>(
+        "insert into shipping_option_type (id, scope, label, code, description)
+         values ($1, $2, $3, $4, $5)
+         returning id, label, code, description, created_at",
+    )
+    .bind(Uuid::now_v7())
+    .bind(ctx.scope.0)
+    .bind(input.label)
+    .bind(input.code.trim())
+    .bind(input.description)
+    .fetch_one(&mut **tx)
+    .await?)
+}
+
+// ---------------------------------------------------------------------------
+// The table
+// ---------------------------------------------------------------------------
+
+macro_rules! route {
+    ($method:ident, $path:literal, $action:ident, $domain:literal, $summary:literal) => {
+        Route {
+            surface: Surface::Admin,
+            method: Method::$method,
+            path: $path,
+            action: Action::$action,
+            domain: $domain,
+            summary: $summary,
+        }
+    };
+}
+
+pub(super) static ROUTES: &[Route] = &[
+    // Orders
+    route!(Get, "/admin/orders", View, "order", "List orders"),
+    route!(Post, "/admin/orders", Write, "order", "Create an order"),
+    route!(Get, "/admin/orders/{id}", View, "order", "Fetch one order"),
+    route!(
+        Post,
+        "/admin/orders/{id}/complete",
+        Write,
+        "order",
+        "Complete an order"
+    ),
+    route!(
+        Post,
+        "/admin/orders/{id}/cancel",
+        Write,
+        "order",
+        "Cancel an order"
+    ),
+    route!(
+        Post,
+        "/admin/orders/{id}/archive",
+        Write,
+        "order",
+        "Archive a completed order"
+    ),
+    route!(
+        Get,
+        "/admin/orders/{id}/line-items",
+        View,
+        "order",
+        "List an order's lines"
+    ),
+    route!(
+        Get,
+        "/admin/orders/{id}/items",
+        View,
+        "order",
+        "List an order's quantities at one version"
+    ),
+    route!(
+        Get,
+        "/admin/orders/{id}/shipping-methods",
+        View,
+        "order",
+        "List an order's shipping methods"
+    ),
+    route!(
+        Get,
+        "/admin/orders/{id}/summary",
+        View,
+        "order",
+        "Fetch the summary written at one version"
+    ),
+    route!(
+        Get,
+        "/admin/orders/{id}/totals",
+        View,
+        "order",
+        "Work out an order's totals"
+    ),
+    route!(
+        Get,
+        "/admin/orders/{id}/ledger",
+        View,
+        "order",
+        "What has been authorised, captured and refunded"
+    ),
+    route!(
+        Get,
+        "/admin/orders/{id}/transactions",
+        View,
+        "order",
+        "List an order's money movements"
+    ),
+    route!(
+        Post,
+        "/admin/orders/{id}/transactions",
+        Settle,
+        "order",
+        "Record money that moved outside tezgah"
+    ),
+    route!(
+        Get,
+        "/admin/orders/{id}/changes",
+        View,
+        "order",
+        "List the changes made to an order"
+    ),
+    route!(
+        Get,
+        "/admin/orders/{id}/returns",
+        View,
+        "order",
+        "List one order's returns"
+    ),
+    route!(
+        Get,
+        "/admin/orders/{id}/fulfillments",
+        View,
+        "fulfilment",
+        "List one order's parcels"
+    ),
+    route!(
+        Post,
+        "/admin/orders/{id}/fulfillments",
+        Write,
+        "fulfilment",
+        "Make up a parcel from part of an order"
+    ),
+    route!(
+        Get,
+        "/admin/orders/{id}/shipping-options",
+        View,
+        "fulfilment",
+        "Which shipping options reach an order's address"
+    ),
+    // Draft orders
+    route!(
+        Get,
+        "/admin/draft-orders",
+        View,
+        "order",
+        "List draft orders"
+    ),
+    route!(
+        Post,
+        "/admin/draft-orders",
+        Write,
+        "order",
+        "Draw up a draft order"
+    ),
+    route!(
+        Get,
+        "/admin/draft-orders/{id}",
+        View,
+        "order",
+        "Fetch one draft order"
+    ),
+    route!(
+        Delete,
+        "/admin/draft-orders/{id}",
+        Write,
+        "order",
+        "Cancel a draft order"
+    ),
+    route!(
+        Post,
+        "/admin/draft-orders/{id}/convert-to-order",
+        Write,
+        "order",
+        "Send a draft out to be paid"
+    ),
+    route!(
+        Get,
+        "/admin/draft-orders/{id}/edit",
+        View,
+        "order",
+        "The edit open on a draft"
+    ),
+    route!(
+        Post,
+        "/admin/draft-orders/{id}/edit",
+        Write,
+        "order",
+        "Open an edit on a draft"
+    ),
+    route!(
+        Delete,
+        "/admin/draft-orders/{id}/edit",
+        Write,
+        "order",
+        "Decline the edit open on a draft"
+    ),
+    route!(
+        Post,
+        "/admin/draft-orders/{id}/edit/items",
+        Write,
+        "order",
+        "Add, change or remove a line on a draft's edit"
+    ),
+    route!(
+        Delete,
+        "/admin/draft-orders/{id}/edit/items/{action_id}",
+        Write,
+        "order",
+        "Take an action off a draft's edit"
+    ),
+    route!(
+        Post,
+        "/admin/draft-orders/{id}/edit/shipping-methods",
+        Write,
+        "order",
+        "Add shipping to a draft's edit"
+    ),
+    route!(
+        Delete,
+        "/admin/draft-orders/{id}/edit/shipping-methods/{action_id}",
+        Write,
+        "order",
+        "Take shipping off a draft's edit"
+    ),
+    route!(
+        Post,
+        "/admin/draft-orders/{id}/edit/confirm",
+        Write,
+        "order",
+        "Carry a draft's edit into its next version"
+    ),
+    // Order edits
+    route!(
+        Get,
+        "/admin/orders/{id}/order-edits",
+        View,
+        "order",
+        "List the edits made to an order"
+    ),
+    route!(
+        Post,
+        "/admin/orders/{id}/order-edits",
+        Write,
+        "order",
+        "Open an edit on an order"
+    ),
+    route!(
+        Get,
+        "/admin/order-edits/{id}",
+        View,
+        "order",
+        "Fetch one edit and its actions"
+    ),
+    route!(
+        Delete,
+        "/admin/order-edits/{id}",
+        Write,
+        "order",
+        "Decline an edit"
+    ),
+    route!(
+        Post,
+        "/admin/order-edits/{id}/items",
+        Write,
+        "order",
+        "Add, change or remove a line on an edit"
+    ),
+    route!(
+        Delete,
+        "/admin/order-edits/{id}/items/{action_id}",
+        Write,
+        "order",
+        "Take an action off an edit"
+    ),
+    route!(
+        Post,
+        "/admin/order-edits/{id}/shipping-method",
+        Write,
+        "order",
+        "Add shipping to an edit"
+    ),
+    route!(
+        Delete,
+        "/admin/order-edits/{id}/shipping-method/{action_id}",
+        Write,
+        "order",
+        "Take shipping off an edit"
+    ),
+    route!(
+        Post,
+        "/admin/order-edits/{id}/confirm",
+        Write,
+        "order",
+        "Carry an edit into the order's next version"
+    ),
+    // Order changes
+    route!(
+        Get,
+        "/admin/order-changes/{id}",
+        View,
+        "order",
+        "Fetch one change and its actions"
+    ),
+    // Returns
+    route!(Get, "/admin/returns", View, "order", "List returns"),
+    route!(Post, "/admin/returns", Write, "order", "Request a return"),
+    route!(
+        Get,
+        "/admin/returns/{id}",
+        View,
+        "order",
+        "Fetch one return"
+    ),
+    route!(
+        Get,
+        "/admin/returns/{id}/items",
+        View,
+        "order",
+        "What is on a return"
+    ),
+    route!(
+        Post,
+        "/admin/returns/{id}/receive",
+        Write,
+        "order",
+        "The parcel arrived; put what is sellable back"
+    ),
+    route!(
+        Post,
+        "/admin/returns/{id}/dismiss-items",
+        Write,
+        "order",
+        "Received and not taken; no stock moves"
+    ),
+    route!(
+        Post,
+        "/admin/returns/{id}/cancel",
+        Write,
+        "order",
+        "Cancel a return that has not arrived"
+    ),
+    route!(
+        Post,
+        "/admin/returns/{id}/request-items",
+        Write,
+        "order",
+        "Add a line to the return's open change"
+    ),
+    route!(
+        Delete,
+        "/admin/returns/{id}/request-items/{action_id}",
+        Write,
+        "order",
+        "Take a line off the return's open change"
+    ),
+    route!(
+        Post,
+        "/admin/returns/{id}/receive-items",
+        Write,
+        "order",
+        "Record a line as received"
+    ),
+    route!(
+        Delete,
+        "/admin/returns/{id}/receive-items/{action_id}",
+        Write,
+        "order",
+        "Take a received line back off"
+    ),
+    route!(
+        Post,
+        "/admin/returns/{id}/shipping-method",
+        Write,
+        "order",
+        "Charge the return's carriage"
+    ),
+    route!(
+        Delete,
+        "/admin/returns/{id}/shipping-method/{action_id}",
+        Write,
+        "order",
+        "Take the return's carriage off"
+    ),
+    route!(
+        Post,
+        "/admin/returns/{id}/request",
+        Write,
+        "order",
+        "Settle the return's open change"
+    ),
+    // Exchanges
+    route!(Get, "/admin/exchanges", View, "order", "List exchanges"),
+    route!(
+        Post,
+        "/admin/exchanges",
+        Write,
+        "order",
+        "Request an exchange"
+    ),
+    route!(
+        Get,
+        "/admin/exchanges/{id}",
+        View,
+        "order",
+        "Fetch one exchange"
+    ),
+    route!(
+        Get,
+        "/admin/exchanges/{id}/items",
+        View,
+        "order",
+        "The exchange's open change and its actions"
+    ),
+    route!(
+        Post,
+        "/admin/exchanges/{id}/cancel",
+        Write,
+        "order",
+        "Cancel an exchange"
+    ),
+    route!(
+        Post,
+        "/admin/exchanges/{id}/inbound/items",
+        Write,
+        "order",
+        "Add something coming back"
+    ),
+    route!(
+        Delete,
+        "/admin/exchanges/{id}/inbound/items/{action_id}",
+        Write,
+        "order",
+        "Take something coming back off"
+    ),
+    route!(
+        Post,
+        "/admin/exchanges/{id}/inbound/shipping-method",
+        Write,
+        "order",
+        "Charge the carriage on what comes back"
+    ),
+    route!(
+        Post,
+        "/admin/exchanges/{id}/outbound/items",
+        Write,
+        "order",
+        "Add something going out instead"
+    ),
+    route!(
+        Delete,
+        "/admin/exchanges/{id}/outbound/items/{action_id}",
+        Write,
+        "order",
+        "Take something going out off"
+    ),
+    route!(
+        Post,
+        "/admin/exchanges/{id}/outbound/shipping-method",
+        Write,
+        "order",
+        "Charge the carriage on what goes out"
+    ),
+    route!(
+        Post,
+        "/admin/exchanges/{id}/request",
+        Write,
+        "order",
+        "Settle the exchange's open change"
+    ),
+    // Claims
+    route!(Get, "/admin/claims", View, "order", "List claims"),
+    route!(Post, "/admin/claims", Write, "order", "Raise a claim"),
+    route!(Get, "/admin/claims/{id}", View, "order", "Fetch one claim"),
+    route!(
+        Get,
+        "/admin/claims/{id}/items",
+        View,
+        "order",
+        "The claim's open change and its actions"
+    ),
+    route!(
+        Post,
+        "/admin/claims/{id}/cancel",
+        Write,
+        "order",
+        "Cancel a claim"
+    ),
+    route!(
+        Post,
+        "/admin/claims/{id}/claim-items",
+        Write,
+        "order",
+        "Write off what went wrong where it stands"
+    ),
+    route!(
+        Delete,
+        "/admin/claims/{id}/claim-items/{action_id}",
+        Write,
+        "order",
+        "Take a written-off line back off"
+    ),
+    route!(
+        Post,
+        "/admin/claims/{id}/inbound/items",
+        Write,
+        "order",
+        "Ask for the faulty goods back"
+    ),
+    route!(
+        Delete,
+        "/admin/claims/{id}/inbound/items/{action_id}",
+        Write,
+        "order",
+        "Stop asking for a line back"
+    ),
+    route!(
+        Post,
+        "/admin/claims/{id}/inbound/shipping-method",
+        Write,
+        "order",
+        "Charge the carriage on what comes back"
+    ),
+    route!(
+        Post,
+        "/admin/claims/{id}/outbound/items",
+        Write,
+        "order",
+        "Add a replacement"
+    ),
+    route!(
+        Delete,
+        "/admin/claims/{id}/outbound/items/{action_id}",
+        Write,
+        "order",
+        "Take a replacement off"
+    ),
+    route!(
+        Post,
+        "/admin/claims/{id}/outbound/shipping-method",
+        Write,
+        "order",
+        "Charge the carriage on a replacement"
+    ),
+    route!(
+        Post,
+        "/admin/claims/{id}/request",
+        Write,
+        "order",
+        "Settle the claim's open change"
+    ),
+    // Payments
+    route!(Get, "/admin/payments", View, "payment", "List payments"),
+    route!(
+        Get,
+        "/admin/payments/{id}",
+        View,
+        "payment",
+        "Fetch one payment"
+    ),
+    route!(
+        Post,
+        "/admin/payments/{id}/capture",
+        Settle,
+        "payment",
+        "Take money that is being held"
+    ),
+    route!(
+        Post,
+        "/admin/payments/{id}/refund",
+        Settle,
+        "payment",
+        "Give back money that was taken"
+    ),
+    route!(
+        Get,
+        "/admin/payments/payment-providers",
+        View,
+        "payment",
+        "Which payment providers this shop has on"
+    ),
+    // Payment collections
+    route!(
+        Post,
+        "/admin/payment-collections",
+        Write,
+        "payment",
+        "Open a payment collection"
+    ),
+    route!(
+        Get,
+        "/admin/payment-collections/{id}",
+        View,
+        "payment",
+        "Fetch one payment collection"
+    ),
+    route!(
+        Get,
+        "/admin/payment-collections/{id}/payment-sessions",
+        View,
+        "payment",
+        "List a collection's sessions"
+    ),
+    route!(
+        Post,
+        "/admin/payment-collections/{id}/payment-sessions",
+        Write,
+        "payment",
+        "Open a session with a provider"
+    ),
+    // Reasons
+    route!(
+        Get,
+        "/admin/refund-reasons",
+        View,
+        "payment",
+        "List refund reasons"
+    ),
+    route!(
+        Post,
+        "/admin/refund-reasons",
+        Write,
+        "payment",
+        "Add a refund reason"
+    ),
+    route!(
+        Get,
+        "/admin/return-reasons",
+        View,
+        "order",
+        "List return reasons"
+    ),
+    route!(
+        Post,
+        "/admin/return-reasons",
+        Write,
+        "order",
+        "Add a return reason"
+    ),
+    // Fulfilments
+    route!(
+        Get,
+        "/admin/orders/{order_id}/fulfillments/{id}",
+        View,
+        "fulfilment",
+        "Fetch one parcel, its contents and its labels"
+    ),
+    route!(
+        Post,
+        "/admin/orders/{order_id}/fulfillments/{id}/pack",
+        Write,
+        "fulfilment",
+        "Mark a parcel packed"
+    ),
+    route!(
+        Post,
+        "/admin/orders/{order_id}/fulfillments/{id}/shipment",
+        Write,
+        "fulfilment",
+        "Mark a parcel shipped, with its labels"
+    ),
+    route!(
+        Post,
+        "/admin/orders/{order_id}/fulfillments/{id}/mark-as-delivered",
+        Write,
+        "fulfilment",
+        "Mark a parcel delivered"
+    ),
+    route!(
+        Post,
+        "/admin/orders/{order_id}/fulfillments/{id}/cancel",
+        Settle,
+        "fulfilment",
+        "Cancel a parcel and put its stock back"
+    ),
+    // Fulfilment configuration
+    route!(
+        Get,
+        "/admin/fulfillment-sets",
+        View,
+        "fulfilment",
+        "List fulfilment sets"
+    ),
+    route!(
+        Post,
+        "/admin/fulfillment-sets",
+        Write,
+        "fulfilment",
+        "Add a fulfilment set"
+    ),
+    route!(
+        Delete,
+        "/admin/fulfillment-sets/{id}",
+        Delete,
+        "fulfilment",
+        "Remove a fulfilment set"
+    ),
+    route!(
+        Get,
+        "/admin/fulfillment-sets/{id}/service-zones",
+        View,
+        "fulfilment",
+        "List a set's service zones"
+    ),
+    route!(
+        Post,
+        "/admin/fulfillment-sets/{id}/service-zones",
+        Write,
+        "fulfilment",
+        "Add a service zone to a set"
+    ),
+    route!(
+        Get,
+        "/admin/fulfillment-providers",
+        View,
+        "fulfilment",
+        "Which carriers this shop has on"
+    ),
+    route!(
+        Post,
+        "/admin/fulfillment-providers",
+        Write,
+        "fulfilment",
+        "Register a carrier"
+    ),
+    route!(
+        Get,
+        "/admin/shipping-options",
+        View,
+        "fulfilment",
+        "List shipping options"
+    ),
+    route!(
+        Post,
+        "/admin/shipping-options",
+        Write,
+        "fulfilment",
+        "Add a shipping option"
+    ),
+    route!(
+        Post,
+        "/admin/shipping-options/{id}/rules",
+        Write,
+        "fulfilment",
+        "Add a rule to a shipping option"
+    ),
+    route!(
+        Get,
+        "/admin/shipping-profiles",
+        View,
+        "fulfilment",
+        "List shipping profiles"
+    ),
+    route!(
+        Post,
+        "/admin/shipping-profiles",
+        Write,
+        "fulfilment",
+        "Add a shipping profile"
+    ),
+    route!(
+        Get,
+        "/admin/shipping-option-types",
+        View,
+        "fulfilment",
+        "List shipping option types"
+    ),
+    route!(
+        Post,
+        "/admin/shipping-option-types",
+        Write,
+        "fulfilment",
+        "Add a shipping option type"
+    ),
+];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn moving_money_is_never_only_a_write() {
+        for route in ROUTES {
+            let moves_money = route.path.ends_with("/capture")
+                || route.path.ends_with("/refund")
+                || route.path.ends_with("/transactions") && route.method == Method::Post;
+
+            if moves_money {
+                assert_eq!(
+                    route.action,
+                    Action::Settle,
+                    "{} moves money but asks for {:?}",
+                    route.path,
+                    route.action
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn every_route_is_on_the_admin_surface() {
+        for route in ROUTES {
+            assert_eq!(route.surface, Surface::Admin, "{} is not admin", route.path);
+        }
+    }
+}

@@ -1279,6 +1279,41 @@ pub async fn option_matrix(
         .collect())
 }
 
+/// One option and everything it may be set to.
+pub async fn product_option(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OptionId,
+) -> Result<OptionWithValues> {
+    let _: Permit = ctx.permit(Action::View, Resource::Product { id: None })?;
+
+    let option = sqlx::query_as::<_, ProductOption>(
+        "select id, product_id, title, rank, created_at
+         from product_option
+         where scope = $1 and id = $2 and deleted_at is null",
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("option"))?;
+
+    let values = sqlx::query_as::<_, ProductOptionValue>(
+        "select id, option_id, value, rank, created_at
+         from product_option_value
+         where scope = $1 and option_id = $2 and deleted_at is null
+         order by rank, value, id
+         limit $3",
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .bind(MAX_ATTACHED)
+    .fetch_all(&mut **tx)
+    .await?;
+
+    Ok(OptionWithValues { option, values })
+}
+
 /// What one variant is: one value per option, in option order.
 pub async fn variant_options(
     tx: &mut Tx<'_>,
@@ -1750,6 +1785,25 @@ pub async fn types(tx: &mut Tx<'_>, ctx: &Ctx<'_>, paging: Paging) -> Result<Pag
     }))
 }
 
+pub async fn product_type(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ProductTypeId,
+) -> Result<ProductType> {
+    let _: Permit = ctx.permit(Action::View, Resource::Product { id: None })?;
+
+    sqlx::query_as::<_, ProductType>(
+        "select id, value, created_at
+         from product_type
+         where scope = $1 and id = $2 and deleted_at is null",
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("type"))
+}
+
 pub async fn delete_type(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ProductTypeId) -> Result<()> {
     soft_delete(tx, ctx, "product_type", "type", id.as_uuid()).await
 }
@@ -1808,6 +1862,21 @@ pub async fn tags(tx: &mut Tx<'_>, ctx: &Ctx<'_>, paging: Paging) -> Result<Page
         at: row.created_at,
         id: row.id.as_uuid(),
     }))
+}
+
+pub async fn product_tag(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ProductTagId) -> Result<ProductTag> {
+    let _: Permit = ctx.permit(Action::View, Resource::Product { id: None })?;
+
+    sqlx::query_as::<_, ProductTag>(
+        "select id, value, created_at
+         from product_tag
+         where scope = $1 and id = $2 and deleted_at is null",
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("tag"))
 }
 
 pub async fn delete_tag(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ProductTagId) -> Result<()> {

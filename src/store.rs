@@ -22,6 +22,9 @@ use crate::money::Currency;
 use crate::page::{Cursor, Page, Paging};
 use crate::ports::{Action, AuditEntry, Ctx, Permit, Resource, Tx};
 
+/// Most languages one shop is served in.
+const MAX_LOCALES: i32 = 100;
+
 /// A currency the shop trades in, and how many decimal places it rounds to.
 ///
 /// The exponent lives here and nowhere else: it is what every allocation and
@@ -134,6 +137,37 @@ pub async fn create_region(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewRegion) -> Re
     .await?;
 
     Ok(region)
+}
+
+pub async fn region(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: RegionId) -> Result<Region> {
+    let _: Permit = ctx.permit(Action::View, Resource::Pricing)?;
+
+    sqlx::query_as::<_, Region>(
+        "select id, name, currency_code, is_tax_inclusive, created_at
+         from region
+         where scope = $1 and id = $2",
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("region"))
+}
+
+/// The languages this shop writes in. Configuration rather than anybody's data,
+/// so it is capped rather than paged.
+pub async fn locales(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<Vec<String>> {
+    let _: Permit = ctx.permit(Action::View, Resource::Pricing)?;
+
+    let found: Option<Vec<String>> = sqlx::query_scalar(
+        "select supported_locales[1:$2::int] from store where scope = $1 limit 1",
+    )
+    .bind(ctx.scope.0)
+    .bind(MAX_LOCALES)
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    Ok(found.unwrap_or_default())
 }
 
 pub async fn regions(tx: &mut Tx<'_>, ctx: &Ctx<'_>, paging: Paging) -> Result<Page<Region>> {

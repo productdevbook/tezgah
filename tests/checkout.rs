@@ -405,7 +405,12 @@ async fn a_cart_becomes_an_order() -> Result<()> {
     let placed = checkout
         .place(&shop.pool, &shop.ctx(), here.cart_id)
         .await?;
-    assert_eq!(placed.run.state, State::Done);
+    assert_eq!(
+        placed.run.state,
+        State::Done,
+        "the checkout unwound instead of finishing: {:?}",
+        placed.run.failure
+    );
     assert!(!placed.requires_more);
 
     let order_id = placed.order_id.expect("an order");

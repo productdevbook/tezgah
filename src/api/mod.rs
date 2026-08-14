@@ -18,6 +18,9 @@
 //! at all.
 
 pub mod admin;
+pub mod admin_catalogue;
+pub mod admin_rest;
+pub mod openapi;
 pub mod store;
 
 use crate::ports::Action;
@@ -73,9 +76,16 @@ pub struct Route {
 /// The router, the OpenAPI document and the permission matrix test all read
 /// this, so a route that exists in one and not the others cannot happen.
 pub fn routes() -> Vec<Route> {
-    let mut all = Vec::with_capacity(store::ROUTES.len() + admin::ROUTES.len());
+    let mut all = Vec::with_capacity(
+        store::ROUTES.len()
+            + admin::ROUTES.len()
+            + admin_catalogue::ROUTES.len()
+            + admin_rest::ROUTES.len(),
+    );
     all.extend_from_slice(store::ROUTES);
     all.extend_from_slice(admin::ROUTES);
+    all.extend_from_slice(admin_catalogue::ROUTES);
+    all.extend_from_slice(admin_rest::ROUTES);
     all
 }
 

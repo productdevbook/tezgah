@@ -4,17 +4,58 @@
 //! as a shopper. Two rules follow from that and are not negotiable per-route:
 //! a draft product is invisible, and a customer only ever reaches their own
 //! cart, their own orders and their own addresses.
+//!
+//! # Invisible, not forbidden
+//!
+//! Anything unpublished answers `not_found` rather than `denied`. Saying "you
+//! may not see that" tells a stranger the shop has something they were not
+//! shown, which is itself worth knowing to whoever is asking.
+//!
+//! # Ownership is asked, not assumed
+//!
+//! Nothing here compares a customer id to a row's own. It loads the row, then
+//! hands the host's authorizer a [`Resource::Cart`] or [`Resource::Order`]
+//! carrying whose it is. Whether that is allowed is the host's decision;
+//! putting the right thing in front of it is this module's.
 
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
+use uuid::Uuid;
 
-use crate::catalogue;
-use crate::error::Result;
-use crate::id::{ProductId, VariantId};
-use crate::page::{Page, Paging};
-use crate::ports::{Ctx, Tx};
+use crate::error::{Error, Result};
+use crate::id::{
+    AddressId, CartId, CategoryId, CollectionId, CustomerId, LineItemId, OptionId, OrderId,
+    PaymentCollectionId, PaymentSessionId, ProductId, ProductTagId, ProductTypeId, RegionId,
+    SalesChannelId, ShippingOptionId, VariantId,
+};
+use crate::money::{Currency, Money};
+use crate::page::{Cursor, Page, Paging};
+use crate::ports::{Action, Actor, Ctx, Resource, Tx};
+use crate::{cart, catalogue, checkout, customer, fulfilment, order, payment, pricing, store, tax};
 
 use super::{Method, Route, Surface};
-use crate::ports::Action;
+
+// ---------------------------------------------------------------------------
+// Views
+// ---------------------------------------------------------------------------
+
+/// An amount as it leaves the building: the number and the code it is in,
+/// never a bare decimal somebody has to guess the currency of.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MoneyView {
+    pub amount: Decimal,
+    pub currency_code: String,
+}
+
+impl From<Money> for MoneyView {
+    fn from(money: Money) -> Self {
+        MoneyView {
+            amount: money.amount,
+            currency_code: money.currency.as_str().to_owned(),
+        }
+    }
+}
 
 /// A product as a storefront sees it.
 ///
@@ -28,6 +69,9 @@ pub struct ProductView {
     pub title: String,
     pub subtitle: Option<String>,
     pub description: Option<String>,
+    pub thumbnail_url: Option<String>,
+    pub collection_id: Option<CollectionId>,
+    pub type_id: Option<ProductTypeId>,
 }
 
 impl From<catalogue::Product> for ProductView {
@@ -38,6 +82,9 @@ impl From<catalogue::Product> for ProductView {
             title: row.title,
             subtitle: row.subtitle,
             description: row.description,
+            thumbnail_url: row.thumbnail_url,
+            collection_id: row.product_collection_id,
+            type_id: row.product_type_id,
         }
     }
 }
@@ -45,26 +92,669 @@ impl From<catalogue::Product> for ProductView {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VariantView {
     pub id: VariantId,
+    pub product_id: ProductId,
     pub title: String,
     pub sku: Option<String>,
+    pub barcode: Option<String>,
+    pub allows_backorder: bool,
 }
+
+impl From<catalogue::ProductVariant> for VariantView {
+    fn from(row: catalogue::ProductVariant) -> Self {
+        VariantView {
+            id: row.id,
+            product_id: row.product_id,
+            title: row.title,
+            sku: row.sku,
+            barcode: row.barcode,
+            allows_backorder: row.allows_backorder,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OptionValueView {
+    pub id: crate::id::OptionValueId,
+    pub value: String,
+    pub rank: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OptionView {
+    pub id: OptionId,
+    pub product_id: ProductId,
+    pub title: String,
+    pub rank: i32,
+    pub values: Vec<OptionValueView>,
+}
+
+impl From<catalogue::OptionWithValues> for OptionView {
+    fn from(row: catalogue::OptionWithValues) -> Self {
+        OptionView {
+            id: row.option.id,
+            product_id: row.option.product_id,
+            title: row.option.title,
+            rank: row.option.rank,
+            values: row
+                .values
+                .into_iter()
+                .map(|value| OptionValueView {
+                    id: value.id,
+                    value: value.value,
+                    rank: value.rank,
+                })
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TagView {
+    pub id: ProductTagId,
+    pub value: String,
+}
+
+impl From<catalogue::ProductTag> for TagView {
+    fn from(row: catalogue::ProductTag) -> Self {
+        TagView {
+            id: row.id,
+            value: row.value,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TypeView {
+    pub id: ProductTypeId,
+    pub value: String,
+}
+
+impl From<catalogue::ProductType> for TypeView {
+    fn from(row: catalogue::ProductType) -> Self {
+        TypeView {
+            id: row.id,
+            value: row.value,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CategoryView {
+    pub id: CategoryId,
+    pub parent_id: Option<CategoryId>,
+    pub name: String,
+    pub handle: String,
+    pub description: String,
+    pub rank: i32,
+}
+
+impl From<catalogue::ProductCategory> for CategoryView {
+    fn from(row: catalogue::ProductCategory) -> Self {
+        CategoryView {
+            id: row.id,
+            parent_id: row.parent_id,
+            name: row.name,
+            handle: row.handle,
+            description: row.description,
+            rank: row.rank,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CollectionView {
+    pub id: CollectionId,
+    pub handle: String,
+    pub title: String,
+}
+
+impl From<catalogue::ProductCollection> for CollectionView {
+    fn from(row: catalogue::ProductCollection) -> Self {
+        CollectionView {
+            id: row.id,
+            handle: row.handle,
+            title: row.title,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegionView {
+    pub id: RegionId,
+    pub name: String,
+    pub currency_code: String,
+    pub is_tax_inclusive: bool,
+}
+
+impl From<store::Region> for RegionView {
+    fn from(row: store::Region) -> Self {
+        RegionView {
+            id: row.id,
+            name: row.name,
+            currency_code: row.currency_code,
+            is_tax_inclusive: row.is_tax_inclusive,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CurrencyView {
+    pub code: String,
+    pub symbol: String,
+    pub name: String,
+    pub exponent: i16,
+}
+
+impl From<store::CurrencyRow> for CurrencyView {
+    fn from(row: store::CurrencyRow) -> Self {
+        CurrencyView {
+            code: row.code,
+            symbol: row.symbol,
+            name: row.name,
+            exponent: row.exponent,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CartView {
+    pub id: CartId,
+    pub customer_id: Option<CustomerId>,
+    pub email: Option<String>,
+    pub region_id: Option<RegionId>,
+    pub currency_code: String,
+    pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+impl From<cart::Cart> for CartView {
+    fn from(row: cart::Cart) -> Self {
+        CartView {
+            id: row.id,
+            customer_id: row.customer_id,
+            email: row.email,
+            region_id: row.region_id,
+            currency_code: row.currency_code,
+            completed_at: row.completed_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LineItemView {
+    pub id: LineItemId,
+    pub variant_id: Option<VariantId>,
+    pub product_title: String,
+    pub product_handle: Option<String>,
+    pub variant_title: Option<String>,
+    pub thumbnail: Option<String>,
+    pub quantity: i32,
+    pub unit_price: MoneyView,
+    pub requires_shipping: bool,
+}
+
+impl LineItemView {
+    fn of(row: cart::LineItem) -> Result<Self> {
+        let currency = Currency::parse(&row.currency_code)?;
+        Ok(LineItemView {
+            id: row.id,
+            variant_id: row.variant_id,
+            product_title: row.product_title,
+            product_handle: row.product_handle,
+            variant_title: row.variant_title,
+            thumbnail: row.thumbnail,
+            quantity: row.quantity,
+            unit_price: MoneyView::from(Money {
+                amount: row.unit_price,
+                currency,
+            }),
+            requires_shipping: row.requires_shipping,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShippingMethodView {
+    pub id: crate::id::ShippingMethodId,
+    pub shipping_option_id: Option<ShippingOptionId>,
+    pub name: String,
+    pub amount: MoneyView,
+}
+
+impl ShippingMethodView {
+    fn of(row: cart::ShippingMethod) -> Result<Self> {
+        let currency = Currency::parse(&row.currency_code)?;
+        Ok(ShippingMethodView {
+            id: row.id,
+            shipping_option_id: row.shipping_option_id,
+            name: row.name,
+            amount: MoneyView::from(Money {
+                amount: row.amount,
+                currency,
+            }),
+        })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TotalsView {
+    pub subtotal: MoneyView,
+    pub discount: MoneyView,
+    pub shipping: MoneyView,
+    pub tax: MoneyView,
+    pub total: MoneyView,
+}
+
+impl From<cart::CartTotals> for TotalsView {
+    fn from(row: cart::CartTotals) -> Self {
+        TotalsView {
+            subtotal: row.subtotal.into(),
+            discount: row.discount.into(),
+            shipping: row.shipping.into(),
+            tax: row.tax.into(),
+            total: row.total.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaxLineView {
+    pub line_id: Uuid,
+    pub code: String,
+    pub name: String,
+    pub rate: Decimal,
+    pub amount: MoneyView,
+    pub is_tax_inclusive: bool,
+}
+
+impl From<tax::TaxLine> for TaxLineView {
+    fn from(row: tax::TaxLine) -> Self {
+        TaxLineView {
+            line_id: row.line_id,
+            code: row.code,
+            name: row.name,
+            rate: row.rate,
+            amount: row.amount.into(),
+            is_tax_inclusive: row.is_tax_inclusive,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrderView {
+    pub id: OrderId,
+    pub display_id: Option<i64>,
+    pub email: Option<String>,
+    pub currency_code: String,
+    pub status: String,
+    pub fulfillment_status: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl From<order::Order> for OrderView {
+    fn from(row: order::Order) -> Self {
+        OrderView {
+            id: row.id,
+            display_id: row.display_id,
+            email: row.email,
+            currency_code: row.currency_code,
+            status: row.status,
+            fulfillment_status: row.fulfillment_status,
+            created_at: row.created_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomerView {
+    pub id: CustomerId,
+    pub email: Option<String>,
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
+    pub phone: Option<String>,
+    pub company_name: Option<String>,
+}
+
+impl From<customer::Customer> for CustomerView {
+    fn from(row: customer::Customer) -> Self {
+        CustomerView {
+            id: row.id,
+            email: row.email,
+            first_name: row.first_name,
+            last_name: row.last_name,
+            phone: row.phone,
+            company_name: row.company_name,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AddressView {
+    pub id: AddressId,
+    pub label: Option<String>,
+    pub is_default_shipping: bool,
+    pub is_default_billing: bool,
+    pub company: Option<String>,
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
+    pub address_1: Option<String>,
+    pub address_2: Option<String>,
+    pub city: Option<String>,
+    pub province: Option<String>,
+    pub postal_code: Option<String>,
+    pub country_code: Option<String>,
+    pub phone: Option<String>,
+}
+
+impl From<customer::CustomerAddress> for AddressView {
+    fn from(row: customer::CustomerAddress) -> Self {
+        AddressView {
+            id: row.id,
+            label: row.label,
+            is_default_shipping: row.is_default_shipping,
+            is_default_billing: row.is_default_billing,
+            company: row.company,
+            first_name: row.first_name,
+            last_name: row.last_name,
+            address_1: row.address_1,
+            address_2: row.address_2,
+            city: row.city,
+            province: row.province,
+            postal_code: row.postal_code,
+            country_code: row.country_code,
+            phone: row.phone,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShippingOptionView {
+    pub id: ShippingOptionId,
+    pub name: String,
+    pub price_type: String,
+    /// Absent when the option is priced on request rather than from a list.
+    pub amount: Option<MoneyView>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CalculatedPriceView {
+    pub calculated: MoneyView,
+    pub original: MoneyView,
+}
+
+impl From<pricing::CalculatedPrice> for CalculatedPriceView {
+    fn from(row: pricing::CalculatedPrice) -> Self {
+        CalculatedPriceView {
+            calculated: row.calculated.into(),
+            original: row.original.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReturnReasonView {
+    pub id: Uuid,
+    pub value: String,
+    pub label: String,
+    pub description: Option<String>,
+}
+
+impl From<order::ReturnReason> for ReturnReasonView {
+    fn from(row: order::ReturnReason) -> Self {
+        ReturnReasonView {
+            id: row.id,
+            value: row.value,
+            label: row.label,
+            description: row.description,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReturnView {
+    pub id: crate::id::ReturnId,
+    pub order_id: OrderId,
+    pub status: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl From<order::Return> for ReturnView {
+    fn from(row: order::Return) -> Self {
+        ReturnView {
+            id: row.id,
+            order_id: row.order_id,
+            status: row.status,
+            created_at: row.created_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PaymentCollectionView {
+    pub id: PaymentCollectionId,
+    pub amount: MoneyView,
+    pub status: String,
+}
+
+impl PaymentCollectionView {
+    fn of(row: payment::PaymentCollection) -> Result<Self> {
+        let currency = Currency::parse(&row.currency_code)?;
+        Ok(PaymentCollectionView {
+            id: row.id,
+            amount: MoneyView::from(Money {
+                amount: row.amount,
+                currency,
+            }),
+            status: row.status,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PaymentSessionView {
+    pub id: PaymentSessionId,
+    pub payment_collection_id: PaymentCollectionId,
+    pub amount: MoneyView,
+    pub status: String,
+    /// Whatever the provider needs the shopper's browser to have. It is the
+    /// provider's own shape and tezgah does not read it.
+    pub data: serde_json::Value,
+}
+
+impl PaymentSessionView {
+    fn of(row: payment::PaymentSession) -> Result<Self> {
+        let currency = Currency::parse(&row.currency_code)?;
+        Ok(PaymentSessionView {
+            id: row.id,
+            payment_collection_id: row.payment_collection_id,
+            amount: MoneyView::from(Money {
+                amount: row.amount,
+                currency,
+            }),
+            status: row.status,
+            data: row.data,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PaymentProviderView {
+    pub code: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompletedView {
+    /// Absent when the provider sent the shopper somewhere else first.
+    pub order_id: Option<OrderId>,
+    pub requires_more: bool,
+}
+
+// ---------------------------------------------------------------------------
+// Shared input pieces
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AddressInput {
+    pub company: Option<String>,
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
+    pub address_1: Option<String>,
+    pub address_2: Option<String>,
+    pub city: Option<String>,
+    pub province: Option<String>,
+    pub postal_code: Option<String>,
+    pub country_code: Option<String>,
+    pub phone: Option<String>,
+}
+
+impl From<AddressInput> for cart::CartAddress {
+    fn from(input: AddressInput) -> Self {
+        cart::CartAddress {
+            company: input.company,
+            first_name: input.first_name,
+            last_name: input.last_name,
+            address_1: input.address_1,
+            address_2: input.address_2,
+            city: input.city,
+            province: input.province,
+            postal_code: input.postal_code,
+            country_code: input.country_code,
+            phone: input.phone,
+        }
+    }
+}
+
+/// Where something is going, as a storefront asks about it before there is a
+/// cart address to read.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DeliveryInput {
+    pub country_code: String,
+    pub province_code: Option<String>,
+    pub city: Option<String>,
+    pub postal_code: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+fn paging(after: Option<&str>, limit: Option<u32>) -> Result<Paging> {
+    let limit = limit.unwrap_or(crate::page::DEFAULT_LIMIT);
+    match after {
+        Some(text) => Ok(Paging::after(Cursor::decode(text)?, limit)),
+        None => Ok(Paging::first(limit)),
+    }
+}
+
+/// Who is asking, when the route is one only a signed-in shopper has.
+fn signed_in(ctx: &Ctx<'_>) -> Result<CustomerId> {
+    match ctx.actor {
+        Actor::Customer { id } => Ok(CustomerId::from_uuid(id)),
+        _ => Err(Error::denied()),
+    }
+}
+
+/// Loads a cart and asks the host whether this actor may have it, handing over
+/// whose cart it is rather than deciding that here.
+async fn own_cart(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: CartId,
+    action: Action,
+) -> Result<cart::Cart> {
+    let found = cart::get(tx, ctx, id).await?;
+    ctx.permit(
+        action,
+        Resource::Cart {
+            id: id.as_uuid(),
+            customer: found.customer_id.map(CustomerId::as_uuid),
+        },
+    )?;
+    Ok(found)
+}
+
+async fn own_order(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderId,
+    action: Action,
+) -> Result<order::Order> {
+    let found = order::get(tx, ctx, id).await?;
+    ctx.permit(
+        action,
+        Resource::Order {
+            id: id.as_uuid(),
+            customer: found.customer_id.map(CustomerId::as_uuid),
+        },
+    )?;
+    Ok(found)
+}
+
+/// A product that is not published is not here, as far as a storefront is
+/// concerned.
+fn shown(row: catalogue::Product) -> Result<catalogue::Product> {
+    if row.status != catalogue::ProductStatus::Published {
+        return Err(Error::not_found("product"));
+    }
+    Ok(row)
+}
+
+async fn published(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ProductId) -> Result<catalogue::Product> {
+    shown(catalogue::product(tx, ctx, id).await?)
+}
+
+/// What a line item is worth in total, for tax and for shipping rules.
+fn line_total(quantity: i32, unit_price: Decimal, currency: Currency) -> Money {
+    Money {
+        amount: unit_price * Decimal::from(quantity),
+        currency,
+    }
+}
+
+fn cart_currency(row: &cart::Cart) -> Result<Currency> {
+    Currency::parse(&row.currency_code)
+}
+
+/// What a shipping option costs here, when it is priced from a list at all.
+async fn option_price(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    option: ShippingOptionId,
+    at: &pricing::PriceContext,
+) -> Result<Option<Money>> {
+    let Some(set) = pricing::price_set_for_shipping_option(tx, ctx, option).await? else {
+        return Ok(None);
+    };
+    Ok(pricing::resolve(tx, ctx, set, at)
+        .await?
+        .map(|price| price.calculated))
+}
+
+fn price_context(row: &cart::Cart, currency: Currency) -> pricing::PriceContext {
+    pricing::PriceContext {
+        currency,
+        quantity: 1,
+        region_id: row.region_id,
+        customer_group_id: None,
+        sales_channel_id: row.sales_channel_id.map(SalesChannelId::as_uuid),
+        extra: Vec::new(),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Catalogue
+// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ListProducts {
     pub after: Option<String>,
     pub limit: Option<u32>,
-    pub collection_id: Option<ProductId>,
-}
-
-impl ListProducts {
-    fn paging(&self) -> Result<Paging> {
-        let limit = self.limit.unwrap_or(crate::page::DEFAULT_LIMIT);
-        match &self.after {
-            Some(text) => Ok(Paging::after(crate::page::Cursor::decode(text)?, limit)),
-            None => Ok(Paging::first(limit)),
-        }
-    }
+    pub collection_id: Option<CollectionId>,
+    pub category_id: Option<CategoryId>,
+    pub type_id: Option<ProductTypeId>,
+    pub tag_id: Option<ProductTagId>,
 }
 
 /// Published products only, and never anything else, whatever is asked for.
@@ -75,10 +765,19 @@ pub async fn list_products(
 ) -> Result<Page<ProductView>> {
     let filter = catalogue::ProductFilter {
         status: Some(catalogue::ProductStatus::Published),
-        ..Default::default()
+        collection: query.collection_id,
+        category: query.category_id,
+        product_type: query.type_id,
+        tag: query.tag_id,
     };
 
-    let page = catalogue::products(tx, ctx, filter, query.paging()?).await?;
+    let page = catalogue::products(
+        tx,
+        ctx,
+        filter,
+        paging(query.after.as_deref(), query.limit)?,
+    )
+    .await?;
 
     Ok(Page {
         items: page.items.into_iter().map(ProductView::from).collect(),
@@ -88,15 +787,966 @@ pub async fn list_products(
 
 pub async fn get_product(tx: &mut Tx<'_>, ctx: &Ctx<'_>, handle: &str) -> Result<ProductView> {
     let row = catalogue::product_by_handle(tx, ctx, handle).await?;
+    Ok(ProductView::from(shown(row)?))
+}
 
-    if row.status != catalogue::ProductStatus::Published {
-        // Not "forbidden": telling a stranger a draft exists is telling them
-        // something about the shop they were not shown.
-        return Err(crate::Error::not_found("product"));
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ListVariants {
+    pub product_id: ProductId,
+    pub after: Option<String>,
+    pub limit: Option<u32>,
+}
+
+pub async fn list_variants(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    query: ListVariants,
+) -> Result<Page<VariantView>> {
+    published(tx, ctx, query.product_id).await?;
+
+    let page = catalogue::variants(
+        tx,
+        ctx,
+        query.product_id,
+        paging(query.after.as_deref(), query.limit)?,
+    )
+    .await?;
+
+    Ok(Page {
+        items: page.items.into_iter().map(VariantView::from).collect(),
+        next: page.next,
+    })
+}
+
+pub async fn get_variant(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: VariantId) -> Result<VariantView> {
+    let row = catalogue::variant(tx, ctx, id).await?;
+    published(tx, ctx, row.product_id).await?;
+    Ok(VariantView::from(row))
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ListOptions {
+    pub product_id: ProductId,
+}
+
+pub async fn list_product_options(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    query: ListOptions,
+) -> Result<Vec<OptionView>> {
+    published(tx, ctx, query.product_id).await?;
+
+    let found = catalogue::option_matrix(tx, ctx, query.product_id).await?;
+    Ok(found.into_iter().map(OptionView::from).collect())
+}
+
+pub async fn get_product_option(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OptionId,
+) -> Result<OptionView> {
+    let found = catalogue::product_option(tx, ctx, id).await?;
+    published(tx, ctx, found.option.product_id).await?;
+    Ok(OptionView::from(found))
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ListPage {
+    pub after: Option<String>,
+    pub limit: Option<u32>,
+}
+
+pub async fn list_product_tags(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    query: ListPage,
+) -> Result<Page<TagView>> {
+    let page = catalogue::tags(tx, ctx, paging(query.after.as_deref(), query.limit)?).await?;
+    Ok(Page {
+        items: page.items.into_iter().map(TagView::from).collect(),
+        next: page.next,
+    })
+}
+
+pub async fn get_product_tag(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ProductTagId) -> Result<TagView> {
+    Ok(TagView::from(catalogue::product_tag(tx, ctx, id).await?))
+}
+
+pub async fn list_product_types(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    query: ListPage,
+) -> Result<Page<TypeView>> {
+    let page = catalogue::types(tx, ctx, paging(query.after.as_deref(), query.limit)?).await?;
+    Ok(Page {
+        items: page.items.into_iter().map(TypeView::from).collect(),
+        next: page.next,
+    })
+}
+
+pub async fn get_product_type(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ProductTypeId,
+) -> Result<TypeView> {
+    Ok(TypeView::from(catalogue::product_type(tx, ctx, id).await?))
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ListCategories {
+    pub parent_id: Option<CategoryId>,
+    pub after: Option<String>,
+    pub limit: Option<u32>,
+}
+
+/// A category a shopper may browse: active, and not one of the ones the back
+/// office keeps for itself.
+fn browsable(row: &catalogue::ProductCategory) -> bool {
+    row.is_active && !row.is_internal
+}
+
+pub async fn list_product_categories(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    query: ListCategories,
+) -> Result<Page<CategoryView>> {
+    let page = catalogue::categories(
+        tx,
+        ctx,
+        query.parent_id,
+        paging(query.after.as_deref(), query.limit)?,
+    )
+    .await?;
+
+    // Filtered after the page is cut, so a page may come back short. The cursor
+    // still points at the last row read, so nothing is skipped or repeated.
+    Ok(Page {
+        items: page
+            .items
+            .into_iter()
+            .filter(browsable)
+            .map(CategoryView::from)
+            .collect(),
+        next: page.next,
+    })
+}
+
+pub async fn get_product_category(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: CategoryId,
+) -> Result<CategoryView> {
+    let row = catalogue::category(tx, ctx, id).await?;
+    if !browsable(&row) {
+        return Err(Error::not_found("category"));
+    }
+    Ok(CategoryView::from(row))
+}
+
+pub async fn list_collections(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    query: ListPage,
+) -> Result<Page<CollectionView>> {
+    let page =
+        catalogue::collections(tx, ctx, paging(query.after.as_deref(), query.limit)?).await?;
+    Ok(Page {
+        items: page.items.into_iter().map(CollectionView::from).collect(),
+        next: page.next,
+    })
+}
+
+pub async fn get_collection(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: CollectionId,
+) -> Result<CollectionView> {
+    Ok(CollectionView::from(
+        catalogue::collection(tx, ctx, id).await?,
+    ))
+}
+
+// ---------------------------------------------------------------------------
+// The shop itself
+// ---------------------------------------------------------------------------
+
+pub async fn list_regions(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    query: ListPage,
+) -> Result<Page<RegionView>> {
+    let page = store::regions(tx, ctx, paging(query.after.as_deref(), query.limit)?).await?;
+    Ok(Page {
+        items: page.items.into_iter().map(RegionView::from).collect(),
+        next: page.next,
+    })
+}
+
+pub async fn get_region(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: RegionId) -> Result<RegionView> {
+    Ok(RegionView::from(store::region(tx, ctx, id).await?))
+}
+
+pub async fn list_currencies(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<Vec<CurrencyView>> {
+    let rows = store::currencies(tx, ctx).await?;
+    Ok(rows.into_iter().map(CurrencyView::from).collect())
+}
+
+pub async fn get_currency(tx: &mut Tx<'_>, ctx: &Ctx<'_>, code: &str) -> Result<CurrencyView> {
+    let wanted = Currency::parse(code)?;
+    Ok(CurrencyView::from(store::currency(tx, ctx, wanted).await?))
+}
+
+pub async fn list_locales(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<Vec<String>> {
+    store::locales(tx, ctx).await
+}
+
+// ---------------------------------------------------------------------------
+// Carts
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CreateCart {
+    pub currency_code: String,
+    pub region_id: Option<RegionId>,
+    pub sales_channel_id: Option<SalesChannelId>,
+    pub email: Option<String>,
+}
+
+/// A cart belongs to whoever is signed in, and to nobody when nobody is.
+pub async fn create_cart(tx: &mut Tx<'_>, ctx: &Ctx<'_>, input: CreateCart) -> Result<CartView> {
+    let mine = match ctx.actor {
+        Actor::Customer { id } => Some(CustomerId::from_uuid(id)),
+        _ => None,
+    };
+
+    let made = cart::create(
+        tx,
+        ctx,
+        cart::NewCart {
+            customer_id: mine,
+            email: input.email,
+            currency_code: Currency::parse(&input.currency_code)?,
+            region_id: input.region_id,
+            sales_channel_id: input.sales_channel_id,
+            expires_at: None,
+            metadata: None,
+        },
+    )
+    .await?;
+
+    Ok(CartView::from(made))
+}
+
+pub async fn get_cart(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: CartId) -> Result<CartView> {
+    Ok(CartView::from(own_cart(tx, ctx, id, Action::View).await?))
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateCart {
+    pub email: Option<String>,
+    pub shipping_address: Option<AddressInput>,
+    pub billing_address: Option<AddressInput>,
+}
+
+pub async fn update_cart(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: CartId,
+    input: UpdateCart,
+) -> Result<CartView> {
+    own_cart(tx, ctx, id, Action::Write).await?;
+
+    if let Some(email) = input.email.as_deref() {
+        cart::set_email(tx, ctx, id, email).await?;
     }
 
-    Ok(ProductView::from(row))
+    let changed = if input.shipping_address.is_some() || input.billing_address.is_some() {
+        cart::set_addresses(
+            tx,
+            ctx,
+            id,
+            input.shipping_address.map(cart::CartAddress::from),
+            input.billing_address.map(cart::CartAddress::from),
+        )
+        .await?
+    } else {
+        cart::get(tx, ctx, id).await?
+    };
+
+    Ok(CartView::from(changed))
 }
+
+/// Hands a guest's cart to the customer who has just signed in.
+pub async fn set_cart_customer(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: CartId) -> Result<CartView> {
+    let me = signed_in(ctx)?;
+    own_cart(tx, ctx, id, Action::Write).await?;
+
+    Ok(CartView::from(
+        cart::transfer_to_customer(tx, ctx, id, me).await?,
+    ))
+}
+
+pub async fn list_line_items(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: CartId,
+) -> Result<Vec<LineItemView>> {
+    own_cart(tx, ctx, id, Action::View).await?;
+    cart::lines(tx, ctx, id)
+        .await?
+        .into_iter()
+        .map(LineItemView::of)
+        .collect()
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AddLineItem {
+    pub variant_id: VariantId,
+    pub quantity: i32,
+}
+
+/// The price is the shop's, resolved here. A storefront that could send one
+/// would be a storefront that could set it.
+pub async fn add_line_item(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: CartId,
+    input: AddLineItem,
+) -> Result<LineItemView> {
+    let holding = own_cart(tx, ctx, id, Action::Write).await?;
+    let currency = cart_currency(&holding)?;
+
+    let variant = catalogue::variant(tx, ctx, input.variant_id).await?;
+    published(tx, ctx, variant.product_id).await?;
+
+    let at = pricing::PriceContext {
+        quantity: input.quantity,
+        ..price_context(&holding, currency)
+    };
+    let set = pricing::price_set_for_variant(tx, ctx, input.variant_id)
+        .await?
+        .ok_or_else(|| Error::invalid("that variant is not for sale here"))?;
+    let price = pricing::resolve(tx, ctx, set, &at)
+        .await?
+        .ok_or_else(|| Error::invalid("that variant has no price in this currency"))?;
+
+    let item = cart::add_line(
+        tx,
+        ctx,
+        id,
+        cart::AddLine {
+            variant_id: input.variant_id,
+            quantity: input.quantity,
+            unit_price: price.calculated,
+            is_tax_inclusive: pricing::is_tax_inclusive(tx, ctx, &at).await?,
+        },
+    )
+    .await?;
+
+    LineItemView::of(item)
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateLineItem {
+    pub quantity: i32,
+}
+
+pub async fn update_line_item(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: CartId,
+    line_id: LineItemId,
+    input: UpdateLineItem,
+) -> Result<Option<LineItemView>> {
+    own_cart(tx, ctx, id, Action::Write).await?;
+
+    match cart::update_line(tx, ctx, id, line_id, input.quantity).await? {
+        Some(item) => LineItemView::of(item).map(Some),
+        None => Ok(None),
+    }
+}
+
+pub async fn remove_line_item(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: CartId,
+    line_id: LineItemId,
+) -> Result<()> {
+    own_cart(tx, ctx, id, Action::Write).await?;
+    cart::remove_line(tx, ctx, id, line_id).await
+}
+
+/// Applies whatever this cart now qualifies for and hands back what it costs.
+pub async fn apply_promotions(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: CartId) -> Result<TotalsView> {
+    own_cart(tx, ctx, id, Action::Write).await?;
+    crate::promotion::apply(tx, ctx, id).await?;
+    Ok(TotalsView::from(cart::totals(tx, ctx, id).await?))
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChooseShippingMethod {
+    pub shipping_option_id: ShippingOptionId,
+}
+
+pub async fn set_shipping_method(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: CartId,
+    input: ChooseShippingMethod,
+) -> Result<ShippingMethodView> {
+    let holding = own_cart(tx, ctx, id, Action::Write).await?;
+    let currency = cart_currency(&holding)?;
+    let at = price_context(&holding, currency);
+
+    let option = fulfilment::shipping_option(tx, ctx, input.shipping_option_id).await?;
+    let amount = option_price(tx, ctx, input.shipping_option_id, &at)
+        .await?
+        .ok_or_else(|| Error::invalid("that shipping option has no price here"))?;
+
+    let chosen = cart::set_shipping_method(
+        tx,
+        ctx,
+        id,
+        cart::NewShippingMethod {
+            shipping_option_id: Some(option.id),
+            name: option.name,
+            description: None,
+            amount,
+            is_tax_inclusive: pricing::is_tax_inclusive(tx, ctx, &at).await?,
+        },
+    )
+    .await?;
+
+    ShippingMethodView::of(chosen)
+}
+
+/// What tax this cart would carry when it is delivered there.
+///
+/// A quote rather than a write: nothing is owed until the cart is placed, and
+/// a shopper trying three countries should not leave three sets of tax lines.
+pub async fn quote_taxes(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: CartId,
+    input: DeliveryInput,
+) -> Result<Vec<TaxLineView>> {
+    let holding = own_cart(tx, ctx, id, Action::View).await?;
+    let currency = cart_currency(&holding)?;
+
+    let lines: Vec<tax::TaxableLine> = cart::lines(tx, ctx, id)
+        .await?
+        .into_iter()
+        .map(|line| tax::TaxableLine {
+            id: line.id.as_uuid(),
+            amount: line_total(line.quantity, line.unit_price, currency),
+            targets: line
+                .product_id
+                .map(|product| {
+                    vec![tax::TaxTarget {
+                        reference: tax::TaxReference::Product,
+                        id: product,
+                    }]
+                })
+                .unwrap_or_default(),
+        })
+        .collect();
+
+    let address = tax::TaxableAddress {
+        country_code: input.country_code,
+        province_code: input.province_code,
+    };
+
+    let inclusive = pricing::is_tax_inclusive(tx, ctx, &price_context(&holding, currency)).await?;
+    let found = tax::calculate(tx, ctx, &lines, &address, inclusive).await?;
+
+    Ok(found.into_iter().map(TaxLineView::from).collect())
+}
+
+/// Turns the cart into an order.
+///
+/// Takes the pool as well as the transaction because placing a cart is a
+/// workflow: it opens a transaction per step so a step that finished stays
+/// finished when a later one does not. The transaction here is what the
+/// ownership question is asked in, before any of that starts.
+pub async fn complete_cart(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: CartId,
+    how: &checkout::Checkout,
+    pool: &PgPool,
+) -> Result<CompletedView> {
+    own_cart(tx, ctx, id, Action::Settle).await?;
+
+    let placed = how.place(pool, ctx, id).await?;
+
+    Ok(CompletedView {
+        order_id: placed.order_id,
+        requires_more: placed.requires_more,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Shipping options
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ListShippingOptions {
+    pub cart_id: CartId,
+    pub country_code: String,
+    pub province_code: Option<String>,
+    pub city: Option<String>,
+    pub postal_code: Option<String>,
+}
+
+pub async fn list_shipping_options(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    query: ListShippingOptions,
+) -> Result<Vec<ShippingOptionView>> {
+    let holding = own_cart(tx, ctx, query.cart_id, Action::View).await?;
+    let currency = cart_currency(&holding)?;
+    let at = price_context(&holding, currency);
+
+    let items: Vec<fulfilment::Shippable> = cart::lines(tx, ctx, query.cart_id)
+        .await?
+        .into_iter()
+        .map(|line| fulfilment::Shippable {
+            id: line.id.as_uuid(),
+            quantity: line.quantity,
+            amount: line_total(line.quantity, line.unit_price, currency),
+            shipping_profile_id: None,
+            requires_shipping: line.requires_shipping,
+        })
+        .collect();
+
+    let address = fulfilment::DeliveryAddress {
+        country_code: query.country_code,
+        province_code: query.province_code,
+        city: query.city,
+        postal_code: query.postal_code,
+    };
+
+    let found =
+        fulfilment::options_for(tx, ctx, &address, holding.sales_channel_id, &items).await?;
+
+    let mut out = Vec::with_capacity(found.len());
+    for option in found {
+        let amount = option_price(tx, ctx, option.id, &at).await?;
+        out.push(ShippingOptionView {
+            id: option.id,
+            name: option.name,
+            price_type: option.price_type,
+            amount: amount.map(MoneyView::from),
+        });
+    }
+
+    Ok(out)
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CalculateShipping {
+    pub cart_id: CartId,
+}
+
+pub async fn calculate_shipping_option(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ShippingOptionId,
+    input: CalculateShipping,
+) -> Result<MoneyView> {
+    let holding = own_cart(tx, ctx, input.cart_id, Action::View).await?;
+    let currency = cart_currency(&holding)?;
+
+    option_price(tx, ctx, id, &price_context(&holding, currency))
+        .await?
+        .map(MoneyView::from)
+        .ok_or_else(|| Error::not_found("shipping option price"))
+}
+
+// ---------------------------------------------------------------------------
+// Customers
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CreateCustomer {
+    pub email: String,
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
+    pub phone: Option<String>,
+    pub company_name: Option<String>,
+}
+
+pub async fn create_customer(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    input: CreateCustomer,
+) -> Result<CustomerView> {
+    let made = customer::create(
+        tx,
+        ctx,
+        customer::NewCustomer {
+            email: Some(input.email),
+            first_name: input.first_name,
+            last_name: input.last_name,
+            phone: input.phone,
+            company_name: input.company_name,
+            has_account: true,
+            metadata: None,
+        },
+    )
+    .await?;
+
+    Ok(CustomerView::from(made))
+}
+
+pub async fn me(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<CustomerView> {
+    let who = signed_in(ctx)?;
+    Ok(CustomerView::from(customer::get(tx, ctx, who).await?))
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateMe {
+    pub email: Option<String>,
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
+    pub phone: Option<String>,
+    pub company_name: Option<String>,
+}
+
+pub async fn update_me(tx: &mut Tx<'_>, ctx: &Ctx<'_>, input: UpdateMe) -> Result<CustomerView> {
+    let who = signed_in(ctx)?;
+
+    let changed = customer::update(
+        tx,
+        ctx,
+        who,
+        customer::CustomerPatch {
+            email: input.email,
+            first_name: input.first_name,
+            last_name: input.last_name,
+            phone: input.phone,
+            company_name: input.company_name,
+            metadata: None,
+        },
+    )
+    .await?;
+
+    Ok(CustomerView::from(changed))
+}
+
+pub async fn list_my_addresses(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    query: ListPage,
+) -> Result<Page<AddressView>> {
+    let who = signed_in(ctx)?;
+
+    let page =
+        customer::addresses(tx, ctx, who, paging(query.after.as_deref(), query.limit)?).await?;
+
+    Ok(Page {
+        items: page.items.into_iter().map(AddressView::from).collect(),
+        next: page.next,
+    })
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WriteAddress {
+    pub label: Option<String>,
+    #[serde(default)]
+    pub is_default_shipping: bool,
+    #[serde(default)]
+    pub is_default_billing: bool,
+    pub company: Option<String>,
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
+    pub address_1: Option<String>,
+    pub address_2: Option<String>,
+    pub city: Option<String>,
+    pub province: Option<String>,
+    pub postal_code: Option<String>,
+    pub country_code: Option<String>,
+    pub phone: Option<String>,
+}
+
+impl From<WriteAddress> for customer::NewAddress {
+    fn from(input: WriteAddress) -> Self {
+        customer::NewAddress {
+            label: input.label,
+            is_default_shipping: input.is_default_shipping,
+            is_default_billing: input.is_default_billing,
+            company: input.company,
+            first_name: input.first_name,
+            last_name: input.last_name,
+            address_1: input.address_1,
+            address_2: input.address_2,
+            city: input.city,
+            province: input.province,
+            postal_code: input.postal_code,
+            country_code: input.country_code,
+            phone: input.phone,
+            metadata: None,
+        }
+    }
+}
+
+pub async fn add_my_address(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    input: WriteAddress,
+) -> Result<AddressView> {
+    let who = signed_in(ctx)?;
+    let made = customer::add_address(tx, ctx, who, input.into()).await?;
+    Ok(AddressView::from(made))
+}
+
+/// The address is loaded before it is written, so the host is asked about the
+/// customer it actually belongs to rather than the one who asked.
+async fn my_address(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: AddressId,
+    action: Action,
+) -> Result<customer::CustomerAddress> {
+    let found = customer::address(tx, ctx, id).await?;
+    ctx.permit(
+        action,
+        Resource::Customer {
+            id: Some(found.customer_id.as_uuid()),
+        },
+    )?;
+    if found.customer_id != signed_in(ctx)? {
+        return Err(Error::not_found("address"));
+    }
+    Ok(found)
+}
+
+pub async fn update_my_address(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: AddressId,
+    input: WriteAddress,
+) -> Result<AddressView> {
+    my_address(tx, ctx, id, Action::Write).await?;
+    let changed = customer::update_address(tx, ctx, id, input.into()).await?;
+    Ok(AddressView::from(changed))
+}
+
+pub async fn delete_my_address(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: AddressId) -> Result<()> {
+    my_address(tx, ctx, id, Action::Delete).await?;
+    customer::delete_address(tx, ctx, id).await
+}
+
+// ---------------------------------------------------------------------------
+// Orders
+// ---------------------------------------------------------------------------
+
+pub async fn list_my_orders(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    query: ListPage,
+) -> Result<Page<OrderView>> {
+    let who = signed_in(ctx)?;
+
+    // No id yet: the question is about the orders of one customer rather than
+    // about one order, and the actor's own id is what answers it.
+    ctx.permit(
+        Action::View,
+        Resource::Order {
+            id: Uuid::nil(),
+            customer: Some(who.as_uuid()),
+        },
+    )?;
+
+    let page = order::list(
+        tx,
+        ctx,
+        Some(who),
+        Some(false),
+        paging(query.after.as_deref(), query.limit)?,
+    )
+    .await?;
+
+    Ok(Page {
+        items: page.items.into_iter().map(OrderView::from).collect(),
+        next: page.next,
+    })
+}
+
+pub async fn get_my_order(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: OrderId) -> Result<OrderView> {
+    let found = own_order(tx, ctx, id, Action::View).await?;
+    if found.is_draft {
+        // A draft is the back office's working copy, not a shopper's order.
+        return Err(Error::not_found("order"));
+    }
+    Ok(OrderView::from(found))
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReturnLineInput {
+    pub order_line_item_id: LineItemId,
+    pub quantity: i32,
+    pub return_reason_id: Option<Uuid>,
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RequestReturn {
+    pub order_id: OrderId,
+    pub lines: Vec<ReturnLineInput>,
+}
+
+/// Where the goods come back to is the shop's decision, not the shopper's.
+pub async fn request_return(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    input: RequestReturn,
+) -> Result<ReturnView> {
+    own_order(tx, ctx, input.order_id, Action::Write).await?;
+
+    let lines = input
+        .lines
+        .into_iter()
+        .map(|line| order::ReturnLine {
+            order_line_item_id: line.order_line_item_id,
+            quantity: line.quantity,
+            return_reason_id: line.return_reason_id,
+            note: line.note,
+        })
+        .collect();
+
+    let made = order::request_return(tx, ctx, input.order_id, None, lines).await?;
+    Ok(ReturnView::from(made))
+}
+
+pub async fn list_return_reasons(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    query: ListPage,
+) -> Result<Page<ReturnReasonView>> {
+    let page = order::return_reasons(tx, ctx, paging(query.after.as_deref(), query.limit)?).await?;
+    Ok(Page {
+        items: page.items.into_iter().map(ReturnReasonView::from).collect(),
+        next: page.next,
+    })
+}
+
+pub async fn get_return_reason(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: Uuid,
+) -> Result<ReturnReasonView> {
+    Ok(ReturnReasonView::from(
+        order::return_reason(tx, ctx, id).await?,
+    ))
+}
+
+// ---------------------------------------------------------------------------
+// Payment
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StartPayment {
+    pub cart_id: CartId,
+}
+
+/// The amount is the cart's, never the caller's: a storefront that could name
+/// the sum is a storefront that could name a smaller one.
+pub async fn create_payment_collection(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    input: StartPayment,
+) -> Result<PaymentCollectionView> {
+    own_cart(tx, ctx, input.cart_id, Action::Write).await?;
+
+    let owed = cart::totals(tx, ctx, input.cart_id).await?;
+    let made = payment::create_collection(
+        tx,
+        ctx,
+        payment::NewCollection {
+            amount: owed.total,
+            metadata: None,
+        },
+    )
+    .await?;
+
+    PaymentCollectionView::of(made)
+}
+
+/// The cart comes with the request because it is what ownership is asked
+/// about: a payment collection on its own says nothing about whose it is.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StartPaymentSession {
+    pub cart_id: CartId,
+    pub provider_code: String,
+    pub context: Option<serde_json::Value>,
+}
+
+pub async fn create_payment_session(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    collection_id: PaymentCollectionId,
+    input: StartPaymentSession,
+) -> Result<PaymentSessionView> {
+    own_cart(tx, ctx, input.cart_id, Action::Write).await?;
+
+    let collection = payment::collection(tx, ctx, collection_id).await?;
+    let currency = Currency::parse(&collection.currency_code)?;
+
+    let made = payment::create_session(
+        tx,
+        ctx,
+        payment::NewSession {
+            collection_id,
+            provider_code: input.provider_code,
+            amount: Money {
+                amount: collection.amount,
+                currency,
+            },
+            context: input.context,
+        },
+    )
+    .await?;
+
+    PaymentSessionView::of(made)
+}
+
+/// Only what a shopper may actually pay with.
+pub async fn list_payment_providers(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+) -> Result<Vec<PaymentProviderView>> {
+    let found = payment::providers(tx, ctx).await?;
+    Ok(found
+        .into_iter()
+        .filter(|provider| provider.is_enabled)
+        .map(|provider| PaymentProviderView {
+            code: provider.code,
+        })
+        .collect())
+}
+
+// ---------------------------------------------------------------------------
+// The table
+// ---------------------------------------------------------------------------
 
 pub(super) static ROUTES: &[Route] = &[
     Route {
@@ -114,5 +1764,373 @@ pub(super) static ROUTES: &[Route] = &[
         action: Action::View,
         domain: "catalogue",
         summary: "Fetch one published product by its handle",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Get,
+        path: "/store/product-variants",
+        action: Action::View,
+        domain: "catalogue",
+        summary: "List the variants of one published product",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Get,
+        path: "/store/product-variants/{id}",
+        action: Action::View,
+        domain: "catalogue",
+        summary: "Fetch one variant of a published product",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Get,
+        path: "/store/product-options",
+        action: Action::View,
+        domain: "catalogue",
+        summary: "List the options of one published product",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Get,
+        path: "/store/product-options/{id}",
+        action: Action::View,
+        domain: "catalogue",
+        summary: "Fetch one option and its values",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Get,
+        path: "/store/product-tags",
+        action: Action::View,
+        domain: "catalogue",
+        summary: "List product tags",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Get,
+        path: "/store/product-tags/{id}",
+        action: Action::View,
+        domain: "catalogue",
+        summary: "Fetch one product tag",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Get,
+        path: "/store/product-types",
+        action: Action::View,
+        domain: "catalogue",
+        summary: "List product types",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Get,
+        path: "/store/product-types/{id}",
+        action: Action::View,
+        domain: "catalogue",
+        summary: "Fetch one product type",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Get,
+        path: "/store/product-categories",
+        action: Action::View,
+        domain: "catalogue",
+        summary: "List the categories a shopper may browse",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Get,
+        path: "/store/product-categories/{id}",
+        action: Action::View,
+        domain: "catalogue",
+        summary: "Fetch one browsable category",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Get,
+        path: "/store/collections",
+        action: Action::View,
+        domain: "catalogue",
+        summary: "List product collections",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Get,
+        path: "/store/collections/{id}",
+        action: Action::View,
+        domain: "catalogue",
+        summary: "Fetch one product collection",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Get,
+        path: "/store/regions",
+        action: Action::View,
+        domain: "store",
+        summary: "List the regions the shop sells into",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Get,
+        path: "/store/regions/{id}",
+        action: Action::View,
+        domain: "store",
+        summary: "Fetch one region",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Get,
+        path: "/store/currencies",
+        action: Action::View,
+        domain: "store",
+        summary: "List the currencies the shop trades in",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Get,
+        path: "/store/currencies/{code}",
+        action: Action::View,
+        domain: "store",
+        summary: "Fetch one currency and its exponent",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Get,
+        path: "/store/locales",
+        action: Action::View,
+        domain: "store",
+        summary: "List the languages the shop is served in",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Post,
+        path: "/store/carts",
+        action: Action::Write,
+        domain: "cart",
+        summary: "Start a cart",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Get,
+        path: "/store/carts/{id}",
+        action: Action::View,
+        domain: "cart",
+        summary: "Fetch one's own cart",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Post,
+        path: "/store/carts/{id}",
+        action: Action::Write,
+        domain: "cart",
+        summary: "Set a cart's e-mail address or addresses",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Post,
+        path: "/store/carts/{id}/complete",
+        action: Action::Settle,
+        domain: "cart",
+        summary: "Place the cart as an order",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Post,
+        path: "/store/carts/{id}/customer",
+        action: Action::Write,
+        domain: "cart",
+        summary: "Hand a guest cart to the customer who signed in",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Get,
+        path: "/store/carts/{id}/line-items",
+        action: Action::View,
+        domain: "cart",
+        summary: "List what is in the cart",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Post,
+        path: "/store/carts/{id}/line-items",
+        action: Action::Write,
+        domain: "cart",
+        summary: "Put a variant in the cart at the shop's price",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Post,
+        path: "/store/carts/{id}/line-items/{line_id}",
+        action: Action::Write,
+        domain: "cart",
+        summary: "Change how many of a line are wanted",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Delete,
+        path: "/store/carts/{id}/line-items/{line_id}",
+        action: Action::Delete,
+        domain: "cart",
+        summary: "Take a line out of the cart",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Post,
+        path: "/store/carts/{id}/promotions",
+        action: Action::Write,
+        domain: "promotion",
+        summary: "Apply what the cart now qualifies for",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Post,
+        path: "/store/carts/{id}/shipping-methods",
+        action: Action::Write,
+        domain: "cart",
+        summary: "Choose how the cart is delivered",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Post,
+        path: "/store/carts/{id}/taxes",
+        action: Action::Write,
+        domain: "tax",
+        summary: "Quote the tax the cart would carry to an address",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Get,
+        path: "/store/shipping-options",
+        action: Action::View,
+        domain: "fulfilment",
+        summary: "List what can deliver this cart to an address",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Post,
+        path: "/store/shipping-options/{id}/calculate",
+        action: Action::Write,
+        domain: "fulfilment",
+        summary: "Price one shipping option for a cart",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Post,
+        path: "/store/customers",
+        action: Action::Write,
+        domain: "customer",
+        summary: "Register",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Get,
+        path: "/store/customers/me",
+        action: Action::View,
+        domain: "customer",
+        summary: "Fetch one's own account",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Post,
+        path: "/store/customers/me",
+        action: Action::Write,
+        domain: "customer",
+        summary: "Change one's own account",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Get,
+        path: "/store/customers/me/addresses",
+        action: Action::View,
+        domain: "customer",
+        summary: "List one's own addresses",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Post,
+        path: "/store/customers/me/addresses",
+        action: Action::Write,
+        domain: "customer",
+        summary: "Add an address of one's own",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Post,
+        path: "/store/customers/me/addresses/{address_id}",
+        action: Action::Write,
+        domain: "customer",
+        summary: "Change an address of one's own",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Delete,
+        path: "/store/customers/me/addresses/{address_id}",
+        action: Action::Delete,
+        domain: "customer",
+        summary: "Remove an address of one's own",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Get,
+        path: "/store/orders",
+        action: Action::View,
+        domain: "order",
+        summary: "List one's own orders",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Get,
+        path: "/store/orders/{id}",
+        action: Action::View,
+        domain: "order",
+        summary: "Fetch one of one's own orders",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Post,
+        path: "/store/returns",
+        action: Action::Write,
+        domain: "order",
+        summary: "Ask to send something back",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Get,
+        path: "/store/return-reasons",
+        action: Action::View,
+        domain: "order",
+        summary: "List the reasons a return may be given",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Get,
+        path: "/store/return-reasons/{id}",
+        action: Action::View,
+        domain: "order",
+        summary: "Fetch one return reason",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Post,
+        path: "/store/payment-collections",
+        action: Action::Write,
+        domain: "payment",
+        summary: "Open a payment collection for what a cart owes",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Post,
+        path: "/store/payment-collections/{id}/payment-sessions",
+        action: Action::Write,
+        domain: "payment",
+        summary: "Start a session with one payment provider",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Get,
+        path: "/store/payment-providers",
+        action: Action::View,
+        domain: "payment",
+        summary: "List the providers a shopper may pay with",
     },
 ];

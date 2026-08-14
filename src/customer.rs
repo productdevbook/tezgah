@@ -419,6 +419,25 @@ pub async fn add_address(
     Ok(address)
 }
 
+/// One address, carrying whose it is so a caller can check before it writes.
+pub async fn address(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    address_id: AddressId,
+) -> Result<CustomerAddress> {
+    let _: Permit = ctx.permit(Action::View, Resource::Customer { id: None })?;
+
+    sqlx::query_as::<_, CustomerAddress>(&format!(
+        "select {ADDRESS_COLUMNS} from customer_address
+         where scope = $1 and id = $2 and deleted_at is null"
+    ))
+    .bind(ctx.scope.0)
+    .bind(address_id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("address"))
+}
+
 pub async fn addresses(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,

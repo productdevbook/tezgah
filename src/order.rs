@@ -1993,6 +1993,73 @@ pub async fn dismiss_return(
     read_return(tx, ctx, return_id).await
 }
 
+/// Why somebody is sending something back. Shop configuration rather than
+/// anybody's data, which is why a shopper may read it.
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct ReturnReason {
+    pub id: Uuid,
+    pub parent_return_reason_id: Option<Uuid>,
+    pub value: String,
+    pub label: String,
+    pub description: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+const RETURN_REASON_COLUMNS: &str =
+    "id, parent_return_reason_id, value, label, description, created_at";
+
+pub async fn return_reasons(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    paging: Paging,
+) -> Result<Page<ReturnReason>> {
+    let _: Permit = ctx.permit(
+        Action::View,
+        Resource::Order {
+            id: Uuid::nil(),
+            customer: None,
+        },
+    )?;
+
+    let rows = sqlx::query_as::<_, ReturnReason>(&format!(
+        "select {RETURN_REASON_COLUMNS} from return_reason
+         where scope = $1
+           and ($2::timestamptz is null or (created_at, id) > ($2, $3))
+         order by created_at, id
+         limit $4"
+    ))
+    .bind(ctx.scope.0)
+    .bind(paging.after.map(|c| c.at))
+    .bind(paging.after.map(|c| c.id))
+    .bind(paging.probe())
+    .fetch_all(&mut **tx)
+    .await?;
+
+    Ok(Page::build(rows, paging, |row| Cursor {
+        at: row.created_at,
+        id: row.id,
+    }))
+}
+
+pub async fn return_reason(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: Uuid) -> Result<ReturnReason> {
+    let _: Permit = ctx.permit(
+        Action::View,
+        Resource::Order {
+            id: Uuid::nil(),
+            customer: None,
+        },
+    )?;
+
+    sqlx::query_as::<_, ReturnReason>(&format!(
+        "select {RETURN_REASON_COLUMNS} from return_reason where scope = $1 and id = $2"
+    ))
+    .bind(ctx.scope.0)
+    .bind(id)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("return reason"))
+}
+
 pub async fn returns(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,

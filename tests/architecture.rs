@@ -155,6 +155,24 @@ fn a_domain_reaches_only_for_the_kernel_and_what_is_declared_shared() {
     // Written down rather than inferred: each is a domain that genuinely builds
     // on another, and a new one should be a decision somebody makes on purpose.
     let allowed: BTreeMap<&str, &[&str]> = BTreeMap::from([
+        // The surfaces are where the domains are finally allowed to meet: an
+        // API is by definition the outside edge, and nothing may depend on it.
+        (
+            "api",
+            &[
+                "cart",
+                "catalogue",
+                "checkout",
+                "customer",
+                "fulfilment",
+                "inventory",
+                "order",
+                "payment",
+                "pricing",
+                "promotion",
+                "tax",
+            ][..],
+        ),
         ("order", &["cart", "inventory", "payment", "promotion"][..]),
         (
             "checkout",

@@ -72,16 +72,41 @@ pub enum Action {
 /// ownership without loading the row first.
 #[derive(Debug, Clone)]
 pub enum Resource {
-    Product { id: Option<Uuid> },
-    Cart { id: Uuid, customer: Option<Uuid> },
-    Order { id: Uuid, customer: Option<Uuid> },
-    Payment { id: Uuid, order: Uuid },
-    Fulfillment { id: Uuid, order: Uuid },
-    Inventory { id: Option<Uuid> },
-    Customer { id: Option<Uuid> },
-    Promotion { id: Option<Uuid> },
+    Product {
+        id: Option<Uuid>,
+    },
+    Cart {
+        id: Uuid,
+        customer: Option<Uuid>,
+    },
+    Order {
+        id: Uuid,
+        customer: Option<Uuid>,
+    },
+    Payment {
+        id: Uuid,
+        order: Uuid,
+    },
+    Fulfillment {
+        id: Uuid,
+        order: Uuid,
+    },
+    Inventory {
+        id: Option<Uuid>,
+    },
+    Customer {
+        id: Option<Uuid>,
+    },
+    Promotion {
+        id: Option<Uuid>,
+    },
     Pricing,
     Tax,
+    /// A run of the workflow runner, which carries whatever the workflow it
+    /// ran was given and returned.
+    Workflow {
+        id: Option<Uuid>,
+    },
 }
 
 /// Proof that a question was asked and answered yes.

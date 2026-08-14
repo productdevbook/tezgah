@@ -709,6 +709,26 @@ pub async fn create_shipping_option_rule(
 /// The address decides the zone, the zone decides the service zone, and the
 /// options on it are then put to their own rules. An option carrying a shipping
 /// profile is only offered when something being shipped shares it.
+pub async fn shipping_option(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ShippingOptionId,
+) -> Result<ShippingOption> {
+    let _: Permit = ctx.permit(Action::View, Resource::Pricing)?;
+
+    sqlx::query_as::<_, ShippingOption>(
+        "select id, name, price_type, service_zone_id, shipping_profile_id, provider_id,
+                data, created_at
+         from shipping_option
+         where scope = $1 and id = $2",
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("shipping option"))
+}
+
 pub async fn options_for(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
