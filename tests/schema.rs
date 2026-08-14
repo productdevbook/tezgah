@@ -233,6 +233,187 @@ async fn a_migration_backfills_a_database_that_already_has_rows() {
     shop.close().await;
 }
 
+/// 0046 replaces `metadata->>'subscription'` with a real column. A database
+/// that ran the old convention has orders carrying only the JSON key, and the
+/// backfill has to move a well-formed, same-scope one across while leaving a
+/// malformed key, or one naming another shop's contract, with no link rather
+/// than one the new foreign key would refuse.
+#[tokio::test]
+async fn a_migration_backfills_the_subscription_link_from_metadata() {
+    let shop = Shop::open().await;
+
+    async fn a_plan(tx: &mut sqlx::PgConnection, scope: uuid::Uuid) -> uuid::Uuid {
+        let group = uuid::Uuid::now_v7();
+        let plan = uuid::Uuid::now_v7();
+        sqlx::query("insert into selling_plan_group (id, scope, name) values ($1, $2, 'a group')")
+            .bind(group)
+            .bind(scope)
+            .execute(&mut *tx)
+            .await
+            .expect("a plan group");
+        sqlx::query(
+            "insert into selling_plan
+                 (id, scope, selling_plan_group_id, name, billing_interval_unit,
+                  billing_interval_count)
+             values ($1, $2, $3, 'monthly', 'month', 1)",
+        )
+        .bind(plan)
+        .bind(scope)
+        .bind(group)
+        .execute(&mut *tx)
+        .await
+        .expect("a plan");
+        plan
+    }
+
+    async fn a_subscription(
+        tx: &mut sqlx::PgConnection,
+        scope: uuid::Uuid,
+        plan: uuid::Uuid,
+    ) -> uuid::Uuid {
+        let customer = uuid::Uuid::now_v7();
+        let subscription = uuid::Uuid::now_v7();
+        sqlx::query("insert into customer (id, scope) values ($1, $2)")
+            .bind(customer)
+            .bind(scope)
+            .execute(&mut *tx)
+            .await
+            .expect("a customer");
+        sqlx::query(
+            "insert into subscription
+                 (id, scope, customer_id, selling_plan_id, currency_code, next_billing_at,
+                  current_period_start, current_period_end)
+             values ($1, $2, $3, $4, 'TRY', now(), now(), now())",
+        )
+        .bind(subscription)
+        .bind(scope)
+        .bind(customer)
+        .bind(plan)
+        .execute(&mut *tx)
+        .await
+        .expect("a contract");
+        subscription
+    }
+
+    let mut mine = shop.begin().await;
+    let plan_here = a_plan(&mut mine, shop.here.0).await;
+    let contract_here = a_subscription(&mut mine, shop.here.0, plan_here).await;
+
+    let real = uuid::Uuid::now_v7();
+    let malformed = uuid::Uuid::now_v7();
+    let none = uuid::Uuid::now_v7();
+
+    sqlx::query(
+        r#"insert into "order" (id, scope, currency_code, metadata) values ($1, $2, 'TRY', $3)"#,
+    )
+    .bind(real)
+    .bind(shop.here.0)
+    .bind(serde_json::json!({ "subscription": contract_here }))
+    .execute(&mut *mine)
+    .await
+    .expect("an order under the old convention");
+
+    sqlx::query(
+        r#"insert into "order" (id, scope, currency_code, metadata) values ($1, $2, 'TRY', $3)"#,
+    )
+    .bind(malformed)
+    .bind(shop.here.0)
+    .bind(serde_json::json!({ "subscription": "not-a-uuid" }))
+    .execute(&mut *mine)
+    .await
+    .expect("an order with a malformed key");
+
+    sqlx::query(r#"insert into "order" (id, scope, currency_code) values ($1, $2, 'TRY')"#)
+        .bind(none)
+        .bind(shop.here.0)
+        .execute(&mut *mine)
+        .await
+        .expect("an order with no subscription at all");
+    mine.commit().await.expect("to commit");
+
+    let mut theirs = shop.begin_as(shop.elsewhere).await;
+    let plan_elsewhere = a_plan(&mut theirs, shop.elsewhere.0).await;
+    let contract_elsewhere = a_subscription(&mut theirs, shop.elsewhere.0, plan_elsewhere).await;
+    theirs.commit().await.expect("to commit");
+
+    let elsewhere = uuid::Uuid::now_v7();
+    let mut mine = shop.begin().await;
+    sqlx::query(
+        r#"insert into "order" (id, scope, currency_code, metadata) values ($1, $2, 'TRY', $3)"#,
+    )
+    .bind(elsewhere)
+    .bind(shop.here.0)
+    .bind(serde_json::json!({ "subscription": contract_elsewhere }))
+    .execute(&mut *mine)
+    .await
+    .expect("an order naming another shop's contract");
+    mine.commit().await.expect("to commit");
+
+    // These four rows are exactly what a database that ran the old
+    // convention looks like: `subscription_id` was never set on them, since
+    // nothing but 0046's own backfill writes it. Running 0046 again is what
+    // asks whether that backfill does the right thing with each of them.
+    let owner = shop.migrator().await;
+    owner
+        .execute(include_str!(
+            "../migrations/0046_order_subscription_link.sql"
+        ))
+        .await
+        .expect("0046 to apply to a database that already has orders in it");
+
+    let mut mine = shop.begin().await;
+    let linked: (
+        Option<uuid::Uuid>,
+        Option<uuid::Uuid>,
+        Option<uuid::Uuid>,
+        Option<uuid::Uuid>,
+    ) = (
+        sqlx::query_scalar("select subscription_id from \"order\" where scope = $1 and id = $2")
+            .bind(shop.here.0)
+            .bind(real)
+            .fetch_one(&mut *mine)
+            .await
+            .expect("the real row"),
+        sqlx::query_scalar("select subscription_id from \"order\" where scope = $1 and id = $2")
+            .bind(shop.here.0)
+            .bind(malformed)
+            .fetch_one(&mut *mine)
+            .await
+            .expect("the malformed row"),
+        sqlx::query_scalar("select subscription_id from \"order\" where scope = $1 and id = $2")
+            .bind(shop.here.0)
+            .bind(none)
+            .fetch_one(&mut *mine)
+            .await
+            .expect("the unlinked row"),
+        sqlx::query_scalar("select subscription_id from \"order\" where scope = $1 and id = $2")
+            .bind(shop.here.0)
+            .bind(elsewhere)
+            .fetch_one(&mut *mine)
+            .await
+            .expect("the cross-scope row"),
+    );
+    mine.commit().await.expect("to commit");
+
+    assert_eq!(
+        linked.0,
+        Some(contract_here),
+        "a well-formed, same-scope key was not moved to the column"
+    );
+    assert_eq!(linked.1, None, "a malformed key was moved anyway");
+    assert_eq!(
+        linked.2, None,
+        "an order with no key gained a link from nowhere"
+    );
+    assert_eq!(
+        linked.3, None,
+        "a key naming another shop's contract was moved anyway"
+    );
+
+    owner.close().await;
+    shop.close().await;
+}
+
 #[tokio::test]
 async fn the_migrations_apply_to_an_empty_database() {
     let shop = Shop::open().await;
@@ -555,6 +736,9 @@ async fn a_key_cannot_name_another_shops_row() {
     let set = uuid::Uuid::now_v7();
     let location = uuid::Uuid::now_v7();
     let parcel = uuid::Uuid::now_v7();
+    let plan_group = uuid::Uuid::now_v7();
+    let plan = uuid::Uuid::now_v7();
+    let subscription = uuid::Uuid::now_v7();
 
     let mut theirs = shop.begin_as(shop.elsewhere).await;
     for (sql, id) in [
@@ -575,6 +759,10 @@ async fn a_key_cannot_name_another_shops_row() {
             "insert into stock_location (id, scope, name) values ($1, $2, 'a warehouse')",
             location,
         ),
+        (
+            "insert into selling_plan_group (id, scope, name) values ($1, $2, 'a group')",
+            plan_group,
+        ),
     ] {
         sqlx::query(sql)
             .bind(id)
@@ -590,6 +778,30 @@ async fn a_key_cannot_name_another_shops_row() {
         .execute(&mut *theirs)
         .await
         .expect("the other shop to open a parcel");
+    sqlx::query(
+        "insert into selling_plan
+             (id, scope, selling_plan_group_id, name, billing_interval_unit, billing_interval_count)
+         values ($1, $2, $3, 'monthly', 'month', 1)",
+    )
+    .bind(plan)
+    .bind(shop.elsewhere.0)
+    .bind(plan_group)
+    .execute(&mut *theirs)
+    .await
+    .expect("the other shop to open a selling plan");
+    sqlx::query(
+        "insert into subscription
+             (id, scope, customer_id, selling_plan_id, currency_code, next_billing_at,
+              current_period_start, current_period_end)
+         values ($1, $2, $3, $4, 'TRY', now(), now(), now())",
+    )
+    .bind(subscription)
+    .bind(shop.elsewhere.0)
+    .bind(customer)
+    .bind(plan)
+    .execute(&mut *theirs)
+    .await
+    .expect("the other shop to open a contract");
     theirs.commit().await.expect("to commit");
 
     // The two already on `tezgah_evidence_table` come first: the schema
@@ -629,6 +841,12 @@ async fn a_key_cannot_name_another_shops_row() {
             "fulfillment.location_id",
             "insert into fulfillment (id, scope, location_id) values ($1, $2, $3)",
             location,
+        ),
+        (
+            "order.subscription_id",
+            "insert into \"order\" (id, scope, currency_code, subscription_id)
+             values ($1, $2, 'TRY', $3)",
+            subscription,
         ),
     ] {
         let mut mine = shop.begin().await;

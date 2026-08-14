@@ -21,20 +21,43 @@ use uuid::Uuid;
 use crate::credit;
 use crate::digital;
 use crate::error::Result;
-use crate::id::{OrderId, PaymentId, RefundReasonId, SubscriptionId, SubscriptionOrderId};
+use crate::id::{
+    OrderId, PaymentCollectionId, PaymentId, RefundReasonId, SubscriptionId, SubscriptionOrderId,
+};
 use crate::money::Money;
 use crate::order;
 use crate::payment;
 use crate::ports::{Action, Ctx, Permit, Resource, Tx};
 use crate::subscription;
 
+/// The order a payment's collection is attached to, or nil when there is
+/// none yet — a collection may be opened before checkout finishes it. The
+/// lookup answers nothing to the caller; the permission is taken with what
+/// it found, immediately after.
+async fn order_of(tx: &mut Tx<'_>, ctx: &Ctx<'_>, collection: PaymentCollectionId) -> Result<Uuid> {
+    let order_id: Option<Uuid> = sqlx::query_scalar(
+        r#"select id from "order" where scope = $1 and payment_collection_id = $2"#,
+    )
+    .bind(ctx.scope.0)
+    .bind(collection.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    Ok(order_id.unwrap_or_else(Uuid::nil))
+}
+
 /// The entry point for money arriving.
 ///
 /// [`Action::Settle`]. The permission is asked here, on the payment, before
-/// anything else in this call reaches a row — the same question
+/// anything else in this call writes a row — the same question
 /// `payment::capture_only` asks again beneath it, because that function is
 /// still callable (from tests, and from `payment` itself) without going
 /// through settlement.
+///
+/// The order judged on is the one the payment's collection is already
+/// attached to: by the time anything reaches capture, checkout has placed
+/// it, so an authorizer that wants to decide by order gets a real one rather
+/// than a nil it cannot judge.
 pub async fn capture(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -42,16 +65,18 @@ pub async fn capture(
     amount: Money,
     metadata: Option<Value>,
 ) -> Result<payment::Capture> {
+    let collection = payment::payment(tx, ctx, id).await?.payment_collection_id;
+    let order = order_of(tx, ctx, collection).await?;
+
     let _: Permit = ctx.permit(
         Action::Settle,
         Resource::Payment {
             id: id.as_uuid(),
-            order: Uuid::nil(),
+            order,
             customer: None,
         },
     )?;
 
-    let collection = payment::payment(tx, ctx, id).await?.payment_collection_id;
     let capture = payment::capture_only(tx, ctx, id, amount, metadata).await?;
 
     let written = order::record_capture(tx, ctx, collection, capture.id, amount).await?;
@@ -76,16 +101,18 @@ pub async fn refund(
     reason: Option<RefundReasonId>,
     note: Option<String>,
 ) -> Result<payment::Refund> {
+    let collection = payment::payment(tx, ctx, id).await?.payment_collection_id;
+    let order = order_of(tx, ctx, collection).await?;
+
     let _: Permit = ctx.permit(
         Action::Settle,
         Resource::Payment {
             id: id.as_uuid(),
-            order: Uuid::nil(),
+            order,
             customer: None,
         },
     )?;
 
-    let collection = payment::payment(tx, ctx, id).await?.payment_collection_id;
     let refund = payment::refund_only(tx, ctx, id, amount, reason, note).await?;
 
     let written = order::record_refund(tx, ctx, collection, refund.id, amount).await?;
@@ -105,18 +132,18 @@ pub async fn refund(
 /// on `(scope, subscription_id, cycle)` is what makes a redelivered webhook a
 /// no-op rather than a second period.
 ///
-/// An order is under a contract when its `metadata` carries the
-/// `subscription` id — the convention the renewal workflow's own
-/// `create_order` step already writes on the orders it places.
+/// An order is under a contract when its `subscription_id` column names
+/// one — set on the orders `subscription`'s own `create_order` step places,
+/// and checked by `tezgah_fk` the way every other reference here is, so the
+/// id can never name a contract outside this scope.
 async fn start_first_period(tx: &mut Tx<'_>, ctx: &Ctx<'_>, order_id: OrderId) -> Result<()> {
-    let subscription_id: Option<Uuid> = sqlx::query_scalar(
-        r#"select (metadata->>'subscription')::uuid from "order" where scope = $1 and id = $2"#,
-    )
-    .bind(ctx.scope.0)
-    .bind(order_id.as_uuid())
-    .fetch_optional(&mut **tx)
-    .await?
-    .flatten();
+    let subscription_id: Option<Uuid> =
+        sqlx::query_scalar(r#"select subscription_id from "order" where scope = $1 and id = $2"#)
+            .bind(ctx.scope.0)
+            .bind(order_id.as_uuid())
+            .fetch_optional(&mut **tx)
+            .await?
+            .flatten();
 
     let Some(subscription_id) = subscription_id else {
         return Ok(());

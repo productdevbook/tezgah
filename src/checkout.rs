@@ -636,6 +636,10 @@ impl Step for CreateOrder {
             currency_code: currency,
             locale: None,
             payment_collection_id: Some(collection.id),
+            // A selling plan on a cart line names a policy, not yet a
+            // contract: the subscription this order might start does not
+            // exist until after it is placed.
+            subscription_id: None,
             shipping_address: copy_address(tx, ctx, cart.shipping_address_id)
                 .await
                 .map_err(Failure::Final)?,

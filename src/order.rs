@@ -48,7 +48,7 @@ use crate::id::{
     AddressId, AgreementVersionId, CaptureId, ClaimId, CustomerId, ExchangeId, LineItemId,
     OrderAgreementId, OrderChangeId, OrderId, OrderInvoiceId, OrderItemId, OrderTransactionId,
     OrderTransferId, PaymentCollectionId, PaymentId, PromotionId, RefundId, RegionId, ReturnId,
-    SalesChannelId, ShippingOptionId, StockLocationId, VariantId,
+    SalesChannelId, ShippingOptionId, StockLocationId, SubscriptionId, VariantId,
 };
 use crate::money::{Currency, Money};
 use crate::page::{Cursor, Page, Paging};
@@ -56,9 +56,9 @@ use crate::ports::{Action, Actor, AuditEntry, Ctx, Event, Permit, Resource, Tx};
 
 const ORDER_COLUMNS: &str = "id, display_id, region_id, sales_channel_id, customer_id, \
                              shipping_address_id, billing_address_id, payment_collection_id, \
-                             email, currency_code, locale, version, status, payment_status, \
-                             fulfillment_status, is_draft, no_notification, metadata, completed_at, canceled_at, \
-                             created_at, updated_at";
+                             subscription_id, email, currency_code, locale, version, status, \
+                             payment_status, fulfillment_status, is_draft, no_notification, \
+                             metadata, completed_at, canceled_at, created_at, updated_at";
 
 const LINE_COLUMNS: &str = "id, order_id, variant_id, product_id, title, subtitle, thumbnail, \
                             product_title, product_handle, variant_title, variant_sku, \
@@ -225,6 +225,9 @@ pub struct Order {
     pub shipping_address_id: Option<Uuid>,
     pub billing_address_id: Option<Uuid>,
     pub payment_collection_id: Option<PaymentCollectionId>,
+    /// The contract this order was placed under, if any — the initial order
+    /// a subscription is sold on, or one a renewal placed.
+    pub subscription_id: Option<SubscriptionId>,
     pub email: Option<String>,
     pub currency_code: String,
     pub locale: Option<String>,
@@ -682,6 +685,7 @@ pub struct NewOrder {
     pub currency_code: Currency,
     pub locale: Option<String>,
     pub payment_collection_id: Option<PaymentCollectionId>,
+    pub subscription_id: Option<SubscriptionId>,
     pub shipping_address: Option<OrderAddress>,
     pub billing_address: Option<OrderAddress>,
     pub lines: Vec<NewOrderLine>,
@@ -700,6 +704,7 @@ impl NewOrder {
             currency_code,
             locale: None,
             payment_collection_id: None,
+            subscription_id: None,
             shipping_address: None,
             billing_address: None,
             lines: Vec::new(),
@@ -788,9 +793,9 @@ async fn place(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewOrder, draft: bool) -> Re
     let order = sqlx::query_as::<_, Order>(&format!(
         r#"insert into "order"
                (id, scope, display_id, region_id, sales_channel_id, customer_id,
-                shipping_address_id, billing_address_id, payment_collection_id, email,
-                currency_code, locale, status, is_draft, no_notification, metadata)
-           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+                shipping_address_id, billing_address_id, payment_collection_id, subscription_id,
+                email, currency_code, locale, status, is_draft, no_notification, metadata)
+           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
            returning {ORDER_COLUMNS}"#
     ))
     .bind(id.as_uuid())
@@ -802,6 +807,7 @@ async fn place(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewOrder, draft: bool) -> Re
     .bind(shipping_address_id)
     .bind(billing_address_id)
     .bind(new.payment_collection_id.map(PaymentCollectionId::as_uuid))
+    .bind(new.subscription_id.map(SubscriptionId::as_uuid))
     .bind(new.email.map(|value| value.trim().to_lowercase()))
     .bind(currency.as_str())
     .bind(new.locale)

@@ -1863,6 +1863,7 @@ impl Step for CreateOrder {
             customer_id: Some(contract.customer_id),
             currency_code: currency,
             payment_collection_id: Some(collection.id),
+            subscription_id: Some(id),
             shipping_address: copy_address(tx, ctx, contract.shipping_address_id)
                 .await
                 .map_err(Failure::Final)?,
@@ -1870,7 +1871,7 @@ impl Step for CreateOrder {
                 .await
                 .map_err(Failure::Final)?,
             lines,
-            metadata: Some(serde_json::json!({ "subscription": id, "cycle": cycle })),
+            metadata: Some(serde_json::json!({ "cycle": cycle })),
             ..NewOrder::of(currency)
         };
 

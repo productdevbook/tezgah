@@ -181,13 +181,14 @@ async fn authorize(shop: &Shop, session: PaymentSessionId) -> Authorized {
 }
 
 /// A plain order for `total`, its own collection carrying its own session,
-/// authorised and ready to be captured. `metadata` is the order's, so a test
-/// can attach a `subscription` id the way checkout would.
+/// authorised and ready to be captured. `subscription_id` is the order's own
+/// column, so a test can attach a contract the way `subscription`'s
+/// `create_order` step would.
 async fn an_order(
     shop: &Shop,
     total: Money,
     lines: Vec<NewOrderLine>,
-    metadata: Option<serde_json::Value>,
+    subscription_id: Option<SubscriptionId>,
 ) -> (OrderId, PaymentId) {
     let session = open_session(shop, total).await;
     let outcome = authorize(shop, session).await;
@@ -207,7 +208,7 @@ async fn an_order(
         NewOrder {
             payment_collection_id: Some(collection),
             lines,
-            metadata,
+            subscription_id,
             ..NewOrder::of(total.currency)
         },
     )
@@ -398,7 +399,7 @@ async fn capturing_does_everything_money_arriving_obligates() {
                 ..NewOrderLine::of("A thing, monthly", 1, money(dec!(50.00)))
             },
         ],
-        Some(json!({ "subscription": seed.subscription_id })),
+        Some(seed.subscription_id),
     )
     .await;
 
@@ -441,7 +442,7 @@ async fn a_second_capture_is_a_no_op() {
                 ..NewOrderLine::of("A thing, monthly", 1, money(dec!(50.00)))
             },
         ],
-        Some(json!({ "subscription": seed.subscription_id })),
+        Some(seed.subscription_id),
     )
     .await;
 
@@ -483,7 +484,7 @@ async fn authorising_alone_settles_nothing() {
             requires_shipping: false,
             ..NewOrderLine::of("A card", 1, money(dec!(50.00)))
         }],
-        Some(json!({ "subscription": seed.subscription_id })),
+        Some(seed.subscription_id),
     )
     .await;
 
