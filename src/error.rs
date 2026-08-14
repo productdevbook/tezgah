@@ -117,7 +117,10 @@ impl Error {
     /// "try again" and neither is safe to tell apart by reading the message.
     pub fn sqlstate(&self) -> Option<String> {
         match &*self.cause {
-            Cause::Db(sqlx::Error::Database(err)) => err.code().map(|code| code.into_owned()),
+            Cause::Db(err) => err
+                .as_database_error()
+                .and_then(|refused| refused.code())
+                .map(|code| code.into_owned()),
             _ => None,
         }
     }
