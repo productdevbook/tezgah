@@ -609,6 +609,7 @@ pub async fn set_stock_levels(
 
 /// Checks the shape of every row without writing anything, so a file that is
 /// wrong throughout is refused before half of it is in.
+#[derive(Debug)]
 pub struct Validate;
 
 #[async_trait::async_trait]
@@ -636,6 +637,7 @@ impl Step for Validate {
 /// leaves the ones it merely edited: there is no before-image to restore them
 /// to, and deleting a product that existed before the import would lose more
 /// than the import added.
+#[derive(Debug)]
 pub struct Apply;
 
 #[async_trait::async_trait]
