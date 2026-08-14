@@ -144,8 +144,10 @@ impl Error {
 
     /// Display, plus the cause when it is one this crate hid.
     ///
-    /// For a log or a dead letter, never for a response body: an internal
-    /// error's message names tables and constraints.
+    /// For a log, never for a response body and never for a column: an internal
+    /// error's message names tables and constraints. What a workflow row keeps
+    /// is [`Display`](std::fmt::Display), because that row is served; the host
+    /// gets the [`Error`] itself and can report it where it belongs.
     pub fn report(&self) -> String {
         match &*self.cause {
             Cause::Db(err) => format!("the database refused a query: {err}"),

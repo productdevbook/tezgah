@@ -1024,13 +1024,7 @@ pub async fn totals(tx: &mut Tx<'_>, ctx: &Ctx<'_>, cart_id: CartId) -> Result<C
     let cart = load(tx, ctx, cart_id).await?;
     let currency = cart.currency()?;
 
-    let exponent: Option<i16> =
-        sqlx::query_scalar("select exponent from currency where scope = $1 and code = $2")
-            .bind(ctx.scope.0)
-            .bind(&cart.currency_code)
-            .fetch_optional(&mut **tx)
-            .await?;
-    let exponent = u32::try_from(exponent.unwrap_or(2)).unwrap_or(2);
+    let exponent = crate::store::exponent(tx, ctx, currency).await?;
 
     let lines = sqlx::query_as::<_, TotalsLine>(
         "select l.quantity, l.unit_price, l.is_tax_inclusive,

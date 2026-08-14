@@ -1125,7 +1125,7 @@ async fn add_up(
 ) -> Result<CartTotals> {
     let order = read(tx, ctx, order_id).await?;
     let currency = order.currency()?;
-    let exponent = exponent_of(tx, ctx, &order.currency_code).await?;
+    let exponent = crate::store::exponent(tx, ctx, currency).await?;
 
     let lines = sqlx::query_as::<_, TotalsLine>(
         "select i.quantity,
@@ -1543,7 +1543,10 @@ pub async fn record_transaction(
         return Err(Error::invalid("a transaction moves something"));
     }
     if amount.currency.as_str() != order.currency_code {
-        return Err(Error::bug("a transaction met another currency"));
+        return Err(Error::invalid(format!(
+            "this order is in {}, not {}",
+            order.currency_code, amount.currency
+        )));
     }
 
     let written = sqlx::query_as::<_, OrderTransaction>(
@@ -5178,17 +5181,6 @@ async fn next_display(tx: &mut Tx<'_>, ctx: &Ctx<'_>, kind: &str) -> Result<i64>
     .await?;
 
     Ok(next)
-}
-
-async fn exponent_of(tx: &mut Tx<'_>, ctx: &Ctx<'_>, code: &str) -> Result<u32> {
-    let exponent: Option<i16> =
-        sqlx::query_scalar("select exponent from currency where scope = $1 and code = $2")
-            .bind(ctx.scope.0)
-            .bind(code)
-            .fetch_optional(&mut **tx)
-            .await?;
-
-    Ok(u32::try_from(exponent.unwrap_or(2)).unwrap_or(2))
 }
 
 /// Who to write down as having done something.

@@ -14,7 +14,7 @@ use crate::error::{Error, Result};
 
 /// ISO 4217, upper case, validated on the way in so it cannot be a typo by the
 /// time it reaches a provider.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Currency([u8; 3]);
 
 impl Currency {
@@ -30,8 +30,26 @@ impl Currency {
         Ok(Currency(code))
     }
 
+    /// `parse` is the only constructor and it admits ASCII letters only, so the
+    /// fallback is unreachable; `XXX` is ISO 4217 for "no currency" rather than
+    /// a panic in a library.
     pub fn as_str(&self) -> &str {
-        std::str::from_utf8(&self.0).expect("ascii letters, checked on the way in")
+        std::str::from_utf8(&self.0).unwrap_or("XXX")
+    }
+}
+
+impl Serialize for Currency {
+    fn serialize<S: serde::Serializer>(&self, out: S) -> std::result::Result<S::Ok, S::Error> {
+        out.serialize_str(self.as_str())
+    }
+}
+
+/// Through [`Currency::parse`] rather than the derive: a derived impl fills the
+/// bytes in without looking at them, and everything downstream believes them.
+impl<'de> Deserialize<'de> for Currency {
+    fn deserialize<D: serde::Deserializer<'de>>(from: D) -> std::result::Result<Self, D::Error> {
+        let text = String::deserialize(from)?;
+        Currency::parse(&text).map_err(serde::de::Error::custom)
     }
 }
 
@@ -135,6 +153,42 @@ mod tests {
         assert_eq!(try_("try").as_str(), "TRY");
         assert!(Currency::parse("TL").is_err());
         assert!(Currency::parse("TRY1").is_err());
+    }
+
+    #[test]
+    fn a_currency_is_json_text_and_comes_back_the_same() {
+        let code = try_("TRY");
+        let json = serde_json::to_string(&code).expect("serialises");
+        assert_eq!(json, "\"TRY\"");
+        assert_eq!(
+            serde_json::from_str::<Currency>(&json).expect("deserialises"),
+            code
+        );
+        assert_eq!(
+            serde_json::from_str::<Currency>("\"try\"").expect("deserialises"),
+            code
+        );
+    }
+
+    #[test]
+    fn a_money_carries_its_currency_as_text() {
+        let money = Money::new(dec!(10.5), try_("KWD"));
+        let json = serde_json::to_value(money).expect("serialises");
+        assert_eq!(json["currency"], serde_json::json!("KWD"));
+        assert_eq!(
+            serde_json::from_value::<Money>(json).expect("deserialises"),
+            money
+        );
+    }
+
+    #[test]
+    fn a_currency_that_is_not_one_is_refused_rather_than_believed() {
+        for text in ["\"€\"", "\"ab\"", "\"ABCD\"", "\"\"", "[84,82,89]", "null"] {
+            assert!(
+                serde_json::from_str::<Currency>(text).is_err(),
+                "{text} was accepted"
+            );
+        }
     }
 
     #[test]

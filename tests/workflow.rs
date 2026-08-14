@@ -34,6 +34,7 @@ struct Probe {
     name: &'static str,
     log: Log,
     fails: bool,
+    fails_at_the_database: bool,
     undo_fails: bool,
     counted: Option<Arc<AtomicUsize>>,
 }
@@ -44,6 +45,7 @@ impl Probe {
             name,
             log: log.clone(),
             fails: false,
+            fails_at_the_database: false,
             undo_fails: false,
             counted: None,
         }
@@ -52,6 +54,15 @@ impl Probe {
     fn failing(name: &'static str, log: &Log) -> Self {
         Probe {
             fails: true,
+            ..Probe::new(name, log)
+        }
+    }
+
+    /// Refuses the way the database does, which is the failure whose text must
+    /// not reach a row.
+    fn refused_by_the_database(name: &'static str, log: &Log) -> Self {
+        Probe {
+            fails_at_the_database: true,
             ..Probe::new(name, log)
         }
     }
@@ -90,6 +101,11 @@ impl Step for Probe {
         self.log.lock().push(self.name.to_string());
         if let Some(count) = &self.counted {
             count.fetch_add(1, Memory::SeqCst);
+        }
+        if self.fails_at_the_database {
+            return Err(Failure::Final(tezgah::Error::from(
+                sqlx::Error::RowNotFound,
+            )));
         }
         if self.fails {
             return Err(Failure::Final(tezgah::Error::conflict("it said no")));
@@ -545,6 +561,53 @@ async fn a_run_that_cannot_be_undone_is_written_down() {
 
     assert_eq!(step, "charge");
     assert!(failure.contains("undone"), "{failure}");
+
+    shop.close().await;
+}
+
+/// `report()` is for a log. What a workflow row keeps is served on the admin
+/// surface, so it is `Display` — which says a query was refused and not which
+/// query, which table or which constraint.
+#[tokio::test]
+async fn a_failed_step_stores_no_database_message() {
+    let shop = Shop::open().await;
+    let log = log();
+
+    let flow = Workflow::new("leaky")
+        .then(Probe::new("first", &log))
+        .then(Probe::refused_by_the_database("write", &log));
+
+    let run = workflow::run(&shop.pool, &shop.ctx(), &flow, "leaky-1", json!({}))
+        .await
+        .expect("the run to be driven");
+
+    assert_eq!(run.state, State::Reverted);
+
+    let stored: Vec<String> = sqlx::query_scalar(
+        "select failure from workflow_step where run_id = $1 and failure is not null",
+    )
+    .bind(run.id.as_uuid())
+    .fetch_all(&mut *shop.begin().await)
+    .await
+    .expect("the step's failure");
+
+    let inside = sqlx::Error::RowNotFound.to_string();
+    for failure in stored.iter().chain(run.failure.iter()) {
+        assert!(
+            failure.contains("the database refused a query"),
+            "{failure}"
+        );
+        assert!(
+            !failure.contains(&inside),
+            "the database's own words were served: {failure}"
+        );
+    }
+
+    let told = tezgah::Error::from(sqlx::Error::RowNotFound);
+    assert!(
+        told.report().contains(&inside),
+        "report() stopped saying what happened"
+    );
 
     shop.close().await;
 }

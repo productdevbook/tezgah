@@ -1256,7 +1256,10 @@ pub async fn capture(
         return Err(Error::conflict("that payment was canceled"));
     }
     if payment.currency_code != amount.currency.as_str() {
-        return Err(Error::bug("a capture met another currency"));
+        return Err(Error::invalid(format!(
+            "this payment is in {}, not {}",
+            payment.currency_code, amount.currency
+        )));
     }
 
     let balance = balance_of(tx, ctx, id).await?;
@@ -1348,7 +1351,10 @@ pub async fn refund(
 
     let payment = read_payment(tx, ctx, id, true).await?;
     if payment.currency_code != amount.currency.as_str() {
-        return Err(Error::bug("a refund met another currency"));
+        return Err(Error::invalid(format!(
+            "this payment is in {}, not {}",
+            payment.currency_code, amount.currency
+        )));
     }
 
     let balance = balance_of(tx, ctx, id).await?;

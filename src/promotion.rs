@@ -1365,7 +1365,7 @@ pub async fn apply(tx: &mut Tx<'_>, ctx: &Ctx<'_>, cart_id: CartId) -> Result<Ve
     }
 
     let currency = Currency::parse(&cart.currency_code)?;
-    let exponent = u32::try_from(store::currency(tx, ctx, currency).await?.exponent).unwrap_or(2);
+    let exponent = store::exponent(tx, ctx, currency).await?;
 
     let lines = sqlx::query_as::<_, LineRow>(
         "select id, variant_id, product_id, product_title, quantity, unit_price, currency_code,

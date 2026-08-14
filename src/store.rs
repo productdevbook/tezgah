@@ -55,10 +55,19 @@ impl CurrencyRow {
         Currency::parse(&self.code)
     }
 
+    /// How many decimal places this currency rounds to.
+    ///
+    /// The database keeps `exponent` between 0 and 6, so the error arm is
+    /// unreachable rather than a fallback anybody should rely on.
+    pub fn places(&self) -> Result<u32> {
+        u32::try_from(self.exponent)
+            .map_err(|_| Error::bug("a currency's exponent is not a count of decimal places"))
+    }
+
     /// Rounds to this currency's smallest unit. Anything handed to a provider
     /// goes through here first.
-    pub fn round(&self, amount: Decimal) -> Decimal {
-        amount.round_dp(u32::try_from(self.exponent).unwrap_or(2))
+    pub fn round(&self, amount: Decimal) -> Result<Decimal> {
+        Ok(amount.round_dp(self.places()?))
     }
 }
 
@@ -243,6 +252,15 @@ pub async fn currency(tx: &mut Tx<'_>, ctx: &Ctx<'_>, code: Currency) -> Result<
     .fetch_optional(&mut **tx)
     .await?
     .ok_or_else(|| Error::not_found("currency"))
+}
+
+/// How many decimal places a currency rounds to, for everything that rounds.
+///
+/// One reader rather than three: a shop selling in a currency it has not
+/// configured is a `not_found` rather than two decimal places, which is the
+/// wrong answer for JPY and for KWD and silently the right one for neither.
+pub async fn exponent(tx: &mut Tx<'_>, ctx: &Ctx<'_>, code: Currency) -> Result<u32> {
+    currency(tx, ctx, code).await?.places()
 }
 
 pub async fn create_region(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewRegion) -> Result<Region> {

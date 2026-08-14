@@ -1080,8 +1080,7 @@ pub async fn calculate(
     }
 
     let exponent = if places.iter().any(|place| !place.chain.is_empty()) {
-        u32::try_from(store::currency(tx, ctx, currency).await?.exponent)
-            .map_err(|_| Error::bug("a currency's exponent is not a count of decimal places"))?
+        store::exponent(tx, ctx, currency).await?
     } else {
         0
     };

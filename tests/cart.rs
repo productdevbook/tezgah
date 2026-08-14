@@ -166,6 +166,8 @@ async fn the_totals_of_a_real_cart_add_up() -> tezgah::Result<()> {
     let mut tx = shop.begin().await;
     let ctx = shop.ctx();
 
+    common::a_currency(&mut tx, shop.here, "TRY", 2).await;
+
     let variant = a_variant(&mut tx, &ctx, "pan").await?;
     let cart = cart::create(&mut tx, &ctx, NewCart::guest(lira()?)).await?;
     cart::add_line(
@@ -683,6 +685,81 @@ async fn a_cart_that_ships_nothing_is_supplied_where_it_is_billed() -> tezgah::R
 
     assert_eq!(parcel.country_code, "DE");
     assert_eq!(supply.country_code, "FR");
+
+    tx.rollback().await.ok();
+    shop.close().await;
+    Ok(())
+}
+
+/// A cart rounds by the exponent its currency actually has. Two decimals is
+/// wrong for JPY, wrong for KWD, and was what both used to get.
+async fn totals_in(code: &str, exponent: i16, unit: Decimal) -> tezgah::Result<Decimal> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+
+    common::a_currency(&mut tx, shop.here, code, exponent).await;
+
+    let money = Money::new(unit, Currency::parse(code)?);
+    let variant = a_variant(&mut tx, &ctx, "bowl").await?;
+    let cart = cart::create(&mut tx, &ctx, NewCart::guest(Currency::parse(code)?)).await?;
+    cart::add_line(
+        &mut tx,
+        &ctx,
+        cart.id,
+        AddLine {
+            variant_id: variant,
+            quantity: 3,
+            unit_price: money,
+            is_tax_inclusive: false,
+        },
+    )
+    .await?;
+
+    let totals = cart::totals(&mut tx, &ctx, cart.id).await?;
+    let subtotal = totals.subtotal.amount;
+
+    tx.rollback().await.ok();
+    shop.close().await;
+    Ok(subtotal)
+}
+
+#[tokio::test]
+async fn a_cart_in_yen_keeps_no_decimals() -> tezgah::Result<()> {
+    assert_eq!(totals_in("JPY", 0, dec!(333.333)).await?, dec!(1000));
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_cart_in_dinars_keeps_three() -> tezgah::Result<()> {
+    assert_eq!(totals_in("KWD", 3, dec!(1.23456)).await?, dec!(3.704));
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_currency_this_shop_has_not_configured_is_not_two_decimals() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+
+    let variant = a_variant(&mut tx, &ctx, "jug").await?;
+    let cart = cart::create(&mut tx, &ctx, NewCart::guest(Currency::parse("NOK")?)).await?;
+    cart::add_line(
+        &mut tx,
+        &ctx,
+        cart.id,
+        AddLine {
+            variant_id: variant,
+            quantity: 1,
+            unit_price: Money::new(dec!(9.999), Currency::parse("NOK")?),
+            is_tax_inclusive: false,
+        },
+    )
+    .await?;
+
+    let refused = cart::totals(&mut tx, &ctx, cart.id).await.unwrap_err();
+    assert!(refused.is_not_found(), "{refused} was not a not_found");
+    assert!(!refused.is_internal());
 
     tx.rollback().await.ok();
     shop.close().await;

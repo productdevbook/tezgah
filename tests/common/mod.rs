@@ -356,6 +356,22 @@ pub async fn a_customer(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> tezgah::id::CustomerI
         .id
 }
 
+/// A currency this shop trades in. Nothing rounds an amount without one.
+pub async fn a_currency(tx: &mut Tx<'_>, scope: Scope, code: &str, exponent: i16) {
+    sqlx::query(
+        "insert into currency (id, scope, code, exponent, symbol, symbol_native, name)
+         values ($1, $2, $3, $4, 'x', 'x', $3)
+         on conflict do nothing",
+    )
+    .bind(Uuid::now_v7())
+    .bind(scope.0)
+    .bind(code)
+    .bind(exponent)
+    .execute(&mut **tx)
+    .await
+    .expect("a currency");
+}
+
 /// A shop with one thing in one cart, ready to be checked out.
 ///
 /// The same seed the checkout tests grew: a currency, a payment provider, a

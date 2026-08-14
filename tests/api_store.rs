@@ -234,6 +234,8 @@ async fn a_cart_with_money_owed(
     tx: &mut Tx<'_>,
     ctx: &tezgah::ports::Ctx<'_>,
 ) -> tezgah::Result<(CartId, PaymentCollectionId)> {
+    common::a_currency(tx, ctx.scope, "TRY", 2).await;
+
     let cart = store::create_cart(
         tx,
         ctx,
@@ -563,4 +565,58 @@ fn every_storefront_route_is_under_the_storefront_prefix() {
         );
         assert!(!route.summary.is_empty());
     }
+}
+
+/// The other half of the same question: an order is read by whoever it belongs
+/// to, and the host is handed that owner rather than nothing.
+#[tokio::test]
+async fn an_order_is_not_read_by_somebody_else() -> tezgah::Result<()> {
+    use rust_decimal_macros::dec;
+    use tezgah::money::{Currency, Money};
+    use tezgah::order::{self, NewOrder, NewOrderLine};
+
+    let shop = Shop::open().await;
+    let host: Arc<OnlyOwner> = Arc::new(OnlyOwner);
+    let mut tx = shop.begin().await;
+
+    let mine = a_customer(&mut tx, &shop, "shopper@example.test").await?;
+    let theirs = a_customer(&mut tx, &shop, "somebody@example.test").await?;
+
+    let lira = Currency::parse("TRY")?;
+    let placed = order::create(
+        &mut tx,
+        &shop.ctx(),
+        NewOrder {
+            customer_id: Some(mine),
+            email: Some("shopper@example.test".into()),
+            lines: vec![NewOrderLine::of("A thing", 1, Money::new(dec!(10), lira))],
+            ..NewOrder::of(lira)
+        },
+    )
+    .await?;
+
+    let ctx = shop.ctx_as(
+        Actor::Customer { id: mine.as_uuid() },
+        host.as_ref() as &dyn Host,
+    );
+    let stranger = shop.ctx_as(
+        Actor::Customer {
+            id: theirs.as_uuid(),
+        },
+        host.as_ref() as &dyn Host,
+    );
+
+    assert_eq!(
+        store::get_my_order(&mut tx, &ctx, placed.id).await?.id,
+        placed.id
+    );
+
+    let refused = store::get_my_order(&mut tx, &stranger, placed.id)
+        .await
+        .expect_err("somebody else's order is not theirs to read");
+    assert!(refused.is_denied(), "{refused} was not a refusal");
+
+    drop(tx);
+    shop.close().await;
+    Ok(())
 }

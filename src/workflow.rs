@@ -630,7 +630,7 @@ async fn drive(
             }
 
             if let Some((name, failure)) = failed {
-                let why = format!("{name}: {}", failure.error().report());
+                let why = format!("{name}: {}", failure.error());
                 return unwind(pool, ctx, workflow, id, worker, why).await;
             }
         }
@@ -804,8 +804,9 @@ async fn invoke(
                     continue;
                 }
 
+                // Display rather than report(): this text is stored and served.
                 let message = match &failure {
-                    Failure::Retry(err) | Failure::Final(err) => err.report(),
+                    Failure::Retry(err) | Failure::Final(err) => err.to_string(),
                 };
 
                 let mut tx = scoped(pool, ctx)
@@ -878,7 +879,7 @@ async fn unwind(
                 Err(err) => {
                     drop(tx);
                     ok = false;
-                    dead_letter(pool, ctx, id, one.name(), &err.report()).await?;
+                    dead_letter(pool, ctx, id, one.name(), &err.to_string()).await?;
                 }
             }
         }
