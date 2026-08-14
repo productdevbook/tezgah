@@ -1161,25 +1161,38 @@ async fn release_promotions(tx: &mut Tx<'_>, ctx: &Ctx<'_>, order: &Order) -> Re
         return Ok(());
     };
 
-    let ids: Vec<Uuid> = sqlx::query_scalar(
-        "select distinct a.promotion_id
-         from cart_line_item_adjustment a
-         join cart_line_item l on l.scope = a.scope and l.id = a.cart_line_item_id
-         where a.scope = $1 and l.cart_id = $2 and a.promotion_id is not null
-         union
-         select distinct a.promotion_id
-         from cart_shipping_method_adjustment a
-         join cart_shipping_method m on m.scope = a.scope and m.id = a.cart_shipping_method_id
-         where a.scope = $1 and m.cart_id = $2 and a.promotion_id is not null",
+    // What each promotion actually gave away, so a spend budget gets back
+    // exactly what it was charged rather than a guess.
+    let given: Vec<(Uuid, rust_decimal::Decimal)> = sqlx::query_as(
+        "select promotion_id, sum(amount) from (
+             select a.promotion_id, a.amount
+             from cart_line_item_adjustment a
+             join cart_line_item l on l.scope = a.scope and l.id = a.cart_line_item_id
+             where a.scope = $1 and l.cart_id = $2 and a.promotion_id is not null
+             union all
+             select a.promotion_id, a.amount
+             from cart_shipping_method_adjustment a
+             join cart_shipping_method m on m.scope = a.scope and m.id = a.cart_shipping_method_id
+             where a.scope = $1 and m.cart_id = $2 and a.promotion_id is not null
+         ) as gave
+         group by promotion_id",
     )
     .bind(ctx.scope.0)
     .bind(cart_id)
     .fetch_all(&mut **tx)
     .await?;
 
-    for id in ids {
-        crate::promotion::release(tx, ctx, PromotionId::from_uuid(id), order.customer_id, None)
-            .await?;
+    let currency = Currency::parse(&order.currency_code)?;
+
+    for (id, amount) in given {
+        crate::promotion::release(
+            tx,
+            ctx,
+            PromotionId::from_uuid(id),
+            order.customer_id,
+            Money::new(amount, currency),
+        )
+        .await?;
     }
 
     Ok(())
