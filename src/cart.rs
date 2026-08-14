@@ -437,6 +437,9 @@ pub async fn shipping_methods(
 pub struct Delivery {
     pub country_code: String,
     pub province_code: Option<String>,
+    /// A United States rate is decided below the state, and the postcode is
+    /// what a provider is given to find the county and the city.
+    pub postal_code: Option<String>,
 }
 
 /// The address a cart is judged by: the shipping one, or the billing one for a
@@ -454,10 +457,11 @@ pub async fn delivery(tx: &mut Tx<'_>, ctx: &Ctx<'_>, cart_id: CartId) -> Result
     struct Row {
         country_code: Option<String>,
         province: Option<String>,
+        postal_code: Option<String>,
     }
 
     let row = sqlx::query_as::<_, Row>(
-        "select a.country_code, a.province
+        "select a.country_code, a.province, a.postal_code
          from cart c
          join cart_address a
            on a.scope = c.scope
@@ -473,6 +477,7 @@ pub async fn delivery(tx: &mut Tx<'_>, ctx: &Ctx<'_>, cart_id: CartId) -> Result
         row.country_code.map(|country_code| Delivery {
             country_code,
             province_code: row.province,
+            postal_code: row.postal_code,
         })
     }))
 }

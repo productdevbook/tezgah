@@ -370,3 +370,41 @@ async fn a_host_that_refuses_everything_is_obeyed_by_the_key_calls() {
     tx.rollback().await.expect("to roll back");
     shop.close().await;
 }
+
+/// A refusal that came from catching a constraint violation leaves the caller
+/// holding an aborted transaction, so the assertion that matters is the query
+/// that comes after it.
+#[tokio::test]
+async fn a_second_channel_of_the_same_name_is_refused_without_killing_the_transaction() {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+
+    a_channel(&shop, &mut tx, "Web").await;
+
+    let refused = store::create_sales_channel(
+        &mut tx,
+        &ctx,
+        NewSalesChannel {
+            name: "Web".into(),
+            description: None,
+            is_disabled: false,
+        },
+    )
+    .await
+    .expect_err("one channel of that name");
+    assert!(refused.is_conflict());
+
+    let second = a_channel(&shop, &mut tx, "Shop").await;
+    assert_eq!(second.name, "Shop");
+
+    let counted: i64 = sqlx::query_scalar("select count(*) from sales_channel where scope = $1")
+        .bind(shop.here.0)
+        .fetch_one(&mut *tx)
+        .await
+        .expect("the transaction to still be usable");
+    assert_eq!(counted, 2);
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}

@@ -603,3 +603,83 @@ async fn a_locale_with_nothing_written_for_it_falls_back() {
     tx.rollback().await.expect("to roll back");
     shop.close().await;
 }
+
+/// Postgres aborts the whole transaction on a constraint violation, so a
+/// conflict that was caught rather than decided leaves the caller with nothing
+/// it can run afterwards — not even a second, different name.
+#[tokio::test]
+async fn a_duplicate_handle_is_refused_without_killing_the_transaction() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    catalogue::create_product(&mut tx, &ctx, draft("kilim", "A kilim"))
+        .await
+        .expect("a product");
+
+    let refused = catalogue::create_product(&mut tx, &ctx, draft("kilim", "Another kilim"))
+        .await
+        .expect_err("one product per handle");
+    assert!(refused.is_conflict());
+
+    let offered = catalogue::create_product(&mut tx, &ctx, draft("kilim-2", "Another kilim"))
+        .await
+        .expect("the transaction to still take a different handle");
+    assert_eq!(offered.handle, "kilim-2");
+
+    let counted: i64 = sqlx::query_scalar("select count(*) from product where scope = $1")
+        .bind(shop.here.0)
+        .fetch_one(&mut *tx)
+        .await
+        .expect("the transaction to still be usable");
+    assert_eq!(counted, 2);
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+/// The same for a guarded update: the handle it was handed is already a
+/// sibling's, and the refusal has to come from the statement rather than from
+/// the index raising.
+#[tokio::test]
+async fn renaming_onto_a_taken_handle_is_refused_without_killing_the_transaction() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    catalogue::create_product(&mut tx, &ctx, draft("kilim", "A kilim"))
+        .await
+        .expect("a product");
+    let other = catalogue::create_product(&mut tx, &ctx, draft("cicim", "A cicim"))
+        .await
+        .expect("another product");
+
+    let refused = catalogue::update_product(
+        &mut tx,
+        &ctx,
+        other.id,
+        tezgah::catalogue::ProductPatch {
+            handle: Some("kilim".into()),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect_err("that handle belongs to the other one");
+    assert!(refused.is_conflict());
+
+    let renamed = catalogue::update_product(
+        &mut tx,
+        &ctx,
+        other.id,
+        tezgah::catalogue::ProductPatch {
+            handle: Some("cicim-2".into()),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("the transaction to still take a free handle");
+    assert_eq!(renamed.handle, "cicim-2");
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}

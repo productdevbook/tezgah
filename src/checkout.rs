@@ -52,7 +52,7 @@ use crate::id::{
 use crate::money::{Currency, Money};
 use crate::order::{
     self, NewAdjustment, NewOrder, NewOrderLine, NewOrderShipping, NewTaxLine, OrderAddress,
-    OrderStatus,
+    OrderStatus, TaxSnapshot,
 };
 use crate::payment::{
     self, AuthorizationStatus, AuthorizeRequest, Authorized, NewCollection, NewSession,
@@ -451,6 +451,21 @@ struct CartTaxLine {
     name: String,
     provider_id: Option<String>,
     description: Option<String>,
+    treatment: Option<String>,
+    jurisdiction_level: Option<String>,
+    jurisdiction_code: Option<String>,
+    jurisdiction_name: Option<String>,
+    tax_code: Option<String>,
+    provider: Option<String>,
+    provider_transaction_id: Option<String>,
+    calculated_at: Option<chrono::DateTime<chrono::Utc>>,
+    address_country_code: Option<String>,
+    address_province_code: Option<String>,
+    address_postal_code: Option<String>,
+    tax_id: Option<String>,
+    tax_id_evidence: Option<String>,
+    exemption_id: Option<Uuid>,
+    evidence: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -970,7 +985,11 @@ async fn cart_money(
              where a.scope = $1 and s.cart_id = $2
              order by a.created_at, a.id",
             "select t.cart_shipping_method_id as owner_id, t.rate, t.code, t.name, t.provider_id,
-                    t.description
+                    t.description, t.treatment, t.jurisdiction_level, t.jurisdiction_code,
+                    t.jurisdiction_name, t.tax_code, t.provider, t.provider_transaction_id,
+                    t.calculated_at, t.address_country_code, t.address_province_code,
+                    t.address_postal_code, t.tax_id, t.tax_id_evidence, t.exemption_id,
+                    t.evidence
              from cart_shipping_method_tax_line t
              join cart_shipping_method s on s.scope = t.scope and s.id = t.cart_shipping_method_id
              where t.scope = $1 and s.cart_id = $2
@@ -985,7 +1004,11 @@ async fn cart_money(
              where a.scope = $1 and l.cart_id = $2
              order by a.created_at, a.id",
             "select t.cart_line_item_id as owner_id, t.rate, t.code, t.name, t.provider_id,
-                    t.description
+                    t.description, t.treatment, t.jurisdiction_level, t.jurisdiction_code,
+                    t.jurisdiction_name, t.tax_code, t.provider, t.provider_transaction_id,
+                    t.calculated_at, t.address_country_code, t.address_province_code,
+                    t.address_postal_code, t.tax_id, t.tax_id_evidence, t.exemption_id,
+                    t.evidence
              from cart_line_item_tax_line t
              join cart_line_item l on l.scope = t.scope and l.id = t.cart_line_item_id
              where t.scope = $1 and l.cart_id = $2
@@ -1028,6 +1051,23 @@ async fn cart_money(
             name: row.name,
             provider_id: row.provider_id,
             description: row.description,
+            snapshot: TaxSnapshot {
+                treatment: row.treatment,
+                jurisdiction_level: row.jurisdiction_level,
+                jurisdiction_code: row.jurisdiction_code,
+                jurisdiction_name: row.jurisdiction_name,
+                tax_code: row.tax_code,
+                provider: row.provider,
+                provider_transaction_id: row.provider_transaction_id,
+                calculated_at: row.calculated_at,
+                address_country_code: row.address_country_code,
+                address_province_code: row.address_province_code,
+                address_postal_code: row.address_postal_code,
+                tax_id: row.tax_id,
+                tax_id_evidence: row.tax_id_evidence,
+                exemption_id: row.exemption_id,
+                evidence: row.evidence,
+            },
         });
     }
 

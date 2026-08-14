@@ -487,11 +487,28 @@ fn locale(value: &str) -> Result<String> {
     }
 }
 
-/// A unique index doing the work the application would otherwise race on.
-fn taken(err: sqlx::Error, what: &'static str) -> Error {
-    match &err {
-        sqlx::Error::Database(db) if db.is_unique_violation() => Error::conflict(what),
-        _ => Error::from(err),
+/// A guarded update returns nothing whether the row is missing or the value it
+/// was handed already belongs to a sibling; only a second read tells them apart.
+async fn refusal(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    table: &'static str,
+    entity: &'static str,
+    id: Uuid,
+    what: &'static str,
+) -> Error {
+    let found: std::result::Result<Option<Uuid>, sqlx::Error> = sqlx::query_scalar(&format!(
+        "select id from {table} where scope = $1 and id = $2 and deleted_at is null"
+    ))
+    .bind(ctx.scope.0)
+    .bind(id)
+    .fetch_optional(&mut **tx)
+    .await;
+
+    match found {
+        Ok(Some(_)) => Error::conflict(what),
+        Ok(None) => Error::not_found(entity),
+        Err(err) => Error::from(err),
     }
 }
 
@@ -537,6 +554,7 @@ pub async fn create_product(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewProduct) -> 
          height, width, material, hs_code, origin_country, external_id, metadata)
          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, \
          $19, $20)
+         on conflict do nothing
          returning ",
         product_columns!()
     ))
@@ -560,9 +578,9 @@ pub async fn create_product(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewProduct) -> 
     .bind(nullable(new.origin_country))
     .bind(nullable(new.external_id))
     .bind(metadata_or_empty(new.metadata))
-    .fetch_one(&mut **tx)
-    .await
-    .map_err(|err| taken(err, "that handle is already a product here"))?;
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::conflict("that handle is already a product here"))?;
 
     note(
         tx,
@@ -709,6 +727,11 @@ pub async fn update_product(
              external_id = case when $26::bool then $27 else external_id end,
              metadata = coalesce($28, metadata)
          where scope = $1 and id = $2 and deleted_at is null
+           and not exists (
+               select 1 from product other
+               where other.scope = $1 and other.handle = $3 and other.id <> $2
+                 and other.deleted_at is null
+           )
          returning ",
         product_columns!()
     ))
@@ -746,9 +769,19 @@ pub async fn update_product(
     .bind(nullable(patch.external_id))
     .bind(patch.metadata)
     .fetch_optional(&mut **tx)
-    .await
-    .map_err(|err| taken(err, "that handle is already a product here"))?
-    .ok_or_else(|| Error::not_found("product"))?;
+    .await?;
+
+    let Some(product) = product else {
+        return Err(refusal(
+            tx,
+            ctx,
+            "product",
+            "product",
+            id.as_uuid(),
+            "that handle is already a product here",
+        )
+        .await);
+    };
 
     note(
         tx,
@@ -914,6 +947,7 @@ async fn insert_variant(
          manages_inventory, allows_backorder, rank, metadata)
          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, \
          $19, $20)
+         on conflict do nothing
          returning ",
         variant_columns!()
     ))
@@ -937,9 +971,9 @@ async fn insert_variant(
     .bind(new.allows_backorder.unwrap_or(false))
     .bind(new.rank.unwrap_or(0))
     .bind(metadata_or_empty(new.metadata))
-    .fetch_one(&mut **tx)
-    .await
-    .map_err(|err| taken(err, "that sku or barcode is already a variant here"))
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::conflict("that sku or barcode is already a variant here"))
 }
 
 pub async fn variant(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: VariantId) -> Result<ProductVariant> {
@@ -1028,6 +1062,11 @@ pub async fn update_variant(
              rank = coalesce($26, rank),
              metadata = coalesce($27, metadata)
          where scope = $1 and id = $2 and deleted_at is null
+           and not exists (
+               select 1 from product_variant other
+               where other.scope = $1 and other.id <> $2 and other.deleted_at is null
+                 and (($4::bool and other.sku = $5) or ($6::bool and other.barcode = $7))
+           )
          returning ",
         variant_columns!()
     ))
@@ -1059,9 +1098,19 @@ pub async fn update_variant(
     .bind(patch.rank)
     .bind(patch.metadata)
     .fetch_optional(&mut **tx)
-    .await
-    .map_err(|err| taken(err, "that sku or barcode is already a variant here"))?
-    .ok_or_else(|| Error::not_found("variant"))?;
+    .await?;
+
+    let Some(variant) = variant else {
+        return Err(refusal(
+            tx,
+            ctx,
+            "product_variant",
+            "variant",
+            id.as_uuid(),
+            "that sku or barcode is already a variant here",
+        )
+        .await);
+    };
 
     note(
         tx,
@@ -1147,6 +1196,7 @@ pub async fn add_option(
     let option = sqlx::query_as::<_, ProductOption>(
         "insert into product_option (id, scope, product_id, title, rank)
          values ($1, $2, $3, $4, $5)
+         on conflict do nothing
          returning id, product_id, title, rank, created_at",
     )
     .bind(id.as_uuid())
@@ -1154,9 +1204,9 @@ pub async fn add_option(
     .bind(product_id.as_uuid())
     .bind(&title)
     .bind(rank)
-    .fetch_one(&mut **tx)
-    .await
-    .map_err(|err| taken(err, "that option is already on this product"))?;
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::conflict("that option is already on this product"))?;
 
     note(
         tx,
@@ -1200,6 +1250,7 @@ pub async fn add_option_value(
     let row = sqlx::query_as::<_, ProductOptionValue>(
         "insert into product_option_value (id, scope, option_id, value, rank)
          values ($1, $2, $3, $4, $5)
+         on conflict do nothing
          returning id, option_id, value, rank, created_at",
     )
     .bind(id.as_uuid())
@@ -1207,9 +1258,9 @@ pub async fn add_option_value(
     .bind(option_id.as_uuid())
     .bind(&value)
     .bind(rank)
-    .fetch_one(&mut **tx)
-    .await
-    .map_err(|err| taken(err, "that value is already on this option"))?;
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::conflict("that value is already on this option"))?;
 
     note(
         tx,
@@ -1424,10 +1475,11 @@ async fn write_combination(
     pairs: &[(Uuid, Uuid)],
 ) -> Result<()> {
     for (value_id, option_id) in pairs {
-        sqlx::query(
+        let written = sqlx::query(
             "insert into product_variant_option_value
                  (id, scope, variant_id, option_id, option_value_id)
-             values ($1, $2, $3, $4, $5)",
+             values ($1, $2, $3, $4, $5)
+             on conflict do nothing",
         )
         .bind(Uuid::now_v7())
         .bind(ctx.scope.0)
@@ -1435,8 +1487,12 @@ async fn write_combination(
         .bind(option_id)
         .bind(value_id)
         .execute(&mut **tx)
-        .await
-        .map_err(|err| taken(err, "that option is already set on this variant"))?;
+        .await?;
+        if written.rows_affected() == 0 {
+            return Err(Error::conflict(
+                "that option is already set on this variant",
+            ));
+        }
     }
 
     Ok(())
@@ -1608,15 +1664,16 @@ pub async fn create_collection(
     let collection = sqlx::query_as::<_, ProductCollection>(
         "insert into product_collection (id, scope, handle, title)
          values ($1, $2, $3, $4)
+         on conflict do nothing
          returning id, handle, title, metadata, created_at",
     )
     .bind(id.as_uuid())
     .bind(ctx.scope.0)
     .bind(&handle)
     .bind(&title)
-    .fetch_one(&mut **tx)
-    .await
-    .map_err(|err| taken(err, "that handle is already a collection here"))?;
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::conflict("that handle is already a collection here"))?;
 
     note(
         tx,
@@ -1653,6 +1710,11 @@ pub async fn update_collection(
         "update product_collection
             set title = coalesce($3, title), handle = coalesce($4, handle)
          where scope = $1 and id = $2 and deleted_at is null
+           and not exists (
+               select 1 from product_collection other
+               where other.scope = $1 and other.handle = $4 and other.id <> $2
+                 and other.deleted_at is null
+           )
          returning id, handle, title, metadata, created_at",
     )
     .bind(ctx.scope.0)
@@ -1660,9 +1722,19 @@ pub async fn update_collection(
     .bind(title)
     .bind(new_handle)
     .fetch_optional(&mut **tx)
-    .await
-    .map_err(|err| taken(err, "that handle is already a collection here"))?
-    .ok_or_else(|| Error::not_found("collection"))?;
+    .await?;
+
+    let Some(collection) = collection else {
+        return Err(refusal(
+            tx,
+            ctx,
+            "product_collection",
+            "collection",
+            id.as_uuid(),
+            "that handle is already a collection here",
+        )
+        .await);
+    };
 
     note(
         tx,
@@ -1738,14 +1810,15 @@ pub async fn create_type(tx: &mut Tx<'_>, ctx: &Ctx<'_>, value: &str) -> Result<
     let row = sqlx::query_as::<_, ProductType>(
         "insert into product_type (id, scope, value)
          values ($1, $2, $3)
+         on conflict do nothing
          returning id, value, created_at",
     )
     .bind(id.as_uuid())
     .bind(ctx.scope.0)
     .bind(&value)
-    .fetch_one(&mut **tx)
-    .await
-    .map_err(|err| taken(err, "that type is already here"))?;
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::conflict("that type is already here"))?;
 
     note(
         tx,
@@ -1817,14 +1890,15 @@ pub async fn create_tag(tx: &mut Tx<'_>, ctx: &Ctx<'_>, value: &str) -> Result<P
     let row = sqlx::query_as::<_, ProductTag>(
         "insert into product_tag (id, scope, value)
          values ($1, $2, $3)
+         on conflict do nothing
          returning id, value, created_at",
     )
     .bind(id.as_uuid())
     .bind(ctx.scope.0)
     .bind(&value)
-    .fetch_one(&mut **tx)
-    .await
-    .map_err(|err| taken(err, "that tag is already here"))?;
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::conflict("that tag is already here"))?;
 
     note(
         tx,
@@ -1974,6 +2048,7 @@ pub async fn create_category(
              (id, scope, parent_id, name, handle, description, rank, is_active, is_internal, \
          metadata)
          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         on conflict do nothing
          returning ",
         category_columns!(),
     ))
@@ -1987,9 +2062,9 @@ pub async fn create_category(
     .bind(new.is_active.unwrap_or(false))
     .bind(new.is_internal.unwrap_or(false))
     .bind(metadata_or_empty(new.metadata))
-    .fetch_one(&mut **tx)
-    .await
-    .map_err(|err| taken(err, "that handle is already a category here"))?;
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::conflict("that handle is already a category here"))?;
 
     note(
         tx,
@@ -2122,6 +2197,11 @@ pub async fn update_category(
              is_internal = coalesce($8, is_internal),
              metadata = coalesce($9, metadata)
          where scope = $1 and id = $2 and deleted_at is null
+           and not exists (
+               select 1 from product_category other
+               where other.scope = $1 and other.handle = $4 and other.id <> $2
+                 and other.deleted_at is null
+           )
          returning ",
         category_columns!()
     ))
@@ -2135,9 +2215,19 @@ pub async fn update_category(
     .bind(patch.is_internal)
     .bind(patch.metadata)
     .fetch_optional(&mut **tx)
-    .await
-    .map_err(|err| taken(err, "that handle is already a category here"))?
-    .ok_or_else(|| Error::not_found("category"))?;
+    .await?;
+
+    let Some(row) = row else {
+        return Err(refusal(
+            tx,
+            ctx,
+            "product_category",
+            "category",
+            id.as_uuid(),
+            "that handle is already a category here",
+        )
+        .await);
+    };
 
     note(
         tx,
@@ -2424,7 +2514,12 @@ pub async fn put_translation(
     let row = sqlx::query_as::<_, ProductTranslation>(
         "insert into product_translation
              (id, scope, product_id, locale, title, subtitle, description, handle)
-         values ($1, $2, $3, $4, $5, $6, $7, $8)
+         select $1::uuid, $2::uuid, $3::uuid, $4::text, $5::text, $6::text, $7::text, $8::text
+         where not exists (
+             select 1 from product_translation other
+             where other.scope = $2 and other.locale = $4 and other.handle = $8
+               and other.product_id <> $3
+         )
          on conflict (scope, product_id, locale) do update
              set title = excluded.title,
                  subtitle = excluded.subtitle,
@@ -2440,9 +2535,9 @@ pub async fn put_translation(
     .bind(nullable(translation.subtitle))
     .bind(nullable(translation.description))
     .bind(translated_handle)
-    .fetch_one(&mut **tx)
-    .await
-    .map_err(|err| taken(err, "that handle is already taken in this locale"))?;
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::conflict("that handle is already taken in this locale"))?;
 
     note(
         tx,

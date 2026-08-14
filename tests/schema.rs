@@ -45,7 +45,7 @@ async fn every_registered_table_is_unique_on_scope_and_id() {
 }
 
 #[tokio::test]
-async fn no_key_on_the_order_and_money_path_can_cross_a_scope() {
+async fn no_key_on_a_scoped_table_can_cross_a_scope() {
     let shop = Shop::open().await;
 
     let bare: Vec<(String, String)> = sqlx::query_as(
@@ -71,6 +71,44 @@ async fn no_key_on_the_order_and_money_path_can_cross_a_scope() {
         "these keys are single-column on a table whose keys must carry the scope, \
          so Postgres — which checks a foreign key with row security bypassed — \
          would let one shop point at another's row: {bare:?}"
+    );
+
+    shop.close().await;
+}
+
+/// Registration is what makes the test above ask about a table at all, so a
+/// table with no scoped key left is a table nothing checks.
+#[tokio::test]
+async fn the_catalogue_pricing_inventory_and_cart_tables_are_registered_as_scoped() {
+    let shop = Shop::open().await;
+
+    let missing: Vec<String> = sqlx::query_scalar(
+        "select t.name
+         from unnest(array[
+             'product', 'product_variant', 'product_option', 'product_option_value',
+             'product_variant_option_value', 'product_image', 'product_tag_link',
+             'product_category_link', 'product_sales_channel', 'product_translation',
+             'product_category',
+             'price', 'price_rule', 'price_list_rule',
+             'product_variant_price_set', 'shipping_option_price_set',
+             'stock_location', 'stock_location_sales_channel', 'inventory_level',
+             'reservation_item', 'variant_inventory_item',
+             'cart', 'cart_address', 'cart_line_item', 'cart_line_item_adjustment',
+             'cart_line_item_tax_line', 'cart_shipping_method',
+             'cart_shipping_method_adjustment', 'cart_shipping_method_tax_line'
+         ]) as t(name)
+         where not exists (select 1 from tezgah_scoped_fk_table f where f.name = t.name)
+         order by 1",
+    )
+    .fetch_all(&shop.pool)
+    .await
+    .expect("to read tezgah_scoped_fk_table");
+
+    assert!(
+        missing.is_empty(),
+        "these tables carry goods, prices or a shopper's cart and are not held to \
+         a scoped key, so nothing would notice one of their keys going single-column \
+         again: {missing:?}"
     );
 
     shop.close().await;

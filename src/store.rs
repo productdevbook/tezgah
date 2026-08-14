@@ -434,6 +434,7 @@ pub async fn create_sales_channel(
     let channel = sqlx::query_as::<_, SalesChannel>(&format!(
         "insert into sales_channel (id, scope, name, description, is_disabled)
          values ($1, $2, $3, $4, $5)
+         on conflict (scope, name) do nothing
          returning {CHANNEL_COLUMNS}"
     ))
     .bind(id.as_uuid())
@@ -441,14 +442,9 @@ pub async fn create_sales_channel(
     .bind(new.name.trim())
     .bind(new.description.as_deref())
     .bind(new.is_disabled)
-    .fetch_one(&mut **tx)
-    .await
-    .map_err(|error| match &error {
-        sqlx::Error::Database(failure) if failure.is_unique_violation() => {
-            Error::conflict("a channel of that name is already here")
-        }
-        _ => Error::from(error),
-    })?;
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::conflict("a channel of that name is already here"))?;
 
     ctx.audit(
         tx,

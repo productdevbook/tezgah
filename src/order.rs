@@ -553,6 +553,31 @@ pub struct NewTaxLine {
     pub name: String,
     pub provider_id: Option<String>,
     pub description: Option<String>,
+    /// Everything below is the snapshot the order keeps: why this line was
+    /// taxed the way it was, which authority the share belongs to, and what the
+    /// answer rested on. Copied in rather than joined to, because an OSS record
+    /// outlives every table it could join to.
+    pub snapshot: TaxSnapshot,
+}
+
+/// What was true when the tax was worked out, frozen on the line.
+#[derive(Debug, Clone, Default)]
+pub struct TaxSnapshot {
+    pub treatment: Option<String>,
+    pub jurisdiction_level: Option<String>,
+    pub jurisdiction_code: Option<String>,
+    pub jurisdiction_name: Option<String>,
+    pub tax_code: Option<String>,
+    pub provider: Option<String>,
+    pub provider_transaction_id: Option<String>,
+    pub calculated_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub address_country_code: Option<String>,
+    pub address_province_code: Option<String>,
+    pub address_postal_code: Option<String>,
+    pub tax_id: Option<String>,
+    pub tax_id_evidence: Option<String>,
+    pub exemption_id: Option<Uuid>,
+    pub evidence: Option<serde_json::Value>,
 }
 
 impl NewTaxLine {
@@ -563,6 +588,7 @@ impl NewTaxLine {
             name: name.into(),
             provider_id: None,
             description: None,
+            snapshot: TaxSnapshot::default(),
         }
     }
 }
@@ -4243,6 +4269,7 @@ pub async fn request_transfer(
              (id, scope, order_id, from_customer_id, to_email, token_hash, status,
               expires_at, requested_by, requested_at)
          values ($1, $2, $3, $4, $5, $6, 'requested', $7, $8, $9)
+         on conflict (scope, order_id) where status = 'requested' do nothing
          returning {TRANSFER_COLUMNS}"
     ))
     .bind(id.as_uuid())
@@ -4254,14 +4281,9 @@ pub async fn request_transfer(
     .bind(expires_at)
     .bind(actor_name(ctx))
     .bind(ctx.now())
-    .fetch_one(&mut **tx)
-    .await
-    .map_err(|error| match &error {
-        sqlx::Error::Database(failure) if failure.is_unique_violation() => {
-            Error::conflict("that order is already offered to somebody")
-        }
-        _ => Error::from(error),
-    })?;
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::conflict("that order is already offered to somebody"))?;
 
     ctx.audit(
         tx,
@@ -4831,10 +4853,16 @@ async fn insert_line_money(
     }
 
     for tax in tax_lines {
+        let snapshot = &tax.snapshot;
         sqlx::query(&format!(
             "insert into {tax_table}
-                 (id, scope, {column}, rate, code, name, provider_id, description)
-             values ($1, $2, $3, $4, $5, $6, $7, $8)"
+                 (id, scope, {column}, rate, code, name, provider_id, description,
+                  treatment, jurisdiction_level, jurisdiction_code, jurisdiction_name,
+                  tax_code, provider, provider_transaction_id, calculated_at,
+                  address_country_code, address_province_code, address_postal_code,
+                  tax_id, tax_id_evidence, exemption_id, evidence)
+             values ($1, $2, $3, $4, $5, $6, $7, $8, coalesce($9, 'standard'), $10, $11, $12,
+                     $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)"
         ))
         .bind(Uuid::now_v7())
         .bind(ctx.scope.0)
@@ -4844,6 +4872,21 @@ async fn insert_line_money(
         .bind(&tax.name)
         .bind(&tax.provider_id)
         .bind(&tax.description)
+        .bind(&snapshot.treatment)
+        .bind(&snapshot.jurisdiction_level)
+        .bind(&snapshot.jurisdiction_code)
+        .bind(&snapshot.jurisdiction_name)
+        .bind(&snapshot.tax_code)
+        .bind(&snapshot.provider)
+        .bind(&snapshot.provider_transaction_id)
+        .bind(snapshot.calculated_at)
+        .bind(&snapshot.address_country_code)
+        .bind(&snapshot.address_province_code)
+        .bind(&snapshot.address_postal_code)
+        .bind(&snapshot.tax_id)
+        .bind(&snapshot.tax_id_evidence)
+        .bind(snapshot.exemption_id)
+        .bind(&snapshot.evidence)
         .execute(&mut **tx)
         .await?;
     }

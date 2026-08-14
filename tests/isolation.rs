@@ -69,21 +69,20 @@ async fn describe(shop: &Shop) -> Vec<Table> {
          join pg_class c on c.oid = con.conrelid
          join pg_namespace n on n.oid = c.relnamespace and n.nspname = 'public'
          join pg_class f on f.oid = con.confrelid
-         join unnest(con.conkey) as k(att) on true
+         join unnest(con.conkey) with ordinality as k(att, ord) on true
          join pg_attribute a on a.attrelid = con.conrelid and a.attnum = k.att
-         join unnest(con.confkey) as fk(att) on true
+         join unnest(con.confkey) with ordinality as fk(att, ord) on fk.ord = k.ord
          join pg_attribute fa on fa.attrelid = con.confrelid and fa.attnum = fk.att
          where con.contype = 'f'
            and fa.attname = 'id'
            and a.attname <> 'scope'
            and (cardinality(con.conkey) = 1
-                or (cardinality(con.conkey) = 2
-                    and exists (
-                        select 1 from pg_attribute s
-                        where s.attrelid = con.conrelid
-                          and s.attname = 'scope'
-                          and s.attnum = any (con.conkey)
-                    )))",
+                or exists (
+                    select 1 from pg_attribute s
+                    where s.attrelid = con.conrelid
+                      and s.attname = 'scope'
+                      and s.attnum = any (con.conkey)
+                ))",
     )
     .fetch_all(&shop.pool)
     .await

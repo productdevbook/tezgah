@@ -1210,6 +1210,13 @@ pub async fn reprice(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: CartId) -> Result<()> {
     retax(tx, ctx, id).await
 }
 
+fn variant_ids(lines: &[cart::LineItem]) -> Vec<Uuid> {
+    lines
+        .iter()
+        .filter_map(|line| line.variant_id.map(|id| id.as_uuid()))
+        .collect()
+}
+
 /// No address, no jurisdiction: the tax lines go and the cart is untaxed until
 /// somebody says where it is going. Checkout is what refuses to take money
 /// without an address, not this.
@@ -1224,10 +1231,17 @@ async fn retax(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: CartId) -> Result<()> {
     let address = tax::TaxableAddress {
         country_code: to.country_code,
         province_code: to.province_code,
+        postal_code: to.postal_code,
     };
 
-    let items: Vec<tax::TaxableLine> = cart::lines(tx, ctx, id)
-        .await?
+    // A buyer who put a tax number on file is buying as a business; that is the
+    // only signal a storefront has, and it is what the reverse charge turns on.
+    let mut subject = tax::subject_for(tx, ctx, holding.customer_id, false, Vec::new()).await?;
+    subject.is_business = !subject.tax_ids.is_empty();
+
+    let held = cart::lines(tx, ctx, id).await?;
+    let codes = tax::tax_codes(tx, ctx, &variant_ids(&held)).await?;
+    let items: Vec<tax::TaxableLine> = held
         .into_iter()
         .map(|line| tax::TaxableLine {
             id: line.id.as_uuid(),
@@ -1241,6 +1255,9 @@ async fn retax(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: CartId) -> Result<()> {
                     }]
                 })
                 .unwrap_or_default(),
+            tax_code: line
+                .variant_id
+                .and_then(|variant| codes.get(&variant.as_uuid()).cloned()),
         })
         .collect();
 
@@ -1259,12 +1276,13 @@ async fn retax(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: CartId) -> Result<()> {
                     }]
                 })
                 .unwrap_or_default(),
+            tax_code: None,
         })
         .collect();
 
     let inclusive = pricing::is_tax_inclusive(tx, ctx, &price_context(&holding, currency)).await?;
-    let on_items = tax::calculate(tx, ctx, &items, &address, inclusive).await?;
-    let on_methods = tax::calculate(tx, ctx, &methods, &address, inclusive).await?;
+    let on_items = tax::calculate(tx, ctx, &items, &address, Some(&subject), inclusive).await?;
+    let on_methods = tax::calculate(tx, ctx, &methods, &address, Some(&subject), inclusive).await?;
 
     tax::set_cart_tax_lines(tx, ctx, id, &on_items, &on_methods).await
 }
@@ -1332,8 +1350,9 @@ pub async fn quote_taxes(
     let holding = own_cart(tx, ctx, id, Action::View).await?;
     let currency = cart_currency(&holding)?;
 
-    let lines: Vec<tax::TaxableLine> = cart::lines(tx, ctx, id)
-        .await?
+    let held = cart::lines(tx, ctx, id).await?;
+    let codes = tax::tax_codes(tx, ctx, &variant_ids(&held)).await?;
+    let lines: Vec<tax::TaxableLine> = held
         .into_iter()
         .map(|line| tax::TaxableLine {
             id: line.id.as_uuid(),
@@ -1347,16 +1366,23 @@ pub async fn quote_taxes(
                     }]
                 })
                 .unwrap_or_default(),
+            tax_code: line
+                .variant_id
+                .and_then(|variant| codes.get(&variant.as_uuid()).cloned()),
         })
         .collect();
 
     let address = tax::TaxableAddress {
         country_code: input.country_code,
         province_code: input.province_code,
+        postal_code: None,
     };
 
+    let mut subject = tax::subject_for(tx, ctx, holding.customer_id, false, Vec::new()).await?;
+    subject.is_business = !subject.tax_ids.is_empty();
+
     let inclusive = pricing::is_tax_inclusive(tx, ctx, &price_context(&holding, currency)).await?;
-    let found = tax::calculate(tx, ctx, &lines, &address, inclusive).await?;
+    let found = tax::calculate(tx, ctx, &lines, &address, Some(&subject), inclusive).await?;
 
     Ok(found.into_iter().map(TaxLineView::from).collect())
 }

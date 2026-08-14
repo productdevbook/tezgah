@@ -91,6 +91,7 @@ Each domain owns a number, so parallel work does not collide.
 | `0023_payment_collection_cart` | which cart a payment collection was opened for, so a collection says whose it is |
 | `0028_installment_and_invoice` | the instalment count, the difference it costs and who carries it, so what the basket came to and what the card was charged are two numbers; and `order_invoice`, the reference to the document a tax authority issued, unique per serial and per identifier so it cannot be issued twice |
 | `0029_agreement_and_withdrawal` | `agreement_version`, the whole rendered text a buyer was shown, written once and frozen by a trigger; `order_agreement`, that this order accepted that version and when; the per-line `withdrawal_eligible` decided at the sale; and the withdrawal timestamps on `order_return` |
+| `0030_scoped_catalogue_keys` | the rest of what 0026 left single-column — every catalogue, pricing, inventory and cart key made `(scope, …)`, the variant/option-value composite widened to carry the scope rather than dropped, and those tables registered in `tezgah_scoped_fk_table` |
 
 Migrations are append-only once merged. A change to a shipped table is a new
 file, and it expands before it contracts: add and backfill in one release, read

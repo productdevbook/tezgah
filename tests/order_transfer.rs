@@ -223,6 +223,16 @@ async fn an_order_is_offered_to_one_person_at_a_time() -> tezgah::Result<()> {
     .expect_err("one open offer at a time");
     assert!(refused.is_conflict());
 
+    // A constraint violation aborts the whole transaction, so a refusal that
+    // came from catching one leaves the caller with 25P02 on whatever it runs
+    // next. This is what says the refusal was decided rather than caught.
+    let still: i64 = sqlx::query_scalar("select count(*) from order_transfer where scope = $1")
+        .bind(shop.here.0)
+        .fetch_one(&mut *tx)
+        .await
+        .expect("the transaction to still be usable after a refused transfer");
+    assert_eq!(still, 1);
+
     tx.rollback().await.expect("to roll back");
     shop.close().await;
     Ok(())

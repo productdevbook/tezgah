@@ -68,14 +68,12 @@ fn one_line(amount: Decimal) -> Vec<TaxableLine> {
         id: Uuid::now_v7(),
         amount: Money::new(amount, lira()),
         targets: Vec::new(),
+        tax_code: None,
     }]
 }
 
 fn to_turkey() -> TaxableAddress {
-    TaxableAddress {
-        country_code: "TR".into(),
-        province_code: None,
-    }
+    TaxableAddress::to("TR")
 }
 
 #[tokio::test]
@@ -87,9 +85,16 @@ async fn tax_is_added_to_a_price_that_excludes_it() {
     seed_currency(&mut tx, shop.here.0).await;
     a_flat_eighteen(&mut tx, &ctx).await;
 
-    let lines = tax::calculate(&mut tx, &ctx, &one_line(dec!(100)), &to_turkey(), false)
-        .await
-        .expect("a calculation");
+    let lines = tax::calculate(
+        &mut tx,
+        &ctx,
+        &one_line(dec!(100)),
+        &to_turkey(),
+        None,
+        false,
+    )
+    .await
+    .expect("a calculation");
 
     assert_eq!(lines.len(), 1);
     assert_eq!(lines[0].amount.amount, dec!(18.00));
@@ -108,9 +113,16 @@ async fn tax_is_taken_out_of_a_price_that_includes_it() {
     seed_currency(&mut tx, shop.here.0).await;
     a_flat_eighteen(&mut tx, &ctx).await;
 
-    let lines = tax::calculate(&mut tx, &ctx, &one_line(dec!(118)), &to_turkey(), true)
-        .await
-        .expect("a calculation");
+    let lines = tax::calculate(
+        &mut tx,
+        &ctx,
+        &one_line(dec!(118)),
+        &to_turkey(),
+        None,
+        true,
+    )
+    .await
+    .expect("a calculation");
 
     assert_eq!(lines.len(), 1);
     // Out of the price, not on top of it: 118 * 18% would be 21.24.
@@ -204,14 +216,16 @@ async fn a_combinable_province_rate_sits_on_top_of_the_country_rate() {
             reference: TaxReference::Product,
             id: product,
         }],
+        tax_code: None,
     }];
 
     let address = TaxableAddress {
         country_code: "TR".into(),
         province_code: Some("06".into()),
+        postal_code: None,
     };
 
-    let out = tax::calculate(&mut tx, &ctx, &lines, &address, false)
+    let out = tax::calculate(&mut tx, &ctx, &lines, &address, None, false)
         .await
         .expect("a calculation");
 
@@ -247,6 +261,7 @@ async fn one_shops_rates_are_invisible_to_another() {
         &shop.theirs(),
         &one_line(dec!(100)),
         &to_turkey(),
+        None,
         false,
     )
     .await
@@ -271,15 +286,17 @@ async fn two_currencies_in_one_calculation_are_refused() {
             id: Uuid::now_v7(),
             amount: Money::new(dec!(100), lira()),
             targets: Vec::new(),
+            tax_code: None,
         },
         TaxableLine {
             id: Uuid::now_v7(),
             amount: Money::new(dec!(100), Currency::parse("USD").expect("a currency code")),
             targets: Vec::new(),
+            tax_code: None,
         },
     ];
 
-    let refused = tax::calculate(&mut tx, &ctx, &mixed, &to_turkey(), false)
+    let refused = tax::calculate(&mut tx, &ctx, &mixed, &to_turkey(), None, false)
         .await
         .expect_err("two currencies taxed as one");
     assert!(refused.is_internal(), "a mixed calculation was not a bug");
