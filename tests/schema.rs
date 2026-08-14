@@ -743,9 +743,11 @@ async fn a_shipped_lot_cannot_be_deleted_out_from_under_its_parcel() {
         .and_then(|e| e.code())
         .map(|c| c.to_string());
 
+    // 23001 rather than 23503: `restrict` is checked before the row goes, and
+    // Postgres reports that as its own thing.
     assert_eq!(
         code.as_deref(),
-        Some("23503"),
+        Some("23001"),
         "deleting the item took the answer to \"who received this batch\" with it: {swept:?}"
     );
 
