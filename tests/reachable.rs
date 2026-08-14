@@ -56,7 +56,7 @@ use std::path::{Path, PathBuf};
 
 /// Public functions nothing in the crate calls, each with the reason.
 /// Adding to this is not a fix.
-const TOLERATED: [(&str, &str); 50] = [
+const TOLERATED: [(&str, &str); 49] = [
     (
         "batch::import_workflow",
         "the import workflow a host runs through the runner when a file is large \
@@ -258,11 +258,6 @@ const TOLERATED: [(&str, &str); 50] = [
          #109",
     ),
     (
-        "store::channels_for_token",
-        "what a storefront token may see; the host's middleware asks before a \
-         request reaches a route",
-    ),
-    (
         "tax::rates_for",
         "the rates answering for an address, used by nobody outside its own \
          module",
@@ -303,12 +298,7 @@ const TOLERATED: [(&str, &str); 50] = [
 ];
 
 /// Tables no code in `src/` writes to, each with the reason.
-const TOLERATED_TABLES: [(&str, &str); 6] = [
-    (
-        "product_sales_channel",
-        "which channels a product is sold on; the table shipped and nothing \
-         ever wrote a row, see #109",
-    ),
+const TOLERATED_TABLES: [(&str, &str); 5] = [
     (
         "tezgah_table",
         "the register a migration writes through `tezgah_register`, read by \

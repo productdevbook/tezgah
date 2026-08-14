@@ -153,6 +153,11 @@ pub enum Resource {
     /// ran was given and returned.
     Workflow {
         id: Option<Uuid>,
+        /// The key the run was started with — a cart id, an order id,
+        /// whatever the host's own workflow chose — so a host whose runs
+        /// belong to somebody can say so. `None` for a query across every
+        /// run in scope, which no single owner answers for.
+        transaction_key: Option<String>,
     },
 }
 

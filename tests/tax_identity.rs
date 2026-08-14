@@ -567,9 +567,15 @@ async fn a_cart_priced_in_one_currency_is_not_delivered_to_another_region() {
     .await
     .expect("a region");
 
+    let token = store::create_publishable_key(&mut tx, &ctx, "storefront")
+        .await
+        .expect("a token")
+        .token;
+
     let in_lira = api_store::create_cart(
         &mut tx,
         &ctx,
+        &token,
         api_store::CreateCart {
             currency_code: "TRY".into(),
             region_id: None,
@@ -616,6 +622,7 @@ async fn a_cart_priced_in_one_currency_is_not_delivered_to_another_region() {
     let in_euro = api_store::create_cart(
         &mut tx,
         &ctx,
+        &token,
         api_store::CreateCart {
             currency_code: "EUR".into(),
             region_id: Some(region.id),

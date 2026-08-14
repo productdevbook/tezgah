@@ -653,6 +653,16 @@ fn paging(after: Option<&str>, limit: Option<u32>) -> Result<Paging> {
     }
 }
 
+/// The channels a storefront's publishable key may see, as plain ids for a
+/// query rather than the rows themselves.
+async fn visible_channels(tx: &mut Tx<'_>, ctx: &Ctx<'_>, token: &str) -> Result<Vec<Uuid>> {
+    Ok(store::channels_for_token(tx, ctx, token)
+        .await?
+        .into_iter()
+        .map(|channel| channel.id.as_uuid())
+        .collect())
+}
+
 /// A product that is not published is not here, as far as a storefront is
 /// concerned.
 fn shown(row: catalogue::Product) -> Result<catalogue::Product> {
@@ -664,6 +674,23 @@ fn shown(row: catalogue::Product) -> Result<catalogue::Product> {
 
 async fn published(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ProductId) -> Result<catalogue::Product> {
     shown(catalogue::product(tx, ctx, id).await?)
+}
+
+/// A product not linked to any of these channels — and linked to at least one
+/// channel that is not among them — is not here either. A product linked to
+/// no channel at all is unaffected, the same backward-compatibility rule
+/// [`catalogue::ProductFilter::channels`] applies to a list.
+async fn on_channel(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    row: catalogue::Product,
+    channels: &[Uuid],
+) -> Result<catalogue::Product> {
+    let linked = catalogue::channels_for_product(tx, ctx, row.id).await?;
+    if linked.is_empty() || linked.iter().any(|c| channels.contains(&c.id.as_uuid())) {
+        return Ok(row);
+    }
+    Err(Error::not_found("product"))
 }
 
 /// What a line item is worth in total, for tax and for shipping rules.
@@ -805,14 +832,18 @@ pub struct ListProducts {
 pub async fn list_products(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
+    token: &str,
     query: ListProducts,
 ) -> Result<Page<ProductView>> {
+    let channels = visible_channels(tx, ctx, token).await?;
+
     let filter = catalogue::ProductFilter {
         status: Some(catalogue::ProductStatus::Published),
         collection: query.collection_id,
         category: query.category_id,
         product_type: query.type_id,
         tag: query.tag_id,
+        channels: Some(channels),
     };
 
     let page = catalogue::products(
@@ -829,9 +860,17 @@ pub async fn list_products(
     })
 }
 
-pub async fn get_product(tx: &mut Tx<'_>, ctx: &Ctx<'_>, handle: &str) -> Result<ProductView> {
-    let row = catalogue::product_by_handle(tx, ctx, handle).await?;
-    Ok(ProductView::from(shown(row)?))
+pub async fn get_product(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    token: &str,
+    handle: &str,
+) -> Result<ProductView> {
+    let channels = visible_channels(tx, ctx, token).await?;
+    let row = shown(catalogue::product_by_handle(tx, ctx, handle).await?)?;
+    Ok(ProductView::from(
+        on_channel(tx, ctx, row, &channels).await?,
+    ))
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1062,11 +1101,25 @@ pub struct CreateCart {
 }
 
 /// A cart belongs to whoever is signed in, and to nobody when nobody is.
-pub async fn create_cart(tx: &mut Tx<'_>, ctx: &Ctx<'_>, input: CreateCart) -> Result<CartView> {
+pub async fn create_cart(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    token: &str,
+    input: CreateCart,
+) -> Result<CartView> {
     let mine = match ctx.actor {
         Actor::Customer { id } => Some(CustomerId::from_uuid(id)),
         _ => None,
     };
+
+    if let Some(wanted) = input.sales_channel_id {
+        let channels = visible_channels(tx, ctx, token).await?;
+        if !channels.contains(&wanted.as_uuid()) {
+            return Err(Error::invalid(
+                "that sales channel is not one this key may open a cart on",
+            ));
+        }
+    }
 
     let made = cart::create(
         tx,

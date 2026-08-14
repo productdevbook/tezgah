@@ -16,7 +16,7 @@ use uuid::Uuid;
 use crate::error::{Error, Result};
 use crate::id::{
     CategoryId, CollectionId, OptionId, OptionValueId, ProductId, ProductImageId, ProductTagId,
-    ProductTypeId, VariantId,
+    ProductTypeId, SalesChannelId, VariantId,
 };
 use crate::page::{Cursor, Page, Paging};
 use crate::ports::{Action, AuditEntry, Ctx, Event, Permit, Resource, Tx};
@@ -345,6 +345,12 @@ pub struct ProductFilter {
     /// Matches the category and everything under it.
     pub category: Option<CategoryId>,
     pub tag: Option<ProductTagId>,
+    /// `Some` narrows to a storefront's visible channels: a product linked to
+    /// no channel at all is still shown everywhere, so today's shops — every
+    /// one of them has an empty `product_sales_channel` — see nothing change.
+    /// A product linked to at least one channel is shown only where it is
+    /// linked. `None` means an admin listing, unfiltered by channel.
+    pub channels: Option<Vec<Uuid>>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -675,9 +681,17 @@ pub async fn products(
                  select 1 from product_tag_link t
                  where t.scope = p.scope and t.product_id = p.id and t.tag_id = $6
                ))
-           and ($7::timestamptz is null or (p.created_at, p.id) > ($7, $8))
+           and ($7::uuid[] is null or not exists (
+                 select 1 from product_sales_channel s
+                 where s.scope = p.scope and s.product_id = p.id
+               ) or exists (
+                 select 1 from product_sales_channel s
+                 where s.scope = p.scope and s.product_id = p.id
+                   and s.sales_channel_id = any($7)
+               ))
+           and ($8::timestamptz is null or (p.created_at, p.id) > ($8, $9))
          order by p.created_at, p.id
-         limit $9"
+         limit $10"
     ))
     .bind(ctx.scope.0)
     .bind(filter.status)
@@ -685,6 +699,7 @@ pub async fn products(
     .bind(filter.product_type.map(ProductTypeId::as_uuid))
     .bind(filter.category.map(CategoryId::as_uuid))
     .bind(filter.tag.map(ProductTagId::as_uuid))
+    .bind(filter.channels)
     .bind(paging.after.map(|c| c.at))
     .bind(paging.after.map(|c| c.id))
     .bind(paging.probe())
@@ -2455,6 +2470,73 @@ pub async fn product_categories(
          join product_category c on c.id = l.category_id and c.scope = l.scope
          where l.scope = $1 and l.product_id = $2 and c.deleted_at is null
          order by c.mpath
+         limit $3",
+    )
+    .bind(ctx.scope.0)
+    .bind(product_id.as_uuid())
+    .bind(MAX_ATTACHED)
+    .fetch_all(&mut **tx)
+    .await?;
+
+    Ok(rows)
+}
+
+// ---------------------------------------------------------------------------
+// Sales channels
+// ---------------------------------------------------------------------------
+
+pub async fn add_product_to_channel(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    product_id: ProductId,
+    channel_id: SalesChannelId,
+) -> Result<()> {
+    link(
+        tx,
+        ctx,
+        "product_sales_channel",
+        "sales_channel_id",
+        product_id,
+        channel_id.as_uuid(),
+    )
+    .await
+}
+
+pub async fn remove_product_from_channel(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    product_id: ProductId,
+    channel_id: SalesChannelId,
+) -> Result<()> {
+    unlink(
+        tx,
+        ctx,
+        "product_sales_channel",
+        "sales_channel_id",
+        product_id,
+        channel_id.as_uuid(),
+    )
+    .await
+}
+
+pub async fn channels_for_product(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    product_id: ProductId,
+) -> Result<Vec<crate::store::SalesChannel>> {
+    let _: Permit = ctx.permit(
+        Action::View,
+        Resource::Product {
+            id: Some(product_id.as_uuid()),
+        },
+    )?;
+
+    let rows = sqlx::query_as::<_, crate::store::SalesChannel>(
+        "select c.id, c.name, c.description, c.is_disabled, c.created_at
+         from product_sales_channel l
+         join sales_channel c on c.id = l.sales_channel_id and c.scope = l.scope
+         where l.scope = $1 and l.product_id = $2
+         order by c.created_at, c.id
          limit $3",
     )
     .bind(ctx.scope.0)

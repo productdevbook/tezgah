@@ -20,6 +20,7 @@ use tezgah::promotion::{
     self, Allocation, MethodKind, NewApplicationMethod, NewPromotion, PromotionKind, Status,
     TargetKind,
 };
+use tezgah::store as domain_store;
 use tezgah::tax::{self, NewTaxRate, NewTaxRegion};
 use uuid::Uuid;
 
@@ -167,9 +168,14 @@ async fn ten_percent_off(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> PromotionId {
 }
 
 async fn a_cart(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> CartId {
+    let token = domain_store::create_publishable_key(tx, ctx, "storefront")
+        .await
+        .expect("a token")
+        .token;
     store::create_cart(
         tx,
         ctx,
+        &token,
         CreateCart {
             currency_code: "TRY".into(),
             region_id: None,

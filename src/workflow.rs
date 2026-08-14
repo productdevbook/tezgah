@@ -305,6 +305,7 @@ pub struct Run {
     pub state: State,
     pub output: Value,
     pub failure: Option<String>,
+    pub transaction_key: String,
 }
 
 /// Starts a workflow, or picks up the one this key already started.
@@ -489,6 +490,7 @@ struct Head {
     input: Value,
     output: Value,
     failure: Option<String>,
+    transaction_key: String,
 }
 
 /// Which step of which run this driver is holding.
@@ -565,6 +567,7 @@ async fn drive(
             state: head.state,
             output: head.output,
             failure: head.failure,
+            transaction_key: head.transaction_key,
         });
     }
 
@@ -572,7 +575,7 @@ async fn drive(
         let why = head
             .failure
             .unwrap_or_else(|| "the run was already unwinding".into());
-        return unwind(pool, ctx, workflow, id, worker, why).await;
+        return unwind(pool, ctx, workflow, id, worker, head.transaction_key, why).await;
     }
 
     let mut carried = head.input;
@@ -631,7 +634,7 @@ async fn drive(
 
             if let Some((name, failure)) = failed {
                 let why = format!("{name}: {}", failure.error());
-                return unwind(pool, ctx, workflow, id, worker, why).await;
+                return unwind(pool, ctx, workflow, id, worker, head.transaction_key, why).await;
             }
         }
 
@@ -648,6 +651,7 @@ async fn drive(
         state: State::Done,
         output: carried,
         failure: None,
+        transaction_key: head.transaction_key,
     })
 }
 
@@ -681,19 +685,22 @@ async fn all<F: Future>(futures: Vec<F>) -> Vec<F::Output> {
 
 async fn head(pool: &PgPool, ctx: &Ctx<'_>, id: WorkflowRunId) -> Result<Head> {
     let mut tx = scoped(pool, ctx).await?;
-    let row: Option<(String, Value, Option<Value>, Option<String>)> =
-        sqlx::query_as("select state, input, output, failure from workflow_run where id = $1")
-            .bind(id.as_uuid())
-            .fetch_optional(&mut *tx)
-            .await?;
+    let row: Option<(String, Value, Option<Value>, Option<String>, String)> = sqlx::query_as(
+        "select state, input, output, failure, transaction_key from workflow_run where id = $1",
+    )
+    .bind(id.as_uuid())
+    .fetch_optional(&mut *tx)
+    .await?;
     tx.commit().await?;
 
-    let (state, input, output, failure) = row.ok_or_else(|| Error::not_found("workflow run"))?;
+    let (state, input, output, failure, transaction_key) =
+        row.ok_or_else(|| Error::not_found("workflow run"))?;
     Ok(Head {
         state: State::parse(&state)?,
         input,
         output: output.unwrap_or(Value::Null),
         failure,
+        transaction_key,
     })
 }
 
@@ -844,6 +851,7 @@ async fn unwind(
     workflow: &Workflow,
     id: WorkflowRunId,
     worker: &str,
+    transaction_key: String,
     failure: String,
 ) -> Result<Run> {
     set_state(pool, ctx, id, State::Compensating, Some(&failure)).await?;
@@ -893,6 +901,7 @@ async fn unwind(
         state,
         output: Value::Null,
         failure: Some(failure),
+        transaction_key,
     })
 }
 
@@ -972,6 +981,7 @@ pub async fn get(pool: &PgPool, ctx: &Ctx<'_>, id: WorkflowRunId) -> Result<Run>
         state: head.state,
         output: head.output,
         failure: head.failure,
+        transaction_key: head.transaction_key,
     })
 }
 
@@ -1048,7 +1058,13 @@ pub async fn runs(
     paging: Paging,
     state: Option<State>,
 ) -> Result<Page<RunSummary>> {
-    let _: Permit = ctx.permit(Action::View, Resource::Workflow { id: None })?;
+    let _: Permit = ctx.permit(
+        Action::View,
+        Resource::Workflow {
+            id: None,
+            transaction_key: None,
+        },
+    )?;
 
     let rows = sqlx::query_as::<_, RunSummaryRow>(
         "select id, name, transaction_key, state, failure, created_at, finished_at
@@ -1084,10 +1100,18 @@ pub async fn steps(
     ctx: &Ctx<'_>,
     run_id: WorkflowRunId,
 ) -> Result<Vec<StepSummary>> {
+    let transaction_key: Option<String> =
+        sqlx::query_scalar("select transaction_key from workflow_run where scope = $1 and id = $2")
+            .bind(ctx.scope.0)
+            .bind(run_id.as_uuid())
+            .fetch_optional(&mut **tx)
+            .await?;
+
     let _: Permit = ctx.permit(
         Action::View,
         Resource::Workflow {
             id: Some(run_id.as_uuid()),
+            transaction_key,
         },
     )?;
 
@@ -1114,7 +1138,13 @@ pub async fn dead_letters(
     ctx: &Ctx<'_>,
     paging: Paging,
 ) -> Result<Page<DeadLetter>> {
-    let _: Permit = ctx.permit(Action::View, Resource::Workflow { id: None })?;
+    let _: Permit = ctx.permit(
+        Action::View,
+        Resource::Workflow {
+            id: None,
+            transaction_key: None,
+        },
+    )?;
 
     let rows = sqlx::query_as::<_, DeadLetter>(
         "select id, run_id, step_name, failure, state, created_at

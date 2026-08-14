@@ -23,7 +23,17 @@ use tezgah::ports::{
     Action, Actor, AuditEntry, AuditSink, Authorizer, Clock, Event, EventSink, Host, JobSpec, Jobs,
     Permit, Resource, Tx,
 };
+use tezgah::store as domain_store;
 use uuid::Uuid;
+
+/// A fresh publishable key's token, linked to no channel — the state every
+/// shop starts in, and so one that sees whatever `channels: None` used to.
+async fn any_token(tx: &mut Tx<'_>, ctx: &tezgah::ports::Ctx<'_>) -> String {
+    domain_store::create_publishable_key(tx, ctx, "storefront")
+        .await
+        .expect("a token")
+        .token
+}
 
 /// A host that answers ownership the way a real one would, and says yes to
 /// everything else.
@@ -113,8 +123,9 @@ async fn a_draft_is_not_here_and_a_published_one_is() -> tezgah::Result<()> {
     let mut tx = shop.begin().await;
 
     let made = catalogue::create_product(&mut tx, &ctx, draft("kilim")).await?;
+    let token = any_token(&mut tx, &ctx).await;
 
-    let hidden = store::get_product(&mut tx, &ctx, "kilim")
+    let hidden = store::get_product(&mut tx, &ctx, &token, "kilim")
         .await
         .expect_err("a draft is not on the storefront");
     assert!(
@@ -123,15 +134,15 @@ async fn a_draft_is_not_here_and_a_published_one_is() -> tezgah::Result<()> {
     );
     assert!(!hidden.is_denied());
 
-    let listed = store::list_products(&mut tx, &ctx, ListProducts::default()).await?;
+    let listed = store::list_products(&mut tx, &ctx, &token, ListProducts::default()).await?;
     assert!(listed.is_empty(), "a draft is not listed either");
 
     catalogue::publish_product(&mut tx, &ctx, made.id).await?;
 
-    let shown = store::get_product(&mut tx, &ctx, "kilim").await?;
+    let shown = store::get_product(&mut tx, &ctx, &token, "kilim").await?;
     assert_eq!(shown.handle, "kilim");
 
-    let listed = store::list_products(&mut tx, &ctx, ListProducts::default()).await?;
+    let listed = store::list_products(&mut tx, &ctx, &token, ListProducts::default()).await?;
     assert_eq!(listed.len(), 1);
 
     drop(tx);
@@ -193,9 +204,11 @@ async fn a_cart_is_not_reached_by_somebody_else() -> tezgah::Result<()> {
         host.as_ref() as &dyn Host,
     );
 
+    let token = any_token(&mut tx, &ctx).await;
     let held = store::create_cart(
         &mut tx,
         &ctx,
+        &token,
         CreateCart {
             currency_code: "TRY".into(),
             region_id: None,
@@ -235,10 +248,12 @@ async fn a_cart_with_money_owed(
     ctx: &tezgah::ports::Ctx<'_>,
 ) -> tezgah::Result<(CartId, PaymentCollectionId)> {
     common::a_currency(tx, ctx.scope, "TRY", 2).await;
+    let token = any_token(tx, ctx).await;
 
     let cart = store::create_cart(
         tx,
         ctx,
+        &token,
         CreateCart {
             currency_code: "TRY".into(),
             region_id: None,
@@ -428,6 +443,7 @@ async fn a_listing_pages_and_stops_at_the_ceiling() -> tezgah::Result<()> {
     let ctx = shop.ctx();
     let mut tx = shop.begin().await;
 
+    let token = any_token(&mut tx, &ctx).await;
     let over_the_ceiling = MAX_LIMIT + 1;
     for at in 0..over_the_ceiling {
         let made = catalogue::create_product(&mut tx, &ctx, draft(&format!("thing-{at}"))).await?;
@@ -437,6 +453,7 @@ async fn a_listing_pages_and_stops_at_the_ceiling() -> tezgah::Result<()> {
     let asked_for_everything = store::list_products(
         &mut tx,
         &ctx,
+        &token,
         ListProducts {
             limit: Some(100_000),
             ..ListProducts::default()
@@ -456,6 +473,7 @@ async fn a_listing_pages_and_stops_at_the_ceiling() -> tezgah::Result<()> {
     let rest = store::list_products(
         &mut tx,
         &ctx,
+        &token,
         ListProducts {
             after: Some(next),
             limit: Some(100_000),
@@ -469,6 +487,7 @@ async fn a_listing_pages_and_stops_at_the_ceiling() -> tezgah::Result<()> {
     let nonsense = store::list_products(
         &mut tx,
         &ctx,
+        &token,
         ListProducts {
             after: Some("not-a-cursor".into()),
             ..ListProducts::default()
@@ -521,17 +540,23 @@ async fn another_scope_sees_none_of_it() -> tezgah::Result<()> {
 
     let mut elsewhere = shop.begin_as(shop.elsewhere).await;
     let theirs = shop.theirs();
+    let their_token = any_token(&mut elsewhere, &theirs).await;
 
     assert!(
-        store::get_product(&mut elsewhere, &theirs, "carpet")
+        store::get_product(&mut elsewhere, &theirs, &their_token, "carpet")
             .await
             .expect_err("that is another shop's product")
             .is_not_found()
     );
     assert!(
-        store::list_products(&mut elsewhere, &theirs, ListProducts::default())
-            .await?
-            .is_empty()
+        store::list_products(
+            &mut elsewhere,
+            &theirs,
+            &their_token,
+            ListProducts::default()
+        )
+        .await?
+        .is_empty()
     );
     assert!(
         store::get_variant(&mut elsewhere, &theirs, uuid_variant())

@@ -896,7 +896,10 @@ pub async fn refund_to_credit(
         return Err(Error::invalid("a refund is for more than nothing"));
     }
     if amount.currency.as_str() != currency_code {
-        return Err(Error::bug("a refund met another currency"));
+        return Err(Error::invalid(format!(
+            "this order is in {currency_code}, not {}",
+            amount.currency
+        )));
     }
 
     let (account, movement) = add_credit(

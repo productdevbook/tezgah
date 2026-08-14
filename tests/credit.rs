@@ -458,6 +458,36 @@ async fn a_restored_redemption_nets_the_collection_back_to_nothing() {
     shop.close().await;
 }
 
+/// A caller's mistake, not ours: #96 fixed the same defect in `capture`,
+/// `refund` and `record_transaction`; this is the one `refund_to_credit` was
+/// missed in.
+#[tokio::test]
+async fn a_refund_to_credit_in_the_wrong_currency_is_a_caller_mistake() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+
+    let mut tx = shop.begin().await;
+    let order = an_order(&mut tx, &ctx, dec!(400)).await;
+
+    let wrong = credit::refund_to_credit(
+        &mut tx,
+        &ctx,
+        order,
+        Money {
+            amount: dec!(400),
+            currency: Currency::parse("USD").expect("a currency"),
+        },
+        None,
+    )
+    .await
+    .expect_err("the order is not in dollars");
+    assert_eq!(wrong.code(), "invalid");
+    assert!(!wrong.is_internal());
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
 #[tokio::test]
 async fn a_refund_can_stay_in_the_shop() {
     let shop = Shop::open().await;

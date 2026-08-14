@@ -1638,7 +1638,6 @@ pub async fn set_locales(tx: &mut Tx<'_>, ctx: &Ctx<'_>, body: SetLocales) -> Re
 pub struct WorkflowRunView {
     pub id: WorkflowRunId,
     pub state: String,
-    pub output: serde_json::Value,
     pub failure: Option<String>,
 }
 
@@ -1659,18 +1658,19 @@ pub async fn get_workflow_run(
     ctx: &Ctx<'_>,
     id: WorkflowRunId,
 ) -> Result<WorkflowRunView> {
+    let run = workflow::get(pool, ctx, id).await?;
+
     let _permit = ctx.permit(
         Action::View,
         Resource::Workflow {
             id: Some(id.as_uuid()),
+            transaction_key: Some(run.transaction_key.clone()),
         },
     )?;
 
-    let run = workflow::get(pool, ctx, id).await?;
     Ok(WorkflowRunView {
         id: run.id,
         state: run_state(run.state).to_owned(),
-        output: run.output,
         failure: run.failure,
     })
 }
@@ -1700,6 +1700,11 @@ impl From<workflow::RunSummary> for WorkflowRunSummaryView {
     }
 }
 
+/// What a person debugging a stuck run needs: the step, its state, how many
+/// times it was tried, and why it failed. Not `output` — that is what the
+/// runner needs to resume a step, and for a checkout it is the cart, the
+/// addresses and the payment context. See #123: a payload is not readable
+/// through this view, on purpose, whatever it holds.
 #[derive(Debug, Clone, Serialize)]
 pub struct WorkflowStepView {
     pub id: Uuid,
@@ -1709,7 +1714,6 @@ pub struct WorkflowStepView {
     pub state: String,
     pub attempts: i32,
     pub max_attempts: i32,
-    pub output: Option<serde_json::Value>,
     pub failure: Option<String>,
     pub run_after: chrono::DateTime<chrono::Utc>,
     pub lease_until: Option<chrono::DateTime<chrono::Utc>>,
@@ -1725,7 +1729,6 @@ impl From<workflow::StepSummary> for WorkflowStepView {
             state: row.state,
             attempts: row.attempts,
             max_attempts: row.max_attempts,
-            output: row.output,
             failure: row.failure,
             run_after: row.run_after,
             lease_until: row.lease_until,
@@ -1733,13 +1736,15 @@ impl From<workflow::StepSummary> for WorkflowStepView {
     }
 }
 
+/// Same rule as [`WorkflowStepView`]: `state` is the run's full compensation
+/// context and stays out. `step_name` and `failure` are what a dead letter is
+/// for a person to see.
 #[derive(Debug, Clone, Serialize)]
 pub struct WorkflowDeadLetterView {
     pub id: Uuid,
     pub run_id: WorkflowRunId,
     pub step_name: String,
     pub failure: String,
-    pub state: serde_json::Value,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -1750,7 +1755,6 @@ impl From<workflow::DeadLetter> for WorkflowDeadLetterView {
             run_id: row.run_id,
             step_name: row.step_name,
             failure: row.failure,
-            state: row.state,
             created_at: row.created_at,
         }
     }

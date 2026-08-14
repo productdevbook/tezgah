@@ -22,6 +22,7 @@ use crate::order;
 use crate::page::{Cursor, Page, Paging};
 use crate::ports::{Action, Ctx, Tx};
 use crate::pricing;
+use crate::store;
 
 use super::{Method, Route, Surface};
 
@@ -678,6 +679,7 @@ pub async fn list_products(
         product_type: query.product_type,
         category: query.category,
         tag: query.tag,
+        channels: None,
     };
     let page = catalogue::products(
         tx,
@@ -930,6 +932,60 @@ pub async fn remove_product_from_category(
     category_id: CategoryId,
 ) -> Result<()> {
     catalogue::remove_product_from_category(tx, ctx, product_id, category_id).await
+}
+
+// ---------------------------------------------------------------------------
+// Product sales channels
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProductChannelView {
+    pub id: SalesChannelId,
+    pub name: String,
+    pub is_disabled: bool,
+}
+
+impl From<store::SalesChannel> for ProductChannelView {
+    fn from(row: store::SalesChannel) -> Self {
+        ProductChannelView {
+            id: row.id,
+            name: row.name,
+            is_disabled: row.is_disabled,
+        }
+    }
+}
+
+pub async fn list_product_channels(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    product_id: ProductId,
+) -> Result<Vec<ProductChannelView>> {
+    let rows = catalogue::channels_for_product(tx, ctx, product_id).await?;
+    Ok(rows.into_iter().map(ProductChannelView::from).collect())
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AttachChannel {
+    pub sales_channel_id: SalesChannelId,
+}
+
+pub async fn add_product_to_channel(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    product_id: ProductId,
+    body: AttachChannel,
+) -> Result<()> {
+    catalogue::add_product_to_channel(tx, ctx, product_id, body.sales_channel_id).await
+}
+
+pub async fn remove_product_from_channel(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    product_id: ProductId,
+    channel_id: SalesChannelId,
+) -> Result<()> {
+    catalogue::remove_product_from_channel(tx, ctx, product_id, channel_id).await
 }
 
 // ---------------------------------------------------------------------------
@@ -2598,6 +2654,30 @@ pub(super) static ROUTES: &[Route] = &[
         action: Action::Delete,
         domain: CATALOGUE,
         summary: "Take a product out of a category",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Get,
+        path: "/admin/products/{id}/channels",
+        action: Action::View,
+        domain: CATALOGUE,
+        summary: "List the sales channels a product is linked to",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Post,
+        path: "/admin/products/{id}/channels",
+        action: Action::Write,
+        domain: CATALOGUE,
+        summary: "Link a product to a sales channel",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Delete,
+        path: "/admin/products/{id}/channels/{sales_channel_id}",
+        action: Action::Delete,
+        domain: CATALOGUE,
+        summary: "Unlink a product from a sales channel",
     },
     Route {
         surface: Surface::Admin,

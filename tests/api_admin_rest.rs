@@ -286,6 +286,122 @@ async fn a_runs_steps_and_its_dead_letters_are_readable() {
     shop.close().await;
 }
 
+/// #123: a checkout run's payload is the buyer's address and what they
+/// bought. None of it should be reachable through the workflow views, however
+/// deliberately alarming the fixture makes it.
+#[tokio::test]
+async fn a_workflow_view_carries_no_payload() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let run = seed_run(&mut tx, shop.here, "checkout-one", "failed").await;
+    sqlx::query(
+        "insert into workflow_step (id, scope, run_id, name, ordering, group_ordering, output)
+         values ($1, $2, $3, 'charge', 0, 0, $4)",
+    )
+    .bind(Uuid::now_v7())
+    .bind(shop.here.0)
+    .bind(run)
+    .bind(serde_json::json!({
+        "shipping_address": {
+            "name": "Shopper Example",
+            "line1": "1 Example Way",
+        },
+        "email": "shopper@example.test",
+    }))
+    .execute(&mut *tx)
+    .await
+    .expect("a step holding a payload");
+
+    sqlx::query(
+        "insert into workflow_dead_letter (id, scope, run_id, step_name, failure, state)
+         values ($1, $2, $3, 'charge', 'the card was declined', $4)",
+    )
+    .bind(Uuid::now_v7())
+    .bind(shop.here.0)
+    .bind(run)
+    .bind(serde_json::json!({
+        "shipping_address": { "line1": "1 Example Way" },
+    }))
+    .execute(&mut *tx)
+    .await
+    .expect("a dead letter holding a payload");
+
+    let steps =
+        admin::list_workflow_run_steps(&mut tx, &ctx, tezgah::id::WorkflowRunId::from_uuid(run))
+            .await
+            .expect("the steps");
+    let steps_json = serde_json::to_string(&steps).expect("to serialise");
+    assert!(
+        !steps_json.contains("Example Way") && !steps_json.contains("example.test"),
+        "a step view carried the address it was meant to resume with, not show: {steps_json}"
+    );
+
+    let dead = admin::list_workflow_dead_letters(&mut tx, &ctx, admin::List::default())
+        .await
+        .expect("the dead letters");
+    let dead_json = serde_json::to_string(&dead.items).expect("to serialise");
+    assert!(
+        !dead_json.contains("Example Way"),
+        "a dead letter view carried the address a failed run was holding: {dead_json}"
+    );
+
+    tx.commit().await.expect("to commit");
+
+    let run_view =
+        admin::get_workflow_run(&shop.pool, &ctx, tezgah::id::WorkflowRunId::from_uuid(run))
+            .await
+            .expect("the run");
+    let run_json = serde_json::to_string(&run_view).expect("to serialise");
+    assert!(
+        !run_json.contains("Example Way"),
+        "a run view carried its own payload: {run_json}"
+    );
+
+    shop.close().await;
+}
+
+/// #123: a run belongs to whatever transaction key started it, the same way a
+/// cart belongs to whoever holds it — and a host that does not recognise the
+/// key is one that says no.
+#[tokio::test]
+async fn a_workflow_run_is_refused_to_a_host_that_does_not_own_it() {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let run = seed_run(&mut tx, shop.here, "somebody-elses-cart", "failed").await;
+    tx.commit().await.expect("to commit");
+
+    let doorman = Doorman;
+    let refusing = Ctx::new(shop.here, Actor::System, &doorman);
+
+    let mut denied_tx = shop.begin().await;
+    assert!(
+        admin::list_workflow_run_steps(
+            &mut denied_tx,
+            &refusing,
+            tezgah::id::WorkflowRunId::from_uuid(run)
+        )
+        .await
+        .expect_err("a host that says no is a host that says no")
+        .is_denied()
+    );
+
+    assert!(
+        admin::get_workflow_run(
+            &shop.pool,
+            &refusing,
+            tezgah::id::WorkflowRunId::from_uuid(run)
+        )
+        .await
+        .expect_err("nor does it get to read the run itself")
+        .is_denied()
+    );
+
+    drop(denied_tx);
+    shop.close().await;
+}
+
 #[tokio::test]
 async fn a_promotion_rule_is_added_listed_and_taken_away() {
     let shop = Shop::open().await;
