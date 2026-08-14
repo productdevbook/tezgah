@@ -1,0 +1,21 @@
+tezgah — provenance
+
+The commerce data model here is informed by the published design of Medusa
+(github.com/medusajs/medusa), read at tag v2.18.0, which is licensed MIT
+(Copyright (c) 2021 Medusajs). Copyright covers expression rather than ideas,
+and no Medusa source, comment, test body, fixture or documentation text has
+been copied into this repository; where the two agree it is because the same
+problem has one good answer — a reservation that holds stock without
+decrementing it, a payment collection that separates authorisation from
+capture, one change-set mechanism serving returns, exchanges and edits alike.
+
+Three of Medusa's architectural decisions were deliberately not taken, and the
+reasons are in README.md: no foreign keys between modules, amounts stored as
+a JSON `raw_` column beside a numeric one, and version rows on order items.
+
+Medusa relicensed on 11 August 2026 to MIT with an Enterprise carve-out
+covering its RBAC and SSO paths. Nothing here derives from those paths, and
+they were not read.
+
+If Medusa source is ever vendored into this repository, the MIT notice above
+travels with it and this file records where.

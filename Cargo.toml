@@ -1,0 +1,40 @@
+[package]
+name = "tezgah"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+description = "A commerce engine for Rust: products, carts, orders, payments, inventory, and a workflow runner that unwinds what it started."
+repository = "https://github.com/productdevbook/tezgah"
+keywords = ["commerce", "ecommerce", "orders", "payments", "postgres"]
+categories = ["database", "web-programming"]
+
+[dependencies]
+async-trait = "0.1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+rust_decimal = { version = "1", features = ["db-postgres", "serde-with-str"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.8", default-features = false, features = [
+    "postgres",
+    "runtime-tokio",
+    "tls-rustls",
+    "chrono",
+    "uuid",
+    "json",
+    "macros",
+    "migrate",
+] }
+thiserror = "2"
+uuid = { version = "1", features = ["serde", "v7"] }
+
+[dev-dependencies]
+rust_decimal_macros = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[lints.rust]
+missing_debug_implementations = "warn"
+
+[lints.clippy]
+unwrap_used = "warn"
+panic = "warn"
