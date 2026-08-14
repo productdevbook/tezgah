@@ -1,9 +1,26 @@
 //! What tezgah asks of whoever embeds it.
 //!
-//! Every one of these is a decision a host has already made and should not have
-//! to make twice: who is allowed to do this, what time is it, where does an
-//! audit row go, where does an event go. tezgah asks rather than answers, so a
-//! host that already has an authorization engine keeps using it.
+//! Each of these is a decision a host has already made and should not have to
+//! make twice: who may do this, what time it is, where an audit row goes, where
+//! an event goes. tezgah asks and believes the answer, so a host keeps the
+//! authorization engine it already runs instead of being handed a second one.
+//!
+//! The traits are narrow so an implementor can say what it means; [`Host`] is
+//! the one bound everything else takes, and a blanket impl assembles it.
+//!
+//! # Examples
+//!
+//! ```
+//! use tezgah::ports::{Action, Actor, Authorizer, Permit, Resource};
+//!
+//! struct LetEveryone;
+//!
+//! impl Authorizer for LetEveryone {
+//!     fn authorize(&self, _: &Actor, _: Action, _: &Resource) -> tezgah::Result<Permit> {
+//!         Ok(Permit::granted())
+//!     }
+//! }
+//! ```
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -12,24 +29,32 @@ use uuid::Uuid;
 
 use crate::error::Result;
 
+/// The transaction everything runs in. A host opens it, so whatever else that
+/// request wrote commits with the order or not at all.
 pub type Tx<'a> = sqlx::Transaction<'a, sqlx::Postgres>;
 
-/// Whose data this is. Every table carries it and every row-level security
-/// policy reads it; a host serving one shop still has one, fixed.
+/// Whose data this is: one shop, one tenant, one seller. Every table carries
+/// it and every row-level security policy reads it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Scope(pub Uuid);
 
-/// Whoever is asking. tezgah does not model roles — it hands this to
-/// [`Authorizer`] and believes the answer.
+impl std::fmt::Display for Scope {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+/// Whoever is asking. tezgah does not model roles; it hands this to an
+/// [`Authorizer`].
 #[derive(Debug, Clone)]
 pub enum Actor {
-    /// A person in the shop's own back office.
+    /// Somebody in the shop's own back office.
     Staff { id: Uuid },
     /// Somebody shopping, signed in.
     Customer { id: Uuid },
     /// Somebody shopping, not signed in, holding a cart.
     Guest { cart: Uuid },
-    /// The host itself: a scheduled job, a webhook from a provider, a migration.
+    /// The host: a scheduled job, a provider's webhook, a migration.
     System,
 }
 
@@ -38,28 +63,32 @@ pub enum Action {
     View,
     Write,
     Delete,
-    /// Moves money: capture, refund, cancel. Always a separate answer from Write.
+    /// Moves money: capture, refund, cancel. Always answered separately from
+    /// `Write`, because editing an order and refunding one are not one power.
     Settle,
 }
 
-/// What is being reached for. Carries the ids an authorizer needs to decide
-/// ownership without loading the row itself.
+/// What is being reached for, carrying the ids an authorizer needs to judge
+/// ownership without loading the row first.
 #[derive(Debug, Clone)]
 pub enum Resource {
     Product { id: Option<Uuid> },
     Cart { id: Uuid, customer: Option<Uuid> },
     Order { id: Uuid, customer: Option<Uuid> },
     Payment { id: Uuid, order: Uuid },
-    Inventory { id: Option<Uuid> },
     Fulfillment { id: Uuid, order: Uuid },
-    Pricing,
-    Tax,
+    Inventory { id: Option<Uuid> },
     Customer { id: Option<Uuid> },
     Promotion { id: Option<Uuid> },
+    Pricing,
+    Tax,
 }
 
-/// Proof that a question was asked and answered yes. Repository calls take one,
-/// so a code path that never asked cannot reach the data.
+/// Proof that a question was asked and answered yes.
+///
+/// Repository calls take one and it cannot be built from outside this crate
+/// except through [`Permit::granted`], so a path that never asked cannot reach
+/// the data.
 #[derive(Debug, Clone, Copy)]
 pub struct Permit(());
 
@@ -71,6 +100,8 @@ impl Permit {
 }
 
 pub trait Authorizer: Send + Sync {
+    /// Returns [`Permit`] when allowed. Denial is an error rather than a
+    /// `false` so that forgetting to check the answer does not compile.
     fn authorize(&self, actor: &Actor, action: Action, resource: &Resource) -> Result<Permit>;
 }
 
@@ -102,8 +133,8 @@ pub struct Event {
     pub payload: serde_json::Value,
 }
 
-/// Also written in the caller's transaction — an outbox, not a publish. A host
-/// that delivers events over the network does that from its own worker.
+/// Also written in the caller's transaction: an outbox rather than a publish.
+/// Delivering it over the network is the host's, from its own worker.
 #[async_trait]
 pub trait EventSink: Send + Sync {
     async fn emit(&self, tx: &mut Tx<'_>, event: Event) -> Result<()>;
@@ -121,21 +152,51 @@ pub trait Jobs: Send + Sync {
     async fn enqueue(&self, tx: &mut Tx<'_>, job: JobSpec) -> Result<()>;
 }
 
-/// Everything a call needs that is not its own arguments. Assembled once per
-/// request by the host and passed down; nothing here is discovered from
-/// ambient state.
+/// Everything a host supplies, as one bound. Implement the four narrow traits
+/// and this arrives on its own.
+pub trait Host: Authorizer + Clock + AuditSink + EventSink + Jobs {}
+
+impl<T> Host for T where T: Authorizer + Clock + AuditSink + EventSink + Jobs {}
+
+/// What a call needs that is not its own arguments. Assembled once per request
+/// and passed down; nothing here is read from ambient state.
 pub struct Ctx<'a> {
     pub scope: Scope,
     pub actor: Actor,
-    pub clock: &'a dyn Clock,
-    pub authz: &'a dyn Authorizer,
-    pub audit: &'a dyn AuditSink,
-    pub events: &'a dyn EventSink,
-    pub jobs: &'a dyn Jobs,
+    host: &'a dyn Host,
 }
 
-impl Ctx<'_> {
+impl std::fmt::Debug for Ctx<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Ctx")
+            .field("scope", &self.scope)
+            .field("actor", &self.actor)
+            .finish_non_exhaustive()
+    }
+}
+
+impl<'a> Ctx<'a> {
+    pub fn new(scope: Scope, actor: Actor, host: &'a dyn Host) -> Self {
+        Ctx { scope, actor, host }
+    }
+
     pub fn permit(&self, action: Action, resource: Resource) -> Result<Permit> {
-        self.authz.authorize(&self.actor, action, &resource)
+        self.host.authorize(&self.actor, action, &resource)
+    }
+
+    pub fn now(&self) -> DateTime<Utc> {
+        self.host.now()
+    }
+
+    pub async fn audit(&self, tx: &mut Tx<'_>, entry: AuditEntry) -> Result<()> {
+        self.host.record(tx, entry).await
+    }
+
+    pub async fn emit(&self, tx: &mut Tx<'_>, event: Event) -> Result<()> {
+        self.host.emit(tx, event).await
+    }
+
+    pub async fn enqueue(&self, tx: &mut Tx<'_>, job: JobSpec) -> Result<()> {
+        self.host.enqueue(tx, job).await
     }
 }

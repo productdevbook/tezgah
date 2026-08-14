@@ -76,7 +76,7 @@ impl Money {
         if self.currency == other.currency {
             Ok(())
         } else {
-            Err(Error::Bug("two currencies met in one sum"))
+            Err(Error::bug("two currencies met in one sum"))
         }
     }
 }
@@ -89,7 +89,7 @@ impl Money {
 pub fn allocate(total: Money, weights: &[Decimal], exponent: u32) -> Result<Vec<Money>> {
     let sum: Decimal = weights.iter().sum();
     if sum.is_zero() {
-        return Err(Error::Bug("allocating across weights that sum to nothing"));
+        return Err(Error::bug("allocating across weights that sum to nothing"));
     }
 
     let step = Decimal::ONE / Decimal::from(10u64.pow(exponent));
@@ -108,7 +108,7 @@ pub fn allocate(total: Money, weights: &[Decimal], exponent: u32) -> Result<Vec<
     }
 
     if !drift.is_zero() {
-        return Err(Error::Bug("an allocation did not add back up"));
+        return Err(Error::bug("an allocation did not add back up"));
     }
 
     Ok(parts
