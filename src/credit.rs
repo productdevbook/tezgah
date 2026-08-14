@@ -348,14 +348,14 @@ pub async fn gift_card_by_code(tx: &mut Tx<'_>, ctx: &Ctx<'_>, code: &str) -> Re
         return Err(Error::not_found("gift card"));
     }
 
-    Ok(sqlx::query_as::<_, GiftCard>(&format!(
+    sqlx::query_as::<_, GiftCard>(&format!(
         "select {CARD_COLUMNS} from gift_card where scope = $1 and code_hash = $2"
     ))
     .bind(ctx.scope.0)
     .bind(&hashed)
     .fetch_optional(&mut **tx)
     .await?
-    .ok_or_else(|| Error::not_found("gift card"))?)
+    .ok_or_else(|| Error::not_found("gift card"))
 }
 
 pub async fn gift_cards(tx: &mut Tx<'_>, ctx: &Ctx<'_>, paging: Paging) -> Result<Page<GiftCard>> {
