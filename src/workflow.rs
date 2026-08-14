@@ -987,35 +987,42 @@ async fn finish(
     Ok(())
 }
 
-/// The key a run was started with, for a caller that must ask about ownership
-/// before it dares read the row. `None` for a run this scope does not have —
-/// distinguishing "not yours" from "not found" is [`get`]'s job, not this
-/// one's.
-pub async fn transaction_key_of(
-    pool: &PgPool,
-    ctx: &Ctx<'_>,
-    id: WorkflowRunId,
-) -> Result<Option<String>> {
-    let mut tx = scoped(pool, ctx).await?;
-    let key: Option<String> =
-        sqlx::query_scalar("select transaction_key from workflow_run where scope = $1 and id = $2")
-            .bind(ctx.scope.0)
-            .bind(id.as_uuid())
-            .fetch_optional(&mut *tx)
-            .await?;
-    tx.commit().await?;
-    Ok(key)
-}
-
 /// Reads a run back, for a caller that wants to know how one it started ended.
+///
+/// Asks with whatever the row holds — `None` if there is no row — before
+/// deciding a missing run is `not_found` rather than something a refusing
+/// host was never told about, so the permission is asked either way.
 pub async fn get(pool: &PgPool, ctx: &Ctx<'_>, id: WorkflowRunId) -> Result<Run> {
-    let head = head(pool, ctx, id).await?;
+    let mut tx = scoped(pool, ctx).await?;
+    let row: Option<HeadRow> = sqlx::query_as(
+        "select state, input, output, failure, transaction_key from workflow_run where id = $1",
+    )
+    .bind(id.as_uuid())
+    .fetch_optional(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    ctx.permit(
+        Action::View,
+        Resource::Workflow {
+            id: Some(id.as_uuid()),
+            transaction_key: row.as_ref().map(|row| row.transaction_key.clone()),
+        },
+    )?;
+
+    let HeadRow {
+        state,
+        output,
+        failure,
+        transaction_key,
+        ..
+    } = row.ok_or_else(|| Error::not_found("workflow run"))?;
     Ok(Run {
         id,
-        state: head.state,
-        output: head.output,
-        failure: head.failure,
-        transaction_key: head.transaction_key,
+        state: State::parse(&state)?,
+        output: output.unwrap_or(Value::Null),
+        failure,
+        transaction_key,
     })
 }
 

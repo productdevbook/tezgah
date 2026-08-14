@@ -1658,16 +1658,6 @@ pub async fn get_workflow_run(
     ctx: &Ctx<'_>,
     id: WorkflowRunId,
 ) -> Result<WorkflowRunView> {
-    let transaction_key = workflow::transaction_key_of(pool, ctx, id).await?;
-
-    let _permit = ctx.permit(
-        Action::View,
-        Resource::Workflow {
-            id: Some(id.as_uuid()),
-            transaction_key,
-        },
-    )?;
-
     let run = workflow::get(pool, ctx, id).await?;
     Ok(WorkflowRunView {
         id: run.id,
