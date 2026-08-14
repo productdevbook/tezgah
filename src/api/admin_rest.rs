@@ -22,7 +22,7 @@ use crate::id::{
 };
 use crate::money::Currency;
 use crate::page::{Page, Paging};
-use crate::ports::{Action, Ctx, Resource, Tx};
+use crate::ports::{Action, Ctx, Tx};
 use crate::promotion;
 use crate::store;
 use crate::tax;
