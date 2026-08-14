@@ -1172,3 +1172,187 @@ async fn a_gift_card_is_sold_without_a_shipping_address() -> Result<()> {
     shop.close().await;
     Ok(())
 }
+
+/// The variant says it is a gift card, and everything downstream follows: the
+/// cart is not taxed on it, the order line says so, and the total is the face
+/// value rather than the face value plus VAT.
+#[tokio::test]
+async fn a_gift_card_variant_is_sold_untaxed_and_says_so() -> Result<()> {
+    let shop = Shop::open().await;
+    let here = ready(&shop, 10, 2).await;
+
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+
+    let region = Uuid::now_v7();
+    sqlx::query("insert into tax_region (id, scope, country_code) values ($1, $2, 'TR')")
+        .bind(region)
+        .bind(shop.here.0)
+        .execute(&mut *tx)
+        .await
+        .expect("a tax region");
+    sqlx::query(
+        "insert into tax_rate (id, scope, tax_region_id, rate, code, name, is_default)
+         values ($1, $2, $3, 20, 'kdv', 'KDV', true)",
+    )
+    .bind(Uuid::now_v7())
+    .bind(shop.here.0)
+    .bind(region)
+    .execute(&mut *tx)
+    .await
+    .expect("a rate");
+
+    // Untouched, the basket is taxed like anything else.
+    tezgah::api::store::reprice(&mut tx, &ctx, here.cart_id).await?;
+    let taxed = cart_tax_lines(&mut tx, &shop, here.cart_id).await;
+    assert_eq!(
+        taxed, 1,
+        "an ordinary line was not taxed, so nothing is proven"
+    );
+
+    sqlx::query("update product_variant set is_giftcard = true where scope = $1 and id = $2")
+        .bind(shop.here.0)
+        .bind(here.variant_id.as_uuid())
+        .execute(&mut *tx)
+        .await
+        .expect("the variant to become a gift card");
+
+    tezgah::api::store::reprice(&mut tx, &ctx, here.cart_id).await?;
+    assert_eq!(
+        cart_tax_lines(&mut tx, &shop, here.cart_id).await,
+        0,
+        "selling a gift card is money changing form, not a taxable supply"
+    );
+
+    let totals = cart::totals(&mut tx, &ctx, here.cart_id).await?;
+    assert_eq!(totals.tax.amount, Decimal::ZERO);
+    assert_eq!(totals.total.amount, dec!(20));
+    tx.commit().await.expect("to commit");
+
+    let bank = Bank::saying(Answer::Authorize);
+    let checkout = Checkout::new(
+        Arc::clone(&bank) as Arc<dyn PaymentProvider>,
+        here.location_id,
+    );
+    let placed = checkout
+        .place(&shop.pool, &shop.ctx(), here.cart_id)
+        .await?;
+    let order_id = placed.order_id.unwrap_or_else(|| {
+        panic!(
+            "the checkout did not place an order: {:?} {:?}",
+            placed.run.state, placed.run.failure
+        )
+    });
+
+    let mut tx = shop.begin().await;
+    let lines = order::line_items(&mut tx, &shop.ctx(), order_id).await?;
+    assert!(lines[0].is_giftcard, "the line could not say what it was");
+
+    let rates: i64 = sqlx::query_scalar(
+        "select count(*) from order_line_item_tax_line t
+         join order_line_item l on l.scope = t.scope and l.id = t.order_line_item_id
+         where t.scope = $1 and l.order_id = $2",
+    )
+    .bind(shop.here.0)
+    .bind(order_id.as_uuid())
+    .fetch_one(&mut *tx)
+    .await
+    .expect("the order's tax lines");
+    assert_eq!(rates, 0);
+
+    let totals = order::totals(&mut tx, &shop.ctx(), order_id, 1).await?;
+    assert_eq!(totals.tax.amount, Decimal::ZERO);
+    assert_eq!(totals.total.amount, dec!(20));
+    tx.commit().await.expect("to commit");
+
+    shop.close().await;
+    Ok(())
+}
+
+async fn cart_tax_lines(tx: &mut Tx<'_>, shop: &Shop, cart_id: CartId) -> i64 {
+    sqlx::query_scalar(
+        "select count(*) from cart_line_item_tax_line t
+         join cart_line_item l on l.scope = t.scope and l.id = t.cart_line_item_id
+         where t.scope = $1 and l.cart_id = $2",
+    )
+    .bind(shop.here.0)
+    .bind(cart_id.as_uuid())
+    .fetch_one(&mut **tx)
+    .await
+    .expect("the cart's tax lines")
+}
+
+/// The whole point of printing a card: somebody spends it.
+#[tokio::test]
+async fn a_purchased_gift_card_pays_for_the_next_basket() -> Result<()> {
+    let shop = Shop::open().await;
+    let here = ready(&shop, 10, 2).await;
+    let ctx = shop.ctx();
+
+    let mut tx = shop.begin().await;
+    let lira = Currency::parse("TRY").expect("a currency");
+    let sold = order::create(
+        &mut tx,
+        &ctx,
+        order::NewOrder {
+            lines: vec![order::NewOrderLine {
+                is_giftcard: true,
+                ..order::NewOrderLine::of("A gift card", 1, Money::new(dec!(50), lira))
+            }],
+            ..order::NewOrder::of(lira)
+        },
+    )
+    .await?;
+
+    order::record_transaction(
+        &mut tx,
+        &ctx,
+        sold.id,
+        Money::new(dec!(50), lira),
+        "capture",
+        Uuid::now_v7(),
+    )
+    .await?;
+
+    let printed = tezgah::credit::issue_purchased(&mut tx, &ctx, sold.id).await?;
+    assert_eq!(printed.len(), 1);
+
+    let code = shop
+        .host
+        .payloads_of("gift_card.purchased")
+        .first()
+        .and_then(|payload| payload["code"].as_str().map(str::to_owned))
+        .expect("the code the host has to post to the buyer");
+
+    tezgah::credit::apply_gift_card(
+        &mut tx,
+        &ctx,
+        here.cart_id,
+        &code,
+        Money::new(dec!(20), lira),
+    )
+    .await?;
+    tx.commit().await.expect("to commit");
+
+    let bank = Bank::saying(Answer::Authorize);
+    let checkout = Checkout::new(
+        Arc::clone(&bank) as Arc<dyn PaymentProvider>,
+        here.location_id,
+    );
+    let placed = checkout
+        .place(&shop.pool, &shop.ctx(), here.cart_id)
+        .await?;
+    assert_eq!(placed.run.state, State::Done, "{:?}", placed.run.failure);
+
+    let mut tx = shop.begin().await;
+    let card = tezgah::credit::gift_card(&mut tx, &ctx, printed[0]).await?;
+    assert_eq!(
+        card.balance,
+        dec!(30),
+        "the basket did not come off the card"
+    );
+    tx.commit().await.expect("to commit");
+
+    shop.close().await;
+    Ok(())
+}

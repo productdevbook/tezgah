@@ -224,6 +224,7 @@ pub async fn issue_gift_card(
             customer_id: body.customer_id,
             expires_at: body.expires_at,
             reason: body.reason,
+            line: None,
         },
     )
     .await?;

@@ -150,6 +150,7 @@ pub struct VariantView {
     pub allows_backorder: bool,
     pub rank: i32,
     pub withdrawal_exclusion: Option<String>,
+    pub is_giftcard: bool,
     pub metadata: serde_json::Value,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
@@ -177,6 +178,7 @@ impl From<catalogue::ProductVariant> for VariantView {
             allows_backorder: row.allows_backorder,
             rank: row.rank,
             withdrawal_exclusion: row.withdrawal_exclusion_reason,
+            is_giftcard: row.is_giftcard,
             metadata: row.metadata,
             created_at: row.created_at,
             updated_at: row.updated_at,
@@ -1014,6 +1016,8 @@ pub struct CreateVariant {
     pub rank: Option<i32>,
     /// Why buying this is outside the right of withdrawal.
     pub withdrawal_exclusion: Option<String>,
+    /// Whether selling this sells money rather than goods.
+    pub is_giftcard: Option<bool>,
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -1045,6 +1049,7 @@ pub async fn create_variant(
             .as_deref()
             .map(order::WithdrawalExclusion::parse)
             .transpose()?,
+        is_giftcard: body.is_giftcard,
         metadata: body.metadata,
     };
     Ok(VariantView::from(
@@ -1078,6 +1083,7 @@ pub struct UpdateVariant {
     /// Absent leaves it alone; `null` puts the variant back inside the right.
     #[serde(default, deserialize_with = "double_option")]
     pub withdrawal_exclusion: Option<Option<String>>,
+    pub is_giftcard: Option<bool>,
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -1109,6 +1115,7 @@ pub async fn update_variant(
             Some(None) => Some(None),
             None => None,
         },
+        is_giftcard: body.is_giftcard,
         metadata: body.metadata,
     };
     Ok(VariantView::from(

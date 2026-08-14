@@ -44,7 +44,7 @@ macro_rules! variant_columns {
     () => {
         "id, product_id, title, sku, barcode, ean, upc, weight, length, height, width, material, \
          hs_code, origin_country, mid_code, manages_inventory, allows_backorder, rank, \
-         withdrawal_exclusion_reason, metadata, created_at, updated_at"
+         withdrawal_exclusion_reason, is_giftcard, metadata, created_at, updated_at"
     };
 }
 
@@ -171,6 +171,9 @@ pub struct ProductVariant {
     /// Why buying this is outside the right of withdrawal. `None` is the
     /// ordinary case: it may be sent back.
     pub withdrawal_exclusion_reason: Option<String>,
+    /// Selling this is selling money, not goods: the line carries no tax and a
+    /// card is printed when the money is taken.
+    pub is_giftcard: bool,
     pub metadata: serde_json::Value,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
@@ -363,6 +366,7 @@ pub struct NewVariant {
     pub allows_backorder: Option<bool>,
     pub rank: Option<i32>,
     pub withdrawal_exclusion: Option<crate::order::WithdrawalExclusion>,
+    pub is_giftcard: Option<bool>,
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -387,6 +391,7 @@ pub struct VariantPatch {
     /// `Some(None)` puts the variant back inside the withdrawal right; `None`
     /// leaves whatever it says now.
     pub withdrawal_exclusion: Option<Option<crate::order::WithdrawalExclusion>>,
+    pub is_giftcard: Option<bool>,
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -951,9 +956,10 @@ async fn insert_variant(
     sqlx::query_as::<_, ProductVariant>(concat!(
         "insert into product_variant (id, scope, product_id, title, sku, barcode, ean, upc, \
          weight, length, height, width, material, hs_code, origin_country, mid_code, \
-         manages_inventory, allows_backorder, rank, metadata, withdrawal_exclusion_reason)
+         manages_inventory, allows_backorder, rank, metadata, withdrawal_exclusion_reason, \
+         is_giftcard)
          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, \
-         $19, $20, $21)
+         $19, $20, $21, $22)
          on conflict do nothing
          returning ",
         variant_columns!()
@@ -982,6 +988,7 @@ async fn insert_variant(
         new.withdrawal_exclusion
             .map(crate::order::WithdrawalExclusion::as_str),
     )
+    .bind(new.is_giftcard.unwrap_or(false))
     .fetch_optional(&mut **tx)
     .await?
     .ok_or_else(|| Error::conflict("that sku or barcode is already a variant here"))
@@ -1002,16 +1009,27 @@ pub async fn variant(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: VariantId) -> Result<Pr
     .ok_or_else(|| Error::not_found("variant"))
 }
 
-/// Which of these variants are outside the right of withdrawal, keyed by
-/// variant. Only the ones that are: a variant with no answer is not in the map.
+/// What a variant makes true of the line that sells it.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct LineFacts {
+    /// Why buying it is outside the right of withdrawal; `None` is the
+    /// ordinary case.
+    pub withdrawal_exclusion: Option<crate::order::WithdrawalExclusion>,
+    /// Whether selling it sells money rather than goods.
+    pub is_giftcard: bool,
+}
+
+/// What each of these variants makes true of a line, keyed by variant. Only
+/// the ones with something to say: a variant answering neither is not in the
+/// map.
 ///
 /// Bounded by what the caller passed in, and read in one statement because a
 /// checkout asks this once for a whole cart.
-pub async fn withdrawal_exclusions(
+pub async fn line_facts(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
     ids: &[VariantId],
-) -> Result<std::collections::HashMap<VariantId, crate::order::WithdrawalExclusion>> {
+) -> Result<std::collections::HashMap<VariantId, LineFacts>> {
     let _: Permit = ctx.permit(Action::View, Resource::Product { id: None })?;
 
     if ids.is_empty() {
@@ -1019,9 +1037,11 @@ pub async fn withdrawal_exclusions(
     }
 
     let wanted: Vec<Uuid> = ids.iter().map(|id| id.as_uuid()).collect();
-    let rows: Vec<(VariantId, String)> = sqlx::query_as(
-        "select id, withdrawal_exclusion_reason from product_variant
-         where scope = $1 and id = any($2) and withdrawal_exclusion_reason is not null",
+    let rows: Vec<(VariantId, Option<String>, bool)> = sqlx::query_as(
+        "select id, withdrawal_exclusion_reason, is_giftcard from product_variant
+         where scope = $1
+           and id = any($2)
+           and (withdrawal_exclusion_reason is not null or is_giftcard)",
     )
     .bind(ctx.scope.0)
     .bind(&wanted)
@@ -1029,7 +1049,18 @@ pub async fn withdrawal_exclusions(
     .await?;
 
     rows.into_iter()
-        .map(|(id, reason)| Ok((id, crate::order::WithdrawalExclusion::parse(&reason)?)))
+        .map(|(id, reason, is_giftcard)| {
+            Ok((
+                id,
+                LineFacts {
+                    withdrawal_exclusion: reason
+                        .as_deref()
+                        .map(crate::order::WithdrawalExclusion::parse)
+                        .transpose()?,
+                    is_giftcard,
+                },
+            ))
+        })
         .collect()
 }
 
@@ -1104,7 +1135,8 @@ pub async fn update_variant(
              rank = coalesce($26, rank),
              metadata = coalesce($27, metadata),
              withdrawal_exclusion_reason = case when $28::bool then $29
-                                           else withdrawal_exclusion_reason end
+                                           else withdrawal_exclusion_reason end,
+             is_giftcard = coalesce($30, is_giftcard)
          where scope = $1 and id = $2 and deleted_at is null
            and not exists (
                select 1 from product_variant other
@@ -1148,6 +1180,7 @@ pub async fn update_variant(
             .flatten()
             .map(crate::order::WithdrawalExclusion::as_str),
     )
+    .bind(patch.is_giftcard)
     .fetch_optional(&mut **tx)
     .await?;
 

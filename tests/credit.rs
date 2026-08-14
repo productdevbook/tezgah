@@ -36,6 +36,7 @@ async fn a_card(tx: &mut Tx<'_>, ctx: &Ctx<'_>, balance: Decimal) -> (GiftCardId
             customer_id: None,
             expires_at: None,
             reason: None,
+            line: None,
         },
     )
     .await
@@ -191,6 +192,7 @@ async fn a_card_past_its_expiry_will_not_be_spent() {
             customer_id: None,
             expires_at: Some(ctx.now() + chrono::Duration::days(1)),
             reason: None,
+            line: None,
         },
     )
     .await
@@ -617,6 +619,191 @@ async fn a_cart_says_what_it_will_pay_with_before_anything_moves() {
         .await
         .expect("the card");
     assert_eq!(still.balance, dec!(100));
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+/// An order whose line sells a card, with nothing captured against it yet.
+async fn a_card_was_bought(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    price: Decimal,
+    quantity: i32,
+) -> OrderId {
+    order::create(
+        tx,
+        ctx,
+        NewOrder {
+            lines: vec![NewOrderLine {
+                is_giftcard: true,
+                ..NewOrderLine::of("A gift card", quantity, money(price))
+            }],
+            ..NewOrder::of(lira())
+        },
+    )
+    .await
+    .expect("an order")
+    .id
+}
+
+async fn cards_of(tx: &mut Tx<'_>, scope: uuid::Uuid, order_id: OrderId) -> i64 {
+    sqlx::query_scalar("select count(*) from gift_card where scope = $1 and issued_order_id = $2")
+        .bind(scope)
+        .bind(order_id.as_uuid())
+        .fetch_one(&mut **tx)
+        .await
+        .expect("the cards this order printed")
+}
+
+/// Checkout authorises; it does not take the money. Handing over a spendable
+/// balance against a hold is giving the goods away before the till rings.
+#[tokio::test]
+async fn an_authorised_order_prints_no_gift_card() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let order_id = a_card_was_bought(&mut tx, &ctx, dec!(50), 1).await;
+
+    order::record_transaction(
+        &mut tx,
+        &ctx,
+        order_id,
+        money(dec!(50)),
+        "payment",
+        uuid::Uuid::now_v7(),
+    )
+    .await
+    .expect("an authorisation");
+
+    let printed = credit::issue_purchased(&mut tx, &ctx, order_id)
+        .await
+        .expect("nothing to be printed");
+    assert!(printed.is_empty(), "a hold is not a payment");
+    assert_eq!(cards_of(&mut tx, shop.here.0, order_id).await, 0);
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+/// One card per unit bought, and a provider redelivering its webhook prints
+/// none of them a second time.
+#[tokio::test]
+async fn taking_the_money_prints_one_card_per_unit_exactly_once() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let order_id = a_card_was_bought(&mut tx, &ctx, dec!(50), 2).await;
+
+    // Half the money is not the cards' worth, so nothing is printed yet.
+    order::record_transaction(
+        &mut tx,
+        &ctx,
+        order_id,
+        money(dec!(50)),
+        "capture",
+        uuid::Uuid::now_v7(),
+    )
+    .await
+    .expect("a first capture");
+    assert!(
+        credit::issue_purchased(&mut tx, &ctx, order_id)
+            .await
+            .expect("nothing yet")
+            .is_empty()
+    );
+
+    order::record_transaction(
+        &mut tx,
+        &ctx,
+        order_id,
+        money(dec!(50)),
+        "capture",
+        uuid::Uuid::now_v7(),
+    )
+    .await
+    .expect("the rest of it");
+
+    let printed = credit::issue_purchased(&mut tx, &ctx, order_id)
+        .await
+        .expect("two cards");
+    assert_eq!(printed.len(), 2, "a line of two is two cards, not one");
+    for id in &printed {
+        let card = credit::gift_card(&mut tx, &ctx, *id)
+            .await
+            .expect("the card");
+        assert_eq!(card.balance, dec!(50), "a card is worth its face value");
+    }
+
+    let again = credit::issue_purchased(&mut tx, &ctx, order_id)
+        .await
+        .expect("the redelivered webhook");
+    assert!(
+        again.is_empty(),
+        "a redelivery printed a second set of cards"
+    );
+    assert_eq!(cards_of(&mut tx, shop.here.0, order_id).await, 2);
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+/// The change log records proposals, not what has already happened: a parcel
+/// leaving the building cannot be declined or reverted, so the eight actions
+/// nothing wrote are no longer permitted either.
+#[tokio::test]
+async fn the_change_log_refuses_an_action_that_is_not_a_proposal() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+
+    for action in [
+        "FULFILL_ITEM",
+        "SHIP_ITEM",
+        "DELIVER_ITEM",
+        "CANCEL_ITEM_FULFILLMENT",
+        "SHIPPING_UPDATE",
+        "CANCEL_RETURN_ITEM",
+        "TRANSFER_CUSTOMER",
+        "UPDATE_ORDER_PROPERTIES",
+    ] {
+        // One transaction each: the first refusal aborts the one it happened
+        // in, and everything after it would fail for the wrong reason.
+        let mut tx = shop.begin().await;
+        let order_id = an_order(&mut tx, &ctx, dec!(10)).await;
+
+        let refused = sqlx::query(
+            "insert into order_change_action (id, scope, order_id, ordering, action)
+             values ($1, $2, $3, 0, $4)",
+        )
+        .bind(uuid::Uuid::now_v7())
+        .bind(shop.here.0)
+        .bind(order_id.as_uuid())
+        .bind(action)
+        .execute(&mut *tx)
+        .await;
+
+        assert!(
+            refused.is_err(),
+            "{action} is not a proposal and the schema still claims it is"
+        );
+        tx.rollback().await.expect("to roll back");
+    }
+
+    // And one that is a proposal still lands.
+    let mut tx = shop.begin().await;
+    let order_id = an_order(&mut tx, &ctx, dec!(10)).await;
+    sqlx::query(
+        "insert into order_change_action (id, scope, order_id, ordering, action)
+         values ($1, $2, $3, 0, 'ITEM_ADD')",
+    )
+    .bind(uuid::Uuid::now_v7())
+    .bind(shop.here.0)
+    .bind(order_id.as_uuid())
+    .execute(&mut *tx)
+    .await
+    .expect("an edit is still a change");
 
     tx.rollback().await.expect("to roll back");
     shop.close().await;

@@ -1307,6 +1307,10 @@ pub async fn reprice_with_evidence(
     Ok(TotalsView::from(cart::totals(tx, ctx, id).await?))
 }
 
+fn variants(lines: &[cart::LineItem]) -> Vec<crate::id::VariantId> {
+    lines.iter().filter_map(|line| line.variant_id).collect()
+}
+
 fn variant_ids(lines: &[cart::LineItem]) -> Vec<Uuid> {
     lines
         .iter()
@@ -1352,8 +1356,16 @@ async fn retax(
 
     let held = cart::lines(tx, ctx, id).await?;
     let codes = tax::tax_codes(tx, ctx, &variant_ids(&held)).await?;
+    let facts = catalogue::line_facts(tx, ctx, &variants(&held)).await?;
     let items: Vec<tax::TaxableLine> = held
         .into_iter()
+        // Selling a gift card is money changing form, not a supply: the tax is
+        // due on what the card buys, and a line with no tax line carries none.
+        .filter(|line| {
+            !line
+                .variant_id
+                .is_some_and(|id| facts.get(&id).is_some_and(|f| f.is_giftcard))
+        })
         .map(|line| tax::TaxableLine {
             id: line.id.as_uuid(),
             amount: line_total(line.quantity, line.unit_price, currency),

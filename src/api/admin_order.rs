@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
+use crate::credit;
 use crate::error::{Error, Result};
 use crate::fulfilment;
 use crate::id::{
@@ -988,6 +989,10 @@ pub struct NewLineIn {
     /// written by staff who know what they are selling, so it is said here
     /// rather than looked up.
     pub withdrawal_exclusion: Option<String>,
+    /// Whether this line sells a gift card. Said here for the same reason:
+    /// a draft order's line need name no variant to look the answer up on.
+    #[serde(default)]
+    pub is_giftcard: bool,
 }
 
 impl NewLineIn {
@@ -1015,7 +1020,7 @@ impl NewLineIn {
             is_tax_inclusive: self.is_tax_inclusive,
             is_discountable: true,
             requires_shipping: self.requires_shipping,
-            is_giftcard: false,
+            is_giftcard: self.is_giftcard,
             adjustments: charged(self.discount),
             tax_lines: taxed(self.tax_rate),
             withdrawal_exclusion: exclusion,
@@ -2494,7 +2499,11 @@ pub async fn capture_payment(
     let collection = payment::payment(tx, ctx, id).await?.payment_collection_id;
     let capture = payment::capture(tx, ctx, id, amount, input.metadata).await?;
 
-    let _ = order::record_capture(tx, ctx, collection, capture.id, amount).await?;
+    let written = order::record_capture(tx, ctx, collection, capture.id, amount).await?;
+
+    if let Some(transaction) = written {
+        credit::issue_purchased(tx, ctx, transaction.order_id).await?;
+    }
 
     Ok(capture.into())
 }

@@ -615,7 +615,7 @@ impl Step for CreateOrder {
             .iter()
             .filter_map(|line| line.variant_id.map(VariantId::from_uuid))
             .collect();
-        let exclusions = catalogue::withdrawal_exclusions(tx, ctx, &sold)
+        let facts = catalogue::line_facts(tx, ctx, &sold)
             .await
             .map_err(Failure::Final)?;
         let methods = cart_methods(tx, ctx, cart_id)
@@ -662,9 +662,10 @@ impl Step for CreateOrder {
                     is_tax_inclusive: line.is_tax_inclusive,
                     is_discountable: line.is_discountable,
                     requires_shipping: line.requires_shipping,
-                    // A cart line cannot say it is one yet; a shop selling
-                    // cards issues them from the order.
-                    is_giftcard: false,
+                    is_giftcard: line
+                        .variant_id
+                        .map(VariantId::from_uuid)
+                        .is_some_and(|id| facts.get(&id).is_some_and(|f| f.is_giftcard)),
                     adjustments: line_adjustments
                         .remove(&line.id.as_uuid())
                         .unwrap_or_default(),
@@ -672,7 +673,8 @@ impl Step for CreateOrder {
                     withdrawal_exclusion: line
                         .variant_id
                         .map(VariantId::from_uuid)
-                        .and_then(|id| exclusions.get(&id).copied()),
+                        .and_then(|id| facts.get(&id))
+                        .and_then(|f| f.withdrawal_exclusion),
                 })
                 .collect(),
             shipping: methods

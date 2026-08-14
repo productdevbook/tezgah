@@ -27,6 +27,7 @@ use uuid::Uuid;
 pub struct Recorder {
     pub audits: parking_lot::Mutex<Vec<(&'static str, Uuid)>>,
     pub events: parking_lot::Mutex<Vec<&'static str>>,
+    pub payloads: parking_lot::Mutex<Vec<(&'static str, serde_json::Value)>>,
     pub jobs: parking_lot::Mutex<Vec<&'static str>>,
     now: Option<DateTime<Utc>>,
 }
@@ -46,6 +47,16 @@ impl Recorder {
 
     pub fn emitted(&self, name: &str) -> bool {
         self.events.lock().contains(&name)
+    }
+
+    /// What one kind of event carried, in the order it was emitted.
+    pub fn payloads_of(&self, name: &str) -> Vec<serde_json::Value> {
+        self.payloads
+            .lock()
+            .iter()
+            .filter(|(seen, _)| *seen == name)
+            .map(|(_, payload)| payload.clone())
+            .collect()
     }
 
     pub fn queued(&self, kind: &str) -> bool {
@@ -81,6 +92,7 @@ impl AuditSink for Recorder {
 impl EventSink for Recorder {
     async fn emit(&self, _: &mut Tx<'_>, event: Event) -> tezgah::Result<()> {
         self.events.lock().push(event.name);
+        self.payloads.lock().push((event.name, event.payload));
         Ok(())
     }
 }

@@ -184,6 +184,15 @@ pub struct CartCredit {
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
+/// Which unit of which order line printed a card. Two cards on a line of two,
+/// and the unique index behind this is what makes a redelivered webhook print
+/// nothing the second time.
+#[derive(Debug, Clone, Copy)]
+pub struct PurchasedLine {
+    pub line_item_id: Uuid,
+    pub ordinal: i32,
+}
+
 /// What a card is being sold or granted as.
 #[derive(Debug, Clone)]
 pub struct NewGiftCard {
@@ -195,6 +204,8 @@ pub struct NewGiftCard {
     pub customer_id: Option<CustomerId>,
     pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
     pub reason: Option<String>,
+    /// The line that bought it. `None` is a card the operator granted.
+    pub line: Option<PurchasedLine>,
 }
 
 /// What a movement was for, so the ledger reconciles against the order and the
@@ -241,8 +252,8 @@ pub async fn issue(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewGiftCard) -> Result<I
     let card = sqlx::query_as::<_, GiftCard>(&format!(
         "insert into gift_card
              (id, scope, code_hash, initial_balance, balance, currency_code, issued_order_id,
-              customer_id, expires_at)
-         values ($1, $2, $3, $4, $4, $5, $6, $7, $8)
+              customer_id, expires_at, issued_line_item_id, issued_line_ordinal)
+         values ($1, $2, $3, $4, $4, $5, $6, $7, $8, $9, $10)
          returning {CARD_COLUMNS}"
     ))
     .bind(id.as_uuid())
@@ -253,6 +264,8 @@ pub async fn issue(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewGiftCard) -> Result<I
     .bind(new.issued_order_id.map(OrderId::as_uuid))
     .bind(new.customer_id.map(CustomerId::as_uuid))
     .bind(new.expires_at)
+    .bind(new.line.map(|line| line.line_item_id))
+    .bind(new.line.map(|line| line.ordinal))
     .fetch_one(&mut **tx)
     .await?;
 
@@ -299,6 +312,153 @@ pub async fn issue(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewGiftCard) -> Result<I
     .await?;
 
     Ok(IssuedGiftCard { card, code })
+}
+
+/// Most cards one order may print. A basket of a thousand cards is somebody
+/// laundering a stolen card, not a shopper buying presents.
+pub const MAX_PURCHASED_CARDS: i64 = 200;
+
+#[derive(FromRow)]
+struct PurchasedRow {
+    id: Uuid,
+    unit_price: Decimal,
+    currency_code: String,
+    quantity: i32,
+    customer_id: Option<CustomerId>,
+}
+
+/// Prints the cards an order bought, once the shop actually has the money.
+///
+/// Authorising is not paying: a checkout only puts a hold on a card, and
+/// handing over a spendable balance against a hold is giving the goods away
+/// before the till rings. So this is called where money is taken — after a
+/// capture — and never from the checkout.
+///
+/// It is safe to call again, which is the point: a provider redelivers its
+/// webhook, and the second delivery finds every unit already printed and
+/// prints nothing. `gift_card_issued_line_key` is what makes that true against
+/// two deliveries arriving at once rather than one after the other.
+///
+/// The code goes out in the `gift_card.purchased` event and is never returned
+/// to the caller. tezgah does not know the buyer's e-mail address and will not
+/// learn it; only the hash is kept, so this event is the single moment the code
+/// exists outside the buyer's hands, and the host's outbox is where the shop
+/// decides what to do with it.
+pub async fn issue_purchased(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order_id: OrderId,
+) -> Result<Vec<GiftCardId>> {
+    let _: Permit = ctx.permit(
+        Action::Settle,
+        Resource::Credit {
+            id: None,
+            customer: None,
+        },
+    )?;
+
+    let lines = sqlx::query_as::<_, PurchasedRow>(
+        r#"select l.id, l.unit_price, l.currency_code, i.quantity, o.customer_id
+           from order_line_item l
+           join "order" o on o.scope = l.scope and o.id = l.order_id
+           join order_item i
+             on i.scope = l.scope and i.order_line_item_id = l.id and i.version = o.version
+           where l.scope = $1 and l.order_id = $2 and l.is_giftcard and i.quantity > 0
+           order by l.created_at, l.id
+           limit $3"#,
+    )
+    .bind(ctx.scope.0)
+    .bind(order_id.as_uuid())
+    .bind(MAX_PURCHASED_CARDS)
+    .fetch_all(&mut **tx)
+    .await?;
+
+    if lines.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let owed: Decimal = lines
+        .iter()
+        .map(|line| line.unit_price * Decimal::from(line.quantity))
+        .sum();
+
+    // Only money the shop is holding: a `payment` row is an authorisation, and
+    // a hold is not a payment. A partial capture below what the cards are worth
+    // has not bought them, and the next capture finds them still unprinted.
+    let taken: Decimal = sqlx::query_scalar(
+        "select coalesce(sum(amount), 0) from order_transaction
+         where scope = $1 and order_id = $2
+           and reference in ('capture', 'refund', 'credit_line')",
+    )
+    .bind(ctx.scope.0)
+    .bind(order_id.as_uuid())
+    .fetch_one(&mut **tx)
+    .await?;
+
+    if taken < owed {
+        return Ok(Vec::new());
+    }
+
+    let line_ids: Vec<Uuid> = lines.iter().map(|line| line.id).collect();
+    let printed: Vec<(Uuid, i32)> = sqlx::query_as(
+        "select issued_line_item_id, issued_line_ordinal from gift_card
+         where scope = $1 and issued_line_item_id = any($2)",
+    )
+    .bind(ctx.scope.0)
+    .bind(&line_ids)
+    .fetch_all(&mut **tx)
+    .await?;
+
+    let mut issued = Vec::new();
+    for line in &lines {
+        let currency = Currency::parse(&line.currency_code)?;
+        for ordinal in 1..=line.quantity {
+            if printed
+                .iter()
+                .any(|(item, at)| *item == line.id && *at == ordinal)
+            {
+                continue;
+            }
+
+            let card = issue(
+                tx,
+                ctx,
+                NewGiftCard {
+                    balance: Money::new(line.unit_price, currency),
+                    issued_order_id: Some(order_id),
+                    customer_id: line.customer_id,
+                    expires_at: None,
+                    reason: Some("purchased".to_string()),
+                    line: Some(PurchasedLine {
+                        line_item_id: line.id,
+                        ordinal,
+                    }),
+                },
+            )
+            .await?;
+
+            ctx.emit(
+                tx,
+                Event {
+                    name: "gift_card.purchased",
+                    entity_id: card.card.id.as_uuid(),
+                    payload: serde_json::json!({
+                        "order": order_id,
+                        "line": line.id,
+                        "ordinal": ordinal,
+                        "balance": line.unit_price.to_string(),
+                        "currency": currency.as_str(),
+                        "code": card.code,
+                    }),
+                },
+            )
+            .await?;
+
+            issued.push(card.card.id);
+        }
+    }
+
+    Ok(issued)
 }
 
 pub async fn gift_card(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: GiftCardId) -> Result<GiftCard> {

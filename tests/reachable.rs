@@ -321,7 +321,7 @@ const TOLERATED_TABLES: [(&str, &str); 6] = [
 
 /// Values a check constraint permits and nothing in `src/` writes, with the
 /// reason each is not a hole.
-const TOLERATED_VALUES: [(&str, &str); 27] = [
+const TOLERATED_VALUES: [(&str, &str); 19] = [
     (
         "workflow_step.state = 'skipped'",
         "a step a compensation walked past; the runner has no branch that \
@@ -356,38 +356,6 @@ const TOLERATED_VALUES: [(&str, &str); 27] = [
         "order_return.status = 'open'",
         "a return is written `requested` and moves on from there; 'open' is a \
          state the library never puts a return in",
-    ),
-    (
-        "order_change_action.action = 'SHIPPING_UPDATE'",
-        "an order change kind the edit and return flows never record",
-    ),
-    (
-        "order_change_action.action = 'FULFILL_ITEM'",
-        "fulfilment is written to its own tables, never as an order change",
-    ),
-    (
-        "order_change_action.action = 'SHIP_ITEM'",
-        "fulfilment is written to its own tables, never as an order change",
-    ),
-    (
-        "order_change_action.action = 'DELIVER_ITEM'",
-        "fulfilment is written to its own tables, never as an order change",
-    ),
-    (
-        "order_change_action.action = 'CANCEL_ITEM_FULFILLMENT'",
-        "fulfilment is written to its own tables, never as an order change",
-    ),
-    (
-        "order_change_action.action = 'CANCEL_RETURN_ITEM'",
-        "cancelling a return rewrites the return, and records no action row",
-    ),
-    (
-        "order_change_action.action = 'TRANSFER_CUSTOMER'",
-        "a transfer is its own table with its own states, see `order_transfer`",
-    ),
-    (
-        "order_change_action.action = 'UPDATE_ORDER_PROPERTIES'",
-        "no edit writes an order's own properties as a change action",
     ),
     (
         "customer_tax_id.tax_id_type = 'ein'",
