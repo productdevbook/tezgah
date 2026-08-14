@@ -11,6 +11,7 @@ categories = ["database", "web-programming"]
 
 [dependencies]
 async-trait = "0.1"
+base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 rust_decimal = { version = "1", features = ["db-postgres", "serde-with-str"] }
 serde = { version = "1", features = ["derive"] }
@@ -29,7 +30,9 @@ sqlx = { version = "0.8", default-features = false, features = [
 uuid = { version = "1", features = ["serde", "v7"] }
 
 [dev-dependencies]
+parking_lot = "0.12"
 rust_decimal_macros = "1"
+url = "2"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 [lints.rust]

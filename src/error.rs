@@ -55,6 +55,24 @@ impl Error {
         Error::new(Cause::NotFound { entity })
     }
 
+    /// What an [`Authorizer`](crate::ports::Authorizer) returns when it says no.
+    pub fn denied() -> Self {
+        Error::new(Cause::Denied)
+    }
+
+    /// What a payment or fulfilment provider refused, in its own words.
+    pub fn provider(provider: &'static str, message: impl Into<String>) -> Self {
+        Error::new(Cause::Provider {
+            provider,
+            message: message.into(),
+        })
+    }
+
+    /// A variant that ran out while somebody was buying it.
+    pub fn out_of_stock_for(variant: uuid::Uuid) -> Self {
+        Error::new(Cause::OutOfStock { variant })
+    }
+
     pub(crate) fn bug(what: &'static str) -> Self {
         Error::new(Cause::Bug(what))
     }
