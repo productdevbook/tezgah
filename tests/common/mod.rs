@@ -218,20 +218,22 @@ impl Shop {
                 .execute(&owner)
                 .await
                 .expect("a scope");
-
-            // A shop that has not configured a currency cannot round an amount
-            // in it, so the one every fixture sells in is configured here.
-            sqlx::query(
-                "insert into currency (id, scope, code, exponent, symbol, symbol_native, name)
-                 values ($1, $2, 'TRY', 2, 'x', 'x', 'Turkish lira')
-                 on conflict do nothing",
-            )
-            .bind(Uuid::now_v7())
-            .bind(scope.0)
-            .execute(&owner)
-            .await
-            .expect("a currency");
         }
+
+        // A shop that has not configured a currency cannot round an amount in
+        // it, so the one every fixture sells in is configured. `here` only:
+        // `elsewhere` is what isolation is asserted against, and a row of its
+        // own reads as a leak.
+        sqlx::query(
+            "insert into currency (id, scope, code, exponent, symbol, symbol_native, name)
+             values ($1, $2, 'TRY', 2, 'x', 'x', 'Turkish lira')
+             on conflict do nothing",
+        )
+        .bind(Uuid::now_v7())
+        .bind(here.0)
+        .execute(&owner)
+        .await
+        .expect("a currency");
         owner.close().await;
 
         let mut app_url = its_url.clone();
