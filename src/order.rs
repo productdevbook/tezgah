@@ -3127,6 +3127,7 @@ pub async fn accept_agreement(
              (id, scope, order_id, agreement_version_id, kind, body_hash, accepted_at,
               ip, user_agent, metadata)
          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         on conflict (scope, order_id, kind) do nothing
          returning {ORDER_AGREEMENT_COLUMNS}"
     ))
     .bind(id.as_uuid())
@@ -3139,14 +3140,9 @@ pub async fn accept_agreement(
     .bind(acceptance.ip)
     .bind(acceptance.user_agent)
     .bind(acceptance.metadata)
-    .fetch_one(&mut **tx)
-    .await
-    .map_err(|error| match &error {
-        sqlx::Error::Database(failure) if failure.is_unique_violation() => {
-            Error::conflict("that order has already accepted a document of that kind")
-        }
-        _ => Error::from(error),
-    })?;
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::conflict("that order has already accepted a document of that kind"))?;
 
     ctx.audit(
         tx,
