@@ -13,6 +13,7 @@ use tezgah::api::admin_catalogue as admin;
 use tezgah::api::store as storefront;
 use tezgah::catalogue::ProductStatus;
 use tezgah::ports::Actor;
+use tezgah::store;
 
 fn draft(handle: &str, title: &str) -> admin::CreateProduct {
     admin::CreateProduct {
@@ -43,15 +44,21 @@ async fn a_draft_is_visible_here_and_nowhere_else() {
         .expect("to read a draft back");
     assert_eq!(read.handle, "kilim");
 
-    let refused = storefront::get_product(&mut tx, &ctx, "kilim").await;
+    let token = store::create_publishable_key(&mut tx, &ctx, "storefront")
+        .await
+        .expect("a token")
+        .token;
+
+    let refused = storefront::get_product(&mut tx, &ctx, &token, "kilim").await;
     assert!(
         refused.is_err_and(|err| err.is_not_found()),
         "the storefront does not admit a draft exists"
     );
 
-    let shopper = storefront::list_products(&mut tx, &ctx, storefront::ListProducts::default())
-        .await
-        .expect("to list");
+    let shopper =
+        storefront::list_products(&mut tx, &ctx, &token, storefront::ListProducts::default())
+            .await
+            .expect("to list");
     assert!(shopper.is_empty());
 
     drop(tx);
