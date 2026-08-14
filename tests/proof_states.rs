@@ -70,18 +70,6 @@ const ORDER_MOVES: [(OrderStatus, &[OrderStatus]); 6] = [
     (OrderStatus::Archived, &[]),
 ];
 
-fn parse_status(text: &str) -> OrderStatus {
-    match text {
-        "draft" => OrderStatus::Draft,
-        "pending" => OrderStatus::Pending,
-        "requires_action" => OrderStatus::RequiresAction,
-        "completed" => OrderStatus::Completed,
-        "canceled" => OrderStatus::Canceled,
-        "archived" => OrderStatus::Archived,
-        other => panic!("{other} is not a status this test knows"),
-    }
-}
-
 fn is_allowed(from: OrderStatus, to: OrderStatus) -> bool {
     if from == to {
         return true;
@@ -95,13 +83,13 @@ fn is_allowed(from: OrderStatus, to: OrderStatus) -> bool {
 
 /// Every status the schema will hold, per table. A value outside its list is a
 /// constraint violation whichever writer offers it.
-const ORDER_STATUSES: [&str; 6] = [
-    "draft",
-    "pending",
-    "requires_action",
-    "completed",
-    "canceled",
-    "archived",
+const ORDER_STATUSES: [(&str, OrderStatus); 6] = [
+    ("draft", OrderStatus::Draft),
+    ("pending", OrderStatus::Pending),
+    ("requires_action", OrderStatus::RequiresAction),
+    ("completed", OrderStatus::Completed),
+    ("canceled", OrderStatus::Canceled),
+    ("archived", OrderStatus::Archived),
 ];
 
 const SESSION_STATUSES: [&str; 6] = [
@@ -265,8 +253,7 @@ async fn the_schema_takes_the_moves_the_code_would_make_and_no_others() {
     let ctx = shop.ctx();
     let order = an_order_in(&shop, &ctx, OrderStatus::Pending).await;
 
-    for status in ORDER_STATUSES {
-        let to = parse_status(status);
+    for (status, to) in ORDER_STATUSES {
         let mut tx = shop.begin().await;
         let written = sqlx::query(r#"update "order" set status = $1 where id = $2"#)
             .bind(status)
@@ -303,7 +290,7 @@ async fn a_canceled_order_cannot_be_reopened_behind_the_code() {
     let ctx = shop.ctx();
     let order = an_order_in(&shop, &ctx, OrderStatus::Canceled).await;
 
-    for status in ORDER_STATUSES {
+    for (status, _) in ORDER_STATUSES {
         if status == "canceled" {
             continue;
         }
