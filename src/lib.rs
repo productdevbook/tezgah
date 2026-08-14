@@ -5,6 +5,7 @@ pub mod id;
 pub mod money;
 pub mod page;
 pub mod ports;
+pub mod store;
 pub mod workflow;
 
 pub use error::{Error, Result};
