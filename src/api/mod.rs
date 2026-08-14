@@ -23,6 +23,7 @@ pub mod admin_order;
 pub mod admin_rest;
 pub mod agreement;
 pub mod credit;
+pub mod digital;
 pub mod inventory_lot;
 pub mod openapi;
 pub mod store;
@@ -138,6 +139,7 @@ pub fn routes() -> Vec<Route> {
             + admin_rest::ROUTES.len()
             + agreement::ROUTES.len()
             + credit::ROUTES.len()
+            + digital::ROUTES.len()
             + inventory_lot::ROUTES.len()
             + tax_identity::ROUTES.len(),
     );
@@ -148,6 +150,7 @@ pub fn routes() -> Vec<Route> {
     all.extend_from_slice(admin_rest::ROUTES);
     all.extend_from_slice(agreement::ROUTES);
     all.extend_from_slice(credit::ROUTES);
+    all.extend_from_slice(digital::ROUTES);
     all.extend_from_slice(inventory_lot::ROUTES);
     all.extend_from_slice(tax_identity::ROUTES);
     all

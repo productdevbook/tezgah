@@ -2073,6 +2073,45 @@
         "x-tezgah-permission": "write"
       }
     },
+    "/admin/digital-content/{id}": {
+      "delete": {
+        "operationId": "deleteAdminDigitalContentById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Take a file off a variant",
+        "tags": [
+          "digital"
+        ],
+        "x-tezgah-permission": "delete"
+      }
+    },
     "/admin/draft-orders": {
       "get": {
         "operationId": "getAdminDraftOrders",
@@ -4824,6 +4863,84 @@
           "order"
         ],
         "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/orders/{id}/entitlements": {
+      "get": {
+        "operationId": "getAdminOrdersByIdEntitlements",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "What this order's money bought the right to",
+        "tags": [
+          "digital"
+        ],
+        "x-tezgah-permission": "view"
+      }
+    },
+    "/admin/orders/{id}/entitlements/revoke": {
+      "post": {
+        "operationId": "postAdminOrdersByIdEntitlementsRevoke",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Take an order's downloads back",
+        "tags": [
+          "digital"
+        ],
+        "x-tezgah-permission": "settle"
       }
     },
     "/admin/orders/{id}/fulfillments": {
@@ -11866,6 +11983,82 @@
         "x-tezgah-permission": "delete"
       }
     },
+    "/admin/variants/{id}/digital-content": {
+      "get": {
+        "operationId": "getAdminVariantsByIdDigitalContent",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "List the files a variant carries",
+        "tags": [
+          "digital"
+        ],
+        "x-tezgah-permission": "view"
+      },
+      "post": {
+        "operationId": "postAdminVariantsByIdDigitalContent",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Put a file on a variant",
+        "tags": [
+          "digital"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
     "/admin/workflow-dead-letters": {
       "get": {
         "operationId": "getAdminWorkflowDeadLetters",
@@ -13066,6 +13259,105 @@
         "x-tezgah-permission": "view"
       }
     },
+    "/store/downloads": {
+      "post": {
+        "operationId": "postStoreDownloads",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "publishableKey": []
+          }
+        ],
+        "summary": "Spend one download of a link",
+        "tags": [
+          "digital"
+        ],
+        "x-tezgah-permission": "view"
+      }
+    },
+    "/store/entitlements": {
+      "get": {
+        "operationId": "getStoreEntitlements",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "publishableKey": []
+          }
+        ],
+        "summary": "What I may download",
+        "tags": [
+          "digital"
+        ],
+        "x-tezgah-permission": "view"
+      }
+    },
+    "/store/entitlements/{id}/token": {
+      "post": {
+        "operationId": "postStoreEntitlementsByIdToken",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "publishableKey": []
+          }
+        ],
+        "summary": "Ask for a download link",
+        "tags": [
+          "digital"
+        ],
+        "x-tezgah-permission": "view"
+      }
+    },
     "/store/locales": {
       "get": {
         "operationId": "getStoreLocales",
@@ -14170,6 +14462,9 @@
     },
     {
       "name": "customer"
+    },
+    {
+      "name": "digital"
     },
     {
       "name": "fulfilment"

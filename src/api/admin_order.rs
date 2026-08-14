@@ -17,6 +17,7 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::credit;
+use crate::digital;
 use crate::error::{Error, Result};
 use crate::fulfilment;
 use crate::id::{
@@ -2503,6 +2504,7 @@ pub async fn capture_payment(
 
     if let Some(transaction) = written {
         credit::issue_purchased(tx, ctx, transaction.order_id).await?;
+        digital::grant(tx, ctx, transaction.order_id).await?;
     }
 
     Ok(capture.into())
@@ -2528,7 +2530,14 @@ pub async fn refund_payment(
     let collection = payment::payment(tx, ctx, id).await?.payment_collection_id;
     let refund = payment::refund(tx, ctx, id, amount, input.reason_id, input.note).await?;
 
-    let _ = order::record_refund(tx, ctx, collection, refund.id, amount).await?;
+    let written = order::record_refund(tx, ctx, collection, refund.id, amount).await?;
+
+    // In the transaction that gives the money back, never after it: a refund
+    // that leaves the file downloadable is the line every hand-rolled version
+    // forgets.
+    if let Some(transaction) = written {
+        digital::revoke(tx, ctx, transaction.order_id, Some("refunded")).await?;
+    }
 
     Ok(refund.into())
 }

@@ -7,6 +7,7 @@ pub mod catalogue;
 pub mod checkout;
 pub mod credit;
 pub mod customer;
+pub mod digital;
 pub mod error;
 pub mod fulfilment;
 pub mod id;
