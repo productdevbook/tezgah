@@ -6,6 +6,8 @@
 
 mod common;
 
+use std::sync::Arc;
+
 use common::{Doorman, Shop};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
@@ -1735,6 +1737,87 @@ async fn another_shop_cannot_see_an_invoice() -> tezgah::Result<()> {
     let seen = order::invoice(&mut theirs, &shop.theirs(), issued.id).await;
     assert!(seen.is_err(), "another shop read an invoice of this one's");
     theirs.rollback().await.expect("to roll back");
+
+    shop.close().await;
+    Ok(())
+}
+
+/// 0022 gave every `order_item` write an AFTER trigger that updates the parent
+/// `"order"` row, so the parent is a lock every child write takes. A return
+/// restocked before writing items and a cancellation wrote items before
+/// releasing stock: the same two rows in opposite orders. Two connections, at
+/// the same time, because a deadlock is not visible one call after another.
+#[tokio::test]
+async fn a_return_and_a_cancellation_on_one_order_do_not_deadlock() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+
+    let mut setup = shop.begin().await;
+    seed_currency(&mut setup, shop.here).await;
+    let (_, location, variant) = a_shelf(&mut setup, &ctx, shop.here, 1000).await;
+    setup.commit().await.expect("the shelf to stay");
+
+    for round in 0..12 {
+        let mut tx = shop.begin().await;
+        let mut line = a_line(3, dec!(10));
+        line.variant_id = Some(variant);
+        let placed = order::create(&mut tx, &ctx, an_order(vec![line])).await?;
+        let line_id = first_line(&mut tx, &ctx, placed.id).await;
+        let asked = order::request_return(
+            &mut tx,
+            &ctx,
+            placed.id,
+            Some(location),
+            vec![ReturnLine {
+                order_line_item_id: line_id,
+                quantity: 2,
+                return_reason_id: None,
+                note: None,
+            }],
+        )
+        .await?;
+        tx.commit().await.expect("the order to stay");
+
+        let gate = Arc::new(tokio::sync::Barrier::new(2));
+        let there = gate.clone();
+
+        let returning = async {
+            let mut tx = shop.begin().await;
+            gate.wait().await;
+            let out = order::receive_return(
+                &mut tx,
+                &ctx,
+                asked.id,
+                vec![ReceivedLine {
+                    order_line_item_id: line_id,
+                    quantity: 2,
+                    damaged: 0,
+                }],
+            )
+            .await;
+            let _ = tx.rollback().await;
+            out.err()
+        };
+
+        let cancelling = async {
+            let mut tx = shop.begin().await;
+            there.wait().await;
+            let out = order::cancel(&mut tx, &ctx, placed.id).await;
+            let _ = tx.rollback().await;
+            out.err()
+        };
+
+        let (received, cancelled) = tokio::join!(returning, cancelling);
+
+        for refused in [received, cancelled].into_iter().flatten() {
+            assert_ne!(
+                refused.sqlstate().as_deref(),
+                Some("40P01"),
+                "round {round}: postgres killed one of them for a deadlock: {}",
+                refused.report()
+            );
+        }
+    }
 
     shop.close().await;
     Ok(())

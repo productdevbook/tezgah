@@ -480,6 +480,15 @@ struct ReserveStock {
     location_id: StockLocationId,
 }
 
+/// A deadlock or a serialisation failure is the database asking for the same
+/// work again, not a refusal of it. Told apart by SQLSTATE, never by message.
+fn wedged(err: Error) -> Failure {
+    match err.sqlstate().as_deref() {
+        Some("40001" | "40P01") => Failure::Retry(err),
+        _ => Failure::Final(err),
+    }
+}
+
 #[async_trait]
 impl Step for ReserveStock {
     fn name(&self) -> &'static str {
@@ -497,6 +506,7 @@ impl Step for ReserveStock {
 
         let lines = cart_lines(tx, ctx, cart_id).await.map_err(Failure::Final)?;
 
+        let mut wanted = Vec::new();
         for line in &lines {
             let Some(variant_id) = line.variant_id else {
                 continue;
@@ -508,21 +518,33 @@ impl Step for ReserveStock {
                     .map_err(Failure::Final)?;
 
             for item in items {
-                let held = inventory::reserve(
-                    tx,
-                    ctx,
+                wanted.push((
                     item.inventory_item_id,
-                    self.location_id,
+                    line.id,
                     line.quantity * item.required_quantity,
-                    Some(line.id),
-                    false,
-                    None,
-                )
-                .await
-                .map_err(Failure::Final)?;
-
-                carried.reservations.push(held.id);
+                ));
             }
+        }
+
+        // Cart order is whatever the shopper clicked in; two carts holding the
+        // same two products would take the level rows in opposite orders.
+        wanted.sort_by_key(|(item, line, _)| (item.as_uuid(), line.as_uuid()));
+
+        for (item, line, quantity) in wanted {
+            let held = inventory::reserve(
+                tx,
+                ctx,
+                item,
+                self.location_id,
+                quantity,
+                Some(line),
+                false,
+                None,
+            )
+            .await
+            .map_err(wedged)?;
+
+            carried.reservations.push(held.id);
         }
 
         let undo = HeldStock {

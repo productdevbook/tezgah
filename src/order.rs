@@ -1276,7 +1276,24 @@ pub async fn cancel(tx: &mut Tx<'_>, ctx: &Ctx<'_>, order_id: OrderId) -> Result
 
 /// The undoing itself, with the permit already taken and the move already
 /// known to be allowed.
+/// Takes the parent order row before anything else the path will touch.
+///
+/// 0022's triggers make every `order_item`, `order_summary` and
+/// `order_transaction` write update `"order"`, so the parent is a lock every
+/// child write takes. One order for everybody — order first, then inventory —
+/// and a return no longer deadlocks against an edit on the same order.
+async fn hold_order(tx: &mut Tx<'_>, ctx: &Ctx<'_>, order_id: OrderId) -> Result<()> {
+    sqlx::query(r#"select 1 from "order" where scope = $1 and id = $2 for update"#)
+        .bind(ctx.scope.0)
+        .bind(order_id.as_uuid())
+        .execute(&mut **tx)
+        .await?;
+    Ok(())
+}
+
 async fn unwind(tx: &mut Tx<'_>, ctx: &Ctx<'_>, order: &Order, from: OrderStatus) -> Result<Order> {
+    hold_order(tx, ctx, order.id).await?;
+
     if crate::fulfilment::anything_shipped(tx, ctx, order.id).await? {
         return Err(Error::conflict(
             "that order has shipped, so it is returned rather than cancelled",
@@ -2279,6 +2296,8 @@ pub async fn confirm_change(
         },
     )?;
 
+    hold_order(tx, ctx, order.id).await?;
+
     if change.status != "pending" && change.status != "requested" {
         return Err(Error::conflict("that change has already been settled"));
     }
@@ -2574,6 +2593,8 @@ pub async fn receive_return(
             customer: order.customer_id.map(CustomerId::as_uuid),
         },
     )?;
+
+    hold_order(tx, ctx, order.id).await?;
 
     if order_return.status == "received"
         || order_return.status == "canceled"
@@ -3846,6 +3867,8 @@ async fn apply_action(
     currency: Currency,
     action: &OrderChangeAction,
 ) -> Result<()> {
+    hold_order(tx, ctx, order.id).await?;
+
     let what = ChangeAction::parse(&action.action)?;
     let line = action
         .reference_id

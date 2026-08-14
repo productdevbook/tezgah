@@ -7,6 +7,7 @@
 use std::backtrace::Backtrace;
 use std::fmt;
 
+use sqlx::error::DatabaseError;
 use uuid::Uuid;
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -109,6 +110,17 @@ impl Error {
     /// Worth retrying in a way the other kinds are not.
     pub fn is_conflict(&self) -> bool {
         matches!(*self.cause, Cause::Conflict(_))
+    }
+
+    /// What Postgres refused with, when the failure was the database's.
+    ///
+    /// `40P01` is a deadlock and `40001` a serialisation failure. Both mean
+    /// "try again" and neither is safe to tell apart by reading the message.
+    pub fn sqlstate(&self) -> Option<String> {
+        match &*self.cause {
+            Cause::Db(sqlx::Error::Database(err)) => err.code().map(|code| code.into_owned()),
+            _ => None,
+        }
     }
 
     /// The variant that ran out, when that is what happened.
