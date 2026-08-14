@@ -32,10 +32,10 @@ begin
     if not exists (
         select 1 from pg_constraint
         where conrelid = quoted::regclass
-          and conname = table_name || '_scope_key'
+          and conname = table_name || '_scope_id_key'
     ) then
         execute format('alter table %s add constraint %s unique (scope, id)',
-                       quoted, quote_ident(table_name || '_scope_key'));
+                       quoted, quote_ident(table_name || '_scope_id_key'));
     end if;
     execute format('drop index if exists %s', quote_ident(table_name || '_scope_idx'));
 
@@ -65,10 +65,10 @@ begin
     for t in select name from tezgah_table order by name loop
         if not exists (
             select 1 from pg_constraint
-            where conrelid = quote_ident(t)::regclass and conname = t || '_scope_key'
+            where conrelid = quote_ident(t)::regclass and conname = t || '_scope_id_key'
         ) then
             execute format('alter table %I add constraint %I unique (scope, id)',
-                           t, t || '_scope_key');
+                           t, t || '_scope_id_key');
         end if;
         execute format('drop index if exists %I', t || '_scope_idx');
     end loop;
