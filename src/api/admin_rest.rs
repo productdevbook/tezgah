@@ -17,8 +17,8 @@ use uuid::Uuid;
 use crate::customer;
 use crate::error::{Error, Result};
 use crate::id::{
-    AddressId, CampaignId, CustomerGroupId, CustomerId, PromotionId, RegionId, SalesChannelId,
-    StoreId, TaxRateId, TaxRegionId, WorkflowRunId,
+    AddressId, CampaignId, CustomerGroupId, CustomerId, PromotionId, PublishableKeyId, RegionId,
+    SalesChannelId, StoreId, TaxRateId, TaxRegionId, WorkflowRunId,
 };
 use crate::money::Currency;
 use crate::page::{Page, Paging};
@@ -601,6 +601,32 @@ pub async fn get_promotion(
     ))
 }
 
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdatePromotion {
+    pub code: Option<String>,
+    pub is_automatic: Option<bool>,
+    pub usage_limit: Option<i32>,
+    pub customer_usage_limit: Option<i32>,
+}
+
+pub async fn update_promotion(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: PromotionId,
+    body: UpdatePromotion,
+) -> Result<PromotionView> {
+    let patch = promotion::PromotionPatch {
+        code: body.code,
+        is_automatic: body.is_automatic,
+        usage_limit: body.usage_limit,
+        customer_usage_limit: body.customer_usage_limit,
+    };
+    Ok(PromotionView::from(
+        promotion::update_promotion(tx, ctx, id, patch).await?,
+    ))
+}
+
 pub async fn set_promotion_status(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -777,6 +803,66 @@ pub async fn create_campaign(
     ))
 }
 
+pub async fn get_campaign(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: CampaignId) -> Result<CampaignView> {
+    Ok(CampaignView::from(promotion::campaign(tx, ctx, id).await?))
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateCampaign {
+    pub identifier: Option<String>,
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub starts_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub ends_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+pub async fn update_campaign(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: CampaignId,
+    body: UpdateCampaign,
+) -> Result<CampaignView> {
+    let patch = promotion::CampaignPatch {
+        identifier: body.identifier,
+        name: body.name,
+        description: body.description,
+        starts_at: body.starts_at,
+        ends_at: body.ends_at,
+    };
+    Ok(CampaignView::from(
+        promotion::update_campaign(tx, ctx, id, patch).await?,
+    ))
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AttachPromotion {
+    pub promotion_id: PromotionId,
+}
+
+pub async fn add_campaign_promotion(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    campaign_id: CampaignId,
+    body: AttachPromotion,
+) -> Result<PromotionView> {
+    Ok(PromotionView::from(
+        promotion::attach_promotion(tx, ctx, campaign_id, body.promotion_id).await?,
+    ))
+}
+
+pub async fn remove_campaign_promotion(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    campaign_id: CampaignId,
+    promotion_id: PromotionId,
+) -> Result<PromotionView> {
+    Ok(PromotionView::from(
+        promotion::detach_promotion(tx, ctx, campaign_id, promotion_id).await?,
+    ))
+}
+
 pub async fn set_campaign_budget(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -937,6 +1023,30 @@ pub async fn get_tax_region(
     Ok(TaxRegionView::from(tax::tax_region(tx, ctx, id).await?))
 }
 
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateTaxRegion {
+    pub country_code: Option<String>,
+    pub province_code: Option<String>,
+    pub provider: Option<String>,
+}
+
+pub async fn update_tax_region(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: TaxRegionId,
+    body: UpdateTaxRegion,
+) -> Result<TaxRegionView> {
+    let patch = tax::TaxRegionPatch {
+        country_code: body.country_code,
+        province_code: body.province_code,
+        provider: body.provider,
+    };
+    Ok(TaxRegionView::from(
+        tax::update_tax_region(tx, ctx, id, patch).await?,
+    ))
+}
+
 pub async fn delete_tax_region(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: TaxRegionId) -> Result<()> {
     tax::delete_tax_region(tx, ctx, id).await
 }
@@ -971,6 +1081,38 @@ pub async fn create_tax_rate(
         is_combinable: body.is_combinable,
     };
     Ok(TaxRateView::from(tax::create_tax_rate(tx, ctx, new).await?))
+}
+
+pub async fn get_tax_rate(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: TaxRateId) -> Result<TaxRateView> {
+    Ok(TaxRateView::from(tax::tax_rate(tx, ctx, id).await?))
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateTaxRate {
+    pub rate: Option<Decimal>,
+    pub code: Option<String>,
+    pub name: Option<String>,
+    pub is_default: Option<bool>,
+    pub is_combinable: Option<bool>,
+}
+
+pub async fn update_tax_rate(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: TaxRateId,
+    body: UpdateTaxRate,
+) -> Result<TaxRateView> {
+    let patch = tax::TaxRatePatch {
+        rate: body.rate,
+        code: body.code,
+        name: body.name,
+        is_default: body.is_default,
+        is_combinable: body.is_combinable,
+    };
+    Ok(TaxRateView::from(
+        tax::update_tax_rate(tx, ctx, id, patch).await?,
+    ))
 }
 
 pub async fn delete_tax_rate(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: TaxRateId) -> Result<()> {
@@ -1103,6 +1245,51 @@ pub async fn create_region(
     Ok(RegionView::from(store::create_region(tx, ctx, new).await?))
 }
 
+pub async fn get_region(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: RegionId) -> Result<RegionView> {
+    Ok(RegionView::from(store::region(tx, ctx, id).await?))
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateRegion {
+    pub name: Option<String>,
+    pub currency_code: Option<String>,
+    pub is_tax_inclusive: Option<bool>,
+}
+
+pub async fn update_region(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: RegionId,
+    body: UpdateRegion,
+) -> Result<RegionView> {
+    let patch = store::RegionPatch {
+        name: body.name,
+        currency_code: currency(body.currency_code)?,
+        is_tax_inclusive: body.is_tax_inclusive,
+    };
+    Ok(RegionView::from(
+        store::update_region(tx, ctx, id, patch).await?,
+    ))
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CreateSalesChannel {
+    pub name: String,
+    pub description: Option<String>,
+    #[serde(default)]
+    pub is_disabled: bool,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateSalesChannel {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub is_disabled: Option<bool>,
+}
+
 pub async fn list_sales_channels(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -1112,6 +1299,153 @@ pub async fn list_sales_channels(
         store::sales_channels(tx, ctx, query.paging()?).await?,
         SalesChannelView::from,
     ))
+}
+
+pub async fn create_sales_channel(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    body: CreateSalesChannel,
+) -> Result<SalesChannelView> {
+    let new = store::NewSalesChannel {
+        name: body.name,
+        description: body.description,
+        is_disabled: body.is_disabled,
+    };
+    Ok(SalesChannelView::from(
+        store::create_sales_channel(tx, ctx, new).await?,
+    ))
+}
+
+pub async fn update_sales_channel(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: SalesChannelId,
+    body: UpdateSalesChannel,
+) -> Result<SalesChannelView> {
+    let patch = store::SalesChannelPatch {
+        name: body.name,
+        description: body.description,
+        is_disabled: body.is_disabled,
+    };
+    Ok(SalesChannelView::from(
+        store::update_sales_channel(tx, ctx, id, patch).await?,
+    ))
+}
+
+pub async fn delete_sales_channel(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: SalesChannelId,
+) -> Result<()> {
+    store::delete_sales_channel(tx, ctx, id).await
+}
+
+// -------------------------------------------------------- publishable keys
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PublishableKeyView {
+    pub id: PublishableKeyId,
+    pub title: String,
+    pub revoked_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub last_used_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl From<store::PublishableKey> for PublishableKeyView {
+    fn from(row: store::PublishableKey) -> Self {
+        PublishableKeyView {
+            id: row.id,
+            title: row.title,
+            revoked_at: row.revoked_at,
+            last_used_at: row.last_used_at,
+            created_at: row.created_at,
+        }
+    }
+}
+
+/// The only response the token appears in. It is not stored and cannot be
+/// fetched again.
+#[derive(Debug, Clone, Serialize)]
+pub struct IssuedKeyView {
+    #[serde(flatten)]
+    pub key: PublishableKeyView,
+    pub token: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CreatePublishableKey {
+    pub title: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LinkSalesChannel {
+    pub sales_channel_id: SalesChannelId,
+}
+
+pub async fn list_publishable_keys(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    query: List,
+) -> Result<Page<PublishableKeyView>> {
+    Ok(map(
+        store::publishable_keys(tx, ctx, query.paging()?).await?,
+        PublishableKeyView::from,
+    ))
+}
+
+pub async fn create_publishable_key(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    body: CreatePublishableKey,
+) -> Result<IssuedKeyView> {
+    let issued = store::create_publishable_key(tx, ctx, &body.title).await?;
+    Ok(IssuedKeyView {
+        key: PublishableKeyView::from(issued.key),
+        token: issued.token,
+    })
+}
+
+pub async fn revoke_publishable_key(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: PublishableKeyId,
+) -> Result<PublishableKeyView> {
+    Ok(PublishableKeyView::from(
+        store::revoke_publishable_key(tx, ctx, id).await?,
+    ))
+}
+
+/// Bounded by how many channels one key is allowed to see.
+pub async fn list_key_sales_channels(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: PublishableKeyId,
+) -> Result<Vec<SalesChannelView>> {
+    Ok(store::channels_for_key(tx, ctx, id)
+        .await?
+        .into_iter()
+        .map(SalesChannelView::from)
+        .collect())
+}
+
+pub async fn link_key_sales_channel(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: PublishableKeyId,
+    body: LinkSalesChannel,
+) -> Result<()> {
+    store::link_key_to_channel(tx, ctx, id, body.sales_channel_id).await
+}
+
+pub async fn unlink_key_sales_channel(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: PublishableKeyId,
+    channel: SalesChannelId,
+) -> Result<()> {
+    store::unlink_key_from_channel(tx, ctx, id, channel).await
 }
 
 /// Bounded by how many currencies the shop trades in.
@@ -1584,6 +1918,14 @@ pub(super) static ROUTES: &[Route] = &[
     },
     Route {
         surface: Surface::Admin,
+        method: Method::Patch,
+        path: "/admin/promotions/{id}",
+        action: Action::Write,
+        domain: "promotion",
+        summary: "Change a promotion's code, automation or usage limits",
+    },
+    Route {
+        surface: Surface::Admin,
         method: Method::Post,
         path: "/admin/promotions/{id}/status",
         action: Action::Write,
@@ -1640,6 +1982,38 @@ pub(super) static ROUTES: &[Route] = &[
     },
     Route {
         surface: Surface::Admin,
+        method: Method::Get,
+        path: "/admin/campaigns/{id}",
+        action: Action::View,
+        domain: "promotion",
+        summary: "Fetch one campaign",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Patch,
+        path: "/admin/campaigns/{id}",
+        action: Action::Write,
+        domain: "promotion",
+        summary: "Change a campaign's name, identifier or dates",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Post,
+        path: "/admin/campaigns/{id}/promotions",
+        action: Action::Write,
+        domain: "promotion",
+        summary: "Put a promotion under a campaign",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Delete,
+        path: "/admin/campaigns/{id}/promotions/{promotion_id}",
+        action: Action::Write,
+        domain: "promotion",
+        summary: "Take a promotion off a campaign",
+    },
+    Route {
+        surface: Surface::Admin,
         method: Method::Post,
         path: "/admin/campaigns/{id}/budget",
         action: Action::Write,
@@ -1672,6 +2046,14 @@ pub(super) static ROUTES: &[Route] = &[
     },
     Route {
         surface: Surface::Admin,
+        method: Method::Patch,
+        path: "/admin/tax-regions/{id}",
+        action: Action::Write,
+        domain: "tax",
+        summary: "Change a tax region's country, province or provider",
+    },
+    Route {
+        surface: Surface::Admin,
         method: Method::Delete,
         path: "/admin/tax-regions/{id}",
         action: Action::Delete,
@@ -1693,6 +2075,22 @@ pub(super) static ROUTES: &[Route] = &[
         action: Action::Write,
         domain: "tax",
         summary: "Create a tax rate",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Get,
+        path: "/admin/tax-rates/{id}",
+        action: Action::View,
+        domain: "tax",
+        summary: "Fetch one tax rate",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Patch,
+        path: "/admin/tax-rates/{id}",
+        action: Action::Write,
+        domain: "tax",
+        summary: "Change a tax rate",
     },
     Route {
         surface: Surface::Admin,
@@ -1745,10 +2143,98 @@ pub(super) static ROUTES: &[Route] = &[
     Route {
         surface: Surface::Admin,
         method: Method::Get,
+        path: "/admin/regions/{id}",
+        action: Action::View,
+        domain: "store",
+        summary: "Fetch one region",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Patch,
+        path: "/admin/regions/{id}",
+        action: Action::Write,
+        domain: "store",
+        summary: "Change a region's name, currency or tax inclusiveness",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Get,
         path: "/admin/sales-channels",
         action: Action::View,
         domain: "store",
         summary: "List sales channels",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Post,
+        path: "/admin/sales-channels",
+        action: Action::Write,
+        domain: "store",
+        summary: "Create a sales channel",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Patch,
+        path: "/admin/sales-channels/{id}",
+        action: Action::Write,
+        domain: "store",
+        summary: "Edit a sales channel",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Delete,
+        path: "/admin/sales-channels/{id}",
+        action: Action::Delete,
+        domain: "store",
+        summary: "Delete a sales channel",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Get,
+        path: "/admin/publishable-api-keys",
+        action: Action::View,
+        domain: "store",
+        summary: "List the storefront keys, live and revoked",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Post,
+        path: "/admin/publishable-api-keys",
+        action: Action::Write,
+        domain: "store",
+        summary: "Issue a storefront key, whose token is returned once",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Post,
+        path: "/admin/publishable-api-keys/{id}/revoke",
+        action: Action::Write,
+        domain: "store",
+        summary: "Revoke a storefront key without forgetting it",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Get,
+        path: "/admin/publishable-api-keys/{id}/sales-channels",
+        action: Action::View,
+        domain: "store",
+        summary: "The channels one storefront key may see",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Post,
+        path: "/admin/publishable-api-keys/{id}/sales-channels",
+        action: Action::Write,
+        domain: "store",
+        summary: "Let a storefront key see a channel",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Delete,
+        path: "/admin/publishable-api-keys/{id}/sales-channels/{channel_id}",
+        action: Action::Delete,
+        domain: "store",
+        summary: "Stop a storefront key seeing a channel",
     },
     Route {
         surface: Surface::Admin,

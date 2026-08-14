@@ -14,10 +14,13 @@
 
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use sqlx::FromRow;
+use subtle::ConstantTimeEq;
+use uuid::Uuid;
 
 use crate::error::{Error, Result};
-use crate::id::{RegionId, SalesChannelId, StoreId};
+use crate::id::{PublishableKeyId, RegionId, SalesChannelId, StoreId};
 use crate::money::Currency;
 use crate::page::{Cursor, Page, Paging};
 use crate::ports::{Action, AuditEntry, Ctx, Permit, Resource, Tx};
@@ -27,6 +30,11 @@ const MAX_LOCALES: i32 = 100;
 
 /// Most currencies one shop trades in.
 const MAX_SUPPORTED_CURRENCIES: i32 = 100;
+
+/// Most channels one storefront key is allowed to see. Configuration rather
+/// than anybody's data, and a key that saw half its channels would serve half
+/// a shop, so this is capped rather than paged.
+const MAX_KEY_CHANNELS: i64 = 200;
 
 /// A currency the shop trades in, and how many decimal places it rounds to.
 ///
@@ -288,6 +296,62 @@ pub async fn region(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: RegionId) -> Result<Regi
     .ok_or_else(|| Error::not_found("region"))
 }
 
+/// A field left `None` is left alone.
+#[derive(Debug, Clone, Default)]
+pub struct RegionPatch {
+    pub name: Option<String>,
+    pub currency_code: Option<Currency>,
+    pub is_tax_inclusive: Option<bool>,
+}
+
+pub async fn update_region(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: RegionId,
+    patch: RegionPatch,
+) -> Result<Region> {
+    let _: Permit = ctx.permit(Action::Write, Resource::Pricing)?;
+
+    if patch
+        .name
+        .as_ref()
+        .is_some_and(|name| name.trim().is_empty())
+    {
+        return Err(Error::invalid("a region needs a name"));
+    }
+
+    let region = sqlx::query_as::<_, Region>(
+        "update region set
+             name = coalesce($3::text, name),
+             currency_code = coalesce($4::text, currency_code),
+             is_tax_inclusive = coalesce($5::boolean, is_tax_inclusive)
+         where scope = $1 and id = $2
+         returning id, name, currency_code, is_tax_inclusive, created_at",
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .bind(patch.name.as_deref().map(str::trim))
+    .bind(patch.currency_code.map(|c| c.as_str().to_owned()))
+    .bind(patch.is_tax_inclusive)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("region"))?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "region",
+            entity_id: id.as_uuid(),
+            summary: serde_json::json!({ "name": region.name }),
+        },
+    )
+    .await?;
+
+    Ok(region)
+}
+
 /// The languages this shop writes in. Configuration rather than anybody's data,
 /// so it is capped rather than paged.
 pub async fn locales(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<Vec<String>> {
@@ -328,6 +392,166 @@ pub async fn regions(tx: &mut Tx<'_>, ctx: &Ctx<'_>, paging: Paging) -> Result<P
     }))
 }
 
+#[derive(Debug, Clone)]
+pub struct NewSalesChannel {
+    pub name: String,
+    pub description: Option<String>,
+    pub is_disabled: bool,
+}
+
+/// A field left `None` is left alone.
+#[derive(Debug, Clone, Default)]
+pub struct SalesChannelPatch {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub is_disabled: Option<bool>,
+}
+
+const CHANNEL_COLUMNS: &str = "id, name, description, is_disabled, created_at";
+
+pub async fn create_sales_channel(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    new: NewSalesChannel,
+) -> Result<SalesChannel> {
+    let _: Permit = ctx.permit(Action::Write, Resource::Pricing)?;
+
+    if new.name.trim().is_empty() {
+        return Err(Error::invalid("a sales channel needs a name"));
+    }
+
+    let id = SalesChannelId::new();
+    let channel = sqlx::query_as::<_, SalesChannel>(&format!(
+        "insert into sales_channel (id, scope, name, description, is_disabled)
+         values ($1, $2, $3, $4, $5)
+         returning {CHANNEL_COLUMNS}"
+    ))
+    .bind(id.as_uuid())
+    .bind(ctx.scope.0)
+    .bind(new.name.trim())
+    .bind(new.description.as_deref())
+    .bind(new.is_disabled)
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(|error| match &error {
+        sqlx::Error::Database(failure) if failure.is_unique_violation() => {
+            Error::conflict("a channel of that name is already here")
+        }
+        _ => Error::from(error),
+    })?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "sales_channel",
+            entity_id: id.as_uuid(),
+            summary: serde_json::json!({ "name": channel.name }),
+        },
+    )
+    .await?;
+
+    Ok(channel)
+}
+
+pub async fn update_sales_channel(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: SalesChannelId,
+    patch: SalesChannelPatch,
+) -> Result<SalesChannel> {
+    let _: Permit = ctx.permit(Action::Write, Resource::Pricing)?;
+
+    if patch
+        .name
+        .as_ref()
+        .is_some_and(|name| name.trim().is_empty())
+    {
+        return Err(Error::invalid("a sales channel needs a name"));
+    }
+
+    let channel = sqlx::query_as::<_, SalesChannel>(&format!(
+        "update sales_channel set
+             name = coalesce($3::text, name),
+             description = coalesce($4::text, description),
+             is_disabled = coalesce($5::boolean, is_disabled)
+         where scope = $1 and id = $2
+         returning {CHANNEL_COLUMNS}"
+    ))
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .bind(patch.name.as_deref().map(str::trim))
+    .bind(patch.description.as_deref())
+    .bind(patch.is_disabled)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("sales channel"))?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "sales_channel",
+            entity_id: id.as_uuid(),
+            summary: serde_json::json!({ "name": channel.name }),
+        },
+    )
+    .await?;
+
+    Ok(channel)
+}
+
+pub async fn delete_sales_channel(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: SalesChannelId,
+) -> Result<()> {
+    let _: Permit = ctx.permit(Action::Delete, Resource::Pricing)?;
+
+    let done = sqlx::query("delete from sales_channel where scope = $1 and id = $2")
+        .bind(ctx.scope.0)
+        .bind(id.as_uuid())
+        .execute(&mut **tx)
+        .await?;
+
+    if done.rows_affected() == 0 {
+        return Err(Error::not_found("sales channel"));
+    }
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Delete,
+            entity: "sales_channel",
+            entity_id: id.as_uuid(),
+            summary: serde_json::json!({}),
+        },
+    )
+    .await?;
+
+    Ok(())
+}
+
+pub async fn sales_channel(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: SalesChannelId,
+) -> Result<SalesChannel> {
+    let _: Permit = ctx.permit(Action::View, Resource::Pricing)?;
+
+    sqlx::query_as::<_, SalesChannel>(&format!(
+        "select {CHANNEL_COLUMNS} from sales_channel where scope = $1 and id = $2"
+    ))
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("sales channel"))
+}
+
 pub async fn sales_channels(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -354,4 +578,332 @@ pub async fn sales_channels(
         at: row.created_at,
         id: row.id.as_uuid(),
     }))
+}
+
+// -------------------------------------------------------- publishable keys
+
+/// What a storefront sends instead of an admin credential. It carries no
+/// permission of its own; it says which channels the request may see.
+///
+/// The token is not here and cannot be read back: only its hash is stored.
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct PublishableKey {
+    pub id: PublishableKeyId,
+    pub title: String,
+    pub revoked_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub last_used_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl PublishableKey {
+    pub fn is_live(&self) -> bool {
+        self.revoked_at.is_none()
+    }
+}
+
+/// A fresh key and the one time its token is readable. Whoever asked has to
+/// put it in the storefront now or ask for another.
+#[derive(Debug, Clone)]
+pub struct IssuedKey {
+    pub key: PublishableKey,
+    pub token: String,
+}
+
+const KEY_COLUMNS: &str = "id, title, revoked_at, last_used_at, created_at";
+
+pub async fn create_publishable_key(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    title: &str,
+) -> Result<IssuedKey> {
+    let _: Permit = ctx.permit(Action::Write, Resource::Pricing)?;
+
+    if title.trim().is_empty() {
+        return Err(Error::invalid("a publishable key needs a title"));
+    }
+
+    let token = fresh_token(tx).await?;
+    let id = PublishableKeyId::new();
+    let key = sqlx::query_as::<_, PublishableKey>(&format!(
+        "insert into publishable_key (id, scope, title, token)
+         values ($1, $2, $3, $4)
+         returning {KEY_COLUMNS}"
+    ))
+    .bind(id.as_uuid())
+    .bind(ctx.scope.0)
+    .bind(title.trim())
+    .bind(digest(&token))
+    .fetch_one(&mut **tx)
+    .await?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "publishable_key",
+            entity_id: id.as_uuid(),
+            summary: serde_json::json!({ "title": key.title }),
+        },
+    )
+    .await?;
+
+    Ok(IssuedKey { key, token })
+}
+
+/// Revoking is a state rather than a delete: the storefront that was using it
+/// is still worth knowing about, and the links to its channels stay.
+pub async fn revoke_publishable_key(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: PublishableKeyId,
+) -> Result<PublishableKey> {
+    let _: Permit = ctx.permit(Action::Write, Resource::Pricing)?;
+
+    let key = sqlx::query_as::<_, PublishableKey>(&format!(
+        "update publishable_key set revoked_at = $3
+         where scope = $1 and id = $2 and revoked_at is null
+         returning {KEY_COLUMNS}"
+    ))
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .bind(ctx.now())
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    let Some(key) = key else {
+        return Err(match publishable_key(tx, ctx, id).await {
+            Ok(_) => Error::conflict("that key was already revoked"),
+            Err(error) => error,
+        });
+    };
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "publishable_key",
+            entity_id: id.as_uuid(),
+            summary: serde_json::json!({ "revoked": true }),
+        },
+    )
+    .await?;
+
+    Ok(key)
+}
+
+pub async fn publishable_key(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: PublishableKeyId,
+) -> Result<PublishableKey> {
+    let _: Permit = ctx.permit(Action::View, Resource::Pricing)?;
+
+    sqlx::query_as::<_, PublishableKey>(&format!(
+        "select {KEY_COLUMNS} from publishable_key where scope = $1 and id = $2"
+    ))
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("publishable key"))
+}
+
+pub async fn publishable_keys(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    paging: Paging,
+) -> Result<Page<PublishableKey>> {
+    let _: Permit = ctx.permit(Action::View, Resource::Pricing)?;
+
+    let rows = sqlx::query_as::<_, PublishableKey>(&format!(
+        "select {KEY_COLUMNS} from publishable_key
+         where scope = $1
+           and ($2::timestamptz is null or (created_at, id) > ($2, $3))
+         order by created_at, id
+         limit $4"
+    ))
+    .bind(ctx.scope.0)
+    .bind(paging.after.map(|c| c.at))
+    .bind(paging.after.map(|c| c.id))
+    .bind(paging.probe())
+    .fetch_all(&mut **tx)
+    .await?;
+
+    Ok(Page::build(rows, paging, |row| Cursor {
+        at: row.created_at,
+        id: row.id.as_uuid(),
+    }))
+}
+
+pub async fn link_key_to_channel(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    key: PublishableKeyId,
+    channel: SalesChannelId,
+) -> Result<()> {
+    let _: Permit = ctx.permit(Action::Write, Resource::Pricing)?;
+
+    let done = sqlx::query(
+        "insert into publishable_key_sales_channel
+             (id, scope, publishable_key_id, sales_channel_id)
+         select $1::uuid, $2::uuid, k.id, c.id
+         from publishable_key k
+         join sales_channel c on c.scope = k.scope and c.id = $4
+         where k.scope = $2 and k.id = $3
+         on conflict (scope, publishable_key_id, sales_channel_id) do nothing",
+    )
+    .bind(Uuid::now_v7())
+    .bind(ctx.scope.0)
+    .bind(key.as_uuid())
+    .bind(channel.as_uuid())
+    .execute(&mut **tx)
+    .await?;
+
+    if done.rows_affected() == 0 {
+        // Nothing inserted is either a link that was already there or a key or
+        // channel this scope does not have, and only the second is an error.
+        let linked = channels_for_key(tx, ctx, key)
+            .await?
+            .into_iter()
+            .any(|row| row.id == channel);
+        if !linked {
+            return Err(Error::not_found("publishable key"));
+        }
+        return Ok(());
+    }
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "publishable_key_sales_channel",
+            entity_id: key.as_uuid(),
+            summary: serde_json::json!({ "sales_channel_id": channel.as_uuid() }),
+        },
+    )
+    .await?;
+
+    Ok(())
+}
+
+pub async fn unlink_key_from_channel(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    key: PublishableKeyId,
+    channel: SalesChannelId,
+) -> Result<()> {
+    let _: Permit = ctx.permit(Action::Delete, Resource::Pricing)?;
+
+    let done = sqlx::query(
+        "delete from publishable_key_sales_channel
+         where scope = $1 and publishable_key_id = $2 and sales_channel_id = $3",
+    )
+    .bind(ctx.scope.0)
+    .bind(key.as_uuid())
+    .bind(channel.as_uuid())
+    .execute(&mut **tx)
+    .await?;
+
+    if done.rows_affected() == 0 {
+        return Err(Error::not_found("publishable key channel"));
+    }
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Delete,
+            entity: "publishable_key_sales_channel",
+            entity_id: key.as_uuid(),
+            summary: serde_json::json!({ "sales_channel_id": channel.as_uuid() }),
+        },
+    )
+    .await?;
+
+    Ok(())
+}
+
+/// The channels one key may see, capped by how many a key is allowed.
+pub async fn channels_for_key(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    key: PublishableKeyId,
+) -> Result<Vec<SalesChannel>> {
+    let _: Permit = ctx.permit(Action::View, Resource::Pricing)?;
+
+    let rows = sqlx::query_as::<_, SalesChannel>(
+        "select c.id, c.name, c.description, c.is_disabled, c.created_at
+         from publishable_key_sales_channel l
+         join sales_channel c on c.scope = l.scope and c.id = l.sales_channel_id
+         where l.scope = $1 and l.publishable_key_id = $2
+         order by c.created_at, c.id
+         limit $3",
+    )
+    .bind(ctx.scope.0)
+    .bind(key.as_uuid())
+    .bind(MAX_KEY_CHANNELS)
+    .fetch_all(&mut **tx)
+    .await?;
+
+    Ok(rows)
+}
+
+/// What a storefront request holding this token may see.
+///
+/// A token that is not this shop's, or has been revoked, is a denial rather
+/// than an empty list: an empty list is a shop with no channels, and the two
+/// should not answer the same.
+pub async fn channels_for_token(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    token: &str,
+) -> Result<Vec<SalesChannel>> {
+    let key = key_for_token(tx, ctx, token).await?;
+
+    channels_for_key(tx, ctx, key).await
+}
+
+/// Which live key a token is, or a denial.
+async fn key_for_token(tx: &mut Tx<'_>, ctx: &Ctx<'_>, token: &str) -> Result<PublishableKeyId> {
+    let _: Permit = ctx.permit(Action::View, Resource::Pricing)?;
+
+    let held: Option<(Uuid, String)> = sqlx::query_as(
+        "select id, token from publishable_key
+         where scope = $1 and token = $2 and revoked_at is null",
+    )
+    .bind(ctx.scope.0)
+    .bind(digest(token))
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    let Some((id, held)) = held else {
+        return Err(Error::denied());
+    };
+
+    // Constant time: a comparison that stops at the first wrong byte tells
+    // whoever is guessing how much of the token they have right.
+    let matches: bool = digest(token).as_bytes().ct_eq(held.as_bytes()).into();
+    if !matches {
+        return Err(Error::denied());
+    }
+
+    Ok(PublishableKeyId::from_uuid(id))
+}
+
+/// 256 bits from the database's own generator, so no host has to supply one.
+async fn fresh_token(tx: &mut Tx<'_>) -> Result<String> {
+    Ok(sqlx::query_scalar::<_, String>(
+        "select 'pk_' || replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '')",
+    )
+    .fetch_one(&mut **tx)
+    .await?)
+}
+
+fn digest(token: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(token.as_bytes());
+    hex::encode(hasher.finalize())
 }

@@ -60,10 +60,10 @@ issue rather than a silence.
 
 ## Admin
 
-- [ ] `api-keys`
+- [x] `api-keys`
 - [ ] `api-keys/[id]`
-- [ ] `api-keys/[id]/revoke`
-- [ ] `api-keys/[id]/sales-channels`
+- [x] `api-keys/[id]/revoke`
+- [x] `api-keys/[id]/sales-channels`
 - [ ] `campaigns`
 - [ ] `campaigns/[id]`
 - [ ] `campaigns/[id]/promotions`
@@ -256,8 +256,8 @@ issue rather than a silence.
 - [ ] `returns/[id]/request-items/[action_id]`
 - [ ] `returns/[id]/shipping-method`
 - [ ] `returns/[id]/shipping-method/[action_id]`
-- [ ] `sales-channels`
-- [ ] `sales-channels/[id]`
+- [x] `sales-channels`
+- [x] `sales-channels/[id]`
 - [ ] `sales-channels/[id]/products`
 - [ ] `search`
 - [ ] `shipping-option-types`

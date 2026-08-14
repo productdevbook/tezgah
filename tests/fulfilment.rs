@@ -2,11 +2,15 @@
 
 mod common;
 
+use std::sync::atomic::{AtomicU32, Ordering};
+
+use async_trait::async_trait;
 use common::Shop;
 use rust_decimal_macros::dec;
 use tezgah::fulfilment::{
-    self, DeliveryAddress, NewFulfillment, NewFulfillmentItem, NewFulfillmentSet, NewGeoZone,
-    NewLabel, NewServiceZone, NewShippingOption, PriceKind, SetKind, Shippable, ZoneKind,
+    self, DeliveryAddress, FulfillmentProvider, NewFulfillment, NewFulfillmentItem,
+    NewFulfillmentSet, NewGeoZone, NewLabel, NewServiceZone, NewShippingOption, PriceKind, SetKind,
+    Shipment, ShipmentRequest, Shippable, ZoneKind,
 };
 use tezgah::id::{OrderId, OrderItemId, StockLocationId};
 use tezgah::money::{Currency, Money};
@@ -17,8 +21,51 @@ fn lira() -> Currency {
     Currency::parse("TRY").expect("a currency code")
 }
 
-/// A zone covering one province, with one option on it.
-async fn ankara_only(tx: &mut Tx<'_>, ctx: &Ctx<'_>) {
+/// A carrier that answers, and counts what it was asked.
+#[derive(Debug, Default)]
+struct Carrier {
+    quotes: AtomicU32,
+    shipments: AtomicU32,
+    cancels: AtomicU32,
+}
+
+impl Carrier {
+    fn count(counter: &AtomicU32) -> u32 {
+        counter.load(Ordering::Relaxed)
+    }
+}
+
+#[async_trait]
+impl FulfillmentProvider for Carrier {
+    fn code(&self) -> &'static str {
+        "carrier"
+    }
+
+    async fn price(&self, _request: &ShipmentRequest) -> tezgah::Result<Option<Money>> {
+        self.quotes.fetch_add(1, Ordering::Relaxed);
+        Ok(Some(Money::new(dec!(42), lira())))
+    }
+
+    async fn create_shipment(&self, _request: &ShipmentRequest) -> tezgah::Result<Shipment> {
+        self.shipments.fetch_add(1, Ordering::Relaxed);
+        Ok(Shipment {
+            labels: vec![NewLabel {
+                tracking_number: "CARRIER-1".into(),
+                tracking_url: Some("https://example.test/CARRIER-1".into()),
+                label_url: None,
+            }],
+            data: None,
+        })
+    }
+
+    async fn cancel_shipment(&self, _request: &ShipmentRequest) -> tezgah::Result<()> {
+        self.cancels.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }
+}
+
+/// A zone covering one province, with one flat option on it.
+async fn ankara_only(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> tezgah::id::ServiceZoneId {
     let set = fulfilment::create_set(
         tx,
         ctx,
@@ -70,6 +117,8 @@ async fn ankara_only(tx: &mut Tx<'_>, ctx: &Ctx<'_>) {
     )
     .await
     .expect("an option");
+
+    zone.id
 }
 
 fn parcel() -> Vec<Shippable> {
@@ -203,6 +252,7 @@ async fn a_fulfilment_that_has_shipped_cannot_be_cancelled() {
             provider_id: None,
             requires_shipping: true,
             created_by: Some("a test".into()),
+            address: None,
             data: None,
             items: vec![half_of(item)],
         },
@@ -259,6 +309,7 @@ async fn a_partial_fulfilment_leaves_the_rest_of_the_item_to_send() {
         provider_id: None,
         requires_shipping: true,
         created_by: None,
+        address: None,
         data: None,
         items: vec![NewFulfillmentItem {
             quantity,
@@ -302,5 +353,120 @@ async fn one_shops_shipping_options_are_invisible_to_another() {
     assert!(offered.is_empty(), "another shop's options were offered");
 
     theirs.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+#[tokio::test]
+async fn a_calculated_option_is_quoted_by_the_carrier_and_a_flat_one_is_not() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let zone = ankara_only(&mut tx, &ctx).await;
+    fulfilment::create_shipping_option(
+        &mut tx,
+        &ctx,
+        NewShippingOption {
+            name: "By weight".into(),
+            price_type: PriceKind::Calculated,
+            service_zone_id: zone,
+            shipping_profile_id: None,
+            provider_id: None,
+            data: None,
+        },
+    )
+    .await
+    .expect("a calculated option");
+
+    let here = DeliveryAddress {
+        country_code: "TR".into(),
+        province_code: Some("06".into()),
+        ..DeliveryAddress::default()
+    };
+
+    let carrier = Carrier::default();
+    let offered = fulfilment::priced_options_for(&mut tx, &ctx, &here, None, &parcel(), &carrier)
+        .await
+        .expect("options");
+    assert_eq!(offered.len(), 2);
+
+    let calculated = offered
+        .iter()
+        .find(|priced| priced.option.name == "By weight")
+        .expect("the calculated option");
+    assert_eq!(
+        calculated.price.map(|money| money.amount),
+        Some(dec!(42)),
+        "the carrier was not asked what it costs"
+    );
+
+    let flat = offered
+        .iter()
+        .find(|priced| priced.option.name == "Next day")
+        .expect("the flat option");
+    assert!(
+        flat.price.is_none(),
+        "a flat option was priced by the carrier instead of by the shop"
+    );
+    assert_eq!(
+        Carrier::count(&carrier.quotes),
+        1,
+        "the carrier was asked about an option it does not price"
+    );
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+#[tokio::test]
+async fn the_carrier_ships_the_parcel_and_its_tracking_number_is_kept() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let (order, item, location) = an_order(&mut tx, shop.here.0).await;
+    let carrier = Carrier::default();
+
+    let made = fulfilment::create_fulfillment_with(
+        &mut tx,
+        &ctx,
+        order,
+        NewFulfillment {
+            location_id: location,
+            shipping_option_id: None,
+            provider_id: None,
+            requires_shipping: true,
+            created_by: None,
+            address: Some(DeliveryAddress {
+                country_code: "TR".into(),
+                province_code: Some("06".into()),
+                ..DeliveryAddress::default()
+            }),
+            data: None,
+            items: vec![half_of(item)],
+        },
+        &carrier,
+    )
+    .await
+    .expect("a fulfilment");
+
+    assert_eq!(Carrier::count(&carrier.shipments), 1);
+
+    let labels = fulfilment::labels(&mut tx, &ctx, order, made.id)
+        .await
+        .expect("its labels");
+    assert_eq!(labels.len(), 1);
+    assert_eq!(labels[0].tracking_number, "CARRIER-1");
+
+    fulfilment::cancel_fulfillment_with(&mut tx, &ctx, order, made.id, &carrier)
+        .await
+        .expect("cancelling");
+    assert_eq!(
+        Carrier::count(&carrier.cancels),
+        1,
+        "the carrier still has a label for a parcel that will not be sent"
+    );
+
+    tx.rollback().await.expect("to roll back");
     shop.close().await;
 }

@@ -1002,8 +1002,8 @@ impl NewLineIn {
             is_tax_inclusive: self.is_tax_inclusive,
             is_discountable: true,
             requires_shipping: self.requires_shipping,
-            discount: self.discount,
-            tax_rate: self.tax_rate,
+            adjustments: charged(self.discount),
+            tax_lines: taxed(self.tax_rate),
             reserved_for: None,
         })
     }
@@ -1032,10 +1032,27 @@ impl NewShippingIn {
             amount: self.amount.money()?,
             is_tax_inclusive: self.is_tax_inclusive,
             data: None,
-            discount: self.discount,
-            tax_rate: self.tax_rate,
+            adjustments: charged(self.discount),
+            tax_lines: taxed(self.tax_rate),
         })
     }
+}
+
+/// The HTTP body still sends one figure each. Zero is no row at all, so an
+/// undiscounted line carries no adjustment rather than an adjustment of
+/// nothing.
+fn charged(discount: Decimal) -> Vec<order::NewAdjustment> {
+    if discount.is_zero() {
+        return Vec::new();
+    }
+    vec![order::NewAdjustment::of(discount)]
+}
+
+fn taxed(rate: Decimal) -> Vec<order::NewTaxLine> {
+    if rate.is_zero() {
+        return Vec::new();
+    }
+    vec![order::NewTaxLine::of(rate, "standard", "Standard")]
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -2728,6 +2745,7 @@ pub async fn create_fulfillment(
         provider_id: input.provider_id,
         requires_shipping: input.requires_shipping,
         created_by: None,
+        address: None,
         data: input.data,
         items: input
             .items
@@ -3192,6 +3210,88 @@ pub async fn list_shipping_profiles(
         at: row.created_at,
         id: row.id.as_uuid(),
     }))
+}
+
+pub async fn get_shipping_option(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ShippingOptionId,
+) -> Result<ShippingOptionView> {
+    Ok(fulfilment::shipping_option(tx, ctx, id).await?.into())
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateShippingOption {
+    pub name: Option<String>,
+    pub price_type: Option<PriceKindIn>,
+    pub shipping_profile_id: Option<ShippingProfileId>,
+    pub provider_id: Option<Uuid>,
+    pub data: Option<Value>,
+}
+
+pub async fn update_shipping_option(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ShippingOptionId,
+    input: UpdateShippingOption,
+) -> Result<ShippingOptionView> {
+    let patch = fulfilment::ShippingOptionPatch {
+        name: input.name,
+        price_type: input.price_type.map(|kind| match kind {
+            PriceKindIn::Flat => fulfilment::PriceKind::Flat,
+            PriceKindIn::Calculated => fulfilment::PriceKind::Calculated,
+        }),
+        shipping_profile_id: input.shipping_profile_id,
+        provider_id: input.provider_id,
+        data: input.data,
+    };
+    Ok(fulfilment::update_shipping_option(tx, ctx, id, patch)
+        .await?
+        .into())
+}
+
+impl From<fulfilment::ShippingProfile> for ShippingProfileView {
+    fn from(row: fulfilment::ShippingProfile) -> Self {
+        ShippingProfileView {
+            id: row.id,
+            name: row.name,
+            kind: row.kind,
+            created_at: row.created_at,
+        }
+    }
+}
+
+pub async fn get_shipping_profile(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ShippingProfileId,
+) -> Result<ShippingProfileView> {
+    Ok(ShippingProfileView::from(
+        fulfilment::shipping_profile(tx, ctx, id).await?,
+    ))
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateShippingProfile {
+    pub name: Option<String>,
+    pub kind: Option<String>,
+}
+
+pub async fn update_shipping_profile(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ShippingProfileId,
+    input: UpdateShippingProfile,
+) -> Result<ShippingProfileView> {
+    let patch = fulfilment::ShippingProfilePatch {
+        name: input.name,
+        kind: input.kind,
+    };
+    Ok(ShippingProfileView::from(
+        fulfilment::update_shipping_profile(tx, ctx, id, patch).await?,
+    ))
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -4012,6 +4112,20 @@ pub(super) static ROUTES: &[Route] = &[
         "Add a shipping option"
     ),
     route!(
+        Get,
+        "/admin/shipping-options/{id}",
+        View,
+        "fulfilment",
+        "Fetch one shipping option"
+    ),
+    route!(
+        Patch,
+        "/admin/shipping-options/{id}",
+        Write,
+        "fulfilment",
+        "Change a shipping option's name, price type or carrier"
+    ),
+    route!(
         Post,
         "/admin/shipping-options/{id}/rules",
         Write,
@@ -4031,6 +4145,20 @@ pub(super) static ROUTES: &[Route] = &[
         Write,
         "fulfilment",
         "Add a shipping profile"
+    ),
+    route!(
+        Get,
+        "/admin/shipping-profiles/{id}",
+        View,
+        "fulfilment",
+        "Fetch one shipping profile"
+    ),
+    route!(
+        Patch,
+        "/admin/shipping-profiles/{id}",
+        Write,
+        "fulfilment",
+        "Change a shipping profile"
     ),
     route!(
         Get,

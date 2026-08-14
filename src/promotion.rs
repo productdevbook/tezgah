@@ -401,6 +401,251 @@ pub async fn set_campaign_budget(
     Ok(budget)
 }
 
+pub async fn campaign(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: CampaignId) -> Result<Campaign> {
+    let _: Permit = ctx.permit(Action::View, Resource::Promotion { id: None })?;
+
+    sqlx::query_as::<_, Campaign>(
+        "select id, identifier, name, description, starts_at, ends_at, created_at
+         from campaign
+         where scope = $1 and id = $2",
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("campaign"))
+}
+
+/// A field left `None` is left alone.
+#[derive(Debug, Clone, Default)]
+pub struct CampaignPatch {
+    pub identifier: Option<String>,
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub starts_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub ends_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+pub async fn update_campaign(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: CampaignId,
+    patch: CampaignPatch,
+) -> Result<Campaign> {
+    let _: Permit = ctx.permit(Action::Write, Resource::Promotion { id: None })?;
+
+    if patch
+        .identifier
+        .as_ref()
+        .is_some_and(|text| text.trim().is_empty())
+        || patch
+            .name
+            .as_ref()
+            .is_some_and(|text| text.trim().is_empty())
+    {
+        return Err(Error::invalid("a campaign needs an identifier and a name"));
+    }
+
+    let campaign = sqlx::query_as::<_, Campaign>(
+        "update campaign set
+             identifier = coalesce($3::text, identifier),
+             name = coalesce($4::text, name),
+             description = coalesce($5::text, description),
+             starts_at = coalesce($6::timestamptz, starts_at),
+             ends_at = coalesce($7::timestamptz, ends_at)
+         where scope = $1 and id = $2
+         returning id, identifier, name, description, starts_at, ends_at, created_at",
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .bind(patch.identifier.as_deref().map(str::trim))
+    .bind(patch.name.as_deref().map(str::trim))
+    .bind(patch.description.as_deref())
+    .bind(patch.starts_at)
+    .bind(patch.ends_at)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("campaign"))?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "campaign",
+            entity_id: id.as_uuid(),
+            summary: serde_json::json!({ "identifier": campaign.identifier }),
+        },
+    )
+    .await?;
+
+    Ok(campaign)
+}
+
+/// Puts a promotion under a campaign, which is what makes the campaign's budget
+/// govern anything at all: a campaign with nothing on it spends nothing.
+pub async fn attach_promotion(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    campaign_id: CampaignId,
+    promotion_id: PromotionId,
+) -> Result<Promotion> {
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Promotion {
+            id: Some(promotion_id.as_uuid()),
+        },
+    )?;
+
+    // The foreign key does not carry the scope, so the campaign is looked for
+    // in this one before it is pointed at.
+    let known: Option<Uuid> =
+        sqlx::query_scalar("select id from campaign where scope = $1 and id = $2")
+            .bind(ctx.scope.0)
+            .bind(campaign_id.as_uuid())
+            .fetch_optional(&mut **tx)
+            .await?;
+    if known.is_none() {
+        return Err(Error::not_found("campaign"));
+    }
+
+    set_campaign(tx, ctx, promotion_id, Some(campaign_id)).await
+}
+
+pub async fn detach_promotion(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    campaign_id: CampaignId,
+    promotion_id: PromotionId,
+) -> Result<Promotion> {
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Promotion {
+            id: Some(promotion_id.as_uuid()),
+        },
+    )?;
+
+    let current = sqlx::query_scalar::<_, Option<Uuid>>(
+        "select campaign_id from promotion where scope = $1 and id = $2",
+    )
+    .bind(ctx.scope.0)
+    .bind(promotion_id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("promotion"))?;
+
+    if current != Some(campaign_id.as_uuid()) {
+        return Err(Error::conflict("that promotion is not on that campaign"));
+    }
+
+    set_campaign(tx, ctx, promotion_id, None).await
+}
+
+async fn set_campaign(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: PromotionId,
+    campaign_id: Option<CampaignId>,
+) -> Result<Promotion> {
+    let promotion = sqlx::query_as::<_, Promotion>(
+        "update promotion set campaign_id = $3
+         where scope = $1 and id = $2
+         returning id, campaign_id, code, type, status, is_automatic, usage_limit, used,
+                   customer_usage_limit, created_at",
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .bind(campaign_id.map(CampaignId::as_uuid))
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("promotion"))?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "promotion",
+            entity_id: id.as_uuid(),
+            summary: serde_json::json!({ "campaign": campaign_id.map(|c| c.to_string()) }),
+        },
+    )
+    .await?;
+
+    Ok(promotion)
+}
+
+/// A field left `None` is left alone. A limit already reached is not lowered
+/// out of trouble: `used` is what was given away and stays where it is.
+#[derive(Debug, Clone, Default)]
+pub struct PromotionPatch {
+    pub code: Option<String>,
+    pub is_automatic: Option<bool>,
+    pub usage_limit: Option<i32>,
+    pub customer_usage_limit: Option<i32>,
+}
+
+pub async fn update_promotion(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: PromotionId,
+    patch: PromotionPatch,
+) -> Result<Promotion> {
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Promotion {
+            id: Some(id.as_uuid()),
+        },
+    )?;
+
+    if patch
+        .code
+        .as_ref()
+        .is_some_and(|code| code.trim().is_empty())
+    {
+        return Err(Error::invalid("a promotion needs a code"));
+    }
+    if patch.usage_limit.is_some_and(|limit| limit < 0)
+        || patch.customer_usage_limit.is_some_and(|limit| limit < 0)
+    {
+        return Err(Error::invalid("a usage limit is not negative"));
+    }
+
+    let promotion = sqlx::query_as::<_, Promotion>(
+        "update promotion set
+             code = coalesce($3::text, code),
+             is_automatic = coalesce($4::boolean, is_automatic),
+             usage_limit = coalesce($5::integer, usage_limit),
+             customer_usage_limit = coalesce($6::integer, customer_usage_limit)
+         where scope = $1 and id = $2
+         returning id, campaign_id, code, type, status, is_automatic, usage_limit, used,
+                   customer_usage_limit, created_at",
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .bind(patch.code.as_deref().map(str::trim))
+    .bind(patch.is_automatic)
+    .bind(patch.usage_limit)
+    .bind(patch.customer_usage_limit)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("promotion"))?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "promotion",
+            entity_id: id.as_uuid(),
+            summary: serde_json::json!({ "code": promotion.code }),
+        },
+    )
+    .await?;
+
+    Ok(promotion)
+}
+
 pub async fn create_promotion(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,

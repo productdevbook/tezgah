@@ -1016,3 +1016,94 @@ async fn a_checkout_charges_a_campaigns_money_and_gives_it_back_when_it_unwinds(
     shop.close().await;
     Ok(())
 }
+
+/// What the promotions and the tax engine put on the cart is copied onto the
+/// order a row at a time: two rates stay two rows, and the promotion that gave
+/// the discount is still named on the order's own adjustment.
+#[tokio::test]
+async fn the_order_copies_the_cart_s_adjustments_and_rates() -> Result<()> {
+    let shop = Shop::open().await;
+    let here = ready(&shop, 10, 2).await;
+    let promotion = Uuid::now_v7();
+
+    let mut tx = shop.begin().await;
+    for (rate, code, name) in [(dec!(18), "kdv", "KDV"), (dec!(8), "city", "City levy")] {
+        sqlx::query(
+            "insert into cart_line_item_tax_line
+                 (id, scope, cart_line_item_id, rate, code, name)
+             select $1, $2, l.id, $4, $5, $6
+             from cart_line_item l where l.scope = $2 and l.cart_id = $3",
+        )
+        .bind(Uuid::now_v7())
+        .bind(shop.here.0)
+        .bind(here.cart_id.as_uuid())
+        .bind(rate)
+        .bind(code)
+        .bind(name)
+        .execute(&mut *tx)
+        .await
+        .expect("a tax line");
+    }
+
+    sqlx::query(
+        "insert into cart_line_item_adjustment
+             (id, scope, cart_line_item_id, promotion_id, code, amount, currency_code)
+         select $1, $2, l.id, $4, 'SUMMER', 3, 'TRY'
+         from cart_line_item l where l.scope = $2 and l.cart_id = $3",
+    )
+    .bind(Uuid::now_v7())
+    .bind(shop.here.0)
+    .bind(here.cart_id.as_uuid())
+    .bind(promotion)
+    .execute(&mut *tx)
+    .await
+    .expect("an adjustment");
+
+    let before = tezgah::cart::totals(&mut tx, &shop.ctx(), here.cart_id).await?;
+    tx.commit().await.expect("to commit");
+
+    let bank = Bank::saying(Answer::Authorize);
+    let checkout = Checkout::new(
+        Arc::clone(&bank) as Arc<dyn PaymentProvider>,
+        here.location_id,
+    );
+    let placed = checkout
+        .place(&shop.pool, &shop.ctx(), here.cart_id)
+        .await?;
+    let order_id = placed.order_id.expect("an order");
+
+    let mut tx = shop.begin().await;
+
+    let rates: Vec<Decimal> = sqlx::query_scalar(
+        "select t.rate from order_line_item_tax_line t
+         join order_line_item l on l.scope = t.scope and l.id = t.order_line_item_id
+         where t.scope = $1 and l.order_id = $2
+         order by t.rate",
+    )
+    .bind(shop.here.0)
+    .bind(order_id.as_uuid())
+    .fetch_all(&mut *tx)
+    .await
+    .expect("the order's tax lines");
+    assert_eq!(rates, vec![dec!(8), dec!(18)], "the rates were blended");
+
+    let (amount, from): (Decimal, Option<Uuid>) = sqlx::query_as(
+        "select a.amount, a.promotion_id from order_line_item_adjustment a
+         join order_line_item l on l.scope = a.scope and l.id = a.order_line_item_id
+         where a.scope = $1 and l.order_id = $2",
+    )
+    .bind(shop.here.0)
+    .bind(order_id.as_uuid())
+    .fetch_one(&mut *tx)
+    .await
+    .expect("the order's adjustment");
+    assert_eq!(amount, dec!(3));
+    assert_eq!(from, Some(promotion), "the promotion was lost on the way");
+
+    let after = order::totals(&mut tx, &shop.ctx(), order_id, 1).await?;
+    assert_eq!(before, after);
+    tx.commit().await.expect("to commit");
+
+    shop.close().await;
+    Ok(())
+}

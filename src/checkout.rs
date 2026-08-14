@@ -34,6 +34,7 @@
 //! request carrying the same key picks up the run the first one started rather
 //! than starting a second, so two clicks on "place order" are one order.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -49,7 +50,10 @@ use crate::id::{
     PromotionId, ReservationId, ShippingOptionId, StockLocationId, VariantId,
 };
 use crate::money::{Currency, Money};
-use crate::order::{self, NewOrder, NewOrderLine, NewOrderShipping, OrderAddress, OrderStatus};
+use crate::order::{
+    self, NewAdjustment, NewOrder, NewOrderLine, NewOrderShipping, NewTaxLine, OrderAddress,
+    OrderStatus,
+};
 use crate::payment::{
     self, AuthorizationStatus, AuthorizeRequest, Authorized, NewCollection, NewSession,
     PaymentProvider, SessionRequest,
@@ -413,20 +417,40 @@ struct CartLine {
     is_tax_inclusive: bool,
     is_discountable: bool,
     requires_shipping: bool,
-    discount: Decimal,
-    tax_rate: Decimal,
 }
 
 #[derive(Debug, Clone, FromRow)]
 struct CartMethod {
+    id: Uuid,
     name: String,
     description: Option<String>,
     shipping_option_id: Option<Uuid>,
     amount: Decimal,
     is_tax_inclusive: bool,
     data: Option<Value>,
-    discount: Decimal,
-    tax_rate: Decimal,
+}
+
+/// An adjustment or a tax line as the cart holds it, with the row it hangs off
+/// so the order's copy can be hung off the matching one.
+#[derive(Debug, Clone, FromRow)]
+struct CartAdjustment {
+    owner_id: Uuid,
+    promotion_id: Option<Uuid>,
+    code: Option<String>,
+    amount: Decimal,
+    description: Option<String>,
+    is_tax_inclusive: bool,
+    provider_id: Option<String>,
+}
+
+#[derive(Debug, Clone, FromRow)]
+struct CartTaxLine {
+    owner_id: Uuid,
+    rate: Decimal,
+    code: String,
+    name: String,
+    provider_id: Option<String>,
+    description: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -549,6 +573,12 @@ impl Step for CreateOrder {
         let methods = cart_methods(tx, ctx, cart_id)
             .await
             .map_err(Failure::Final)?;
+        let (mut line_adjustments, mut line_taxes) = cart_money(tx, ctx, cart_id, false)
+            .await
+            .map_err(Failure::Final)?;
+        let (mut method_adjustments, mut method_taxes) = cart_money(tx, ctx, cart_id, true)
+            .await
+            .map_err(Failure::Final)?;
 
         let new = NewOrder {
             region_id: cart.region_id,
@@ -584,8 +614,10 @@ impl Step for CreateOrder {
                     is_tax_inclusive: line.is_tax_inclusive,
                     is_discountable: line.is_discountable,
                     requires_shipping: line.requires_shipping,
-                    discount: line.discount,
-                    tax_rate: line.tax_rate,
+                    adjustments: line_adjustments
+                        .remove(&line.id.as_uuid())
+                        .unwrap_or_default(),
+                    tax_lines: line_taxes.remove(&line.id.as_uuid()).unwrap_or_default(),
                 })
                 .collect(),
             shipping: methods
@@ -597,8 +629,8 @@ impl Step for CreateOrder {
                     amount: Money::new(method.amount, currency),
                     is_tax_inclusive: method.is_tax_inclusive,
                     data: method.data,
-                    discount: method.discount,
-                    tax_rate: method.tax_rate,
+                    adjustments: method_adjustments.remove(&method.id).unwrap_or_default(),
+                    tax_lines: method_taxes.remove(&method.id).unwrap_or_default(),
                 })
                 .collect(),
             no_notification: None,
@@ -885,11 +917,7 @@ async fn cart_lines(tx: &mut Tx<'_>, ctx: &Ctx<'_>, cart_id: CartId) -> Result<V
         "select l.id, l.variant_id, l.product_id, l.product_title, l.product_handle,
                 l.variant_title, l.variant_sku, l.variant_option_values, l.thumbnail,
                 l.quantity, l.unit_price, l.compare_at_unit_price, l.is_tax_inclusive,
-                l.is_discountable, l.requires_shipping,
-                coalesce((select sum(a.amount) from cart_line_item_adjustment a
-                          where a.scope = l.scope and a.cart_line_item_id = l.id), 0) as discount,
-                coalesce((select sum(t.rate) from cart_line_item_tax_line t
-                          where t.scope = l.scope and t.cart_line_item_id = l.id), 0) as tax_rate
+                l.is_discountable, l.requires_shipping
          from cart_line_item l
          where l.scope = $1 and l.cart_id = $2
          order by l.created_at, l.id",
@@ -902,14 +930,8 @@ async fn cart_lines(tx: &mut Tx<'_>, ctx: &Ctx<'_>, cart_id: CartId) -> Result<V
 
 async fn cart_methods(tx: &mut Tx<'_>, ctx: &Ctx<'_>, cart_id: CartId) -> Result<Vec<CartMethod>> {
     Ok(sqlx::query_as::<_, CartMethod>(
-        "select s.name, s.description, s.shipping_option_id, s.amount, s.is_tax_inclusive,
-                s.data,
-                coalesce((select sum(a.amount) from cart_shipping_method_adjustment a
-                          where a.scope = s.scope and a.cart_shipping_method_id = s.id),
-                         0) as discount,
-                coalesce((select sum(t.rate) from cart_shipping_method_tax_line t
-                          where t.scope = s.scope and t.cart_shipping_method_id = s.id),
-                         0) as tax_rate
+        "select s.id, s.name, s.description, s.shipping_option_id, s.amount, s.is_tax_inclusive,
+                s.data
          from cart_shipping_method s
          where s.scope = $1 and s.cart_id = $2
          order by s.created_at, s.id",
@@ -918,6 +940,92 @@ async fn cart_methods(tx: &mut Tx<'_>, ctx: &Ctx<'_>, cart_id: CartId) -> Result
     .bind(cart_id.as_uuid())
     .fetch_all(&mut **tx)
     .await?)
+}
+
+/// Everything the promotions and the tax engine put on a cart, keyed by the
+/// line or the shipping method it belongs to. The order copies these rather
+/// than blending them: one rate per row on the cart is one rate per row on the
+/// order.
+async fn cart_money(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    cart_id: CartId,
+    shipping: bool,
+) -> Result<(
+    HashMap<Uuid, Vec<NewAdjustment>>,
+    HashMap<Uuid, Vec<NewTaxLine>>,
+)> {
+    let (adjustment_query, tax_query) = if shipping {
+        (
+            "select a.cart_shipping_method_id as owner_id, a.promotion_id, a.code, a.amount,
+                    a.description, a.is_tax_inclusive, a.provider_id
+             from cart_shipping_method_adjustment a
+             join cart_shipping_method s on s.scope = a.scope and s.id = a.cart_shipping_method_id
+             where a.scope = $1 and s.cart_id = $2
+             order by a.created_at, a.id",
+            "select t.cart_shipping_method_id as owner_id, t.rate, t.code, t.name, t.provider_id,
+                    t.description
+             from cart_shipping_method_tax_line t
+             join cart_shipping_method s on s.scope = t.scope and s.id = t.cart_shipping_method_id
+             where t.scope = $1 and s.cart_id = $2
+             order by t.created_at, t.id",
+        )
+    } else {
+        (
+            "select a.cart_line_item_id as owner_id, a.promotion_id, a.code, a.amount,
+                    a.description, a.is_tax_inclusive, a.provider_id
+             from cart_line_item_adjustment a
+             join cart_line_item l on l.scope = a.scope and l.id = a.cart_line_item_id
+             where a.scope = $1 and l.cart_id = $2
+             order by a.created_at, a.id",
+            "select t.cart_line_item_id as owner_id, t.rate, t.code, t.name, t.provider_id,
+                    t.description
+             from cart_line_item_tax_line t
+             join cart_line_item l on l.scope = t.scope and l.id = t.cart_line_item_id
+             where t.scope = $1 and l.cart_id = $2
+             order by t.created_at, t.id",
+        )
+    };
+
+    let adjustments = sqlx::query_as::<_, CartAdjustment>(adjustment_query)
+        .bind(ctx.scope.0)
+        .bind(cart_id.as_uuid())
+        .fetch_all(&mut **tx)
+        .await?;
+
+    let taxes = sqlx::query_as::<_, CartTaxLine>(tax_query)
+        .bind(ctx.scope.0)
+        .bind(cart_id.as_uuid())
+        .fetch_all(&mut **tx)
+        .await?;
+
+    let mut by_adjustment: HashMap<Uuid, Vec<NewAdjustment>> = HashMap::new();
+    for row in adjustments {
+        by_adjustment
+            .entry(row.owner_id)
+            .or_default()
+            .push(NewAdjustment {
+                promotion_id: row.promotion_id,
+                code: row.code,
+                amount: row.amount,
+                description: row.description,
+                is_tax_inclusive: row.is_tax_inclusive,
+                provider_id: row.provider_id,
+            });
+    }
+
+    let mut by_tax: HashMap<Uuid, Vec<NewTaxLine>> = HashMap::new();
+    for row in taxes {
+        by_tax.entry(row.owner_id).or_default().push(NewTaxLine {
+            rate: row.rate,
+            code: row.code,
+            name: row.name,
+            provider_id: row.provider_id,
+            description: row.description,
+        });
+    }
+
+    Ok((by_adjustment, by_tax))
 }
 
 /// Copies the cart's address rather than pointing at it, which is the same

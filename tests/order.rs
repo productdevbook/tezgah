@@ -12,8 +12,9 @@ use rust_decimal_macros::dec;
 use tezgah::id::{InventoryItemId, LineItemId, StockLocationId, VariantId};
 use tezgah::money::{Currency, Money};
 use tezgah::order::{
-    self, ChangeAction, ChangeType, ClaimLine, ClaimRequest, ClaimType, NewAction, NewOrder,
-    NewOrderLine, NewOrderShipping, OrderAddress, OrderStatus, ReceivedLine, ReturnLine,
+    self, ChangeAction, ChangeType, ClaimLine, ClaimRequest, ClaimType, NewAction, NewAdjustment,
+    NewOrder, NewOrderLine, NewOrderShipping, NewTaxLine, OrderAddress, OrderStatus, ReceivedLine,
+    ReturnLine,
 };
 use tezgah::page::Paging;
 use tezgah::ports::{Actor, Ctx, Scope, Tx};
@@ -172,8 +173,8 @@ async fn an_order_totals_what_its_lines_total() -> tezgah::Result<()> {
     seed_currency(&mut tx, shop.here).await;
 
     let mut taxed = a_line(3, dec!(19.99));
-    taxed.tax_rate = dec!(18);
-    taxed.discount = dec!(5);
+    taxed.tax_lines = vec![NewTaxLine::of(dec!(18), "vat", "VAT")];
+    taxed.adjustments = vec![NewAdjustment::of(dec!(5))];
 
     let placed = order::create(
         &mut tx,
@@ -186,8 +187,8 @@ async fn an_order_totals_what_its_lines_total() -> tezgah::Result<()> {
                 amount: money(dec!(12.50)),
                 is_tax_inclusive: false,
                 data: None,
-                discount: Decimal::ZERO,
-                tax_rate: dec!(18),
+                adjustments: Vec::new(),
+                tax_lines: vec![NewTaxLine::of(dec!(18), "vat", "VAT")],
             }],
             ..an_order(vec![taxed, a_line(2, dec!(0.05))])
         },
@@ -912,6 +913,7 @@ async fn an_order_that_has_shipped_cannot_be_cancelled() -> tezgah::Result<()> {
             provider_id: None,
             requires_shipping: true,
             created_by: None,
+            address: None,
             data: None,
             items: vec![NewFulfillmentItem {
                 order_item_id: item,
@@ -963,6 +965,7 @@ async fn a_fulfilment_takes_the_stock_off_the_shelf_and_cancelling_puts_it_back(
             provider_id: None,
             requires_shipping: true,
             created_by: None,
+            address: None,
             data: None,
             items: vec![NewFulfillmentItem {
                 order_item_id: item,
@@ -1248,6 +1251,231 @@ async fn another_scope_cannot_cancel_this_one_s_order() -> tezgah::Result<()> {
     assert_eq!(still.reserved_quantity, 2, "somebody else let the stock go");
     tx.rollback().await.expect("to roll back");
 
+    shop.close().await;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// What a line was discounted by, and taxed at
+// ---------------------------------------------------------------------------
+
+/// The discount and the rates are rows of their own, in the order's own
+/// tables — not two strings in a jsonb column nothing can constrain.
+#[tokio::test]
+async fn a_line_keeps_its_discount_and_its_rates_in_tables() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    seed_currency(&mut tx, shop.here).await;
+
+    let mut line = a_line(2, dec!(100));
+    line.adjustments = vec![NewAdjustment {
+        code: Some("SUMMER".into()),
+        description: Some("Summer".into()),
+        ..NewAdjustment::of(dec!(10))
+    }];
+    line.tax_lines = vec![NewTaxLine::of(dec!(18), "vat", "VAT")];
+
+    let placed = order::create(&mut tx, &ctx, an_order(vec![line])).await?;
+    let line_id = first_line(&mut tx, &ctx, placed.id).await;
+
+    let (amount, code, currency): (Decimal, Option<String>, String) = sqlx::query_as(
+        "select amount, code, currency_code from order_line_item_adjustment
+         where scope = $1 and order_line_item_id = $2",
+    )
+    .bind(shop.here.0)
+    .bind(line_id.as_uuid())
+    .fetch_one(&mut *tx)
+    .await
+    .expect("an adjustment row");
+
+    assert_eq!(amount, dec!(10));
+    assert_eq!(code.as_deref(), Some("SUMMER"));
+    assert_eq!(currency, "TRY");
+
+    let (rate, tax_code): (Decimal, String) = sqlx::query_as(
+        "select rate, code from order_line_item_tax_line
+         where scope = $1 and order_line_item_id = $2",
+    )
+    .bind(shop.here.0)
+    .bind(line_id.as_uuid())
+    .fetch_one(&mut *tx)
+    .await
+    .expect("a tax line");
+
+    assert_eq!(rate, dec!(18));
+    assert_eq!(tax_code, "vat");
+
+    let empty: Option<String> = sqlx::query_scalar(
+        "select i.metadata::text from order_item i
+         where i.scope = $1 and i.order_id = $2",
+    )
+    .bind(shop.here.0)
+    .bind(placed.id.as_uuid())
+    .fetch_one(&mut *tx)
+    .await
+    .expect("the item");
+    assert!(
+        empty.is_none(),
+        "the item still carries charges in metadata"
+    );
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
+}
+
+/// Two rates against one line stay two rows, and the total is what both of
+/// them come to together.
+#[tokio::test]
+async fn two_stacked_rates_are_two_rows_and_one_total() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    seed_currency(&mut tx, shop.here).await;
+
+    let mut line = a_line(2, dec!(100));
+    line.adjustments = vec![NewAdjustment::of(dec!(10))];
+    line.tax_lines = vec![
+        NewTaxLine::of(dec!(18), "vat", "VAT"),
+        NewTaxLine::of(dec!(8), "city", "City levy"),
+    ];
+
+    let placed = order::create(&mut tx, &ctx, an_order(vec![line])).await?;
+    let line_id = first_line(&mut tx, &ctx, placed.id).await;
+
+    let rates: Vec<Decimal> = sqlx::query_scalar(
+        "select rate from order_line_item_tax_line
+         where scope = $1 and order_line_item_id = $2
+         order by rate",
+    )
+    .bind(shop.here.0)
+    .bind(line_id.as_uuid())
+    .fetch_all(&mut *tx)
+    .await
+    .expect("the tax lines");
+
+    assert_eq!(rates, vec![dec!(8), dec!(18)], "the rates were blended");
+
+    let totals = order::totals(&mut tx, &ctx, placed.id, placed.version).await?;
+    assert_eq!(totals.subtotal.amount, dec!(200));
+    assert_eq!(totals.discount.amount, dec!(10));
+    assert_eq!(totals.tax.amount, dec!(49.40));
+    assert_eq!(totals.total.amount, dec!(239.40));
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
+}
+
+/// A tax-inclusive line carries its tax inside the price, so the rows have to
+/// be read back net or the order is worth more than the shopper was shown.
+#[tokio::test]
+async fn a_tax_inclusive_line_is_added_up_net() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    seed_currency(&mut tx, shop.here).await;
+
+    let mut line = a_line(1, dec!(118));
+    line.is_tax_inclusive = true;
+    line.tax_lines = vec![NewTaxLine::of(dec!(18), "vat", "VAT")];
+
+    let placed = order::create(&mut tx, &ctx, an_order(vec![line])).await?;
+    let totals = order::totals(&mut tx, &ctx, placed.id, placed.version).await?;
+
+    assert_eq!(totals.subtotal.amount, dec!(100));
+    assert_eq!(totals.tax.amount, dec!(18));
+    assert_eq!(totals.total.amount, dec!(118));
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
+}
+
+/// Shipping keeps its own rows, and carries them into the next version.
+#[tokio::test]
+async fn shipping_keeps_its_rates_across_a_version() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    seed_currency(&mut tx, shop.here).await;
+
+    let placed = order::create(
+        &mut tx,
+        &ctx,
+        NewOrder {
+            shipping: vec![NewOrderShipping {
+                name: "Courier".into(),
+                description: None,
+                shipping_option_id: None,
+                amount: money(dec!(100)),
+                is_tax_inclusive: false,
+                data: None,
+                adjustments: vec![NewAdjustment::of(dec!(20))],
+                tax_lines: vec![NewTaxLine::of(dec!(10), "vat", "VAT")],
+            }],
+            ..an_order(vec![a_line(1, dec!(10))])
+        },
+    )
+    .await?;
+
+    let before = order::totals(&mut tx, &ctx, placed.id, placed.version).await?;
+    assert_eq!(before.shipping.amount, dec!(100));
+    assert_eq!(before.discount.amount, dec!(20));
+    assert_eq!(before.tax.amount, dec!(9));
+
+    let change = order::request_change(
+        &mut tx,
+        &ctx,
+        placed.id,
+        ChangeType::Edit,
+        Some("a second look".into()),
+    )
+    .await?;
+    order::confirm_change(&mut tx, &ctx, change.id).await?;
+
+    let after = order::totals(&mut tx, &ctx, placed.id, placed.version + 1).await?;
+    assert_eq!(after, before, "the new version lost the shipping's charges");
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
+}
+
+/// The rows belong to the scope that wrote them and to nothing else.
+#[tokio::test]
+async fn another_scope_sees_none_of_a_line_s_charges() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    seed_currency(&mut tx, shop.here).await;
+
+    let mut line = a_line(1, dec!(100));
+    line.adjustments = vec![NewAdjustment::of(dec!(10))];
+    line.tax_lines = vec![NewTaxLine::of(dec!(18), "vat", "VAT")];
+    let placed = order::create(&mut tx, &ctx, an_order(vec![line])).await?;
+    tx.commit().await.expect("to commit");
+
+    let mut theirs = shop.begin_as(shop.elsewhere).await;
+    let adjustments: i64 = sqlx::query_scalar("select count(*) from order_line_item_adjustment")
+        .fetch_one(&mut *theirs)
+        .await
+        .expect("a count");
+    let taxes: i64 = sqlx::query_scalar("select count(*) from order_line_item_tax_line")
+        .fetch_one(&mut *theirs)
+        .await
+        .expect("a count");
+
+    assert_eq!(adjustments, 0, "another scope read a discount");
+    assert_eq!(taxes, 0, "another scope read a tax rate");
+
+    let refused = order::totals(&mut theirs, &shop.theirs(), placed.id, placed.version)
+        .await
+        .expect_err("another scope added up this order");
+    assert!(refused.is_not_found());
+
+    theirs.rollback().await.expect("to roll back");
     shop.close().await;
     Ok(())
 }

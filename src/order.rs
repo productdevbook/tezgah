@@ -484,13 +484,62 @@ async fn write_address(
     Ok(id)
 }
 
+/// What a promotion took off a line or a shipping method, as the order will
+/// keep it. The amount is in the order's currency; there is no second one to
+/// disagree with it.
+#[derive(Debug, Clone)]
+pub struct NewAdjustment {
+    pub promotion_id: Option<Uuid>,
+    pub code: Option<String>,
+    pub amount: Decimal,
+    pub description: Option<String>,
+    pub is_tax_inclusive: bool,
+    pub provider_id: Option<String>,
+}
+
+impl NewAdjustment {
+    pub fn of(amount: Decimal) -> Self {
+        NewAdjustment {
+            promotion_id: None,
+            code: None,
+            amount,
+            description: None,
+            is_tax_inclusive: false,
+            provider_id: None,
+        }
+    }
+}
+
+/// One tax rate against one line, kept apart from the others so an invoice can
+/// print which rate contributed what and a partial refund can give that same
+/// part back. `rate` is a percentage: 18 is eighteen percent.
+#[derive(Debug, Clone)]
+pub struct NewTaxLine {
+    pub rate: Decimal,
+    pub code: String,
+    pub name: String,
+    pub provider_id: Option<String>,
+    pub description: Option<String>,
+}
+
+impl NewTaxLine {
+    pub fn of(rate: Decimal, code: impl Into<String>, name: impl Into<String>) -> Self {
+        NewTaxLine {
+            rate,
+            code: code.into(),
+            name: name.into(),
+            provider_id: None,
+            description: None,
+        }
+    }
+}
+
 /// One line as the order will keep it: a snapshot, plus what the promotions
 /// and the tax engine had already decided about it.
 ///
-/// `discount` and `tax_rate` are carried rather than looked up because the
-/// order has no adjustment tables of its own: they are written onto the item
-/// and read back by [`totals`], so an order adds up to the same figure a year
-/// later whatever has happened to the promotion since.
+/// The adjustments and tax lines are carried rather than looked up: they are
+/// copied into the order's own tables, so an order adds up to the same figure
+/// a year later whatever has happened to the promotion or the rate since.
 #[derive(Debug, Clone)]
 pub struct NewOrderLine {
     pub variant_id: Option<VariantId>,
@@ -509,9 +558,8 @@ pub struct NewOrderLine {
     pub is_tax_inclusive: bool,
     pub is_discountable: bool,
     pub requires_shipping: bool,
-    pub discount: Decimal,
-    /// The sum of the line's tax rates as a percentage: 18 is eighteen percent.
-    pub tax_rate: Decimal,
+    pub adjustments: Vec<NewAdjustment>,
+    pub tax_lines: Vec<NewTaxLine>,
     /// The cart line whose reservations this line inherits. Without it the
     /// stock a checkout held is unreachable from the order that holds it.
     pub reserved_for: Option<LineItemId>,
@@ -536,8 +584,8 @@ impl NewOrderLine {
             is_tax_inclusive: false,
             is_discountable: true,
             requires_shipping: true,
-            discount: Decimal::ZERO,
-            tax_rate: Decimal::ZERO,
+            adjustments: Vec::new(),
+            tax_lines: Vec::new(),
             reserved_for: None,
         }
     }
@@ -551,8 +599,8 @@ pub struct NewOrderShipping {
     pub amount: Money,
     pub is_tax_inclusive: bool,
     pub data: Option<Value>,
-    pub discount: Decimal,
-    pub tax_rate: Decimal,
+    pub adjustments: Vec<NewAdjustment>,
+    pub tax_lines: Vec<NewTaxLine>,
 }
 
 #[derive(Debug, Clone)]
@@ -638,6 +686,7 @@ async fn place(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewOrder, draft: bool) -> Re
         if line.unit_price.currency != currency {
             return Err(Error::invalid("that price is in another currency"));
         }
+        check_money(&line.adjustments, &line.tax_lines)?;
     }
     for method in &new.shipping {
         if method.amount.is_negative() {
@@ -646,6 +695,7 @@ async fn place(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewOrder, draft: bool) -> Re
         if method.amount.currency != currency {
             return Err(Error::invalid("that price is in another currency"));
         }
+        check_money(&method.adjustments, &method.tax_lines)?;
     }
 
     let shipping_address_id = match new.shipping_address {
@@ -730,6 +780,16 @@ async fn place(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewOrder, draft: bool) -> Re
         .execute(&mut **tx)
         .await?;
 
+        insert_line_money(
+            tx,
+            ctx,
+            LineMoney::Line(line_id),
+            currency,
+            &line.adjustments,
+            &line.tax_lines,
+        )
+        .await?;
+
         insert_item(
             tx,
             ctx,
@@ -739,7 +799,6 @@ async fn place(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewOrder, draft: bool) -> Re
             line.quantity,
             line.unit_price.amount,
             currency,
-            charges(line.discount, line.tax_rate),
         )
         .await?;
 
@@ -994,8 +1053,10 @@ async fn add_up(
         "select i.quantity,
                 coalesce(i.unit_price, l.unit_price) as unit_price,
                 l.is_tax_inclusive,
-                coalesce((i.metadata->>'discount')::numeric, 0) as discount,
-                coalesce((i.metadata->>'tax_rate')::numeric, 0) as tax_rate
+                coalesce((select sum(a.amount) from order_line_item_adjustment a
+                          where a.scope = l.scope and a.order_line_item_id = l.id), 0) as discount,
+                coalesce((select sum(t.rate) from order_line_item_tax_line t
+                          where t.scope = l.scope and t.order_line_item_id = l.id), 0) as tax_rate
          from order_item i
          join order_line_item l on l.scope = i.scope and l.id = i.order_line_item_id
          where i.scope = $1 and i.order_id = $2 and i.version = $3",
@@ -1007,11 +1068,15 @@ async fn add_up(
     .await?;
 
     let shipping = sqlx::query_as::<_, TotalsShipping>(
-        "select amount, is_tax_inclusive,
-                coalesce((metadata->>'discount')::numeric, 0) as discount,
-                coalesce((metadata->>'tax_rate')::numeric, 0) as tax_rate
-         from order_shipping_method
-         where scope = $1 and order_id = $2 and version = $3",
+        "select s.amount, s.is_tax_inclusive,
+                coalesce((select sum(a.amount) from order_shipping_method_adjustment a
+                          where a.scope = s.scope and a.order_shipping_method_id = s.id),
+                         0) as discount,
+                coalesce((select sum(t.rate) from order_shipping_method_tax_line t
+                          where t.scope = s.scope and t.order_shipping_method_id = s.id),
+                         0) as tax_rate
+         from order_shipping_method s
+         where s.scope = $1 and s.order_id = $2 and s.version = $3",
     )
     .bind(ctx.scope.0)
     .bind(order_id.as_uuid())
@@ -2760,18 +2825,7 @@ async fn apply_action(
             .await?;
 
             if added.rows_affected() == 0 {
-                insert_item(
-                    tx,
-                    ctx,
-                    order.id,
-                    line,
-                    version,
-                    quantity,
-                    price,
-                    currency,
-                    charges(Decimal::ZERO, Decimal::ZERO),
-                )
-                .await?;
+                insert_item(tx, ctx, order.id, line, version, quantity, price, currency).await?;
             }
         }
         ChangeAction::ItemUpdate => {
@@ -2877,8 +2931,8 @@ async fn apply_action(
                     amount: Money::new(amount, currency),
                     is_tax_inclusive: false,
                     data: None,
-                    discount: Decimal::ZERO,
-                    tax_rate: Decimal::ZERO,
+                    adjustments: Vec::new(),
+                    tax_lines: Vec::new(),
                 },
                 currency,
             )
@@ -3021,13 +3075,14 @@ async fn carry_forward(
     .await?;
 
     for method in methods {
+        let copy = Uuid::now_v7();
         sqlx::query(
             "insert into order_shipping_method
                  (id, scope, order_id, version, name, description, shipping_option_id, amount,
                   currency_code, is_tax_inclusive, data, metadata)
              values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
         )
-        .bind(Uuid::now_v7())
+        .bind(copy)
         .bind(ctx.scope.0)
         .bind(order_id.as_uuid())
         .bind(to)
@@ -3039,6 +3094,36 @@ async fn carry_forward(
         .bind(method.is_tax_inclusive)
         .bind(&method.data)
         .bind(&method.metadata)
+        .execute(&mut **tx)
+        .await?;
+
+        sqlx::query(
+            "insert into order_shipping_method_adjustment
+                 (id, scope, order_shipping_method_id, promotion_id, code, amount, currency_code,
+                  description, is_tax_inclusive, provider_id, metadata)
+             select gen_random_uuid(), scope, $3, promotion_id, code, amount, currency_code,
+                    description, is_tax_inclusive, provider_id, metadata
+             from order_shipping_method_adjustment
+             where scope = $1 and order_shipping_method_id = $2",
+        )
+        .bind(ctx.scope.0)
+        .bind(method.id)
+        .bind(copy)
+        .execute(&mut **tx)
+        .await?;
+
+        sqlx::query(
+            "insert into order_shipping_method_tax_line
+                 (id, scope, order_shipping_method_id, rate, code, name, provider_id, description,
+                  metadata)
+             select gen_random_uuid(), scope, $3, rate, code, name, provider_id, description,
+                    metadata
+             from order_shipping_method_tax_line
+             where scope = $1 and order_shipping_method_id = $2",
+        )
+        .bind(ctx.scope.0)
+        .bind(method.id)
+        .bind(copy)
         .execute(&mut **tx)
         .await?;
     }
@@ -3559,13 +3644,12 @@ async fn insert_item(
     quantity: i32,
     unit_price: Decimal,
     currency: Currency,
-    metadata: Value,
 ) -> Result<()> {
     sqlx::query(
         "insert into order_item
              (id, scope, order_id, order_line_item_id, version, unit_price, currency_code,
-              quantity, metadata)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+              quantity)
+         values ($1, $2, $3, $4, $5, $6, $7, $8)",
     )
     .bind(OrderItemId::new().as_uuid())
     .bind(ctx.scope.0)
@@ -3575,7 +3659,6 @@ async fn insert_item(
     .bind(unit_price)
     .bind(currency.as_str())
     .bind(quantity)
-    .bind(metadata)
     .execute(&mut **tx)
     .await?;
 
@@ -3589,14 +3672,16 @@ async fn insert_shipping(
     version: i32,
     method: &NewOrderShipping,
     currency: Currency,
-) -> Result<()> {
+) -> Result<Uuid> {
+    let id = Uuid::now_v7();
+
     sqlx::query(
         "insert into order_shipping_method
              (id, scope, order_id, version, name, description, shipping_option_id, amount,
-              currency_code, is_tax_inclusive, data, metadata)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
+              currency_code, is_tax_inclusive, data)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
     )
-    .bind(Uuid::now_v7())
+    .bind(id)
     .bind(ctx.scope.0)
     .bind(order_id.as_uuid())
     .bind(version)
@@ -3607,20 +3692,120 @@ async fn insert_shipping(
     .bind(currency.as_str())
     .bind(method.is_tax_inclusive)
     .bind(&method.data)
-    .bind(charges(method.discount, method.tax_rate))
     .execute(&mut **tx)
     .await?;
+
+    insert_line_money(
+        tx,
+        ctx,
+        LineMoney::Shipping(id),
+        currency,
+        &method.adjustments,
+        &method.tax_lines,
+    )
+    .await?;
+
+    Ok(id)
+}
+
+/// Which pair of tables a set of adjustments and tax lines belongs in.
+#[derive(Debug, Clone, Copy)]
+enum LineMoney {
+    Line(LineItemId),
+    Shipping(Uuid),
+}
+
+impl LineMoney {
+    fn tables(self) -> (&'static str, &'static str, &'static str) {
+        match self {
+            LineMoney::Line(_) => (
+                "order_line_item_adjustment",
+                "order_line_item_tax_line",
+                "order_line_item_id",
+            ),
+            LineMoney::Shipping(_) => (
+                "order_shipping_method_adjustment",
+                "order_shipping_method_tax_line",
+                "order_shipping_method_id",
+            ),
+        }
+    }
+
+    fn owner(self) -> Uuid {
+        match self {
+            LineMoney::Line(id) => id.as_uuid(),
+            LineMoney::Shipping(id) => id,
+        }
+    }
+}
+
+fn check_money(adjustments: &[NewAdjustment], tax_lines: &[NewTaxLine]) -> Result<()> {
+    for adjustment in adjustments {
+        if adjustment.amount.is_sign_negative() {
+            return Err(Error::invalid("a discount cannot be negative"));
+        }
+    }
+    for tax in tax_lines {
+        if tax.rate.is_sign_negative() || tax.rate > Decimal::ONE_HUNDRED {
+            return Err(Error::invalid(
+                "a tax rate is a percentage between 0 and 100",
+            ));
+        }
+    }
 
     Ok(())
 }
 
-/// What the promotions and the tax engine decided, kept on the row so the
-/// order can be added up again without either of them.
-fn charges(discount: Decimal, tax_rate: Decimal) -> Value {
-    serde_json::json!({
-        "discount": discount.to_string(),
-        "tax_rate": tax_rate.to_string(),
-    })
+async fn insert_line_money(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    owner: LineMoney,
+    currency: Currency,
+    adjustments: &[NewAdjustment],
+    tax_lines: &[NewTaxLine],
+) -> Result<()> {
+    let (adjustment_table, tax_table, column) = owner.tables();
+
+    for adjustment in adjustments {
+        sqlx::query(&format!(
+            "insert into {adjustment_table}
+                 (id, scope, {column}, promotion_id, code, amount, currency_code, description,
+                  is_tax_inclusive, provider_id)
+             values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)"
+        ))
+        .bind(Uuid::now_v7())
+        .bind(ctx.scope.0)
+        .bind(owner.owner())
+        .bind(adjustment.promotion_id)
+        .bind(&adjustment.code)
+        .bind(adjustment.amount)
+        .bind(currency.as_str())
+        .bind(&adjustment.description)
+        .bind(adjustment.is_tax_inclusive)
+        .bind(&adjustment.provider_id)
+        .execute(&mut **tx)
+        .await?;
+    }
+
+    for tax in tax_lines {
+        sqlx::query(&format!(
+            "insert into {tax_table}
+                 (id, scope, {column}, rate, code, name, provider_id, description)
+             values ($1, $2, $3, $4, $5, $6, $7, $8)"
+        ))
+        .bind(Uuid::now_v7())
+        .bind(ctx.scope.0)
+        .bind(owner.owner())
+        .bind(tax.rate)
+        .bind(&tax.code)
+        .bind(&tax.name)
+        .bind(&tax.provider_id)
+        .bind(&tax.description)
+        .execute(&mut **tx)
+        .await?;
+    }
+
+    Ok(())
 }
 
 /// Whether a line is on a return at all. A read, and only ever to tell a

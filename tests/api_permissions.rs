@@ -17,7 +17,8 @@ use common::{Doorman, Shop};
 use tezgah::api::admin_rest;
 use tezgah::api::{Method, Route, Surface, routes};
 use tezgah::id::{
-    AddressId, CustomerGroupId, CustomerId, PromotionId, TaxRateId, TaxRegionId, WorkflowRunId,
+    AddressId, CampaignId, CustomerGroupId, CustomerId, PromotionId, PublishableKeyId, RegionId,
+    TaxRateId, TaxRegionId, WorkflowRunId,
 };
 use tezgah::ports::{Action, Actor};
 
@@ -278,8 +279,79 @@ async fn a_handler_reached_by_somebody_with_no_permission_is_refused() {
         admin_rest::list_regions(&mut tx, &ctx, admin_rest::List::default())
     );
     denied!(
+        "PATCH /admin/regions/{id}",
+        admin_rest::update_region(
+            &mut tx,
+            &ctx,
+            RegionId::new(),
+            admin_rest::UpdateRegion::default()
+        )
+    );
+    denied!(
+        "PATCH /admin/tax-regions/{id}",
+        admin_rest::update_tax_region(
+            &mut tx,
+            &ctx,
+            region,
+            admin_rest::UpdateTaxRegion::default()
+        )
+    );
+    denied!(
+        "GET /admin/tax-rates/{id}",
+        admin_rest::get_tax_rate(&mut tx, &ctx, rate)
+    );
+    denied!(
+        "PATCH /admin/tax-rates/{id}",
+        admin_rest::update_tax_rate(&mut tx, &ctx, rate, admin_rest::UpdateTaxRate::default())
+    );
+    denied!(
+        "GET /admin/campaigns/{id}",
+        admin_rest::get_campaign(&mut tx, &ctx, CampaignId::new())
+    );
+    denied!(
+        "PATCH /admin/campaigns/{id}",
+        admin_rest::update_campaign(
+            &mut tx,
+            &ctx,
+            CampaignId::new(),
+            admin_rest::UpdateCampaign::default()
+        )
+    );
+    denied!(
+        "POST /admin/campaigns/{id}/promotions",
+        admin_rest::add_campaign_promotion(
+            &mut tx,
+            &ctx,
+            CampaignId::new(),
+            admin_rest::AttachPromotion {
+                promotion_id: promotion
+            }
+        )
+    );
+    denied!(
+        "DELETE /admin/campaigns/{id}/promotions/{promotion_id}",
+        admin_rest::remove_campaign_promotion(&mut tx, &ctx, CampaignId::new(), promotion)
+    );
+    denied!(
+        "PATCH /admin/promotions/{id}",
+        admin_rest::update_promotion(
+            &mut tx,
+            &ctx,
+            promotion,
+            admin_rest::UpdatePromotion::default()
+        )
+    );
+    denied!(
         "GET /admin/sales-channels",
         admin_rest::list_sales_channels(&mut tx, &ctx, admin_rest::List::default())
+    );
+    denied!(
+        "GET /admin/publishable-api-keys",
+        admin_rest::list_publishable_keys(&mut tx, &ctx, admin_rest::List::default())
+    );
+    denied!(
+        "GET /admin/publishable-api-keys/{id}/sales-channels",
+        admin_rest::list_key_sales_channels(&mut tx, &ctx, PublishableKeyId::new())
     );
     denied!(
         "GET /admin/currencies",

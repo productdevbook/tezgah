@@ -21,7 +21,7 @@ use crate::id::{
     FulfillmentId, FulfillmentSetId, GeoZoneId, InventoryItemId, LineItemId, OrderId, OrderItemId,
     SalesChannelId, ServiceZoneId, ShippingOptionId, ShippingProfileId, StockLocationId, VariantId,
 };
-use crate::money::Money;
+use crate::money::{Currency, Money};
 use crate::page::{Cursor, Page, Paging};
 use crate::ports::{Action, AuditEntry, Ctx, Event, Permit, Resource, Tx};
 
@@ -304,6 +304,8 @@ pub struct NewFulfillment {
     pub requires_shipping: bool,
     pub created_by: Option<String>,
     pub data: Option<serde_json::Value>,
+    /// Where the parcel is going, for whoever is asked to ship it.
+    pub address: Option<DeliveryAddress>,
     /// Some of the order, not necessarily all of it: a parcel that leaves today
     /// takes what is in stock today.
     pub items: Vec<NewFulfillmentItem>,
@@ -328,7 +330,8 @@ pub struct NewLabel {
 /// What a carrier is asked, and what it says back.
 #[derive(Debug, Clone)]
 pub struct ShipmentRequest {
-    pub fulfillment_id: FulfillmentId,
+    /// `None` while an option is only being quoted: there is no parcel yet.
+    pub fulfillment_id: Option<FulfillmentId>,
     pub option: Option<ShippingOptionId>,
     pub address: DeliveryAddress,
     pub items: Vec<Shippable>,
@@ -360,6 +363,10 @@ pub trait FulfillmentProvider: Send + Sync {
 
 /// A shop with nobody integrated: somebody packs the box and writes the
 /// tracking number in by hand, and everything above still works.
+///
+/// It prices nothing, so a flat option keeps the price the shop set; it ships
+/// nothing, so no label and no tracking number come back; and cancelling tells
+/// nobody, because nobody was told in the first place.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ManualFulfillment;
 
@@ -369,8 +376,16 @@ impl FulfillmentProvider for ManualFulfillment {
         "manual"
     }
 
+    async fn price(&self, _request: &ShipmentRequest) -> Result<Option<Money>> {
+        Ok(None)
+    }
+
     async fn create_shipment(&self, _request: &ShipmentRequest) -> Result<Shipment> {
         Ok(Shipment::default())
+    }
+
+    async fn cancel_shipment(&self, _request: &ShipmentRequest) -> Result<()> {
+        Ok(())
     }
 }
 
@@ -437,6 +452,72 @@ pub async fn create_shipping_profile(
         .await?;
 
     Ok(id)
+}
+
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct ShippingProfile {
+    pub id: ShippingProfileId,
+    pub name: String,
+    #[sqlx(rename = "type")]
+    pub kind: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+pub async fn shipping_profile(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ShippingProfileId,
+) -> Result<ShippingProfile> {
+    let _: Permit = ctx.permit(Action::View, config(Uuid::nil()))?;
+
+    sqlx::query_as::<_, ShippingProfile>(
+        "select id, name, type, created_at from shipping_profile
+         where scope = $1 and id = $2",
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("shipping profile"))
+}
+
+/// A field left `None` is left alone.
+#[derive(Debug, Clone, Default)]
+pub struct ShippingProfilePatch {
+    pub name: Option<String>,
+    pub kind: Option<String>,
+}
+
+pub async fn update_shipping_profile(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ShippingProfileId,
+    patch: ShippingProfilePatch,
+) -> Result<ShippingProfile> {
+    let _: Permit = ctx.permit(Action::Write, config(Uuid::nil()))?;
+
+    if patch
+        .name
+        .as_ref()
+        .is_some_and(|name| name.trim().is_empty())
+    {
+        return Err(Error::invalid("a shipping profile needs a name"));
+    }
+
+    sqlx::query_as::<_, ShippingProfile>(
+        "update shipping_profile set
+             name = coalesce($3::text, name),
+             type = coalesce($4::text, type)
+         where scope = $1 and id = $2
+         returning id, name, type, created_at",
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .bind(patch.name.as_deref().map(str::trim))
+    .bind(patch.kind.as_deref().map(str::trim))
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("shipping profile"))
 }
 
 pub async fn create_set(
@@ -693,6 +774,71 @@ pub async fn create_shipping_option(
     Ok(option)
 }
 
+/// A field left `None` is left alone. The service zone is not among them: an
+/// option that changed zone would be offered to addresses it was never priced
+/// for.
+#[derive(Debug, Clone, Default)]
+pub struct ShippingOptionPatch {
+    pub name: Option<String>,
+    pub price_type: Option<PriceKind>,
+    pub shipping_profile_id: Option<ShippingProfileId>,
+    pub provider_id: Option<Uuid>,
+    pub data: Option<serde_json::Value>,
+}
+
+pub async fn update_shipping_option(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ShippingOptionId,
+    patch: ShippingOptionPatch,
+) -> Result<ShippingOption> {
+    let _: Permit = ctx.permit(Action::Write, config(id.as_uuid()))?;
+
+    if patch
+        .name
+        .as_ref()
+        .is_some_and(|name| name.trim().is_empty())
+    {
+        return Err(Error::invalid("a shipping option needs a name"));
+    }
+
+    let option = sqlx::query_as::<_, ShippingOption>(
+        "update shipping_option set
+             name = coalesce($3::text, name),
+             price_type = coalesce($4::text, price_type),
+             shipping_profile_id = coalesce($5::uuid, shipping_profile_id),
+             provider_id = coalesce($6::uuid, provider_id),
+             data = coalesce($7::jsonb, data)
+         where scope = $1 and id = $2
+         returning id, name, price_type, service_zone_id, shipping_profile_id, provider_id,
+                   data, created_at",
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .bind(patch.name.as_deref().map(str::trim))
+    .bind(patch.price_type.map(PriceKind::as_str))
+    .bind(patch.shipping_profile_id.map(ShippingProfileId::as_uuid))
+    .bind(patch.provider_id)
+    .bind(patch.data.as_ref())
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("shipping option"))?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "shipping_option",
+            entity_id: id.as_uuid(),
+            summary: serde_json::json!({ "name": option.name }),
+        },
+    )
+    .await?;
+
+    Ok(option)
+}
+
 pub async fn create_shipping_option_rule(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -818,11 +964,66 @@ pub async fn options_for(
         .collect())
 }
 
+/// One option and what it costs, once whoever prices it has been asked.
+#[derive(Debug, Clone)]
+pub struct PricedOption {
+    pub option: ShippingOption,
+    /// `None` when the shop's own price list is the answer, which is every flat
+    /// option and any calculated one the carrier declined to quote.
+    pub price: Option<Money>,
+}
+
+/// [`options_for`], with the carrier asked for the ones the shop does not price
+/// itself.
+///
+/// Every row this needs is read first and the carrier is asked afterwards, so
+/// nothing is waiting on a network call with a statement half-finished.
+pub async fn priced_options_for(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    address: &DeliveryAddress,
+    sales_channel_id: Option<SalesChannelId>,
+    items: &[Shippable],
+    provider: &dyn FulfillmentProvider,
+) -> Result<Vec<PricedOption>> {
+    let options = options_for(tx, ctx, address, sales_channel_id, items).await?;
+
+    let mut priced = Vec::with_capacity(options.len());
+    for option in options {
+        let price = if option.price_type == PriceKind::Calculated.as_str() {
+            let request = ShipmentRequest {
+                fulfillment_id: None,
+                option: Some(option.id),
+                address: address.clone(),
+                items: items.to_vec(),
+                data: option.data.clone(),
+            };
+            provider.price(&request).await?
+        } else {
+            None
+        };
+        priced.push(PricedOption { option, price });
+    }
+
+    Ok(priced)
+}
+
+/// A parcel nobody carries: [`ManualFulfillment`] answers for it.
 pub async fn create_fulfillment(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
     order: OrderId,
     new: NewFulfillment,
+) -> Result<Fulfillment> {
+    create_fulfillment_with(tx, ctx, order, new, &ManualFulfillment).await
+}
+
+pub async fn create_fulfillment_with(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order: OrderId,
+    new: NewFulfillment,
+    provider: &dyn FulfillmentProvider,
 ) -> Result<Fulfillment> {
     let id = FulfillmentId::new();
     let _: Permit = ctx.permit(
@@ -840,6 +1041,17 @@ pub async fn create_fulfillment(
         return Err(Error::invalid("a fulfilment line needs a quantity"));
     }
 
+    // The carrier is asked before the first row is written, so a call that
+    // never answers leaves no parcel behind to reconcile.
+    let shipment = if new.requires_shipping {
+        let request = shipment_request(tx, ctx, id, &new).await?;
+        provider.create_shipment(&request).await?
+    } else {
+        Shipment::default()
+    };
+
+    let data = shipment.data.clone().or_else(|| new.data.clone());
+
     let fulfillment = sqlx::query_as::<_, Fulfillment>(
         "insert into fulfillment
              (id, scope, location_id, shipping_option_id, provider_id, requires_shipping,
@@ -855,7 +1067,7 @@ pub async fn create_fulfillment(
     .bind(new.provider_id)
     .bind(new.requires_shipping)
     .bind(new.created_by.as_deref())
-    .bind(new.data.as_ref())
+    .bind(data.as_ref())
     .fetch_one(&mut **tx)
     .await?;
 
@@ -906,6 +1118,10 @@ pub async fn create_fulfillment(
         .bind(item.quantity)
         .execute(&mut **tx)
         .await?;
+    }
+
+    for label in shipment.labels {
+        add_label(tx, ctx, order, id, label).await?;
     }
 
     ctx.audit(
@@ -1122,6 +1338,16 @@ pub async fn cancel_fulfillment(
     order: OrderId,
     id: FulfillmentId,
 ) -> Result<Fulfillment> {
+    cancel_fulfillment_with(tx, ctx, order, id, &ManualFulfillment).await
+}
+
+pub async fn cancel_fulfillment_with(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order: OrderId,
+    id: FulfillmentId,
+    provider: &dyn FulfillmentProvider,
+) -> Result<Fulfillment> {
     let _: Permit = ctx.permit(
         Action::Settle,
         Resource::Fulfillment {
@@ -1138,6 +1364,20 @@ pub async fn cancel_fulfillment(
     }
     if current.canceled_at.is_some() {
         return Err(Error::conflict("that fulfilment was already cancelled"));
+    }
+
+    // Told before the row moves, so a carrier that refuses leaves the parcel
+    // where it was rather than live at their end and cancelled at ours.
+    if current.requires_shipping {
+        provider
+            .cancel_shipment(&ShipmentRequest {
+                fulfillment_id: Some(id),
+                option: current.shipping_option_id,
+                address: DeliveryAddress::default(),
+                items: Vec::new(),
+                data: None,
+            })
+            .await?;
     }
 
     let now = ctx.now();
@@ -1306,6 +1546,57 @@ async fn items_of(
     .await?;
 
     Ok(rows)
+}
+
+/// What the carrier is told about a parcel that does not exist yet: its id is
+/// known before the insert, so a label can be matched back to it.
+async fn shipment_request(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: FulfillmentId,
+    new: &NewFulfillment,
+) -> Result<ShipmentRequest> {
+    let ids: Vec<Uuid> = new
+        .items
+        .iter()
+        .map(|item| item.order_item_id.as_uuid())
+        .collect();
+
+    let priced: Vec<(Uuid, Option<Decimal>, String)> = sqlx::query_as(
+        "select id, unit_price, currency_code::text from order_item
+         where scope = $1 and id = any($2)",
+    )
+    .bind(ctx.scope.0)
+    .bind(&ids)
+    .fetch_all(&mut **tx)
+    .await?;
+
+    let mut items = Vec::with_capacity(new.items.len());
+    for item in &new.items {
+        let found = priced
+            .iter()
+            .find(|(row, _, _)| *row == item.order_item_id.as_uuid())
+            .ok_or_else(|| Error::not_found("order item"))?;
+
+        items.push(Shippable {
+            id: item.order_item_id.as_uuid(),
+            quantity: item.quantity,
+            amount: Money::new(
+                found.1.unwrap_or_default() * Decimal::from(item.quantity),
+                Currency::parse(&found.2)?,
+            ),
+            shipping_profile_id: None,
+            requires_shipping: new.requires_shipping,
+        });
+    }
+
+    Ok(ShipmentRequest {
+        fulfillment_id: Some(id),
+        option: new.shipping_option_id,
+        address: new.address.clone().unwrap_or_default(),
+        items,
+        data: new.data.clone(),
+    })
 }
 
 /// What shipping `units` of one order item takes off the shelves: the order's

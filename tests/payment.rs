@@ -656,3 +656,223 @@ async fn an_unsigned_webhook_never_reaches_the_table() {
 
     shop.close().await;
 }
+
+// ---------------------------------------------------------------------------
+// Two writers, at the same time
+// ---------------------------------------------------------------------------
+//
+// The rule these prove is not the arithmetic — `more_cannot_be_refunded_than_
+// was_captured` already proves that sequentially. It is that the arithmetic
+// still holds when both transactions are open together, which is the only
+// state in which the `for update` on the payment row does any work at all.
+
+/// One capture on its own transaction, committed if it was taken and rolled
+/// back if it was refused, so the loser leaves nothing behind.
+async fn capture_on(
+    mut tx: Tx<'static>,
+    ctx: Ctx<'_>,
+    paid: PaymentId,
+    amount: Money,
+) -> Result<()> {
+    match payment::capture(&mut tx, &ctx, paid, amount, None).await {
+        Ok(_) => {
+            tx.commit().await.map_err(Error::from)?;
+            Ok(())
+        }
+        Err(err) => {
+            tx.rollback().await.map_err(Error::from)?;
+            Err(err)
+        }
+    }
+}
+
+async fn refund_on(
+    mut tx: Tx<'static>,
+    ctx: Ctx<'_>,
+    paid: PaymentId,
+    amount: Money,
+) -> Result<()> {
+    match payment::refund(&mut tx, &ctx, paid, amount, None, None).await {
+        Ok(_) => {
+            tx.commit().await.map_err(Error::from)?;
+            Ok(())
+        }
+        Err(err) => {
+            tx.rollback().await.map_err(Error::from)?;
+            Err(err)
+        }
+    }
+}
+
+/// The ledger read back: what the capture and refund rows add up to, and what
+/// the collection claims they add up to.
+async fn ledger(
+    shop: &Shop,
+    paid: PaymentId,
+    session: PaymentSessionId,
+) -> (
+    payment::Balance,
+    rust_decimal::Decimal,
+    rust_decimal::Decimal,
+) {
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+    let balance = payment::balance(&mut tx, &ctx, paid)
+        .await
+        .expect("a balance");
+    let session = payment::session(&mut tx, &ctx, session)
+        .await
+        .expect("the session");
+    let collection = payment::collection(&mut tx, &ctx, session.payment_collection_id)
+        .await
+        .expect("the collection");
+    tx.commit().await.expect("to commit");
+
+    (
+        balance,
+        collection.captured_amount.unwrap_or_default(),
+        collection.refunded_amount.unwrap_or_default(),
+    )
+}
+
+#[tokio::test]
+async fn two_captures_race_for_the_last_of_the_hold() {
+    let shop = Shop::open().await;
+    let session = open_session(&shop, try_(dec!(100.00))).await;
+    let paid = authorize(&shop, &FakeProvider::approving(), session)
+        .await
+        .payment()
+        .expect("a payment")
+        .id;
+
+    let one = shop.begin().await;
+    let two = shop.begin().await;
+
+    let (first, second) = tokio::join!(
+        capture_on(one, shop.ctx(), paid, try_(dec!(60.00))),
+        capture_on(two, shop.ctx(), paid, try_(dec!(60.00))),
+    );
+
+    let losers: Vec<_> = [&first, &second]
+        .into_iter()
+        .filter_map(|outcome| outcome.as_ref().err())
+        .collect();
+    assert_eq!(
+        losers.len(),
+        1,
+        "both captures of 60 were taken against a hold of 100"
+    );
+    assert!(
+        losers[0].is_conflict(),
+        "the second capture was refused as {}",
+        losers[0].code()
+    );
+
+    let (balance, captured, refunded) = ledger(&shop, paid, session).await;
+    assert_eq!(balance.captured, dec!(60.00));
+    assert!(
+        balance.captured <= balance.authorized,
+        "{} was taken against a hold of {}",
+        balance.captured,
+        balance.authorized
+    );
+    assert_eq!(captured, dec!(60.00), "the collection lost an update");
+    assert_eq!(refunded, dec!(0));
+
+    shop.close().await;
+}
+
+#[tokio::test]
+async fn two_refunds_race_for_what_was_captured() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let session = open_session(&shop, try_(dec!(100.00))).await;
+    let paid = authorize(&shop, &FakeProvider::approving(), session)
+        .await
+        .payment()
+        .expect("a payment")
+        .id;
+
+    let mut tx = shop.begin().await;
+    payment::capture(&mut tx, &ctx, paid, try_(dec!(100.00)), None)
+        .await
+        .expect("the money to be taken");
+    tx.commit().await.expect("to commit");
+
+    let one = shop.begin().await;
+    let two = shop.begin().await;
+
+    let (first, second) = tokio::join!(
+        refund_on(one, shop.ctx(), paid, try_(dec!(60.00))),
+        refund_on(two, shop.ctx(), paid, try_(dec!(60.00))),
+    );
+
+    let losers: Vec<_> = [&first, &second]
+        .into_iter()
+        .filter_map(|outcome| outcome.as_ref().err())
+        .collect();
+    assert_eq!(losers.len(), 1, "120 was given back against 100 taken");
+    assert!(
+        losers[0].is_conflict(),
+        "the second refund was refused as {}",
+        losers[0].code()
+    );
+
+    let (balance, captured, refunded) = ledger(&shop, paid, session).await;
+    assert_eq!(balance.refunded, dec!(60.00));
+    assert!(
+        balance.refunded <= balance.captured,
+        "{} was refunded of {} taken",
+        balance.refunded,
+        balance.captured
+    );
+    assert_eq!(captured, dec!(100.00));
+    assert_eq!(refunded, dec!(60.00), "the collection lost an update");
+
+    shop.close().await;
+}
+
+/// Both of these are legal whichever order they land in, so neither is refused.
+/// What is being watched is the collection: two transactions recomputing it at
+/// once is how one of them ends up written over.
+#[tokio::test]
+async fn a_capture_and_a_refund_at_the_same_time_leave_the_ledger_whole() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let session = open_session(&shop, try_(dec!(100.00))).await;
+    let paid = authorize(&shop, &FakeProvider::approving(), session)
+        .await
+        .payment()
+        .expect("a payment")
+        .id;
+
+    let mut tx = shop.begin().await;
+    payment::capture(&mut tx, &ctx, paid, try_(dec!(60.00)), None)
+        .await
+        .expect("the first capture");
+    tx.commit().await.expect("to commit");
+
+    let one = shop.begin().await;
+    let two = shop.begin().await;
+
+    let (captured, refunded) = tokio::join!(
+        capture_on(one, shop.ctx(), paid, try_(dec!(40.00))),
+        refund_on(two, shop.ctx(), paid, try_(dec!(60.00))),
+    );
+    captured.expect("the rest of the hold to be capturable");
+    refunded.expect("what was already taken to be refundable");
+
+    let (balance, collection_captured, collection_refunded) = ledger(&shop, paid, session).await;
+    assert_eq!(balance.captured, dec!(100.00));
+    assert_eq!(balance.refunded, dec!(60.00));
+    assert_eq!(
+        collection_captured, balance.captured,
+        "the collection and the capture rows disagree"
+    );
+    assert_eq!(
+        collection_refunded, balance.refunded,
+        "the collection and the refund rows disagree"
+    );
+
+    shop.close().await;
+}

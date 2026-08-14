@@ -234,6 +234,69 @@ pub async fn tax_region(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: TaxRegionId) -> Resu
     .ok_or_else(|| Error::not_found("tax region"))
 }
 
+/// A field left `None` is left alone. A region's parent is not among them: it
+/// is what decides which rates apply, and moving it silently reprices orders
+/// that have already been taxed.
+#[derive(Debug, Clone, Default)]
+pub struct TaxRegionPatch {
+    pub country_code: Option<String>,
+    pub province_code: Option<String>,
+    pub provider: Option<String>,
+}
+
+pub async fn update_tax_region(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: TaxRegionId,
+    patch: TaxRegionPatch,
+) -> Result<TaxRegion> {
+    let _: Permit = ctx.permit(Action::Write, Resource::Tax)?;
+
+    let country = patch
+        .country_code
+        .as_deref()
+        .map(country_code)
+        .transpose()?;
+
+    let region = sqlx::query_as::<_, TaxRegion>(
+        "update tax_region set
+             country_code = coalesce($3::text, country_code),
+             province_code = coalesce($4::text, province_code),
+             provider = coalesce($5::text, provider)
+         where scope = $1 and id = $2
+         returning id, country_code, province_code, parent_id, provider, created_at",
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .bind(country)
+    .bind(patch.province_code.as_deref().map(str::trim))
+    .bind(patch.provider.as_deref())
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("tax region"))?;
+
+    if region.parent_id.is_some() && region.province_code.is_none() {
+        return Err(Error::invalid("a region under a country needs a province"));
+    }
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "tax_region",
+            entity_id: id.as_uuid(),
+            summary: serde_json::json!({
+                "country_code": region.country_code,
+                "province_code": region.province_code,
+            }),
+        },
+    )
+    .await?;
+
+    Ok(region)
+}
+
 pub async fn tax_regions(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -319,6 +382,95 @@ pub async fn create_tax_rate(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewTaxRate) ->
     .bind(new.is_combinable)
     .fetch_one(&mut **tx)
     .await?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "tax_rate",
+            entity_id: id.as_uuid(),
+            summary: serde_json::json!({ "name": rate.name, "rate": rate.rate.to_string() }),
+        },
+    )
+    .await?;
+
+    Ok(rate)
+}
+
+pub async fn tax_rate(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: TaxRateId) -> Result<TaxRate> {
+    let _: Permit = ctx.permit(Action::View, Resource::Tax)?;
+
+    sqlx::query_as::<_, TaxRate>(
+        "select id, tax_region_id, rate, code, name, is_default, is_combinable, created_at
+         from tax_rate
+         where scope = $1 and id = $2",
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("tax rate"))
+}
+
+/// A field left `None` is left alone. The region a rate belongs to is not among
+/// them: a rate that moved region would answer for goods it never taxed.
+#[derive(Debug, Clone, Default)]
+pub struct TaxRatePatch {
+    pub rate: Option<Decimal>,
+    pub code: Option<String>,
+    pub name: Option<String>,
+    pub is_default: Option<bool>,
+    pub is_combinable: Option<bool>,
+}
+
+/// Changes the rate in place, keeping the id. Orders already taxed keep the
+/// tax lines they were taxed with — those are copied onto the order rather than
+/// joined to this row — so history does not move when the rate does.
+pub async fn update_tax_rate(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: TaxRateId,
+    patch: TaxRatePatch,
+) -> Result<TaxRate> {
+    let _: Permit = ctx.permit(Action::Write, Resource::Tax)?;
+
+    if patch
+        .name
+        .as_ref()
+        .is_some_and(|name| name.trim().is_empty())
+    {
+        return Err(Error::invalid("a tax rate needs a name"));
+    }
+    if patch
+        .rate
+        .is_some_and(|rate| rate.is_sign_negative() || rate > Decimal::from(100))
+    {
+        return Err(Error::invalid(
+            "a tax rate is a percentage between 0 and 100",
+        ));
+    }
+
+    let rate = sqlx::query_as::<_, TaxRate>(
+        "update tax_rate set
+             rate = coalesce($3::numeric, rate),
+             code = coalesce($4::text, code),
+             name = coalesce($5::text, name),
+             is_default = coalesce($6::boolean, is_default),
+             is_combinable = coalesce($7::boolean, is_combinable)
+         where scope = $1 and id = $2
+         returning id, tax_region_id, rate, code, name, is_default, is_combinable, created_at",
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .bind(patch.rate)
+    .bind(patch.code.as_deref())
+    .bind(patch.name.as_deref().map(str::trim))
+    .bind(patch.is_default)
+    .bind(patch.is_combinable)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("tax rate"))?;
 
     ctx.audit(
         tx,
