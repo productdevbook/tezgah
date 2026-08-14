@@ -19,10 +19,9 @@ use uuid::Uuid;
 use crate::error::{Error, Result};
 use crate::fulfilment;
 use crate::id::{
-    ClaimId, ExchangeId, ExchangeLineId, FulfillmentId, FulfillmentSetId, InventoryItemId,
-    LineItemId, OrderChangeId, OrderId, OrderItemId, PaymentCollectionId, PaymentId,
-    PaymentSessionId, RefundReasonId, ReturnId, ServiceZoneId, ShippingOptionId, ShippingProfileId,
-    StockLocationId,
+    ClaimId, ExchangeId, FulfillmentId, FulfillmentSetId, InventoryItemId, LineItemId,
+    OrderChangeId, OrderId, OrderItemId, PaymentCollectionId, PaymentId, PaymentSessionId,
+    RefundReasonId, ReturnId, ServiceZoneId, ShippingOptionId, ShippingProfileId, StockLocationId,
 };
 use crate::money::{Currency, Money};
 use crate::order;
@@ -897,7 +896,12 @@ async fn open_edit(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: OrderId) -> Result<order:
 ///
 /// An applied action is not removed: the quantity it moved is already in the
 /// next version, and deleting the row would leave nothing saying why.
-async fn drop_action(tx: &mut Tx<'_>, ctx: &Ctx<'_>, change: OrderChangeId, id: Uuid) -> Result<()> {
+async fn drop_action(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    change: OrderChangeId,
+    id: Uuid,
+) -> Result<()> {
     let removed = sqlx::query(
         "delete from order_change_action
          where scope = $1 and order_change_id = $2 and id = $3 and not applied",
@@ -1077,11 +1081,7 @@ impl CreateOrder {
     }
 }
 
-pub async fn create_order(
-    tx: &mut Tx<'_>,
-    ctx: &Ctx<'_>,
-    input: CreateOrder,
-) -> Result<OrderView> {
+pub async fn create_order(tx: &mut Tx<'_>, ctx: &Ctx<'_>, input: CreateOrder) -> Result<OrderView> {
     Ok(order::create(tx, ctx, input.new_order()?).await?.into())
 }
 
@@ -1344,8 +1344,8 @@ pub async fn open_order_edit(
     id: OrderId,
     input: OpenEdit,
 ) -> Result<ChangeView> {
-    let change = order::request_change(tx, ctx, id, order::ChangeType::Edit, input.description)
-        .await?;
+    let change =
+        order::request_change(tx, ctx, id, order::ChangeType::Edit, input.description).await?;
     Ok(change.into())
 }
 
@@ -1382,7 +1382,10 @@ pub async fn get_order_change(
     ctx: &Ctx<'_>,
     id: OrderChangeId,
 ) -> Result<ChangeDetailView> {
-    let _: Permit = ctx.permit(Action::View, order_resource(OrderId::from_uuid(Uuid::nil()), None))?;
+    let _: Permit = ctx.permit(
+        Action::View,
+        order_resource(OrderId::from_uuid(Uuid::nil()), None),
+    )?;
 
     let change = read_change(tx, ctx, id).await?;
     let actions = order::change_actions(tx, ctx, id).await?;
@@ -1431,10 +1434,7 @@ impl AddItemAction {
             Some(price) => {
                 let money = price.money()?;
                 if let Some(map) = details.as_object_mut() {
-                    map.insert(
-                        "unit_price".into(),
-                        Value::String(money.amount.to_string()),
-                    );
+                    map.insert("unit_price".into(), Value::String(money.amount.to_string()));
                     map.insert(
                         "currency_code".into(),
                         Value::String(money.currency.as_str().to_owned()),
@@ -1674,7 +1674,10 @@ pub async fn list_returns(
     ctx: &Ctx<'_>,
     query: Listing,
 ) -> Result<Page<ReturnView>> {
-    let _: Permit = ctx.permit(Action::View, order_resource(OrderId::from_uuid(Uuid::nil()), None))?;
+    let _: Permit = ctx.permit(
+        Action::View,
+        order_resource(OrderId::from_uuid(Uuid::nil()), None),
+    )?;
     let paging = query.paging()?;
 
     let rows = sqlx::query_as::<_, order::Return>(&format!(
@@ -1932,7 +1935,11 @@ pub async fn request_exchange(
     };
 
     let request = order::ExchangeRequest {
-        returning: input.returning.into_iter().map(ReturnLineIn::line).collect(),
+        returning: input
+            .returning
+            .into_iter()
+            .map(ReturnLineIn::line)
+            .collect(),
         outbound: input
             .outbound
             .into_iter()
@@ -1957,7 +1964,10 @@ pub async fn list_exchanges(
     ctx: &Ctx<'_>,
     query: Listing,
 ) -> Result<Page<ExchangeView>> {
-    let _: Permit = ctx.permit(Action::View, order_resource(OrderId::from_uuid(Uuid::nil()), None))?;
+    let _: Permit = ctx.permit(
+        Action::View,
+        order_resource(OrderId::from_uuid(Uuid::nil()), None),
+    )?;
     let paging = query.paging()?;
 
     let rows = sqlx::query_as::<_, order::Exchange>(&format!(
@@ -2184,8 +2194,15 @@ pub async fn request_claim(
         .into())
 }
 
-pub async fn list_claims(tx: &mut Tx<'_>, ctx: &Ctx<'_>, query: Listing) -> Result<Page<ClaimView>> {
-    let _: Permit = ctx.permit(Action::View, order_resource(OrderId::from_uuid(Uuid::nil()), None))?;
+pub async fn list_claims(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    query: Listing,
+) -> Result<Page<ClaimView>> {
+    let _: Permit = ctx.permit(
+        Action::View,
+        order_resource(OrderId::from_uuid(Uuid::nil()), None),
+    )?;
     let paging = query.paging()?;
 
     let rows = sqlx::query_as::<_, order::Claim>(&format!(
@@ -2393,7 +2410,11 @@ pub async fn list_payments(
          limit $5"
     ))
     .bind(ctx.scope.0)
-    .bind(query.payment_collection_id.map(PaymentCollectionId::as_uuid))
+    .bind(
+        query
+            .payment_collection_id
+            .map(PaymentCollectionId::as_uuid),
+    )
     .bind(paging.after.map(|c| c.at))
     .bind(paging.after.map(|c| c.id))
     .bind(paging.probe())
@@ -2727,8 +2748,9 @@ pub async fn create_fulfillment(
         .into())
 }
 
-/// Every parcel on one order. Read through the fulfilment items, because a
-/// `fulfillment` row does not carry the order it belongs to.
+/// Every parcel on one order. Reached through the fulfilment items, because a
+/// `fulfillment` row does not carry the order it belongs to; the column called
+/// `line_item_id` holds an `order_item` id, not an `order_line_item` one.
 pub async fn order_fulfillments(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -2751,8 +2773,8 @@ pub async fn order_fulfillments(
          where f.scope = $1
            and exists (
                select 1 from fulfillment_item i
-               join order_line_item l on l.scope = i.scope and l.id = i.line_item_id
-               where i.scope = f.scope and i.fulfillment_id = f.id and l.order_id = $2
+               join order_item oi on oi.scope = i.scope and oi.id = i.line_item_id
+               where i.scope = f.scope and i.fulfillment_id = f.id and oi.order_id = $2
            )
            and ($3::timestamptz is null or (f.created_at, f.id) > ($3, $4))
          order by f.created_at, f.id
@@ -2897,7 +2919,11 @@ pub async fn list_fulfillment_sets(
 ) -> Result<Page<FulfillmentSetView>> {
     let page = fulfilment::sets(tx, ctx, query.paging()?).await?;
     Ok(Page {
-        items: page.items.into_iter().map(FulfillmentSetView::from).collect(),
+        items: page
+            .items
+            .into_iter()
+            .map(FulfillmentSetView::from)
+            .collect(),
         next: page.next,
     })
 }
@@ -2984,10 +3010,7 @@ pub async fn create_service_zone(
     })
 }
 
-pub async fn fulfillment_providers(
-    tx: &mut Tx<'_>,
-    ctx: &Ctx<'_>,
-) -> Result<Vec<ProviderView>> {
+pub async fn fulfillment_providers(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<Vec<ProviderView>> {
     let rows = fulfilment::providers(tx, ctx).await?;
     Ok(rows
         .into_iter()
@@ -3047,7 +3070,11 @@ pub async fn list_shipping_options(
     });
 
     Ok(Page {
-        items: page.items.into_iter().map(ShippingOptionView::from).collect(),
+        items: page
+            .items
+            .into_iter()
+            .map(ShippingOptionView::from)
+            .collect(),
         next: page.next,
     })
 }
@@ -3086,7 +3113,9 @@ pub async fn create_shipping_option(
         provider_id: input.provider_id,
         data: input.data,
     };
-    Ok(fulfilment::create_shipping_option(tx, ctx, new).await?.into())
+    Ok(fulfilment::create_shipping_option(tx, ctx, new)
+        .await?
+        .into())
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -3885,35 +3914,35 @@ pub(super) static ROUTES: &[Route] = &[
     // Fulfilments
     route!(
         Get,
-        "/admin/orders/{order_id}/fulfillments/{id}",
+        "/admin/orders/{id}/fulfillments/{fulfillment_id}",
         View,
         "fulfilment",
         "Fetch one parcel, its contents and its labels"
     ),
     route!(
         Post,
-        "/admin/orders/{order_id}/fulfillments/{id}/pack",
+        "/admin/orders/{id}/fulfillments/{fulfillment_id}/pack",
         Write,
         "fulfilment",
         "Mark a parcel packed"
     ),
     route!(
         Post,
-        "/admin/orders/{order_id}/fulfillments/{id}/shipment",
+        "/admin/orders/{id}/fulfillments/{fulfillment_id}/shipment",
         Write,
         "fulfilment",
         "Mark a parcel shipped, with its labels"
     ),
     route!(
         Post,
-        "/admin/orders/{order_id}/fulfillments/{id}/mark-as-delivered",
+        "/admin/orders/{id}/fulfillments/{fulfillment_id}/mark-as-delivered",
         Write,
         "fulfilment",
         "Mark a parcel delivered"
     ),
     route!(
         Post,
-        "/admin/orders/{order_id}/fulfillments/{id}/cancel",
+        "/admin/orders/{id}/fulfillments/{fulfillment_id}/cancel",
         Settle,
         "fulfilment",
         "Cancel a parcel and put its stock back"

@@ -1522,6 +1522,8 @@ async fn my_address(
     id: AddressId,
     action: Action,
 ) -> Result<customer::CustomerAddress> {
+    signed_in(ctx)?;
+
     let found = customer::address(tx, ctx, id).await?;
     ctx.permit(
         action,
@@ -1529,9 +1531,6 @@ async fn my_address(
             id: Some(found.customer_id.as_uuid()),
         },
     )?;
-    if found.customer_id != signed_in(ctx)? {
-        return Err(Error::not_found("address"));
-    }
     Ok(found)
 }
 

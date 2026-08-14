@@ -19,6 +19,7 @@
 
 pub mod admin;
 pub mod admin_catalogue;
+pub mod admin_order;
 pub mod admin_rest;
 pub mod openapi;
 pub mod store;
@@ -80,11 +81,13 @@ pub fn routes() -> Vec<Route> {
         store::ROUTES.len()
             + admin::ROUTES.len()
             + admin_catalogue::ROUTES.len()
+            + admin_order::ROUTES.len()
             + admin_rest::ROUTES.len(),
     );
     all.extend_from_slice(store::ROUTES);
     all.extend_from_slice(admin::ROUTES);
     all.extend_from_slice(admin_catalogue::ROUTES);
+    all.extend_from_slice(admin_order::ROUTES);
     all.extend_from_slice(admin_rest::ROUTES);
     all
 }
