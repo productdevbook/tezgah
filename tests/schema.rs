@@ -233,6 +233,95 @@ async fn a_migration_backfills_a_database_that_already_has_rows() {
     shop.close().await;
 }
 
+/// 0017's backfill ran with no `app.scope` set, so on a database that already
+/// had workflow steps it matched none of them and the `not null` behind it
+/// aborted the migration. 0047 is the corrective migration: it must fill in
+/// what 0017 left null and leave the constraint standing.
+#[tokio::test]
+async fn a_migration_backfills_workflow_steps_0017_left_null() {
+    let shop = Shop::open().await;
+
+    let run = uuid::Uuid::now_v7();
+    let step = uuid::Uuid::now_v7();
+
+    let mut mine = shop.begin().await;
+    sqlx::query(
+        "insert into workflow_run (id, scope, name, transaction_key)
+         values ($1, $2, 'checkout', 'one')",
+    )
+    .bind(run)
+    .bind(shop.here.0)
+    .execute(&mut *mine)
+    .await
+    .expect("a run");
+    sqlx::query(
+        "insert into workflow_step (id, scope, run_id, name, ordering, group_ordering)
+         values ($1, $2, $3, 'reserve', 3, 3)",
+    )
+    .bind(step)
+    .bind(shop.here.0)
+    .bind(run)
+    .execute(&mut *mine)
+    .await
+    .expect("a step");
+    mine.commit().await.expect("to commit");
+
+    let owner = shop.migrator().await;
+
+    // Put the row back as 0017's blind backfill would have left it: not
+    // null is asserted, so the constraint has to come off before the column
+    // can be nulled out again.
+    owner
+        .execute("alter table workflow_step alter column group_ordering drop not null")
+        .await
+        .expect("to put the table back as 0017 left it");
+
+    let mut mine = shop.begin().await;
+    sqlx::query("update workflow_step set group_ordering = null where scope = $1 and id = $2")
+        .bind(shop.here.0)
+        .bind(step)
+        .execute(&mut *mine)
+        .await
+        .expect("to null it out");
+    mine.commit().await.expect("to commit");
+
+    // 0017's backfill verbatim, as a migration runs it: no scope announced.
+    let blind = sqlx::query(
+        "update workflow_step set group_ordering = ordering where group_ordering is null",
+    )
+    .execute(&owner)
+    .await
+    .expect("to run");
+
+    assert_eq!(
+        blind.rows_affected(),
+        0,
+        "a migration reached a row without naming a scope, so this test no longer \
+         proves what 0047 is for"
+    );
+
+    owner
+        .execute(include_str!(
+            "../migrations/0047_workflow_group_ordering_backfill.sql"
+        ))
+        .await
+        .expect("0047 to apply to a database that already has workflow steps in it");
+
+    let mut mine = shop.begin().await;
+    let filled: i32 =
+        sqlx::query_scalar("select group_ordering from workflow_step where scope = $1 and id = $2")
+            .bind(shop.here.0)
+            .bind(step)
+            .fetch_one(&mut *mine)
+            .await
+            .expect("the row 0017 left behind");
+    mine.commit().await.expect("to commit");
+    assert_eq!(filled, 3, "0047 should have carried `ordering` forward");
+
+    owner.close().await;
+    shop.close().await;
+}
+
 /// 0046 replaces `metadata->>'subscription'` with a real column. A database
 /// that ran the old convention has orders carrying only the JSON key, and the
 /// backfill has to move a well-formed, same-scope one across while leaving a
