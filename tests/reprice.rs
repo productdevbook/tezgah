@@ -252,6 +252,7 @@ async fn a_line_changed_is_discounted_again() {
         AddLineItem {
             variant_id: variant,
             quantity: 1,
+            selling_plan_id: None,
         },
     )
     .await
@@ -305,6 +306,7 @@ async fn a_line_removed_takes_its_discount_with_it() {
         AddLineItem {
             variant_id: kettle,
             quantity: 1,
+            selling_plan_id: None,
         },
     )
     .await
@@ -317,6 +319,7 @@ async fn a_line_removed_takes_its_discount_with_it() {
         AddLineItem {
             variant_id: kilim,
             quantity: 1,
+            selling_plan_id: None,
         },
     )
     .await
@@ -356,6 +359,7 @@ async fn a_promotion_that_no_longer_holds_leaves_nothing_behind() {
         AddLineItem {
             variant_id: variant,
             quantity: 1,
+            selling_plan_id: None,
         },
     )
     .await
@@ -402,6 +406,7 @@ async fn tax_lines_are_written_and_the_totals_add_them_up() {
         AddLineItem {
             variant_id: variant,
             quantity: 1,
+            selling_plan_id: None,
         },
     )
     .await
@@ -445,6 +450,7 @@ async fn an_inclusive_price_pays_its_tax_once() {
         AddLineItem {
             variant_id: variant,
             quantity: 1,
+            selling_plan_id: None,
         },
     )
     .await
@@ -481,6 +487,7 @@ async fn a_cart_with_nowhere_to_go_carries_no_tax() {
         AddLineItem {
             variant_id: variant,
             quantity: 1,
+            selling_plan_id: None,
         },
     )
     .await
@@ -528,6 +535,7 @@ async fn another_scope_reprices_nothing_of_ours() {
         AddLineItem {
             variant_id: variant,
             quantity: 1,
+            selling_plan_id: None,
         },
     )
     .await

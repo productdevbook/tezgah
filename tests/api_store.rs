@@ -875,6 +875,7 @@ async fn a_line_of_another_channels_variant_is_not_added() -> tezgah::Result<()>
         AddLineItem {
             variant_id: variant_a,
             quantity: 1,
+            selling_plan_id: None,
         },
     )
     .await
@@ -927,6 +928,7 @@ async fn a_cart_on_one_channel_does_not_take_a_line_from_another() -> tezgah::Re
         AddLineItem {
             variant_id: variant_b,
             quantity: 1,
+            selling_plan_id: None,
         },
     )
     .await
@@ -996,6 +998,7 @@ async fn a_line_of_an_unchanneled_variant_is_added_from_any_channel() -> tezgah:
         AddLineItem {
             variant_id: variant.id,
             quantity: 1,
+            selling_plan_id: None,
         },
     )
     .await?;
