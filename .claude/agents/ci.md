@@ -55,8 +55,17 @@ Find the root cause, not the symptom. Push again. Repeat until green. Other
 agents work in this tree at the same time — if a round is red from their files,
 leave it alone and wait for yours.
 
-**Never `git add -A`.** Stage only the files you touched. Two agents have
-already swept a colleague's unfinished work into their own commit.
+**Never `git add -A`.** Stage only the files you touched — and naming a file
+is not enough either: somebody else may be editing the same one. Before you
+stage, read `git diff <file>` and confirm every hunk is yours. If it is not,
+stage only your own hunks.
+
+This has gone wrong three times. Twice a colleague's half-finished rename went
+out under somebody else's commit message; once it broke `main`, and the fix was
+a revert of one call plus a restore after the missing definition landed. Both
+were recoverable because the commit messages said plainly what had happened —
+so if you do sweep something up, say so in the message rather than leaving the
+next person to work it out.
 
 **This repository is public.** No host's name, no customer data, no
 credentials, no server addresses — in code, comments, tests, fixtures or commit
