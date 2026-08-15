@@ -1709,6 +1709,18 @@ pub async fn release_line(tx: &mut Tx<'_>, ctx: &Ctx<'_>, line_item_id: LineItem
         unreserve(tx, ctx, reservation).await?;
         unreserve_lots(tx, ctx, &claims).await?;
 
+        ctx.audit(
+            tx,
+            AuditEntry {
+                actor: ctx.actor.clone(),
+                action: Action::Delete,
+                entity: "reservation_item",
+                entity_id: reservation.id.as_uuid(),
+                summary: serde_json::json!({ "quantity": reservation.quantity }),
+            },
+        )
+        .await?;
+
         ctx.emit(
             tx,
             Event {
