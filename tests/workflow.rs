@@ -732,16 +732,28 @@ impl ReachingStep for FakeReaching {
         })
     }
 
-    async fn call(&self, _ctx: &Ctx<'_>, _prepared: &Prepared) -> Result<Answer, Failure> {
+    async fn call(&self, ctx: &Ctx<'_>, _prepared: &Prepared) -> Result<Answer, Failure> {
         self.log.lock().push("call".to_string());
-        // No transaction here — this pool query only sees committed rows, so
-        // it proves `prepare`'s transaction committed before this ran.
+        // A fresh connection, scoped and rolled back rather than reusing
+        // `prepare`'s transaction — so seeing the row here proves `prepare`
+        // committed, not just that these ran in sequence in one process.
+        let mut probe = self
+            .pool
+            .begin()
+            .await
+            .map_err(|err| Failure::Final(tezgah::Error::from(err)))?;
+        sqlx::query("select set_config('app.scope', $1, true)")
+            .bind(ctx.scope.0.to_string())
+            .execute(&mut *probe)
+            .await
+            .map_err(|err| Failure::Final(tezgah::Error::from(err)))?;
         let visible: Option<Value> =
             sqlx::query_scalar("select output from workflow_run where id = $1")
                 .bind(self.run_id.as_uuid())
-                .fetch_one(&self.pool)
+                .fetch_one(&mut *probe)
                 .await
                 .map_err(|err| Failure::Final(tezgah::Error::from(err)))?;
+        let _ = probe.rollback().await;
         assert_eq!(
             visible,
             Some(json!("prepared")),
