@@ -1102,6 +1102,20 @@ pub async fn transfer_to_customer(
     .fetch_all(&mut **tx)
     .await?;
 
+    // Every other column travels as it is: read from the catalogue rather
+    // than named by hand, so a column added to `cart_line_item` tomorrow is
+    // carried across a merge the day it is added.
+    let carried: Vec<String> = sqlx::query_scalar(
+        "select column_name from information_schema.columns
+         where table_schema = 'public' and table_name = 'cart_line_item'
+           and column_name not in
+               ('id', 'scope', 'cart_id', 'parent_line_item_id', 'created_at', 'updated_at')
+         order by column_name",
+    )
+    .fetch_all(&mut **tx)
+    .await?;
+    let carried = carried.join(", ");
+
     let mut remap: std::collections::HashMap<uuid::Uuid, uuid::Uuid> =
         std::collections::HashMap::new();
 
@@ -1126,17 +1140,8 @@ pub async fn transfer_to_customer(
         };
 
         let new_id: uuid::Uuid = sqlx::query_scalar(&format!(
-            "insert into cart_line_item
-                 (id, scope, cart_id, variant_id, product_id, product_title, product_handle,
-                  variant_title, variant_sku, variant_barcode, variant_option_values, thumbnail,
-                  quantity, unit_price, compare_at_unit_price, currency_code, is_tax_inclusive,
-                  is_discountable, requires_shipping, parent_line_item_id, selling_plan_id,
-                  metadata)
-             select $1::uuid, scope, $2::uuid, variant_id, product_id, product_title,
-                    product_handle, variant_title, variant_sku, variant_barcode,
-                    variant_option_values, thumbnail, quantity, unit_price, compare_at_unit_price,
-                    currency_code, is_tax_inclusive, is_discountable, requires_shipping,
-                    $5::uuid, selling_plan_id, metadata
+            "insert into cart_line_item (id, scope, cart_id, parent_line_item_id, {carried})
+             select $1::uuid, scope, $2::uuid, $5::uuid, {carried}
              from cart_line_item
              where scope = $3 and id = $4
              {on_conflict}

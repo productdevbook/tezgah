@@ -4,7 +4,8 @@ use common::Shop;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use tezgah::cart::{
-    self, AddLine, CartAddress, NewCart, NewShippingMethod, TotalsLine, TotalsShipping,
+    self, AddBundle, AddBundleComponent, AddLine, CartAddress, NewCart, NewShippingMethod,
+    TotalsLine, TotalsShipping,
 };
 use tezgah::catalogue::{self, NewProduct, NewVariant};
 use tezgah::customer::{self, NewCustomer};
@@ -1040,6 +1041,196 @@ async fn a_currency_this_shop_has_not_configured_is_not_two_decimals() -> tezgah
     let refused = cart::totals(&mut tx, &ctx, cart.id).await.unwrap_err();
     assert!(refused.is_not_found(), "{refused} was not a not_found");
     assert!(!refused.is_internal());
+
+    tx.rollback().await.ok();
+    shop.close().await;
+    Ok(())
+}
+
+/// The columns a merge is allowed to change: a new identity, a new parent
+/// (remapped rather than copied), and timestamps a fresh row gets its own of.
+/// `quantity` is excluded too — a merge that lands on an existing line adds
+/// to it rather than copying it. Everything else on `cart_line_item` must
+/// travel from the source line untouched, whatever it is called.
+const MERGE_MAY_CHANGE: &[&str] = &[
+    "id",
+    "scope",
+    "cart_id",
+    "parent_line_item_id",
+    "quantity",
+    "created_at",
+    "updated_at",
+];
+
+/// Reads `cart_line_item`'s own columns rather than a list kept by hand, so a
+/// column added to the table tomorrow is asked about the day it is added.
+async fn cart_line_item_columns_to_check(tx: &mut Tx<'_>) -> Vec<String> {
+    sqlx::query_scalar::<_, String>(
+        "select column_name from information_schema.columns
+         where table_schema = 'public' and table_name = 'cart_line_item'
+           and column_name <> all($1)
+         order by column_name",
+    )
+    .bind(MERGE_MAY_CHANGE)
+    .fetch_all(&mut **tx)
+    .await
+    .expect("to read cart_line_item's columns")
+}
+
+async fn cart_line_item_as_json(tx: &mut Tx<'_>, id: uuid::Uuid) -> serde_json::Value {
+    sqlx::query_scalar::<_, serde_json::Value>(
+        "select to_jsonb(cart_line_item) from cart_line_item where id = $1",
+    )
+    .bind(id)
+    .fetch_one(&mut **tx)
+    .await
+    .expect("the line to still be there")
+}
+
+/// Fails naming the first column where `merged` does not carry `source`'s
+/// value, over the columns a merge has no business changing.
+fn assert_merge_carried_every_column(
+    columns: &[String],
+    source: &serde_json::Value,
+    merged: &serde_json::Value,
+) {
+    for column in columns {
+        assert_eq!(
+            source.get(column),
+            merged.get(column),
+            "a merge dropped `{column}`"
+        );
+    }
+}
+
+/// #140: proves the catalogue-driven check above actually catches a dropped
+/// column, rather than passing by construction. `variant_sku` is deleted from
+/// a stand-in "merged" row here — no migration or source file is touched —
+/// and the assertion above must fail on exactly that column.
+#[test]
+#[should_panic(expected = "a merge dropped `variant_sku`")]
+fn the_catalogue_driven_merge_check_catches_a_dropped_column() {
+    let columns = vec!["variant_sku".to_string(), "product_title".to_string()];
+
+    let source = serde_json::json!({
+        "variant_sku": "kettle-1",
+        "product_title": "A kettle",
+    });
+
+    // A copy that forgot to name `variant_sku`, the way `transfer_to_customer`
+    // forgot `parent_line_item_id` in #136 and `selling_plan_id` in #139.
+    let merged = serde_json::json!({
+        "product_title": "A kettle",
+    });
+
+    assert_merge_carried_every_column(&columns, &source, &merged);
+}
+
+/// #140: `cart::transfer_to_customer` used to name each column by hand and
+/// has twice dropped one silently. This reads `cart_line_item`'s own columns
+/// so the same mistake cannot happen a third time without the test noticing
+/// the day the column is added, not the day someone goes looking for it.
+#[tokio::test]
+async fn merging_carts_carries_every_cart_line_item_column() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+
+    let columns = cart_line_item_columns_to_check(&mut tx).await;
+    assert!(
+        !columns.is_empty(),
+        "the exception list ate the whole table"
+    );
+
+    let variant = a_variant(&mut tx, &ctx, "teapot").await?;
+    let plan = a_plan(&mut tx, &ctx, variant).await?;
+
+    let who = customer::create(&mut tx, &ctx, NewCustomer::account("nur@example.com")).await?;
+    // A cart of their own already exists, so the merge path runs rather than
+    // the plain hand-off `set_customer` takes when there is nothing to merge.
+    cart::create(&mut tx, &ctx, NewCart::of(who.id, lira()?)).await?;
+
+    let guest = cart::create(&mut tx, &ctx, NewCart::guest(lira()?)).await?;
+    let added = cart::add_line(
+        &mut tx,
+        &ctx,
+        guest.id,
+        AddLine {
+            variant_id: variant,
+            quantity: 1,
+            unit_price: money(dec!(40))?,
+            is_tax_inclusive: false,
+            selling_plan_id: Some(plan),
+        },
+    )
+    .await?;
+
+    let source = cart_line_item_as_json(&mut tx, added.id.as_uuid()).await;
+
+    let merged = cart::transfer_to_customer(&mut tx, &ctx, guest.id, who.id).await?;
+    let lines = cart::lines(&mut tx, &ctx, merged.id).await?;
+    assert_eq!(lines.len(), 1);
+    let merged_line = cart_line_item_as_json(&mut tx, lines[0].id.as_uuid()).await;
+
+    assert_merge_carried_every_column(&columns, &source, &merged_line);
+
+    tx.rollback().await.ok();
+    shop.close().await;
+    Ok(())
+}
+
+/// #140 / #136: a bundle's child must still name its parent's *merged* row
+/// after a guest cart's lines are copied into the customer's — the exact
+/// regression `parent_line_item_id` being left off the column list caused.
+#[tokio::test]
+async fn merging_carts_keeps_a_bundle_childs_parent() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+
+    let box_ = a_variant(&mut tx, &ctx, "gift-box").await?;
+    let candle = a_variant(&mut tx, &ctx, "wax-candle").await?;
+
+    let who = customer::create(&mut tx, &ctx, NewCustomer::account("aylin@example.com")).await?;
+    cart::create(&mut tx, &ctx, NewCart::of(who.id, lira()?)).await?;
+
+    let guest = cart::create(&mut tx, &ctx, NewCart::guest(lira()?)).await?;
+    let bundle_lines = cart::add_bundle(
+        &mut tx,
+        &ctx,
+        guest.id,
+        AddBundle {
+            variant_id: box_,
+            quantity: 1,
+            is_tax_inclusive: false,
+            components: vec![AddBundleComponent {
+                variant_id: candle,
+                quantity: 1,
+                unit_price: money(dec!(15))?,
+            }],
+        },
+    )
+    .await?;
+    assert_eq!(bundle_lines.len(), 2);
+
+    let merged = cart::transfer_to_customer(&mut tx, &ctx, guest.id, who.id).await?;
+    let lines = cart::lines(&mut tx, &ctx, merged.id).await?;
+    assert_eq!(lines.len(), 2);
+
+    let parent = lines
+        .iter()
+        .find(|line| line.parent_line_item_id.is_none())
+        .expect("the bundle's parent line survived the merge");
+    let child = lines
+        .iter()
+        .find(|line| line.parent_line_item_id.is_some())
+        .expect("the bundle's child line survived the merge");
+
+    assert_eq!(
+        child.parent_line_item_id,
+        Some(parent.id),
+        "the child lost track of its parent when the carts merged"
+    );
 
     tx.rollback().await.ok();
     shop.close().await;
