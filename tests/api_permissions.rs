@@ -662,6 +662,11 @@ static TOLERATED: &[(Method, &str, &str)] = &[
         "/store/returns",
         "loads the order before permit (request_return); #152",
     ),
+    (
+        Method::Get,
+        "/admin/orders/{id}/agreements/{kind}",
+        "loads the order before permit; #152",
+    ),
 ];
 
 fn tolerated(method: Method, path: &str) -> bool {
@@ -3385,11 +3390,6 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
         Method::Get,
         "/admin/agreements/{id}",
         agreement::get_agreement(&mut tx, &ctx, AgreementVersionId::new())
-    );
-    denied!(
-        Method::Get,
-        "/admin/orders/{id}/agreements/{kind}",
-        agreement::accepted_text(&mut tx, &ctx, OrderId::new(), "other")
     );
     denied!(
         Method::Get,

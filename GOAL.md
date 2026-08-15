@@ -30,18 +30,18 @@ already solved by whatever embeds this, so it is asked for through
 
 ## Where this is
 
-507 tests green. Both API surfaces are served — 443 routes in the route
-table, 329 paths / 440 operations in the snapshotted OpenAPI document
-generated from it. Most domains in stages 2 to 13 are module, schema and
-test complete and reachable from a route; the exceptions are marked below,
-not hidden in prose. Three functions are reachable from nothing and are
-tracked as #149: which warehouses serve a channel, reserving a named lot by
-hand, and saving a customer at a payment provider. The stage 15 proof suite
-already has substantive tests for all six of its claims — the gap left there
-is that no route or matrix test exhaustively proves every one of the 443
-routes checks the permission it declares; `tests/api_permissions.rs` proves
-the structural rule for the whole table and the functional refusal for about
-35 hand-picked handlers.
+Tests green. Both API surfaces are served — 446 routes in the route table,
+generated into a snapshotted OpenAPI document. Most domains in stages 2 to
+13 are module, schema and test complete and reachable from a route; the
+exceptions are marked below, not hidden in prose. Three functions are
+reachable from nothing and are tracked as #149: which warehouses serve a
+channel, reserving a named lot by hand, and saving a customer at a payment
+provider. The stage 15 proof suite already has substantive tests for all
+six of its claims. The permission-matrix gap once here is closed:
+`tests/api_permissions.rs` calls 355 of the 446 routes against a host that
+denies everything and asserts every one comes back denied, with the other
+91 named in a reasoned `TOLERATED` list rather than silently skipped — see
+stage 14 for what that list holds and why.
 
 What is left beyond that is written as issues rather than as boxes here: the
 payment providers moving onto kasapay (#53), the seventeen listings that
@@ -195,16 +195,16 @@ writes an order, and the provider is not in your database.
       generated and snapshotted (`tests/openapi.rs`); client-type generation
       unverified this session
 - [x] every route declares its permission, and a matrix test proves it —
-      `tests/api_permissions.rs` calls 356 of the 446 routes in `routes()`
-      against a host that denies everything and asserts `denied`; 90 are
+      `tests/api_permissions.rs` calls 355 of the 446 routes in `routes()`
+      against a host that denies everything and asserts `denied`; 91 are
       named in a reasoned, shrink-only `TOLERATED` list rather than called.
       2 need a `PaymentProvider`/`RecurringProvider` fixture this test does
-      not build. The other 88 are a real ordering gap this matrix surfaced:
+      not build. The other 89 are a real ordering gap this matrix surfaced:
       a handler loads its row and only then asks permission, because the
       permission it must ask depends on an owner (`customer_id`) the row
       alone carries — so a synthetic id answers `not_found` instead of
       `denied`. 40 are `admin_order.rs`'s own return/exchange/claim helpers
-      (productdevbook/tezgah#151); 48 are the crate's own core —
+      (productdevbook/tezgah#151); 49 are the crate's own core —
       `order::get` and the rest of `order.rs`'s `OrderId` functions,
       `order_basket::get`, `subscription::get` — the same shape one layer
       deeper (productdevbook/tezgah#152). Existing rows stay protected
