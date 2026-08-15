@@ -13,10 +13,9 @@ sidecar to keep alive, and no HTTP hop between your handler and your stock.
 
 ## Why
 
-The Rust ecosystem has no commerce engine. The highest-starred attempt is a
-CMS with twenty-eight stars. So anyone selling something from Rust writes
-`orders`, `stock` and a Stripe webhook by hand, and rediscovers in production
-what everyone else already knows:
+The Rust ecosystem has no commerce engine. So anyone selling something from
+Rust writes `orders`, `stock` and a Stripe webhook by hand, and rediscovers in
+production what everyone else already knows:
 
 - Stock decremented at payment, not at checkout, oversells for the length of
   the payment redirect.
@@ -39,81 +38,39 @@ tezgah decides nothing it does not have to. It asks, through traits in
 | `Authorizer` | who may do what | you already have roles; tezgah should not invent a second set |
 | `AuditSink` | where a change is written down | written in the same transaction, so a rollback takes the audit row with it |
 | `EventSink` | where a domain event goes | an outbox, not a publish — delivery is yours |
-| `Jobs` | how deferred work is queued | same transaction; enqueue and the change it belongs to commit together, and only for work one write schedules for later — never for a sweep on a clock |
+| `Jobs` | how deferred work is queued | enqueued in the same transaction as the change it belongs to |
 | `Clock` | what time it is | so "expires in an hour" is testable without sleeping |
-
-Two of those are load-bearing for anything that happens with nobody watching.
-A renewal runs as `Actor::System`, because there is no shopper in a browser to
-run it as: an `Authorizer` that denies `System` stops every subscription in the
-shop from renewing, and stops them silently, since the only caller is a cron.
-`Jobs` is where a declined renewal's next attempt is queued, in the same
-transaction as the `past_due` it belongs to — a host that implements it as a
-no-op has a shop that stops charging somebody and never retries.
-
-`Jobs` is for exactly that shape: one write that knows, at the moment it
-happens, that another must follow it at a later, specific time — a retry, a
-reminder, a thing this transaction cannot do itself because it has not
-happened yet. It is not how tezgah asks to be run on a clock. A reservation
-timing out (`inventory::expire_reservations`) and a subscription's period
-ending (`subscription::due`) are both a sweep over every row past a deadline,
-not one row's own next step, so both are plain functions a host calls on
-whatever schedule it already has — cron, a scheduled task, anything that
-ticks — rather than a job either enqueues for itself. Nothing about them is
-undecided: this is the design, and a digital entitlement's own expiry follows
-it for the same reason, rather than growing a job for every kind of "this
-timed out."
 
 You assemble a `Ctx` once per request and pass it down. A host with none of
 this uses `Permit::granted()` and a clock, and everything works.
 
-**Splitting a checkout across sellers is a host boundary, the same shape as
-`Jobs`.** A marketplace seller is its own scope, and driving a checkout run
-under a scope needs a `Tx` and a `Ctx` for that scope — only a host can open
-those; a library that opened its own connections per seller would be doing
-the one thing this crate refuses everywhere else. So: tezgah owns the join —
-`order_basket` and `order.basket_id`/`cart.basket_id` are how a customer's one
-order number and one payment survive being split — and `checkout::Machine::place`
-takes an optional `basket_id` for a run that is one seller's leg rather than
-the whole checkout. What tezgah does **not** do is decide when to call it more
-than once. The host: opens the basket in its own (marketplace) scope, opens
-one cart per seller-scope carrying that `basket_id`, then for each seller
-scope it knows the basket touches — found through `cart::for_basket`, read
-under that scope's own `Ctx`, the same way `order_basket::orders` answers the
-same question for orders — opens a `Tx`/`Ctx` for that scope and calls `place`
-with that leg's cart and the basket id. Each leg's `redeem_credit` and
-`authorize_payment` steps skip themselves: the shopper pays once, into the
-collection `order_basket::attach_payment_collection` attaches to the basket
-after every leg has an order, not once per seller.
+Some of these have obligations that are easy to meet by accident and expensive
+to miss — an `Authorizer` that denies `Actor::System` silently stops every
+subscription renewal in the shop. [`docs/hosting.md`](docs/hosting.md) is the
+list: what `Jobs` is for and what it is not, which function to call when money
+arrives, how a card reference is saved, and how a marketplace checkout is split
+across sellers.
 
-Every public function that reaches the database asks your `Authorizer` before
-it does, and `tests/permit_asked.rs` reads the crate's own source to keep that
-true — a new function that queries without asking fails CI. The `Permit` an
-authorizer returns is the answer, not a token the compiler makes each call
-carry: what is checked is that the question was put, not threaded.
+## How it holds together
 
-Every table carries a `scope` — one shop, one tenant, one marketplace seller —
-and ships row-level security policies reading it. A single-shop host uses one
-fixed scope and never thinks about it again. A multi-tenant host sets
+**Every table carries a `scope`** — one shop, one tenant, one marketplace
+seller — and ships row-level security policies reading it. A single-shop host
+uses one fixed scope and never thinks about it again. A multi-tenant host sets
 `app.scope` on its transaction and Postgres enforces the rest.
 
-**The entry point for money arriving is `settlement::capture`.** A route calls
-it, and so does a host's own webhook handler — never `payment::capture_only`
-directly, which takes the money and nothing more. `settlement::capture` calls
-that and then everything a captured payment obligates the shop to: a
-purchased gift card printed, a digital entitlement granted, a subscription's
-first period started. `settlement::refund` is its mirror.
+**Every public function that reaches the database asks your `Authorizer`
+first.** The `Permit` it returns is the answer, not a token the compiler makes
+each call carry: what is checked is that the question was put, not that it was
+threaded. `tests/permit_asked.rs` reads this crate's own source to keep that
+true, and a function that queries without asking fails CI.
 
-**Saving a card is tezgah's to record, not to take.** The instrument stays
-with kasapay — a shopper tokenises it with the provider directly, in their
-browser, and tezgah never sees a PAN. What `payment::save_account_holder`
-does is keep the reference that comes back: the provider's id for the
-customer, so a later charge — a subscription renewal, a reorder — can name
-the same instrument instead of asking for it again. `POST
-/store/customers/me/account-holders` is the one route onto it, and it always
-saves the signed-in shopper's own reference: nothing in the request names a
-different customer, and re-saving somebody else's already-claimed reference
-is a conflict, not a takeover. A contract's own `account_holder_id` (#104) is
-this id, carried forward.
+**Several other rules are enforced the same way** — by tests that read the
+source or the database catalogue rather than a list somebody maintains. That a
+route refuses a caller the host refuses. That a storefront route refuses
+another shopper's row and serves its own. That anything moving money or
+destroying a row leaves an audit record. That a migration's backfill announces
+its scope before it runs. Each carries a list of exceptions that may only
+shrink.
 
 ## Decisions
 
@@ -126,44 +83,53 @@ separate database. Nobody does. tezgah writes the join.
 
 **Amounts are `NUMERIC`, not minor units and not floats.** Medusa stores every
 amount twice — a numeric column to query and a JSON `raw_` column that is the
-real one — because JavaScript numbers lose precision. Rust has `Decimal`.
-A currency's exponent is a formatting fact, so `Money` carries an amount and a
-currency and nothing is multiplied by a hundred on the way in.
+real one — because JavaScript numbers lose precision. Rust has `Decimal`. A
+currency's exponent is a formatting fact, so `Money` carries an amount and a
+currency, and nothing is multiplied by a hundred on the way in.
 
-**Modules split by domain, not by ceremony.** One crate, `src/orders/`,
-`src/inventory/`. A workspace split earns its keep when a second binary needs a
-subset, and not before.
+**Modules split by domain, not by ceremony.** One crate, one file per domain —
+`src/order.rs`, `src/inventory.rs`. A workspace split earns its keep when a
+second binary needs a subset, and not before.
 
-**The workflow runner is the point.** Checkout is not one transaction — it
+**The workflow runner is the point.** Checkout is not one transaction: it
 reserves stock, asks a provider for money, writes an order, opens a fulfilment,
 and the provider is not in your database. Each step declares how to undo
-itself; when a later step fails the runner walks back through the earlier ones.
-State lives in one `workflow_execution` table, claims use `FOR UPDATE SKIP
-LOCKED`, and there is no Redis.
+itself, and when a later step fails the runner walks back through the earlier
+ones. State lives in `workflow_run` and `workflow_step`, claims use `FOR UPDATE
+SKIP LOCKED`, and there is no Redis.
 
 Capture has no compensation on purpose. Captured money is not un-captured; it
 is refunded, which is its own step with its own record.
 
-**What is deliberately absent:** routing a fulfilment across warehouses, and
-converting between currencies. A shop with stock in two places picks the
-location; a shop selling in two currencies prices in both rather than having one
-rate turned into another. Each is a real feature for somebody and neither is
-needed to sell a thing. They are absent because they were considered, not
-because they were forgotten.
+**Payments belong to [kasapay](https://github.com/productdevbook/kasapay).**
+One payment API over any provider. What lives here is the mapping onto its
+trait and what tezgah does with the answer — the collection, the ledger, and
+the webhook table that makes a redelivery land once.
 
-Also absent, and for the same reason a host provides an admin UI rather than
-tezgah shipping one: translating the interface a shopper reads and formatting
-a number for their locale, and reporting — a dashboard over what already sits
-in Postgres. Both belong to whatever a host is built in, not to the engine
-underneath it. A product's own content is different: `catalogue`'s
-`product_translation` carries a title, a description and a handle per locale,
-because that text is the shop's data, not the surrounding chrome.
+## What is deliberately absent
+
+Routing one fulfilment across several warehouses, and converting between
+currencies. A shop with stock in two places picks the location; a shop selling
+in two currencies prices in both rather than turning one rate into another.
+
+Translating the interface a shopper reads, formatting a number for their
+locale, and reporting over what already sits in Postgres. Those belong to
+whatever a host is built in, for the same reason tezgah does not ship an admin
+UI. A product's own content is different: `catalogue` carries a title, a
+description and a handle per locale, because that text is the shop's data
+rather than the surrounding chrome.
+
+Each of these is a real feature for somebody, and none is needed to sell a
+thing. They are absent because they were considered, not because they were
+forgotten.
 
 ## Design provenance
 
 The data model is informed by Medusa's published design, read at v2.18.0 under
-MIT. No source, comment, test or fixture was copied; see [NOTICE](NOTICE) for
-what that means and for the three decisions taken the other way.
+MIT; its commerce surface at v2.19.0 is the yardstick for what a shop should
+not have to write by hand. No source, comment, test or fixture was copied. See
+[NOTICE](NOTICE) for what that means, and for the three decisions taken the
+other way.
 
 ## Licence
 
