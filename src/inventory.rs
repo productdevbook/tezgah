@@ -1931,6 +1931,18 @@ pub async fn fulfil_units(
         .await);
     }
 
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "reservation_item",
+            entity_id: line_item_id.as_uuid(),
+            summary: serde_json::json!({ "quantity": quantity, "fulfilled": true }),
+        },
+    )
+    .await?;
+
     ctx.emit(
         tx,
         Event {
@@ -2024,6 +2036,18 @@ pub async fn unfulfil_units(
     }
 
     return_lots(tx, ctx, fulfillment_item_id).await?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Delete,
+            entity: "reservation_item",
+            entity_id: line_item_id.as_uuid(),
+            summary: serde_json::json!({ "quantity": quantity, "fulfilled": false }),
+        },
+    )
+    .await?;
 
     ctx.emit(
         tx,
@@ -2139,6 +2163,18 @@ pub async fn expire_reservations(
 
     for reservation in &expired {
         unreserve(tx, ctx, reservation).await?;
+
+        ctx.audit(
+            tx,
+            AuditEntry {
+                actor: ctx.actor.clone(),
+                action: Action::Delete,
+                entity: "reservation_item",
+                entity_id: reservation.id.as_uuid(),
+                summary: serde_json::json!({ "quantity": reservation.quantity }),
+            },
+        )
+        .await?;
 
         ctx.emit(
             tx,

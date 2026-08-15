@@ -822,7 +822,7 @@ pub async fn leave_group(
         },
     )?;
 
-    sqlx::query(
+    let done = sqlx::query(
         "delete from customer_group_customer
          where scope = $1 and customer_group_id = $2 and customer_id = $3",
     )
@@ -830,6 +830,22 @@ pub async fn leave_group(
     .bind(group_id.as_uuid())
     .bind(customer_id.as_uuid())
     .execute(&mut **tx)
+    .await?;
+
+    if done.rows_affected() == 0 {
+        return Err(Error::not_found("customer group"));
+    }
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Delete,
+            entity: "customer_group_customer",
+            entity_id: customer_id.as_uuid(),
+            summary: serde_json::json!({ "group": group_id }),
+        },
+    )
     .await?;
 
     Ok(())

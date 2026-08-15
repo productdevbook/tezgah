@@ -769,6 +769,35 @@ pub async fn restore_gift_card(
     .execute(&mut **tx)
     .await?;
 
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Settle,
+            entity: "gift_card",
+            entity_id: id.as_uuid(),
+            summary: serde_json::json!({
+                "restored": amount.amount.to_string(),
+                "order": what.order_id,
+            }),
+        },
+    )
+    .await?;
+
+    ctx.emit(
+        tx,
+        Event {
+            name: "gift_card.restored",
+            entity_id: id.as_uuid(),
+            payload: serde_json::json!({
+                "amount": amount.amount.to_string(),
+                "currency": amount.currency.as_str(),
+                "order": what.order_id,
+            }),
+        },
+    )
+    .await?;
+
     settle(tx, ctx, what).await?;
 
     Ok(())
@@ -1196,6 +1225,21 @@ pub async fn restore_store_credit(
     .bind(who(&ctx.actor))
     .bind(what.payment_collection_id.map(PaymentCollectionId::as_uuid))
     .execute(&mut **tx)
+    .await?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Settle,
+            entity: "store_credit",
+            entity_id: id.as_uuid(),
+            summary: serde_json::json!({
+                "restored": amount.amount.to_string(),
+                "order": what.order_id,
+            }),
+        },
+    )
     .await?;
 
     settle(tx, ctx, what).await?;
