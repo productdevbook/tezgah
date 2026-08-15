@@ -4,7 +4,8 @@
 //! [`payment::capture_only`](crate::payment::capture_only) — and then, in the
 //! same transaction, does everything a captured payment obligates the shop
 //! to: print a gift card that was bought rather than earned, grant a digital
-//! entitlement, start a subscription's first period. [`refund`] is the
+//! entitlement and mark its line fulfilled, start a subscription's first
+//! period. [`refund`] is the
 //! mirror, with one deliberate asymmetry: a refund revokes what capturing
 //! granted, but it does not un-print a card. A captured-then-refunded card is
 //! left alone.
@@ -21,6 +22,7 @@ use uuid::Uuid;
 use crate::credit;
 use crate::digital;
 use crate::error::Result;
+use crate::fulfilment;
 use crate::id::{
     OrderId, PaymentCollectionId, PaymentId, RefundReasonId, SubscriptionId, SubscriptionOrderId,
 };
@@ -83,7 +85,11 @@ pub async fn capture(
 
     if let Some(transaction) = written {
         credit::issue_purchased(tx, ctx, transaction.order_id).await?;
-        digital::grant(tx, ctx, transaction.order_id).await?;
+
+        let granted = digital::grant(tx, ctx, transaction.order_id).await?;
+        let lines: Vec<_> = granted.into_iter().map(|e| e.order_line_item_id).collect();
+        fulfilment::deliver_digital(tx, ctx, transaction.order_id, &lines).await?;
+
         start_first_period(tx, ctx, transaction.order_id).await?;
     }
 

@@ -39,7 +39,7 @@ tezgah decides nothing it does not have to. It asks, through traits in
 | `Authorizer` | who may do what | you already have roles; tezgah should not invent a second set |
 | `AuditSink` | where a change is written down | written in the same transaction, so a rollback takes the audit row with it |
 | `EventSink` | where a domain event goes | an outbox, not a publish — delivery is yours |
-| `Jobs` | how deferred work is queued | same transaction; enqueue and the change it belongs to commit together |
+| `Jobs` | how deferred work is queued | same transaction; enqueue and the change it belongs to commit together, and only for work one write schedules for later — never for a sweep on a clock |
 | `Clock` | what time it is | so "expires in an hour" is testable without sleeping |
 
 Two of those are load-bearing for anything that happens with nobody watching.
@@ -49,6 +49,19 @@ shop from renewing, and stops them silently, since the only caller is a cron.
 `Jobs` is where a declined renewal's next attempt is queued, in the same
 transaction as the `past_due` it belongs to — a host that implements it as a
 no-op has a shop that stops charging somebody and never retries.
+
+`Jobs` is for exactly that shape: one write that knows, at the moment it
+happens, that another must follow it at a later, specific time — a retry, a
+reminder, a thing this transaction cannot do itself because it has not
+happened yet. It is not how tezgah asks to be run on a clock. A reservation
+timing out (`inventory::expire_reservations`) and a subscription's period
+ending (`subscription::due`) are both a sweep over every row past a deadline,
+not one row's own next step, so both are plain functions a host calls on
+whatever schedule it already has — cron, a scheduled task, anything that
+ticks — rather than a job either enqueues for itself. Nothing about them is
+undecided: this is the design, and a digital entitlement's own expiry follows
+it for the same reason, rather than growing a job for every kind of "this
+timed out."
 
 You assemble a `Ctx` once per request and pass it down. A host with none of
 this uses `Permit::granted()` and a clock, and everything works.

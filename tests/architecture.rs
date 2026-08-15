@@ -340,10 +340,21 @@ fn a_domain_reaches_only_for_the_kernel_and_what_is_declared_shared() {
         ("providers", &["payment"][..]),
         // The top of the graph: everything that must happen because money
         // arrived, so it reaches for the domains that decide what that is.
+        // `fulfilment` is here rather than `digital` reaching for it: a
+        // digital line's `order_item` counters are `fulfilment`'s to write,
+        // the way a parcel's are, and settlement is the one place already
+        // holding both `digital`'s answer and the order it belongs to.
         // Nothing reaches back — see `no_module_depends_on_settlement` below.
         (
             "settlement",
-            &["credit", "digital", "order", "payment", "subscription"][..],
+            &[
+                "credit",
+                "digital",
+                "fulfilment",
+                "order",
+                "payment",
+                "subscription",
+            ][..],
         ),
         // promotion::apply reads a cart's lines and bounds them by the ceiling
         // cart owns. This is the edge that would become a cycle the day cart

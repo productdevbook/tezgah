@@ -626,7 +626,7 @@ pub struct ReasonView {
 #[derive(Debug, Clone, Serialize)]
 pub struct FulfillmentView {
     pub id: FulfillmentId,
-    pub location_id: StockLocationId,
+    pub location_id: Option<StockLocationId>,
     pub shipping_option_id: Option<ShippingOptionId>,
     pub requires_shipping: bool,
     pub packed_at: Option<chrono::DateTime<chrono::Utc>>,

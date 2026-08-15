@@ -263,6 +263,39 @@ async fn periods_of(shop: &Shop, subscription_id: SubscriptionId) -> Vec<(i32, S
     rows
 }
 
+async fn fulfillment_status_of(shop: &Shop, order_id: OrderId) -> String {
+    let mut tx = shop.begin().await;
+    let status = sqlx::query_scalar(
+        r#"select fulfillment_status from "order" where scope = $1 and id = $2"#,
+    )
+    .bind(shop.here.0)
+    .bind(order_id.as_uuid())
+    .fetch_one(&mut *tx)
+    .await
+    .expect("the order");
+    tx.rollback().await.expect("to roll back");
+    status
+}
+
+async fn fulfilled_quantity_of(shop: &Shop, order_id: OrderId, variant_id: VariantId) -> i32 {
+    let mut tx = shop.begin().await;
+    let quantity = sqlx::query_scalar(
+        "select i.fulfilled_quantity
+         from order_item i
+         join order_line_item l on l.scope = i.scope and l.id = i.order_line_item_id
+         where i.scope = $1 and i.order_id = $2 and l.variant_id = $3
+           and i.version = (select max(version) from order_item where scope = $1 and order_id = $2)",
+    )
+    .bind(shop.here.0)
+    .bind(order_id.as_uuid())
+    .bind(variant_id.as_uuid())
+    .fetch_one(&mut *tx)
+    .await
+    .expect("the order item");
+    tx.rollback().await.expect("to roll back");
+    quantity
+}
+
 struct Seed {
     giftcard_variant: VariantId,
     digital_variant: VariantId,
@@ -548,6 +581,64 @@ async fn refunding_revokes_the_entitlement_and_leaves_the_card_alone() {
         giftcards_of(&shop, order_id).await,
         1,
         "a captured-then-refunded card is left alone"
+    );
+
+    shop.close().await;
+}
+
+/// A parcel and a file in the same order: the money arriving fulfils the
+/// digital half without a warehouse in sight, and leaves the parcel's own
+/// counters exactly where checkout put them for the operator to move.
+#[tokio::test]
+async fn a_mixed_order_fulfils_only_its_digital_half_on_capture() {
+    let (shop, seed) = a_seeded_shop().await;
+    let ctx = shop.ctx();
+
+    let parcel_variant = {
+        let mut tx = shop.begin().await;
+        let id = a_variant(&mut tx, &ctx, "parcel").await;
+        tx.commit().await.expect("to commit");
+        id
+    };
+
+    let (order_id, paid) = an_order(
+        &shop,
+        money(dec!(100.00)),
+        vec![
+            NewOrderLine {
+                variant_id: Some(parcel_variant),
+                ..NewOrderLine::of("A parcel", 1, money(dec!(50.00)))
+            },
+            NewOrderLine {
+                variant_id: Some(seed.digital_variant),
+                requires_shipping: false,
+                ..NewOrderLine::of("The book", 1, money(dec!(50.00)))
+            },
+        ],
+        None,
+    )
+    .await;
+
+    let mut tx = shop.begin().await;
+    settlement::capture(&mut tx, &ctx, paid, money(dec!(100.00)), None)
+        .await
+        .expect("the capture to settle everything it can");
+    tx.commit().await.expect("to commit");
+
+    assert_eq!(entitlements_of(&shop, order_id).await, 1);
+    assert_eq!(
+        fulfilled_quantity_of(&shop, order_id, parcel_variant).await,
+        0,
+        "the parcel is still the operator's problem"
+    );
+    assert_eq!(
+        fulfilled_quantity_of(&shop, order_id, seed.digital_variant).await,
+        1,
+        "the book was handed over the moment the money arrived"
+    );
+    assert_eq!(
+        fulfillment_status_of(&shop, order_id).await,
+        "partially_fulfilled"
     );
 
     shop.close().await;

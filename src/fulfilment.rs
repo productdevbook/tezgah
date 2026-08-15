@@ -256,7 +256,9 @@ pub struct Shippable {
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct Fulfillment {
     pub id: FulfillmentId,
-    pub location_id: StockLocationId,
+    /// `None` for a digital delivery: a file or a code leaves no shelf, so
+    /// [`deliver_digital`] is the one writer that inserts a row without one.
+    pub location_id: Option<StockLocationId>,
     pub shipping_option_id: Option<ShippingOptionId>,
     pub provider_id: Option<Uuid>,
     pub requires_shipping: bool,
@@ -1158,6 +1160,148 @@ pub async fn create_fulfillment_with(
     Ok(fulfillment)
 }
 
+/// Delivers a digital order's lines the moment the money that bought them is
+/// captured. [`settlement::capture`](crate::settlement::capture) calls this
+/// after [`digital::grant`](crate::digital::grant), with the line items grant
+/// just issued an entitlement for, so an already-fulfilled line is never
+/// handed back here and a mixed order's parcel half is never touched.
+///
+/// A file or a code leaves no shelf: the fulfilment this writes carries no
+/// `location_id`, the way `fulfillment_location_id_valid` allows for a row
+/// with `requires_shipping = false`. It stays the one function in the crate
+/// that writes `order_item.fulfilled_quantity` — `crate::digital` asks for
+/// this rather than reaching for the column itself.
+///
+/// `pub(crate)`: nothing outside the crate reaches an order's digital lines
+/// except through `settlement::capture`, which already asked its own
+/// permission on the payment before either of them ran.
+pub(crate) async fn deliver_digital(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order: OrderId,
+    line_item_ids: &[LineItemId],
+) -> Result<()> {
+    if line_item_ids.is_empty() {
+        return Ok(());
+    }
+
+    let id = FulfillmentId::new();
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Fulfillment {
+            id: id.as_uuid(),
+            order: order.as_uuid(),
+        },
+    )?;
+
+    #[derive(FromRow)]
+    struct Row {
+        order_item_id: Uuid,
+        quantity: i32,
+        fulfilled_quantity: i32,
+        title: String,
+        sku: Option<String>,
+        barcode: Option<String>,
+    }
+
+    let ids: Vec<Uuid> = line_item_ids.iter().map(LineItemId::as_uuid).collect();
+    let rows = sqlx::query_as::<_, Row>(
+        "select i.id as order_item_id, i.quantity, i.fulfilled_quantity,
+                l.title, l.variant_sku as sku, l.variant_barcode as barcode
+         from order_item i
+         join order_line_item l on l.scope = i.scope and l.id = i.order_line_item_id
+         where i.scope = $1 and i.order_id = $2 and i.order_line_item_id = any($3)
+           and i.version = (select max(version) from order_item
+                             where scope = $1 and order_id = $2)",
+    )
+    .bind(ctx.scope.0)
+    .bind(order.as_uuid())
+    .bind(&ids)
+    .fetch_all(&mut **tx)
+    .await?;
+
+    let mut delivered = 0;
+    for row in rows {
+        if row.fulfilled_quantity >= row.quantity {
+            continue;
+        }
+
+        // The condition is the value just read, so a row that moved between
+        // the read and here is left for the next call rather than overwritten.
+        let moved = sqlx::query(
+            "update order_item
+             set fulfilled_quantity = quantity
+             where scope = $1 and id = $2 and fulfilled_quantity = $3",
+        )
+        .bind(ctx.scope.0)
+        .bind(row.order_item_id)
+        .bind(row.fulfilled_quantity)
+        .execute(&mut **tx)
+        .await?;
+
+        if moved.rows_affected() == 0 {
+            continue;
+        }
+
+        if delivered == 0 {
+            sqlx::query(
+                "insert into fulfillment
+                     (id, scope, location_id, requires_shipping, created_by)
+                 values ($1, $2, null, false, 'digital')",
+            )
+            .bind(id.as_uuid())
+            .bind(ctx.scope.0)
+            .execute(&mut **tx)
+            .await?;
+        }
+
+        sqlx::query(
+            "insert into fulfillment_item
+                 (id, scope, fulfillment_id, inventory_item_id, line_item_id, title, sku,
+                  barcode, quantity)
+             values ($1, $2, $3, null, $4, $5, $6, $7, $8)",
+        )
+        .bind(Uuid::now_v7())
+        .bind(ctx.scope.0)
+        .bind(id.as_uuid())
+        .bind(row.order_item_id)
+        .bind(&row.title)
+        .bind(row.sku.as_deref())
+        .bind(row.barcode.as_deref())
+        .bind(row.quantity - row.fulfilled_quantity)
+        .execute(&mut **tx)
+        .await?;
+
+        delivered += 1;
+    }
+
+    if delivered > 0 {
+        ctx.audit(
+            tx,
+            AuditEntry {
+                actor: ctx.actor.clone(),
+                action: Action::Write,
+                entity: "fulfillment",
+                entity_id: id.as_uuid(),
+                summary: serde_json::json!({ "order_id": order.as_uuid(), "items": delivered }),
+            },
+        )
+        .await?;
+
+        ctx.emit(
+            tx,
+            Event {
+                name: "fulfillment.created",
+                entity_id: id.as_uuid(),
+                payload: serde_json::json!({ "order_id": order.as_uuid() }),
+            },
+        )
+        .await?;
+    }
+
+    Ok(())
+}
+
 pub async fn fulfillment(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -1374,6 +1518,11 @@ pub async fn cancel_fulfillment_with(
     if current.canceled_at.is_some() {
         return Err(Error::conflict("that fulfilment was already cancelled"));
     }
+    let Some(location_id) = current.location_id else {
+        return Err(Error::conflict(
+            "a digital delivery is undone by revoking its entitlement, not by cancelling",
+        ));
+    };
 
     // Told before the row moves, so a carrier that refuses leaves the parcel
     // where it was rather than live at their end and cancelled at ours.
@@ -1431,7 +1580,7 @@ pub async fn cancel_fulfillment_with(
                 ctx,
                 line,
                 inventory_item,
-                current.location_id,
+                location_id,
                 units,
                 Some(item.id),
             )
