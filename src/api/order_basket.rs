@@ -2,13 +2,17 @@
 //! it, and a scope's own orders under it.
 //!
 //! There is no store-facing route here. A shopper never asks for a basket by
-//! id — the checkout that opened it hands the order numbers back — and the
-//! one thing an operator's console needs beyond an order it already reads is
-//! this: which other orders, if any, this one was split from a basket with.
+//! id — the checkout that opened it hands the order numbers back. What lives
+//! here is what a back office, or a host's own split-checkout orchestration,
+//! needs beyond an order it already reads: which other orders a basket
+//! joined, and — before any order exists — which cart, this scope's own, is
+//! the next leg of a checkout still in progress.
 
 use serde::{Deserialize, Serialize};
 
 use super::admin_order::OrderView;
+use super::store::CartView;
+use crate::cart;
 use crate::error::Result;
 use crate::id::{CustomerId, OrderBasketId, PaymentCollectionId};
 use crate::money::Currency;
@@ -116,6 +120,25 @@ pub async fn basket_orders(
     })
 }
 
+/// This scope's own carts under one basket — a host's split checkout finds
+/// its next leg here: for each seller scope the basket touches, this is what
+/// it calls, under that scope's own `Ctx`, to find the cart to place next
+/// with `checkout::Machine::place`'s `basket_id`. Not the whole basket, the
+/// same way `basket_orders` above is not: a scope reads what it was seeded
+/// to read.
+pub async fn basket_carts(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderBasketId,
+    query: ListBasketOrders,
+) -> Result<Page<CartView>> {
+    let page = cart::for_basket(tx, ctx, id, query.paging()?).await?;
+    Ok(Page {
+        items: page.items.into_iter().map(CartView::from).collect(),
+        next: page.next,
+    })
+}
+
 pub(super) static ROUTES: &[Route] = &[
     Route {
         surface: Surface::Admin,
@@ -148,5 +171,13 @@ pub(super) static ROUTES: &[Route] = &[
         action: Action::View,
         domain: "order_basket",
         summary: "This scope's own orders under a basket",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Get,
+        path: "/admin/order-baskets/{id}/carts",
+        action: Action::View,
+        domain: "order_basket",
+        summary: "This scope's own carts under a basket, the next leg to place",
     },
 ];

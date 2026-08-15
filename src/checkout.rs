@@ -327,6 +327,7 @@ impl Step for ValidateCart {
         let carried = Carried {
             cart_id: Some(cart_id),
             customer_id: cart.customer_id,
+            basket_id: carried.basket_id,
             ..Carried::default()
         };
 
