@@ -11,11 +11,14 @@
 use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
-use crate::id::{FulfillmentId, InventoryItemId, InventoryLotId, OrderId, StockLocationId};
+use crate::id::{
+    FulfillmentId, InventoryItemId, InventoryLotId, LineItemId, OrderId, StockLocationId,
+};
 use crate::inventory;
 use crate::page::{Cursor, Page, Paging};
 use crate::ports::{Action, Ctx, Tx};
 
+use super::admin_catalogue::ReservationView;
 use super::{Method, Route, Surface};
 
 fn paging(after: Option<&str>, limit: Option<u32>) -> Result<Paging> {
@@ -258,6 +261,35 @@ pub async fn orders_for_lot(
     Ok(map(page, LotShipmentView::from))
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReserveFromLot {
+    pub quantity: i32,
+    pub line_item_id: Option<LineItemId>,
+    pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+/// The operator naming which lot fills a hold, overriding what FEFO/FIFO
+/// would have picked — for the customer who needs the later expiry.
+pub async fn reserve_from_lot(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: InventoryLotId,
+    body: ReserveFromLot,
+) -> Result<ReservationView> {
+    let made = inventory::reserve_from_lot(
+        tx,
+        ctx,
+        id,
+        body.quantity,
+        body.line_item_id,
+        body.expires_at,
+    )
+    .await?;
+
+    Ok(ReservationView::from(made))
+}
+
 pub(super) static ROUTES: &[Route] = &[
     Route {
         surface: Surface::Admin,
@@ -314,5 +346,13 @@ pub(super) static ROUTES: &[Route] = &[
         action: Action::View,
         domain: "inventory",
         summary: "Answer a recall: which orders this lot went out on",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Post,
+        path: "/admin/inventory-lots/{id}/reservations",
+        action: Action::Write,
+        domain: "inventory",
+        summary: "Reserve a named lot, overriding FEFO/FIFO",
     },
 ];

@@ -1557,6 +1557,28 @@ pub async fn save_account_holder(
 
     let provider = provider_row(tx, ctx, &new.provider_code).await?;
 
+    // The upsert below re-points an existing row to `excluded.customer_id`,
+    // which would hand it to whoever next quotes the same `external_id` if
+    // this did not stop them: a reference is only ever moved onto its own
+    // customer, never taken from another one.
+    let existing_owner: Option<Option<uuid::Uuid>> = sqlx::query_scalar(
+        "select customer_id from account_holder
+         where scope = $1 and payment_provider_id = $2 and external_id = $3",
+    )
+    .bind(ctx.scope.0)
+    .bind(provider.id.as_uuid())
+    .bind(new.external_id.trim())
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    if let Some(Some(owner)) = existing_owner {
+        if new.customer_id.is_none_or(|c| c.as_uuid() != owner) {
+            return Err(Error::conflict(
+                "that account is already saved against a different customer",
+            ));
+        }
+    }
+
     let holder = sqlx::query_as::<_, AccountHolder>(
         "insert into account_holder (
              id, scope, payment_provider_id, customer_id, external_id, email, data

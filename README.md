@@ -103,6 +103,18 @@ that and then everything a captured payment obligates the shop to: a
 purchased gift card printed, a digital entitlement granted, a subscription's
 first period started. `settlement::refund` is its mirror.
 
+**Saving a card is tezgah's to record, not to take.** The instrument stays
+with kasapay — a shopper tokenises it with the provider directly, in their
+browser, and tezgah never sees a PAN. What `payment::save_account_holder`
+does is keep the reference that comes back: the provider's id for the
+customer, so a later charge — a subscription renewal, a reorder — can name
+the same instrument instead of asking for it again. `POST
+/store/customers/me/account-holders` is the one route onto it, and it always
+saves the signed-in shopper's own reference: nothing in the request names a
+different customer, and re-saving somebody else's already-claimed reference
+is a conflict, not a takeover. A contract's own `account_holder_id` (#104) is
+this id, carried forward.
+
 ## Decisions
 
 **One Postgres, real foreign keys.** Medusa isolates its modules so completely

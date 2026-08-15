@@ -25,9 +25,9 @@ use uuid::Uuid;
 
 use crate::error::{Error, Result};
 use crate::id::{
-    AddressId, CartId, CategoryId, CollectionId, CustomerId, LineItemId, OptionId, OrderId,
-    PaymentCollectionId, PaymentSessionId, ProductId, ProductTagId, ProductTypeId, RegionId,
-    SalesChannelId, SellingPlanId, ShippingOptionId, VariantId,
+    AccountHolderId, AddressId, CartId, CategoryId, CollectionId, CustomerId, LineItemId, OptionId,
+    OrderId, PaymentCollectionId, PaymentSessionId, ProductId, ProductTagId, ProductTypeId,
+    RegionId, SalesChannelId, SellingPlanId, ShippingOptionId, VariantId,
 };
 use crate::money::{Currency, Money};
 use crate::page::{Cursor, Page, Paging};
@@ -2011,6 +2011,70 @@ pub async fn delete_my_address(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: AddressId) ->
 }
 
 // ---------------------------------------------------------------------------
+// Saved payment accounts
+//
+// The instrument itself is kasapay's: a shopper tokenises a card with the
+// provider directly and this only records the reference it hands back, so a
+// contract can name it later (`account_holder_id`, see the subscription
+// routes). `customer_id` is never taken from the request body — it is always
+// the signed-in shopper — so this can create or refresh one's own reference
+// and nobody else's.
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AccountHolderView {
+    pub id: AccountHolderId,
+    pub provider_code: String,
+    pub external_id: String,
+    pub email: Option<String>,
+}
+
+impl AccountHolderView {
+    fn from(row: payment::AccountHolder, provider_code: String) -> Self {
+        AccountHolderView {
+            id: row.id,
+            provider_code,
+            external_id: row.external_id,
+            email: row.email,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SaveMyAccountHolder {
+    pub provider_code: String,
+    /// The provider's own id for this customer, from tokenising with it
+    /// directly.
+    pub external_id: String,
+    pub email: Option<String>,
+}
+
+pub async fn save_my_account_holder(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    body: SaveMyAccountHolder,
+) -> Result<AccountHolderView> {
+    let who = signed_in(ctx)?;
+
+    let provider_code = body.provider_code.clone();
+    let holder = payment::save_account_holder(
+        tx,
+        ctx,
+        payment::NewAccountHolder {
+            provider_code: body.provider_code,
+            customer_id: Some(who),
+            external_id: body.external_id,
+            email: body.email,
+            data: serde_json::Value::Null,
+        },
+    )
+    .await?;
+
+    Ok(AccountHolderView::from(holder, provider_code))
+}
+
+// ---------------------------------------------------------------------------
 // Orders
 // ---------------------------------------------------------------------------
 
@@ -2638,6 +2702,14 @@ pub(super) static ROUTES: &[Route] = &[
         action: Action::Delete,
         domain: "customer",
         summary: "Remove an address of one's own",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Post,
+        path: "/store/customers/me/account-holders",
+        action: Action::Write,
+        domain: "payment",
+        summary: "Save a card reference tokenised with a provider directly",
     },
     Route {
         surface: Surface::Store,

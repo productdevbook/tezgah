@@ -56,7 +56,7 @@ use std::path::{Path, PathBuf};
 
 /// Public functions nothing in the crate calls, each with the reason.
 /// Adding to this is not a fix.
-const TOLERATED: [(&str, &str); 48] = [
+const TOLERATED: [(&str, &str); 45] = [
     (
         "batch::import_workflow",
         "the import workflow a host runs through the runner when a file is large \
@@ -116,11 +116,6 @@ const TOLERATED: [(&str, &str); 48] = [
          no route passes one",
     ),
     (
-        "inventory::locations_for_sales_channel",
-        "sales channels are read nowhere and reach no route; shipped unwired, see \
-         #109",
-    ),
-    (
         "inventory::expire_reservations",
         "a sweep a host runs on a schedule; there is no request to hang it off",
     ),
@@ -133,11 +128,6 @@ const TOLERATED: [(&str, &str); 48] = [
         "inventory::availability_for_variant",
         "what could still be sold of a variant, counting its bundle; no route \
          answers the question",
-    ),
-    (
-        "inventory::reserve_from_lot",
-        "lot and serial tracking has no route and no in-crate caller; shipped \
-         unwired, see #110",
     ),
     (
         "order::can_transition",
@@ -176,11 +166,6 @@ const TOLERATED: [(&str, &str); 48] = [
         "payment::balance",
         "what is still capturable and refundable; the admin payment view sums it \
          its own way",
-    ),
-    (
-        "payment::save_account_holder",
-        "a customer as one provider knows them; nothing saves or reads a saved \
-         card yet",
     ),
     (
         "payment::record_webhook",

@@ -2209,6 +2209,17 @@ pub async fn unlink_sales_channel(
     inventory::unlink_sales_channel(tx, ctx, id, sales_channel_id).await
 }
 
+pub async fn list_locations_for_sales_channel(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    sales_channel_id: SalesChannelId,
+    query: ListQuery,
+) -> Result<Page<StockLocationView>> {
+    Ok(map_page(
+        inventory::locations_for_sales_channel(tx, ctx, sales_channel_id, query.paging()?).await?,
+    ))
+}
+
 // ---------------------------------------------------------------------------
 // Inventory items and levels
 // ---------------------------------------------------------------------------
@@ -3442,6 +3453,14 @@ pub(super) static ROUTES: &[Route] = &[
         action: Action::Delete,
         domain: INVENTORY,
         summary: "Stop a sales channel shipping from a location",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Get,
+        path: "/admin/sales-channels/{id}/stock-locations",
+        action: Action::View,
+        domain: INVENTORY,
+        summary: "List the locations that ship for a sales channel",
     },
     Route {
         surface: Surface::Admin,
