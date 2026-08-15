@@ -81,10 +81,8 @@ writes an order, and the provider is not in your database.
 - [x] store, its default currency and its supported ones
 - [x] currency, with the exponent used for rounding and display
 - [x] region: countries, currency, tax behaviour, allowed payment providers
-- [ ] sales channel, and products belonging to some of them — product↔channel
-      linking is wired, but the channel itself has no route (#109)
-- [ ] publishable keys that pin a storefront to its channels — written, unwired,
-      no route (#109)
+- [x] sales channel, and products belonging to some of them
+- [x] publishable keys that pin a storefront to its channels
 
 ### 4. Catalogue
 
@@ -125,8 +123,8 @@ writes an order, and the provider is not in your database.
 - [x] totals computed one way, in one place
 - [x] a guest cart becomes a customer's on sign-in
 - [ ] carts expire, and expiry releases what they reserved — `cart::expire`
-      does not itself call a reservation release; unverified whether a DB
-      cascade covers it
+      deletes the cart and nothing releases the reservation; there is no key
+      to cascade through either (#148)
 
 ### 8. Payment
 
