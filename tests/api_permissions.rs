@@ -132,6 +132,7 @@ fn every_admin_domain_is_one_the_crate_has() {
         "fulfilment",
         "inventory",
         "order",
+        "order_basket",
         "payment",
         "pricing",
         "promotion",

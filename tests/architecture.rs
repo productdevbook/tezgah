@@ -276,6 +276,7 @@ fn a_domain_reaches_only_for_the_kernel_and_what_is_declared_shared() {
                 "fulfilment",
                 "inventory",
                 "order",
+                "order_basket",
                 "payment",
                 "pricing",
                 "credit",
@@ -298,6 +299,11 @@ fn a_domain_reaches_only_for_the_kernel_and_what_is_declared_shared() {
             "order",
             &["cart", "fulfilment", "inventory", "payment", "promotion"][..],
         ),
+        // A basket joins the seller-scoped orders split from it at checkout,
+        // so it reaches order for the row and the type. The arrow only goes
+        // this way: an order carries a basket id, not a basket a list of
+        // orders, or the two modules would depend on each other.
+        ("order_basket", &["order"][..]),
         // A parcel leaving is the moment stock leaves, so the module that writes
         // the parcel is the one that has to move the count. The arrow only goes
         // this way: `inventory` knows nothing of parcels, and the day it wants

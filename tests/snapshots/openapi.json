@@ -4239,6 +4239,153 @@
         "x-tezgah-permission": "write"
       }
     },
+    "/admin/order-baskets": {
+      "post": {
+        "operationId": "postAdminOrderBaskets",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Open a basket a checkout across seller scopes joins under",
+        "tags": [
+          "order_basket"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/order-baskets/{id}": {
+      "get": {
+        "operationId": "getAdminOrderBasketsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Read one basket",
+        "tags": [
+          "order_basket"
+        ],
+        "x-tezgah-permission": "view"
+      }
+    },
+    "/admin/order-baskets/{id}/orders": {
+      "get": {
+        "operationId": "getAdminOrderBasketsByIdOrders",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "This scope's own orders under a basket",
+        "tags": [
+          "order_basket"
+        ],
+        "x-tezgah-permission": "view"
+      }
+    },
+    "/admin/order-baskets/{id}/payment-collection": {
+      "post": {
+        "operationId": "postAdminOrderBasketsByIdPaymentCollection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Say which collection paid for a basket",
+        "tags": [
+          "order_basket"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
     "/admin/order-changes/{id}": {
       "get": {
         "operationId": "getAdminOrderChangesById",
@@ -15821,6 +15968,9 @@
     },
     {
       "name": "order"
+    },
+    {
+      "name": "order_basket"
     },
     {
       "name": "payment"

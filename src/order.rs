@@ -261,21 +261,6 @@ impl Order {
     pub fn status(&self) -> Result<OrderStatus> {
         OrderStatus::parse(&self.status)
     }
-
-    /// Which collection paid: this order's own, or — when it carries none
-    /// because it was split from a basket — the basket's. The basket lives in
-    /// the marketplace's scope, not this order's, so reading it is a second
-    /// query under a second `Ctx` that the caller runs and hands the answer
-    /// to here; this crosses no scope itself; it only decides which of two
-    /// already-fetched answers is the real one, which is what
-    /// `order_basket_payment_single_source` guarantees is never both.
-    pub fn payment_collection(
-        &self,
-        basket: Option<&crate::order_basket::OrderBasket>,
-    ) -> Option<PaymentCollectionId> {
-        self.payment_collection_id
-            .or_else(|| basket.and_then(|b| b.payment_collection_id))
-    }
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]

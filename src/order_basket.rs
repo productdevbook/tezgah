@@ -51,6 +51,17 @@ impl OrderBasket {
     pub fn currency(&self) -> Result<Currency> {
         Currency::parse(&self.currency_code)
     }
+
+    /// Which collection paid for one of this basket's orders: the order's own
+    /// if it carries one, or this basket's. Both `order` and this basket are
+    /// already fetched by the caller, each under its own scope's `Ctx` — an
+    /// order's scope is a seller's, this basket's is the marketplace's, and
+    /// reading one from the other's connection is exactly what row-level
+    /// security forbids. `order_basket_payment_single_source` is what
+    /// guarantees the two never both answer.
+    pub fn pays_for(&self, order: &Order) -> Option<PaymentCollectionId> {
+        order.payment_collection_id.or(self.payment_collection_id)
+    }
 }
 
 #[derive(Debug, Clone)]
