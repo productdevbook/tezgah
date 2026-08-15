@@ -3431,6 +3431,45 @@
         "x-tezgah-permission": "view"
       }
     },
+    "/admin/gift-cards/{id}/adjust": {
+      "post": {
+        "operationId": "postAdminGiftCardsByIdAdjust",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Correct a card's balance by hand, with a reason",
+        "tags": [
+          "credit"
+        ],
+        "x-tezgah-permission": "settle"
+      }
+    },
     "/admin/gift-cards/{id}/disable": {
       "post": {
         "operationId": "postAdminGiftCardsByIdDisable",
@@ -11618,6 +11657,45 @@
           "inventory"
         ],
         "x-tezgah-permission": "delete"
+      }
+    },
+    "/admin/store-credits/{id}/adjust": {
+      "post": {
+        "operationId": "postAdminStoreCreditsByIdAdjust",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Correct a customer's balance by hand, with a reason",
+        "tags": [
+          "credit"
+        ],
+        "x-tezgah-permission": "settle"
       }
     },
     "/admin/store-credits/{id}/transactions": {
