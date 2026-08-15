@@ -732,7 +732,30 @@ async fn a_held_order(
 ) {
     let (item, location, variant) = a_shelf(tx, ctx, scope, stocked).await;
 
+    // `reservation_item.cart_line_item_id` (0076) is a real, scoped foreign
+    // key now: the hold has to name a cart line that exists, not a fresh id
+    // standing in for one.
+    let cart = Uuid::now_v7();
+    sqlx::query(r#"insert into cart (id, scope, currency_code) values ($1, $2, 'TRY')"#)
+        .bind(cart)
+        .bind(scope.0)
+        .execute(&mut **tx)
+        .await
+        .expect("a cart");
     let cart_line = LineItemId::new();
+    sqlx::query(
+        "insert into cart_line_item
+             (id, scope, cart_id, product_title, quantity, unit_price, currency_code)
+         values ($1, $2, $3, 'a thing', $4, 10, 'TRY')",
+    )
+    .bind(cart_line.as_uuid())
+    .bind(scope.0)
+    .bind(cart)
+    .bind(quantity)
+    .execute(&mut **tx)
+    .await
+    .expect("a cart line");
+
     inventory::reserve(
         tx,
         ctx,
