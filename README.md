@@ -132,11 +132,12 @@ LOCKED`, and there is no Redis.
 Capture has no compensation on purpose. Captured money is not un-captured; it
 is refunded, which is its own step with its own record.
 
-**What is deliberately absent:** multi-warehouse routing, geo-zoned shipping
-rate tables, buy-X-get-Y promotions, campaign budgets, order-item version
-history. Each is a real feature for somebody and none is needed to sell a
-thing. They are absent because they were considered, not because they were
-forgotten.
+**What is deliberately absent:** routing a fulfilment across warehouses, and
+converting between currencies. A shop with stock in two places picks the
+location; a shop selling in two currencies prices in both rather than having one
+rate turned into another. Each is a real feature for somebody and neither is
+needed to sell a thing. They are absent because they were considered, not
+because they were forgotten.
 
 ## Design provenance
 

@@ -205,6 +205,9 @@ could not.
 
 **Because a host has it.** Everything in the table at the top.
 
-**Not yet, and named so it can be asked for.** Multi-seller marketplaces, where
-one order settles to several payees. Subscriptions and recurring billing.
-Gift cards and store credit. Bundles priced as a unit rather than as parts.
+**Not yet, and named so it can be asked for.** Moving stock between warehouses
+as one atomic act rather than two adjustments. Converting between currencies.
+
+Four things that were on this list have since been built and are no longer
+absent: multi-seller marketplaces, subscriptions and recurring billing, gift
+cards and store credit, and bundles priced as a unit.
