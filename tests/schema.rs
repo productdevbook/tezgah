@@ -283,7 +283,7 @@ async fn a_migration_backfills_the_subscription_link_from_metadata() {
             "insert into subscription
                  (id, scope, customer_id, selling_plan_id, currency_code, next_billing_at,
                   current_period_start, current_period_end)
-             values ($1, $2, $3, $4, 'TRY', now(), now(), now())",
+             values ($1, $2, $3, $4, 'TRY', now(), now(), now() + interval '1 day')",
         )
         .bind(subscription)
         .bind(scope)
@@ -793,7 +793,7 @@ async fn a_key_cannot_name_another_shops_row() {
         "insert into subscription
              (id, scope, customer_id, selling_plan_id, currency_code, next_billing_at,
               current_period_start, current_period_end)
-         values ($1, $2, $3, $4, 'TRY', now(), now(), now())",
+         values ($1, $2, $3, $4, 'TRY', now(), now(), now() + interval '1 day')",
     )
     .bind(subscription)
     .bind(shop.elsewhere.0)

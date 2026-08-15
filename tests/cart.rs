@@ -673,6 +673,7 @@ async fn a_merge_does_not_spread_a_line_that_ships_nowhere() -> tezgah::Result<(
     let ctx = shop.ctx();
 
     let download = a_variant(&mut tx, &ctx, "audiobook").await?;
+    digital(&mut tx, &ctx, download).await?;
     let kettle = a_variant(&mut tx, &ctx, "pan").await?;
     stocked(&mut tx, &ctx, kettle, true).await?;
 
