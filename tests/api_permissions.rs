@@ -2193,6 +2193,16 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
         )
     );
     denied!(
+        Method::Post,
+        "/admin/draft-orders/{id}/edit",
+        admin_order::open_draft_edit(
+            &mut tx,
+            &ctx,
+            OrderId::new(),
+            admin_order::OpenEdit { description: None }
+        )
+    );
+    denied!(
         Method::Get,
         "/admin/order-edits/{id}",
         admin_order::get_order_edit(&mut tx, &ctx, OrderChangeId::new())
