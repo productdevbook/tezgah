@@ -1115,6 +1115,7 @@ impl CreateOrder {
             currency_code: Currency::parse(&self.currency)?,
             locale: self.locale,
             payment_collection_id: None,
+            basket_id: None,
             subscription_id: None,
             shipping_address: None,
             billing_address: None,
