@@ -30,15 +30,23 @@ already solved by whatever embeds this, so it is asked for through
 
 ## Where this is
 
-229 tests green. Every domain in stages 2 to 13 has a module, a schema and
-tests; both API surfaces are served, 295 routes, with an OpenAPI document
-generated from the route table and snapshotted. Forty-seven of the issues
-opened against this file are closed.
+507 tests green. Both API surfaces are served — 443 routes in the route
+table, 329 paths / 440 operations in the snapshotted OpenAPI document
+generated from it. Most domains in stages 2 to 13 are module, schema and
+test complete and reachable from a route; the exceptions are marked below,
+not hidden in prose: sales channels and publishable keys have the code but no
+route (#109), saved payment account holders are never read back, and lot
+reservation is unreached from checkout (#110). The stage 15 proof suite
+already has substantive tests for all six of its claims — the gap left there
+is that no route or matrix test exhaustively proves every one of the 443
+routes checks the permission it declares; `tests/api_permissions.rs` proves
+the structural rule for the whole table and the functional refusal for about
+35 hand-picked handlers.
 
-What is left is written as issues rather than as boxes here: the proof suite
-(#48, #49), the payment providers moving onto kasapay (#53), the seventeen
-listings that still want a page (#52), order transfer (#54), and six tables the
-isolation seeder cannot yet build a row for (#55).
+What is left beyond that is written as issues rather than as boxes here: the
+payment providers moving onto kasapay (#53), the seventeen listings that
+still want a page (#52), order transfer (#54), and six tables the isolation
+seeder cannot yet build a row for (#55).
 
 ## Stages
 
@@ -58,128 +66,141 @@ Nothing starts before the thing above it works.
 Checkout is not one transaction: it reserves stock, asks a provider for money,
 writes an order, and the provider is not in your database.
 
-- [ ] `Step` — invoke, and how to undo what invoking did
-- [ ] compensation — a later failure walks back through the earlier steps
-- [ ] `workflow_execution` — checkpoints, claimed by `FOR UPDATE SKIP LOCKED`
-- [ ] idempotency — the same transaction id twice resumes rather than repeats
-- [ ] retry with backoff, a ceiling, a dead letter
-- [ ] timeouts, and a lease a long step extends while it runs
-- [ ] advisory locks, so two checkouts on one cart do not interleave
-- [ ] nested workflows, and steps that run in parallel
-- [ ] tests: interrupt at every step in turn, assert nothing is left behind
+- [x] `Step` — invoke, and how to undo what invoking did
+- [x] compensation — a later failure walks back through the earlier steps
+- [x] `workflow_execution` — checkpoints, claimed by `FOR UPDATE SKIP LOCKED`
+- [x] idempotency — the same transaction id twice resumes rather than repeats
+- [x] retry with backoff, a ceiling, a dead letter
+- [x] timeouts, and a lease a long step extends while it runs
+- [x] advisory locks, so two checkouts on one cart do not interleave
+- [x] nested workflows, and steps that run in parallel
+- [x] tests: interrupt at every step in turn, assert nothing is left behind
 
 ### 3. Store, currency, region, sales channel
 
-- [ ] store, its default currency and its supported ones
-- [ ] currency, with the exponent used for rounding and display
-- [ ] region: countries, currency, tax behaviour, allowed payment providers
-- [ ] sales channel, and products belonging to some of them
-- [ ] publishable keys that pin a storefront to its channels
+- [x] store, its default currency and its supported ones
+- [x] currency, with the exponent used for rounding and display
+- [x] region: countries, currency, tax behaviour, allowed payment providers
+- [ ] sales channel, and products belonging to some of them — product↔channel
+      linking is wired, but the channel itself has no route (#109)
+- [ ] publishable keys that pin a storefront to its channels — written, unwired,
+      no route (#109)
 
 ### 4. Catalogue
 
-- [ ] product, variant, option, option value
-- [ ] collection, category (nested), tag, type, images
-- [ ] slug unique within a scope; draft, published, archived
-- [ ] variant generation from options, and the combinations that are not sold
-- [ ] localisation: title and description per locale
-- [ ] listing: cursor pagination, allowlisted filters, a query-count test
+- [x] product, variant, option, option value
+- [x] collection, category (nested), tag, type, images
+- [x] slug unique within a scope; draft, published, archived
+- [x] variant generation from options, and the combinations that are not sold
+- [x] localisation: title and description per locale
+- [x] listing: cursor pagination, allowlisted filters, a query-count test
 
 ### 5. Pricing
 
-- [ ] `price_set` per variant and per shipping option
-- [ ] price by currency, with quantity bands
-- [ ] price rules: region, customer group, channel, and custom attributes
-- [ ] resolution: most specific wins, ties by priority, a default underneath
-- [ ] price list: dated, conditional, sale or override, with its own rules
-- [ ] tax-inclusive pricing as a per-currency, per-region preference
+- [x] `price_set` per variant and per shipping option
+- [x] price by currency, with quantity bands
+- [x] price rules: region, customer group, channel, and custom attributes
+- [x] resolution: most specific wins, ties by priority, a default underneath
+- [x] price list: dated, conditional, sale or override, with its own rules
+- [x] tax-inclusive pricing as a per-currency, per-region preference
 
 ### 6. Inventory and locations
 
-- [ ] `inventory_item`, `inventory_level`, `reservation_item`
-- [ ] stock locations, and which channels each serves
-- [ ] reserving raises `reserved` and leaves `stocked` alone
-- [ ] fulfilling drops the reservation and lowers `stocked`
-- [ ] reservations expire, on the host's clock — see `Jobs` in the README
-- [ ] backorder as an explicit allowance, never an accident
-- [ ] one variant over several items, for bundles
-- [ ] concurrency test: two carts, one last unit, exactly one wins
+- [x] `inventory_item`, `inventory_level`, `reservation_item`
+- [ ] stock locations, and which channels each serves — locations are, which
+      channels serve them (`locations_for_sales_channel`) is written but has
+      no route (#109)
+- [x] reserving raises `reserved` and leaves `stocked` alone
+- [x] fulfilling drops the reservation and lowers `stocked`
+- [x] reservations expire, on the host's clock — see `Jobs` in the README
+- [x] backorder as an explicit allowance, never an accident
+- [x] one variant over several items, for bundles
+- [x] concurrency test: two carts, one last unit, exactly one wins
 
 ### 7. Cart
 
-- [ ] cart, line item, adjustment, tax line, shipping method
-- [ ] a line item snapshots title, sku and options, so a later edit cannot
+- [x] cart, line item, adjustment, tax line, shipping method
+- [x] a line item snapshots title, sku and options, so a later edit cannot
       rewrite history
-- [ ] totals computed one way, in one place
-- [ ] a guest cart becomes a customer's on sign-in
-- [ ] carts expire, and expiry releases what they reserved
+- [x] totals computed one way, in one place
+- [x] a guest cart becomes a customer's on sign-in
+- [ ] carts expire, and expiry releases what they reserved — `cart::expire`
+      does not itself call a reservation release; unverified whether a DB
+      cascade covers it
 
 ### 8. Payment
 
-- [ ] `payment_collection` → `session` → `payment` → `capture` / `refund`
-- [ ] authorising and capturing are separate acts with separate permission
-- [ ] `PaymentProvider` trait, and a fake that can fail on purpose
-- [ ] Stripe, and iyzico
-- [ ] account holders: a saved customer at the provider
-- [ ] inbound webhooks: signature checked, `(provider, event_id)` unique, so a
+- [x] `payment_collection` → `session` → `payment` → `capture` / `refund`
+- [x] authorising and capturing are separate acts with separate permission
+- [x] `PaymentProvider` trait, and a fake that can fail on purpose
+- [x] Stripe, and iyzico
+- [ ] account holders: a saved customer at the provider — `save_account_holder`
+      is written but nothing saves or reads a saved card yet
+      (`tests/reachable.rs:181-184`)
+- [x] inbound webhooks: signature checked, `(provider, event_id)` unique, so a
       replay is stored once and acted on once
-- [ ] the amount charged is checked against the order, and a mismatch becomes a
+- [x] the amount charged is checked against the order, and a mismatch becomes a
       recorded state rather than a log line
 
 ### 9. Order
 
-- [ ] order, item, shipping method, addresses, a transaction ledger
-- [ ] status as an enum with declared transitions and a check constraint
-- [ ] a total that is always the sum of its lines, held by a property test
-- [ ] versioned items, so an edited order keeps what it looked like before
-- [ ] `order_change` and `order_change_action`: one mechanism for edit, return,
+- [x] order, item, shipping method, addresses, a transaction ledger
+- [x] status as an enum with declared transitions and a check constraint
+- [x] a total that is always the sum of its lines, held by a property test
+- [x] versioned items, so an edited order keeps what it looked like before
+- [x] `order_change` and `order_change_action`: one mechanism for edit, return,
       exchange and claim, each with request, approve, decline
-- [ ] returns: what came back, why, and what it is worth
-- [ ] exchanges: a return and an outbound order that settle together
-- [ ] claims: damaged or missing, replaced or refunded
-- [ ] refunds put stock back and give a promotion use back
-- [ ] drafts: an order built in the back office and sent to be paid
+- [x] returns: what came back, why, and what it is worth
+- [x] exchanges: a return and an outbound order that settle together
+- [x] claims: damaged or missing, replaced or refunded
+- [x] refunds put stock back and give a promotion use back
+- [x] drafts: an order built in the back office and sent to be paid
 
 ### 10. Fulfilment
 
-- [ ] fulfilment set, service zone, geo zone (country, province, postcode)
-- [ ] shipping option, its rules, flat and calculated pricing
-- [ ] fulfilment, shipment, tracking, labels
-- [ ] `FulfillmentProvider` trait; manual fulfilment first
-- [ ] partial fulfilment, and cancelling one
+- [x] fulfilment set, service zone, geo zone (country, province, postcode)
+- [x] shipping option, its rules, flat and calculated pricing
+- [x] fulfilment, shipment, tracking, labels
+- [x] `FulfillmentProvider` trait; manual fulfilment first
+- [x] partial fulfilment, and cancelling one
 
 ### 11. Tax
 
-- [ ] tax region, nested by parent, with rates and rules
-- [ ] one default rate per region, enforced by a unique index
-- [ ] combinable rates that stack
-- [ ] `TaxProvider` trait, for a host that calculates elsewhere
-- [ ] inclusive and exclusive, both correct at the line
+- [x] tax region, nested by parent, with rates and rules
+- [x] one default rate per region, enforced by a unique index
+- [x] combinable rates that stack
+- [x] `TaxProvider` trait, for a host that calculates elsewhere
+- [x] inclusive and exclusive, both correct at the line
 
 ### 12. Customer
 
-- [ ] customer, addresses, groups
-- [ ] a guest becoming a customer keeps their orders
-- [ ] erasure and export, so a host can answer a data request
+- [x] customer, addresses, groups
+- [x] a guest becoming a customer keeps their orders
+- [x] erasure and export, so a host can answer a data request
 
 ### 13. Promotion
 
-- [ ] promotion, application method, campaign
-- [ ] fixed and percentage; across an order, per line, or on shipping
-- [ ] rules, target rules, buy rules
-- [ ] buy-X-get-Y
-- [ ] campaign budget, by spend or by count, decremented atomically
-- [ ] usage limits per shop and per customer, claimed at checkout rather than
+- [x] promotion, application method, campaign
+- [x] fixed and percentage; across an order, per line, or on shipping
+- [x] rules, target rules, buy rules
+- [x] buy-X-get-Y
+- [x] campaign budget, by spend or by count, decremented atomically
+- [x] usage limits per shop and per customer, claimed at checkout rather than
       counted at payment
-- [ ] several promotions on one cart, applied in a defined order
+- [x] several promotions on one cart, applied in a defined order
 
 ### 14. Surfaces
 
-- [ ] store API: catalogue, cart, checkout, orders, customer, returns
-- [ ] admin API: everything else
-- [ ] OpenAPI generated from the code, snapshotted, client types generated
-- [ ] every route declares its permission, and a matrix test proves it
-- [ ] listing, filtering and sorting consistent across every collection
+- [x] store API: catalogue, cart, checkout, orders, customer, returns
+- [x] admin API: everything else
+- [ ] OpenAPI generated from the code, snapshotted, client types generated —
+      generated and snapshotted (`tests/openapi.rs`); client-type generation
+      unverified this session
+- [ ] every route declares its permission, and a matrix test proves it —
+      `tests/api_permissions.rs` proves the structural rule over the whole
+      route table, but the functional "handler actually refuses" test covers
+      only ~35 hand-picked handlers of 443 routes, not a full matrix
+- [x] listing, filtering and sorting consistent across every collection
 
 ### 15. Proof
 
@@ -205,8 +226,10 @@ could not.
 
 **Because a host has it.** Everything in the table at the top.
 
-**Not yet, and named so it can be asked for.** Moving stock between warehouses
-as one atomic act rather than two adjustments. Converting between currencies.
+**Not yet, and named so it can be asked for.** Converting between currencies.
+(Moving stock between warehouses as one atomic act was on this list; it is
+built now — `inventory::transfer_stock`, routed at
+`src/api/admin_catalogue.rs:2344`.)
 
 Four things that were on this list have since been built and are no longer
 absent: multi-seller marketplaces, subscriptions and recurring billing, gift
