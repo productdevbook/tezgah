@@ -6085,6 +6085,45 @@
         "x-tezgah-permission": "view"
       }
     },
+    "/admin/orders/{id}/refund-to-credit": {
+      "post": {
+        "operationId": "postAdminOrdersByIdRefundToCredit",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Refund an order onto the customer's balance instead of the card",
+        "tags": [
+          "credit"
+        ],
+        "x-tezgah-permission": "settle"
+      }
+    },
     "/admin/orders/{id}/returns": {
       "get": {
         "operationId": "getAdminOrdersByIdReturns",
@@ -10090,6 +10129,45 @@
         "x-tezgah-permission": "write"
       }
     },
+    "/admin/publishable-api-keys/{id}": {
+      "get": {
+        "operationId": "getAdminPublishableApiKeysById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Fetch one storefront key",
+        "tags": [
+          "store"
+        ],
+        "x-tezgah-permission": "view"
+      }
+    },
     "/admin/publishable-api-keys/{id}/revoke": {
       "post": {
         "operationId": "postAdminPublishableApiKeysByIdRevoke",
@@ -11445,6 +11523,43 @@
           "store"
         ],
         "x-tezgah-permission": "delete"
+      },
+      "get": {
+        "operationId": "getAdminSalesChannelsById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Fetch one sales channel",
+        "tags": [
+          "store"
+        ],
+        "x-tezgah-permission": "view"
       },
       "patch": {
         "operationId": "patchAdminSalesChannelsById",
