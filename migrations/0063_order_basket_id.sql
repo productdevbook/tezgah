@@ -12,9 +12,9 @@ alter table "order" add column if not exists basket_id uuid;
 -- order, in the seller's own scope, naming a basket in the marketplace's.
 -- `tezgah_cross_scope_fk` (0062) is what makes this a visible, named
 -- exception rather than a regression to the single-column keys #91 removed.
+-- `tezgah_cross_scope_fk` already indexes the column it keys, so there is no
+-- second index to add here.
 call tezgah_cross_scope_fk('order', 'basket_id', 'order_basket', 'restrict');
-
-create index order_basket_id_idx on "order" (scope, basket_id) where basket_id is not null;
 
 -- Under a basket, which collection paid is the basket's question to answer,
 -- not the order's own — `order.payment_collection_id` stays for a
