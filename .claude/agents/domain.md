@@ -47,7 +47,18 @@ sites and a build taking every core has taken it off the air before. Never run
 `cargo fmt --all` is allowed. CI is the only verification there is.
 
 So the loop is: write → `cargo fmt --all` → commit → `git pull --rebase && git
-push origin main` → read CI. Red is not a setback, it is the feedback:
+push origin main` → read CI. Red is not a setback, it is the feedback.
+
+**Poll for the result yourself, with a shell loop.** Do not wait to be told:
+
+    until [ "$(gh run list --repo productdevbook/tezgah --limit 1 --json status -q '.[0].status')" = "completed" ]; do sleep 60; done
+
+Never report that you are waiting. "Still running", "waiting for CI", "I'll
+report once it lands" — none of these are progress, and a run of them is how an
+agent spends an hour saying nothing. Poll, read, fix, push, repeat. Report once,
+at the end, when it is green.
+
+Then:
 
     gh run list --repo productdevbook/tezgah --limit 3 --json databaseId,status,conclusion,headSha
     gh run view --repo productdevbook/tezgah --job=$(gh run view <id> --json jobs -q '.jobs[]|select(.name=="check")|.databaseId') --log | sed 's/\x1b\[[0-9;]*m//g'
