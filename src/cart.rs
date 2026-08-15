@@ -704,6 +704,9 @@ pub async fn add_bundle(
     if bundle.components.is_empty() {
         return Err(Error::invalid("a bundle needs at least one component"));
     }
+    if bundle.components.len() as i64 >= MAX_LINES {
+        return Err(Error::invalid("a bundle has too many components"));
+    }
 
     let parent = add_line(
         tx,

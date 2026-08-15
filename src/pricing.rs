@@ -1211,6 +1211,10 @@ pub async fn remove_bundle_component(
     Ok(())
 }
 
+/// A bundle's components are a shop's own catalogue decision, not a
+/// customer's data — the same reasoning as [`MAX_PRICE_RULES`].
+const MAX_BUNDLE_COMPONENTS: i64 = 200;
+
 pub async fn bundle_components(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -1222,10 +1226,12 @@ pub async fn bundle_components(
         "select id, bundle_variant_id, component_variant_id, quantity, sort_order
          from product_bundle_component
          where scope = $1 and bundle_variant_id = $2
-         order by sort_order, id",
+         order by sort_order, id
+         limit $3",
     )
     .bind(ctx.scope.0)
     .bind(bundle_variant_id.as_uuid())
+    .bind(MAX_BUNDLE_COMPONENTS)
     .fetch_all(&mut **tx)
     .await?)
 }

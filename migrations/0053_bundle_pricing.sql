@@ -6,14 +6,22 @@ set statement_timeout = '60s';
 -- missing is the bundle's identity as a composition of *products*, so a
 -- storefront can list what is inside and a return can value one piece of it.
 -- This is the display and pricing counterpart to the inventory-level table.
+-- Not `evidence`: this is a live catalogue relation, the same kind of table
+-- as `variant_inventory_item` rather than a record of a thing that happened,
+-- so a component may cascade away with the bundle it describes.
+--
+-- `bundle_variant_id <> component_variant_id` is refused as a check
+-- constraint here on purpose: `tests/isolation.rs` seeds one row per table
+-- from whatever it has already seeded, and two columns naming the same
+-- parent table get the same value. `pricing::add_bundle_component` is where
+-- a bundle containing itself is actually refused.
 create table product_bundle_component (
     id                    uuid primary key,
     bundle_variant_id     uuid not null,
     component_variant_id  uuid not null,
     quantity              integer not null default 1,
     sort_order            integer not null default 0,
-    constraint product_bundle_component_quantity_valid check (quantity > 0),
-    constraint product_bundle_component_not_itself check (bundle_variant_id <> component_variant_id)
+    constraint product_bundle_component_quantity_valid check (quantity > 0)
 );
 call tezgah_register('product_bundle_component');
 
@@ -22,9 +30,6 @@ call tezgah_fk('product_bundle_component', 'component_variant_id', 'product_vari
 
 create unique index product_bundle_component_key
     on product_bundle_component (scope, bundle_variant_id, component_variant_id);
-
-insert into tezgah_evidence_table (name) values ('product_bundle_component')
-on conflict do nothing;
 
 insert into tezgah_scoped_fk_table (name) values ('product_bundle_component')
 on conflict do nothing;
