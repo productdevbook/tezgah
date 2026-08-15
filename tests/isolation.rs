@@ -447,6 +447,80 @@ fn satisfy_checks(
     Ok(())
 }
 
+/// Whether this is the second (or later) column in the row pointing at
+/// `parent`. The first reference reuses the row already seeded for that
+/// table; a second naming the same parent needs a row of its own, or two
+/// columns naming one parent — a bundle's own variant and the component it
+/// carries, say — would collide on the single row seeded for it and produce
+/// a row that points at itself.
+fn repeats(parents_used: &mut HashMap<String, u32>, parent: &str) -> bool {
+    let count = parents_used.entry(parent.to_string()).or_insert(0);
+    *count += 1;
+    *count > 1
+}
+
+/// A second row in `parent_name`, for a column that cannot share the one
+/// [`seed`] already put there. Built the same way that one was: its own
+/// foreign keys resolve against `seeded` (already populated, since a table
+/// is only seeded once its required parents are), and a parent it repeats
+/// gets a row of its own in turn.
+async fn insert_extra_row(
+    shop: &Shop,
+    tables: &[Table],
+    parent_name: &str,
+    seeded: &HashMap<String, Uuid>,
+) -> Result<Uuid, String> {
+    let table = tables
+        .iter()
+        .find(|t| t.name == parent_name)
+        .ok_or_else(|| format!("{parent_name} is not a known table"))?;
+
+    let id = Uuid::now_v7();
+    let mut chosen: Vec<(String, String)> = Vec::new();
+    let mut parents_used: HashMap<String, u32> = HashMap::new();
+
+    for column in &table.columns {
+        if !column.required || column.name == "id" || column.name == "scope" {
+            continue;
+        }
+        let literal = match table.parents.get(&column.name) {
+            Some(parent) if parent == &table.name => format!("'{id}'::uuid"),
+            Some(parent) if repeats(&mut parents_used, parent) => {
+                Box::pin(insert_extra_row(shop, tables, parent, seeded))
+                    .await
+                    .map(|extra_id| format!("'{extra_id}'::uuid"))?
+            }
+            _ => value(table, column, id, seeded)?,
+        };
+        chosen.push((column.name.clone(), literal));
+    }
+
+    satisfy_checks(table, &mut chosen, id, seeded)?;
+
+    let mut names = vec![quote("id"), quote("scope")];
+    let mut values = vec![format!("'{id}'::uuid"), format!("'{}'::uuid", shop.here.0)];
+    for (column, literal) in &chosen {
+        names.push(quote(column));
+        values.push(literal.clone());
+    }
+
+    let statement = format!(
+        "insert into {} ({}) values ({})",
+        quote(&table.name),
+        names.join(", "),
+        values.join(", ")
+    );
+
+    let mut tx = shop.begin().await;
+    sqlx::query(&statement)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    tx.commit().await.expect("to commit the extra seed row");
+
+    Ok(id)
+}
+
 /// Seeds one row per table in `shop.here`, parents before children.
 ///
 /// Returns the tables that got a row, and the ones that did not with the reason.
@@ -479,12 +553,21 @@ async fn seed(shop: &Shop) -> (Vec<String>, Vec<(String, String)>) {
             let id = Uuid::now_v7();
             let mut chosen: Vec<(String, String)> = Vec::new();
             let mut refused = None;
+            let mut parents_used: HashMap<String, u32> = HashMap::new();
 
             for column in &table.columns {
                 if !column.required || column.name == "id" || column.name == "scope" {
                     continue;
                 }
-                match value(table, column, id, &seeded) {
+                let outcome = match table.parents.get(&column.name) {
+                    Some(parent) if parent != &table.name && repeats(&mut parents_used, parent) => {
+                        Box::pin(insert_extra_row(shop, &tables, parent, &seeded))
+                            .await
+                            .map(|extra_id| format!("'{extra_id}'::uuid"))
+                    }
+                    _ => value(table, column, id, &seeded),
+                };
+                match outcome {
                     Ok(literal) => chosen.push((column.name.clone(), literal)),
                     Err(why) => {
                         refused = Some(format!("{}: {why}", column.name));

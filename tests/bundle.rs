@@ -21,6 +21,14 @@ use tezgah::ports::{Ctx, Scope, Tx};
 use tezgah::pricing::{self, BundlePriceMode, NewBundleComponent, NewPrice, PriceContext};
 use tezgah::tax::{self, NewTaxRate, NewTaxRateRule, NewTaxRegion, TaxReference, TaxableAddress};
 
+async fn line_count(tx: &mut Tx<'_>, cart_id: tezgah::id::CartId) -> i64 {
+    sqlx::query_scalar("select count(*) from cart_line_item where cart_id = $1")
+        .bind(cart_id.as_uuid())
+        .fetch_one(&mut **tx)
+        .await
+        .expect("to count the cart's lines")
+}
+
 fn lira() -> Currency {
     Currency::parse("TRY").expect("a currency code")
 }
@@ -571,3 +579,35 @@ async fn a_bundle_component_returns_at_its_allocated_share_not_an_equal_split() 
     shop.close().await;
     Ok(())
 }
+
+/// The database refuses a bundle listing itself as its own component, even
+/// for an insert that goes around `pricing::add_bundle_component` entirely.
+#[tokio::test]
+async fn a_bundle_cannot_be_inserted_as_its_own_component() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+    seed_currency(&mut tx, shop.here).await;
+
+    let bundle = a_priced_variant(&mut tx, &ctx, "self-set", dec!(0)).await;
+
+    let refused = sqlx::query(
+        "insert into product_bundle_component
+             (id, scope, bundle_variant_id, component_variant_id, quantity, sort_order)
+         values ($1, $2, $3, $3, 1, 0)",
+    )
+    .bind(uuid::Uuid::now_v7())
+    .bind(shop.here.0)
+    .bind(bundle.as_uuid())
+    .execute(&mut *tx)
+    .await;
+
+    assert!(
+        refused.is_err(),
+        "a row naming the same variant on both sides should be rejected by the database"
+    );
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
