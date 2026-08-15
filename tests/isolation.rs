@@ -377,7 +377,11 @@ fn value(
         "text" | "character varying" | "character" => match column.length {
             Some(2) => "'US'".into(),
             Some(3) => "'USD'".into(),
-            _ => "'tezgah'".into(),
+            // The row's own id, not a fixed word: two rows of the same table
+            // in the same scope — a repeated parent's extra row, say — must
+            // not collide on a column a unique index expects to tell them
+            // apart, `stock_location.name` among them.
+            _ => format!("'tezgah-{}'", id.simple()),
         },
         "ARRAY" => "'{}'".into(),
         other => return Err(format!("no value is known for a {other} column")),
