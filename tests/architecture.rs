@@ -293,6 +293,12 @@ fn a_domain_reaches_only_for_the_kernel_and_what_is_declared_shared() {
         // way: an order line records the answer that held on the day of the
         // sale, and never asks the catalogue again.
         ("catalogue", &["order"][..]),
+        // `cart::expire` releases what an abandoned cart reserved before the
+        // cart goes, the same way `checkout` releases what a declined
+        // checkout reserved — a hold has to come down before the row it was
+        // taken against can. Nothing reaches back: `inventory` names a cart
+        // line by id, never the module.
+        ("cart", &["inventory"][..]),
         // An import writes products, their prices and their stock, which is what
         // makes it an import rather than three of them.
         ("batch", &["catalogue", "inventory", "pricing"][..]),

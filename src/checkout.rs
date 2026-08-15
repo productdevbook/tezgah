@@ -1704,6 +1704,21 @@ async fn erase_order(tx: &mut Tx<'_>, ctx: &Ctx<'_>, order_id: OrderId) -> Resul
         .await?;
     }
 
+    // `create_order` rebinds a reserve_stock hold onto the order line the
+    // moment it writes one (`order::create`), so undoing the order has to
+    // give the hold back the same way `reserve_stock`'s own compensate does
+    // — `reservation_item.order_line_item_id` is `restrict`, and the line
+    // cannot go while a reservation still names it.
+    let lines: Vec<Uuid> =
+        sqlx::query_scalar("select id from order_line_item where scope = $1 and order_id = $2")
+            .bind(ctx.scope.0)
+            .bind(order_id.as_uuid())
+            .fetch_all(&mut **tx)
+            .await?;
+    for line in lines {
+        inventory::release_line(tx, ctx, LineItemId::from_uuid(line)).await?;
+    }
+
     for table in [
         "order_status_history",
         "order_transfer",
