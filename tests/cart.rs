@@ -13,6 +13,7 @@ use tezgah::inventory;
 use tezgah::money::{Currency, Money};
 use tezgah::page::Paging;
 use tezgah::ports::{Ctx, Tx};
+use tezgah::subscription;
 
 fn lira() -> tezgah::Result<Currency> {
     Currency::parse("TRY")
@@ -93,6 +94,197 @@ async fn adding_the_same_variant_twice_leaves_one_line() -> tezgah::Result<()> {
     assert_eq!(lines.len(), 1);
     assert_eq!(lines[0].product_title, "A kettle");
     assert_eq!(lines[0].variant_sku.as_deref(), Some("kettle-1"));
+
+    tx.rollback().await.ok();
+    shop.close().await;
+    Ok(())
+}
+
+async fn a_plan(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    variant: VariantId,
+) -> tezgah::Result<tezgah::id::SellingPlanId> {
+    let group = subscription::create_plan_group(
+        tx,
+        ctx,
+        subscription::NewPlanGroup {
+            name: "Monthly".into(),
+            ..subscription::NewPlanGroup::default()
+        },
+    )
+    .await?;
+
+    let plan = subscription::create_plan(
+        tx,
+        ctx,
+        group.id,
+        subscription::NewPlan {
+            name: "Every month".into(),
+            billing_interval_unit: "month".into(),
+            billing_interval_count: 1,
+            ..subscription::NewPlan::default()
+        },
+    )
+    .await?;
+
+    subscription::attach_variant(tx, ctx, plan.id, variant).await?;
+
+    Ok(plan.id)
+}
+
+/// #139: `add_line` used to merge on `(cart_id, variant_id)` alone, so a
+/// subscription line and a one-off line for the same variant collapsed into
+/// one — and whichever add happened second decided the surviving quantity.
+#[tokio::test]
+async fn a_subscription_line_and_a_one_off_line_stay_separate() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+
+    let variant = a_variant(&mut tx, &ctx, "coffee").await?;
+    let plan = a_plan(&mut tx, &ctx, variant).await?;
+    let cart = cart::create(&mut tx, &ctx, NewCart::guest(lira()?)).await?;
+
+    let once = cart::add_line(
+        &mut tx,
+        &ctx,
+        cart.id,
+        AddLine {
+            variant_id: variant,
+            quantity: 1,
+            unit_price: money(dec!(20))?,
+            is_tax_inclusive: false,
+            selling_plan_id: None,
+        },
+    )
+    .await?;
+
+    let subscribed = cart::add_line(
+        &mut tx,
+        &ctx,
+        cart.id,
+        AddLine {
+            variant_id: variant,
+            quantity: 1,
+            unit_price: money(dec!(20))?,
+            is_tax_inclusive: false,
+            selling_plan_id: Some(plan),
+        },
+    )
+    .await?;
+
+    assert_ne!(once.id, subscribed.id, "two lines, not one");
+
+    let again_once = cart::add_line(
+        &mut tx,
+        &ctx,
+        cart.id,
+        AddLine {
+            variant_id: variant,
+            quantity: 2,
+            unit_price: money(dec!(20))?,
+            is_tax_inclusive: false,
+            selling_plan_id: None,
+        },
+    )
+    .await?;
+    let again_subscribed = cart::add_line(
+        &mut tx,
+        &ctx,
+        cart.id,
+        AddLine {
+            variant_id: variant,
+            quantity: 3,
+            unit_price: money(dec!(20))?,
+            is_tax_inclusive: false,
+            selling_plan_id: Some(plan),
+        },
+    )
+    .await?;
+
+    assert_eq!(again_once.id, once.id);
+    assert_eq!(
+        again_once.quantity, 3,
+        "the one-off line kept its own count"
+    );
+    assert_eq!(again_subscribed.id, subscribed.id);
+    assert_eq!(
+        again_subscribed.quantity, 4,
+        "the subscription line kept its own count"
+    );
+
+    let lines = cart::lines(&mut tx, &ctx, cart.id).await?;
+    assert_eq!(lines.len(), 2);
+
+    tx.rollback().await.ok();
+    shop.close().await;
+    Ok(())
+}
+
+/// #139: a guest cart's subscription line must not merge into the customer's
+/// existing one-off line for the same variant when the two carts combine.
+#[tokio::test]
+async fn merging_carts_keeps_a_subscription_line_off_a_one_off_line() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+
+    let variant = a_variant(&mut tx, &ctx, "coffee").await?;
+    let plan = a_plan(&mut tx, &ctx, variant).await?;
+
+    let who = customer::create(&mut tx, &ctx, NewCustomer::account("dana@example.com")).await?;
+    let theirs = cart::create(&mut tx, &ctx, NewCart::of(who.id, lira()?)).await?;
+    cart::add_line(
+        &mut tx,
+        &ctx,
+        theirs.id,
+        AddLine {
+            variant_id: variant,
+            quantity: 1,
+            unit_price: money(dec!(20))?,
+            is_tax_inclusive: false,
+            selling_plan_id: None,
+        },
+    )
+    .await?;
+
+    let guest = cart::create(&mut tx, &ctx, NewCart::guest(lira()?)).await?;
+    cart::add_line(
+        &mut tx,
+        &ctx,
+        guest.id,
+        AddLine {
+            variant_id: variant,
+            quantity: 1,
+            unit_price: money(dec!(20))?,
+            is_tax_inclusive: false,
+            selling_plan_id: Some(plan),
+        },
+    )
+    .await?;
+
+    let merged = cart::transfer_to_customer(&mut tx, &ctx, guest.id, who.id).await?;
+    assert_eq!(merged.id, theirs.id);
+
+    let lines = cart::lines(&mut tx, &ctx, merged.id).await?;
+    assert_eq!(
+        lines.len(),
+        2,
+        "the subscription line did not merge into the one-off line"
+    );
+
+    let one_off = lines
+        .iter()
+        .find(|line| line.selling_plan_id.is_none())
+        .expect("the one-off line survived");
+    assert_eq!(one_off.quantity, 1);
+
+    let on_plan = lines
+        .iter()
+        .find(|line| line.selling_plan_id == Some(plan))
+        .expect("the subscription line survived, still carrying its plan");
+    assert_eq!(on_plan.quantity, 1);
 
     tx.rollback().await.ok();
     shop.close().await;

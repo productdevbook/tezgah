@@ -157,6 +157,13 @@ impl SellingPlan {
     pub fn discounts_renewals(&self) -> bool {
         self.applies_to == "renewals" || self.applies_to == "every_order"
     }
+
+    /// Whether the plan's own discount is owed on the order that opens the
+    /// contract — the one a shopper subscribing from the storefront actually
+    /// pays. `renewals` names a discount that is deliberately absent there.
+    pub fn discounts_first_order(&self) -> bool {
+        self.applies_to == "first_order" || self.applies_to == "every_order"
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -2207,8 +2214,10 @@ impl Step for ResolvePrice {
 }
 
 /// The plan's own discount, taken off a resolved price rather than baked into
-/// one: the price list is still what says what the thing costs.
-fn discounted(price: Money, plan: &SellingPlan, exponent: u32) -> Result<Money> {
+/// one: the price list is still what says what the thing costs. Shared by the
+/// storefront's cart pricing and the renewal workflow's, so the two roads to
+/// a subscription's price reach the same number.
+pub(crate) fn discounted(price: Money, plan: &SellingPlan, exponent: u32) -> Result<Money> {
     let Some(value) = plan.discount_value else {
         return Ok(price);
     };

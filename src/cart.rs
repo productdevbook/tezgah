@@ -611,8 +611,11 @@ pub async fn add_line(
 /// What [`add_line`] and [`add_bundle`] share. A bundle's child line merges
 /// only with another child of the *same* parent — `cart_line_item_bundle_
 /// component_key` is unique on `(cart_id, variant_id, parent_line_item_id)` —
-/// while an ordinary line still merges on `(cart_id, variant_id)` alone, so
-/// the two never collide with each other no matter which is added first.
+/// a plan line only with another line on the *same* plan —
+/// `cart_line_item_plan_key` is unique on `(cart_id, variant_id,
+/// selling_plan_id)` — while an ordinary line still merges on
+/// `(cart_id, variant_id)` alone, so none of the three ever collide with
+/// each other no matter which is added first.
 async fn insert_line(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -635,9 +638,14 @@ async fn insert_line(
     let on_conflict = if parent_line_item_id.is_some() {
         "on conflict (scope, cart_id, variant_id, parent_line_item_id)
              where variant_id is not null and parent_line_item_id is not null"
+    } else if line.selling_plan_id.is_some() {
+        "on conflict (scope, cart_id, variant_id, selling_plan_id)
+             where variant_id is not null and parent_line_item_id is null
+               and selling_plan_id is not null"
     } else {
         "on conflict (scope, cart_id, variant_id)
-             where variant_id is not null and parent_line_item_id is null"
+             where variant_id is not null and parent_line_item_id is null
+               and selling_plan_id is null"
     };
 
     let id = LineItemId::new();
@@ -1084,8 +1092,8 @@ pub async fn transfer_to_customer(
 
     // Parents first, so a child's `parent_line_item_id` can always be remapped
     // to its new (or merged-into) row before the child itself is inserted.
-    let sources: Vec<(uuid::Uuid, Option<uuid::Uuid>)> = sqlx::query_as(
-        "select id, parent_line_item_id from cart_line_item
+    let sources: Vec<(uuid::Uuid, Option<uuid::Uuid>, Option<uuid::Uuid>)> = sqlx::query_as(
+        "select id, parent_line_item_id, selling_plan_id from cart_line_item
          where scope = $1 and cart_id = $2
          order by parent_line_item_id is not null, created_at, id",
     )
@@ -1097,7 +1105,7 @@ pub async fn transfer_to_customer(
     let mut remap: std::collections::HashMap<uuid::Uuid, uuid::Uuid> =
         std::collections::HashMap::new();
 
-    for (from, old_parent) in sources {
+    for (from, old_parent, selling_plan_id) in sources {
         let parent_id = old_parent.map(|old_parent| {
             *remap
                 .get(&old_parent)
@@ -1107,9 +1115,14 @@ pub async fn transfer_to_customer(
         let on_conflict = if parent_id.is_some() {
             "on conflict (scope, cart_id, variant_id, parent_line_item_id)
                  where variant_id is not null and parent_line_item_id is not null"
+        } else if selling_plan_id.is_some() {
+            "on conflict (scope, cart_id, variant_id, selling_plan_id)
+                 where variant_id is not null and parent_line_item_id is null
+                   and selling_plan_id is not null"
         } else {
             "on conflict (scope, cart_id, variant_id)
-                 where variant_id is not null and parent_line_item_id is null"
+                 where variant_id is not null and parent_line_item_id is null
+                   and selling_plan_id is null"
         };
 
         let new_id: uuid::Uuid = sqlx::query_scalar(&format!(
@@ -1117,12 +1130,13 @@ pub async fn transfer_to_customer(
                  (id, scope, cart_id, variant_id, product_id, product_title, product_handle,
                   variant_title, variant_sku, variant_barcode, variant_option_values, thumbnail,
                   quantity, unit_price, compare_at_unit_price, currency_code, is_tax_inclusive,
-                  is_discountable, requires_shipping, parent_line_item_id, metadata)
+                  is_discountable, requires_shipping, parent_line_item_id, selling_plan_id,
+                  metadata)
              select $1::uuid, scope, $2::uuid, variant_id, product_id, product_title,
                     product_handle, variant_title, variant_sku, variant_barcode,
                     variant_option_values, thumbnail, quantity, unit_price, compare_at_unit_price,
                     currency_code, is_tax_inclusive, is_discountable, requires_shipping,
-                    $5::uuid, metadata
+                    $5::uuid, selling_plan_id, metadata
              from cart_line_item
              where scope = $3 and id = $4
              {on_conflict}

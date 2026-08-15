@@ -33,7 +33,8 @@ use crate::money::{Currency, Money};
 use crate::page::{Cursor, Page, Paging};
 use crate::ports::{Action, Actor, Ctx, Resource, Tx};
 use crate::{
-    cart, catalogue, checkout, customer, fulfilment, inventory, order, payment, pricing, store, tax,
+    cart, catalogue, checkout, customer, fulfilment, inventory, order, payment, pricing, store,
+    subscription, tax,
 };
 
 use super::{Method, Route, Surface, own_cart, own_order, signed_in};
@@ -1302,6 +1303,8 @@ pub async fn add_line_item(
 
     let is_tax_inclusive = pricing::is_tax_inclusive(tx, ctx, &at).await?;
 
+    let mut unit_price = price.calculated;
+
     if let Some(plan_id) = input.selling_plan_id {
         let offered: Option<Uuid> = sqlx::query_scalar(
             "select selling_plan_id from selling_plan_variant
@@ -1315,6 +1318,16 @@ pub async fn add_line_item(
         if offered.is_none() {
             return Err(Error::invalid("that variant is not sold on that plan"));
         }
+
+        // The cart is the first order a plan's contract will ever have: a
+        // discount scoped to `renewals` is deliberately absent here, and one
+        // scoped to `first_order` or `every_order` has to reach checkout the
+        // same way the renewal workflow reaches it for later cycles.
+        let plan = subscription::plan(tx, ctx, plan_id).await?;
+        if plan.discounts_first_order() {
+            let exponent = store::exponent(tx, ctx, currency).await?;
+            unit_price = subscription::discounted(unit_price, &plan, exponent)?;
+        }
     }
 
     let item = cart::add_line(
@@ -1324,7 +1337,7 @@ pub async fn add_line_item(
         cart::AddLine {
             variant_id: input.variant_id,
             quantity: input.quantity,
-            unit_price: price.calculated,
+            unit_price,
             is_tax_inclusive,
             selling_plan_id: input.selling_plan_id,
         },

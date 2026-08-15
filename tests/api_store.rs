@@ -28,6 +28,7 @@ use tezgah::ports::{
 };
 use tezgah::pricing::{self, NewPrice};
 use tezgah::store::{self as domain_store, NewSalesChannel};
+use tezgah::subscription;
 use uuid::Uuid;
 
 /// A fresh publishable key's token, linked to no channel — the state every
@@ -1003,6 +1004,177 @@ async fn a_line_of_an_unchanneled_variant_is_added_from_any_channel() -> tezgah:
     )
     .await?;
     assert_eq!(added.variant_id, Some(variant.id));
+
+    drop(tx);
+    shop.close().await;
+    Ok(())
+}
+
+async fn a_plan(
+    tx: &mut Tx<'_>,
+    ctx: &tezgah::ports::Ctx<'_>,
+    applies_to: &str,
+    variant: tezgah::id::VariantId,
+) -> tezgah::Result<tezgah::id::SellingPlanId> {
+    let group = subscription::create_plan_group(
+        tx,
+        ctx,
+        subscription::NewPlanGroup {
+            name: "Monthly".into(),
+            ..subscription::NewPlanGroup::default()
+        },
+    )
+    .await?;
+
+    let plan = subscription::create_plan(
+        tx,
+        ctx,
+        group.id,
+        subscription::NewPlan {
+            name: "20% off".into(),
+            billing_interval_unit: "month".into(),
+            billing_interval_count: 1,
+            discount_kind: Some("percentage".into()),
+            discount_value: Some(dec!(20)),
+            applies_to: Some(applies_to.into()),
+            ..subscription::NewPlan::default()
+        },
+    )
+    .await?;
+
+    subscription::attach_variant(tx, ctx, plan.id, variant).await?;
+
+    Ok(plan.id)
+}
+
+/// #138: a plan's `first_order` discount used to be applied only in the
+/// renewal workflow's pricing step, so a shopper subscribing from the
+/// storefront was charged the undiscounted price on the order they actually
+/// look at.
+#[tokio::test]
+async fn a_plans_first_order_discount_reaches_the_storefront_cart() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+    common::a_currency(&mut tx, shop.here, "TRY", 2).await;
+
+    let channel = domain_store::create_sales_channel(
+        &mut tx,
+        &ctx,
+        NewSalesChannel {
+            name: "Storefront".into(),
+            description: None,
+            is_disabled: false,
+        },
+    )
+    .await?;
+
+    let variant = a_priced_variant_on_channel(&mut tx, &ctx, "coffee-first", channel.id).await?;
+    let plan = a_plan(&mut tx, &ctx, "first_order", variant).await?;
+    let cart_id = a_cart_on_channel(&mut tx, &ctx, channel.id).await?;
+
+    let added = store::add_line_item(
+        &mut tx,
+        &ctx,
+        cart_id,
+        AddLineItem {
+            variant_id: variant,
+            quantity: 1,
+            selling_plan_id: Some(plan),
+        },
+    )
+    .await?;
+
+    assert_eq!(
+        added.unit_price.amount,
+        dec!(80),
+        "a 20% first-order discount off a hundred lira price"
+    );
+
+    drop(tx);
+    shop.close().await;
+    Ok(())
+}
+
+/// The same hole, one shape over: `every_order` never reached checkout either.
+#[tokio::test]
+async fn a_plans_every_order_discount_reaches_the_storefront_cart() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+    common::a_currency(&mut tx, shop.here, "TRY", 2).await;
+
+    let channel = domain_store::create_sales_channel(
+        &mut tx,
+        &ctx,
+        NewSalesChannel {
+            name: "Storefront".into(),
+            description: None,
+            is_disabled: false,
+        },
+    )
+    .await?;
+
+    let variant = a_priced_variant_on_channel(&mut tx, &ctx, "coffee-every", channel.id).await?;
+    let plan = a_plan(&mut tx, &ctx, "every_order", variant).await?;
+    let cart_id = a_cart_on_channel(&mut tx, &ctx, channel.id).await?;
+
+    let added = store::add_line_item(
+        &mut tx,
+        &ctx,
+        cart_id,
+        AddLineItem {
+            variant_id: variant,
+            quantity: 1,
+            selling_plan_id: Some(plan),
+        },
+    )
+    .await?;
+
+    assert_eq!(added.unit_price.amount, dec!(80));
+
+    drop(tx);
+    shop.close().await;
+    Ok(())
+}
+
+/// A plan's discount that only ever applies to renewals stays off the first
+/// order, the one this cart is pricing.
+#[tokio::test]
+async fn a_plans_renewals_only_discount_stays_off_the_storefront_cart() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+    common::a_currency(&mut tx, shop.here, "TRY", 2).await;
+
+    let channel = domain_store::create_sales_channel(
+        &mut tx,
+        &ctx,
+        NewSalesChannel {
+            name: "Storefront".into(),
+            description: None,
+            is_disabled: false,
+        },
+    )
+    .await?;
+
+    let variant = a_priced_variant_on_channel(&mut tx, &ctx, "coffee-renewals", channel.id).await?;
+    let plan = a_plan(&mut tx, &ctx, "renewals", variant).await?;
+    let cart_id = a_cart_on_channel(&mut tx, &ctx, channel.id).await?;
+
+    let added = store::add_line_item(
+        &mut tx,
+        &ctx,
+        cart_id,
+        AddLineItem {
+            variant_id: variant,
+            quantity: 1,
+            selling_plan_id: Some(plan),
+        },
+    )
+    .await?;
+
+    assert_eq!(added.unit_price.amount, dec!(100));
 
     drop(tx);
     shop.close().await;
