@@ -41,13 +41,17 @@
 //! `denied` or `not_found`? A route that has already loaded its own row before
 //! asking — every one of these, since the owner has to be read before it can
 //! be compared — hands the host a real owner, and this file's [`Owner`] host
-//! answers `denied` for a mismatch. `not_found` is reserved for what a
-//! stranger could never have been told existed at all: a collection named
-//! through a cart that does not own it (`create_payment_session`, #82's own
-//! fix), an id from another sales channel or another scope. Both refuse; which
-//! one is asserted below follows the same rule `tests/api_permissions.rs`
-//! documents: ask before answering `not_found`, so a miss and someone else's
-//! row read the same to whoever asked.
+//! answers `denied` for a mismatch. That is true even of
+//! `create_payment_session`: #82's own fix compares the collection's
+//! `cart_id` against the one in the body, but `payment::collection` already
+//! asks about the collection's real owner first, so a host that polices
+//! `Resource::Payment` — this one does — refuses before that comparison is
+//! ever reached. `not_found` is reserved for what a stranger could never
+//! have been told existed at all: an id from another sales channel or
+//! another scope, exercised in `api_store.rs`. Which one is asserted below
+//! follows the same rule `tests/api_permissions.rs` documents: ask before
+//! answering `not_found`, so a miss and someone else's row read the same to
+//! whoever asked.
 
 mod common;
 
@@ -934,7 +938,7 @@ async fn every_owned_store_route_refuses_the_other_shoppers_resource() -> tezgah
     owned!(
         Method::Post,
         "/store/payment-collections/{id}/payment-sessions",
-        is_not_found,
+        is_denied,
         mine: store::create_payment_session(
             &mut tx,
             &ctx_a,
@@ -945,10 +949,12 @@ async fn every_owned_store_route_refuses_the_other_shoppers_resource() -> tezgah
                 context: None,
             }
         ),
-        // B names its own cart, the only one it may open a session against —
-        // and A's collection in the path. #82's own fix: the two do not
-        // match, so this answers `not_found` before a provider is ever
-        // reached, on the collection's amount included.
+        // B names its own cart — the only one it may open a session
+        // against — and A's collection in the path. `payment::collection`
+        // reads the collection's real owner and asks about it before
+        // `create_payment_session` ever gets to compare it with the cart in
+        // the body, so this is refused as `denied` rather than reaching
+        // #82's own `cart_id` mismatch check at all.
         theirs: store::create_payment_session(
             &mut tx,
             &ctx_b,
