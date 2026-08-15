@@ -196,6 +196,100 @@ pub fn step(one: impl Step + 'static) -> Arc<dyn Step> {
     Arc::new(one)
 }
 
+/// What [`ReachingStep::prepare`] committed and [`ReachingStep::call`] needs:
+/// an idempotency key stable across retries, plus whatever else the call
+/// wants, carried the way [`Step`]'s input and output are.
+#[derive(Debug, Clone)]
+pub struct Prepared {
+    pub idempotency_key: String,
+    pub data: Value,
+}
+
+/// What the outside answered, for [`ReachingStep::record`] to write down.
+#[derive(Debug, Clone)]
+pub struct Answer(pub Value);
+
+/// A step that must ask something outside the database — a payment provider,
+/// typically. Split into three phases so no transaction spans the call: see
+/// #158, where a step doing all of this inside [`Step::invoke`] left an
+/// authorisation the database had no record of.
+#[async_trait]
+pub trait ReachingStep: Send + Sync {
+    fn name(&self) -> &'static str;
+
+    /// How many times invoking may be attempted before the run unwinds.
+    fn max_attempts(&self) -> i32 {
+        3
+    }
+
+    /// In a transaction, committed before `call` runs. Writes what must be on
+    /// record before the world is asked anything, and returns what `call`
+    /// needs plus an idempotency key.
+    async fn prepare(
+        &self,
+        tx: &mut Tx<'_>,
+        ctx: &Ctx<'_>,
+        input: &Value,
+    ) -> std::result::Result<Prepared, Failure>;
+
+    /// No transaction, no connection held. The runner may retry this with the
+    /// same `Prepared` only when the call itself never reached the provider;
+    /// once the row is `called`, the next driver asks rather than calls.
+    async fn call(
+        &self,
+        ctx: &Ctx<'_>,
+        prepared: &Prepared,
+    ) -> std::result::Result<Answer, Failure>;
+
+    /// In a new transaction. Writes the answer and produces the same
+    /// `Outcome` a single-phase step would have.
+    async fn record(
+        &self,
+        tx: &mut Tx<'_>,
+        ctx: &Ctx<'_>,
+        prepared: &Prepared,
+        answer: Answer,
+    ) -> std::result::Result<Outcome, Failure>;
+
+    /// Undo what `prepare` and `record` wrote, given what `record` kept. Must
+    /// be written against `prepare`'s output as much as `record`'s: a row
+    /// that never got past `prepare` still needs closing out.
+    async fn compensate(&self, _tx: &mut Tx<'_>, _ctx: &Ctx<'_>, _kept: &Value) -> Result<()> {
+        Ok(())
+    }
+}
+
+/// One slot's worth of step: either kind [`Workflow::then`]/[`Workflow::parallel`]
+/// or [`Workflow::reaching_step`] added.
+#[derive(Clone)]
+enum StepKind {
+    Direct(Arc<dyn Step>),
+    Reaching(Arc<dyn ReachingStep>),
+}
+
+impl StepKind {
+    fn name(&self) -> &'static str {
+        match self {
+            StepKind::Direct(one) => one.name(),
+            StepKind::Reaching(one) => one.name(),
+        }
+    }
+
+    fn max_attempts(&self) -> i32 {
+        match self {
+            StepKind::Direct(one) => one.max_attempts(),
+            StepKind::Reaching(one) => one.max_attempts(),
+        }
+    }
+
+    async fn compensate(&self, tx: &mut Tx<'_>, ctx: &Ctx<'_>, kept: &Value) -> Result<()> {
+        match self {
+            StepKind::Direct(one) => one.compensate(tx, ctx, kept).await,
+            StepKind::Reaching(one) => one.compensate(tx, ctx, kept).await,
+        }
+    }
+}
+
 /// Reads the run's input and says what must not be touched at the same time,
 /// or `None` for a run that needs no lock.
 type LockKey = Arc<dyn Fn(&Value) -> Option<Uuid> + Send + Sync>;
@@ -203,7 +297,7 @@ type LockKey = Arc<dyn Fn(&Value) -> Option<Uuid> + Send + Sync>;
 pub struct Workflow {
     name: &'static str,
     /// Each entry is a set of steps that run at once; most hold one.
-    slots: Vec<Vec<Arc<dyn Step>>>,
+    slots: Vec<Vec<StepKind>>,
     lock: Option<LockKey>,
     lock_wait: std::time::Duration,
 }
@@ -229,7 +323,7 @@ impl std::fmt::Debug for Workflow {
 struct Slot<'a> {
     group: i32,
     at: i32,
-    steps: &'a [Arc<dyn Step>],
+    steps: &'a [StepKind],
 }
 
 impl Workflow {
@@ -243,7 +337,7 @@ impl Workflow {
     }
 
     pub fn then(mut self, one: impl Step + 'static) -> Self {
-        self.slots.push(vec![Arc::new(one)]);
+        self.slots.push(vec![StepKind::Direct(Arc::new(one))]);
         self
     }
 
@@ -251,8 +345,17 @@ impl Workflow {
     /// array, in the order given here.
     pub fn parallel(mut self, steps: Vec<Arc<dyn Step>>) -> Self {
         if !steps.is_empty() {
-            self.slots.push(steps);
+            self.slots
+                .push(steps.into_iter().map(StepKind::Direct).collect());
         }
+        self
+    }
+
+    /// A step that reaches outside the database, on its own in a slot. Not
+    /// driven by the runner yet — see #158 — so nothing may call this until
+    /// the resume-by-asking path lands.
+    pub fn reaching_step(mut self, one: impl ReachingStep + 'static) -> Self {
+        self.slots.push(vec![StepKind::Reaching(Arc::new(one))]);
         self
     }
 
@@ -662,7 +765,7 @@ async fn drive(
                             at: slot.at + k as i32,
                             worker,
                         },
-                        slot.steps[k].as_ref(),
+                        &slot.steps[k],
                         &carried,
                         &rows[k],
                     )
@@ -847,11 +950,21 @@ async fn invoke(
     pool: &PgPool,
     ctx: &Ctx<'_>,
     held: Claim<'_>,
-    step: &dyn Step,
+    step: &StepKind,
     input: &Value,
     row: &StepRow,
 ) -> std::result::Result<StepResult, Stop> {
     let Claim { id, at, worker } = held;
+
+    // No workflow adds a `reaching_step` slot yet — the runner's resume-by-
+    // asking path for a `called` row (#158) is not built. Refuse cleanly
+    // rather than driving it as a `Step`.
+    let StepKind::Direct(step) = step else {
+        return Err(Stop::Refused(Failure::Final(Error::bug(
+            "a ReachingStep slot has no driver yet",
+        ))));
+    };
+
     if row.attempts >= row.max_attempts {
         return Err(Stop::Refused(Failure::Final(Error::conflict(
             "this step has already used every attempt it had",
@@ -1326,8 +1439,23 @@ pub async fn recover(pool: &PgPool, ctx: &Ctx<'_>) -> Result<u64> {
     .execute(&mut *tx)
     .await?
     .rows_affected();
+
+    // `called` means `prepare` committed and the provider was asked; the
+    // outcome is unknown, not "never happened". Reclaiming it to `pending`
+    // would let the next driver call the provider again, so only the lease
+    // clears — the state stays `called`, and the next claimant must ask what
+    // happened rather than call.
+    let called = sqlx::query(
+        "update workflow_step
+         set lease_until = null, locked_by = null
+         where state = 'called' and lease_until < now()",
+    )
+    .execute(&mut *tx)
+    .await?
+    .rows_affected();
+
     tx.commit().await?;
-    Ok(done)
+    Ok(done + called)
 }
 
 /// Extends a claim, for a step that is still working.
@@ -1439,7 +1567,7 @@ async fn take(
                and exists (
                    select 1 from workflow_step s
                    where s.run_id = r.id
-                     and s.state in ('pending', 'compensating')
+                     and s.state in ('pending', 'compensating', 'called')
                      and s.run_after <= now()
                      and (s.lease_until is null or s.lease_until < now())
                )
@@ -1450,7 +1578,7 @@ async fn take(
              select s.id
              from workflow_step s
              join candidate c on c.id = s.run_id
-             where s.state in ('pending', 'compensating')
+             where s.state in ('pending', 'compensating', 'called')
                and s.run_after <= now()
                and (s.lease_until is null or s.lease_until < now())
              for update of s skip locked
@@ -1489,7 +1617,7 @@ async fn touch(pool: &PgPool, ctx: &Ctx<'_>, id: WorkflowRunId, worker: &str) ->
     let mut tx = scoped(pool, ctx).await?;
     sqlx::query(
         "update workflow_step set lease_until = $2
-         where run_id = $1 and state in ('pending', 'invoking', 'compensating')
+         where run_id = $1 and state in ('pending', 'invoking', 'called', 'compensating')
            and locked_by = $3",
     )
     .bind(id.as_uuid())

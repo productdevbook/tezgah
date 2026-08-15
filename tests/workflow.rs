@@ -16,7 +16,9 @@ use common::Shop;
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 use tezgah::ports::{Ctx, Tx};
-use tezgah::workflow::{self, Failure, Outcome, State, Step, Workflow};
+use tezgah::workflow::{
+    self, Answer, Failure, Outcome, Prepared, ReachingStep, State, Step, Workflow,
+};
 
 type Log = Arc<Mutex<Vec<String>>>;
 
@@ -690,6 +692,296 @@ async fn a_skipped_step_is_not_compensated() {
     assert_eq!(
         skipped.attempts, 1,
         "a step that decided it had nothing to do succeeds on its first try"
+    );
+
+    shop.close().await;
+}
+
+/// A fake [`ReachingStep`]: no provider, just a log of which phase ran and a
+/// marker written to `workflow_run.output` so `call` can prove it is reading
+/// what `prepare` actually committed, not merely what ran before it in
+/// process order.
+struct FakeReaching {
+    log: Log,
+    run_id: tezgah::id::WorkflowRunId,
+    pool: sqlx::PgPool,
+}
+
+#[async_trait]
+impl ReachingStep for FakeReaching {
+    fn name(&self) -> &'static str {
+        "fake-reaching"
+    }
+
+    async fn prepare(
+        &self,
+        tx: &mut Tx<'_>,
+        _ctx: &Ctx<'_>,
+        _input: &Value,
+    ) -> Result<Prepared, Failure> {
+        self.log.lock().push("prepare".to_string());
+        sqlx::query("update workflow_run set output = $2 where id = $1")
+            .bind(self.run_id.as_uuid())
+            .bind(json!("prepared"))
+            .execute(&mut **tx)
+            .await
+            .map_err(|err| Failure::Final(tezgah::Error::from(err)))?;
+        Ok(Prepared {
+            idempotency_key: "fake-key".to_string(),
+            data: Value::Null,
+        })
+    }
+
+    async fn call(&self, _ctx: &Ctx<'_>, _prepared: &Prepared) -> Result<Answer, Failure> {
+        self.log.lock().push("call".to_string());
+        // No transaction here — this pool query only sees committed rows, so
+        // it proves `prepare`'s transaction committed before this ran.
+        let visible: Option<Value> =
+            sqlx::query_scalar("select output from workflow_run where id = $1")
+                .bind(self.run_id.as_uuid())
+                .fetch_one(&self.pool)
+                .await
+                .map_err(|err| Failure::Final(tezgah::Error::from(err)))?;
+        assert_eq!(
+            visible,
+            Some(json!("prepared")),
+            "call must see prepare's own commit, not an open transaction"
+        );
+        Ok(Answer(json!("called")))
+    }
+
+    async fn record(
+        &self,
+        tx: &mut Tx<'_>,
+        _ctx: &Ctx<'_>,
+        _prepared: &Prepared,
+        answer: Answer,
+    ) -> Result<Outcome, Failure> {
+        self.log.lock().push("record".to_string());
+        sqlx::query("update workflow_run set output = $2 where id = $1")
+            .bind(self.run_id.as_uuid())
+            .bind(&answer.0)
+            .execute(&mut **tx)
+            .await
+            .map_err(|err| Failure::Final(tezgah::Error::from(err)))?;
+        Ok(Outcome::new(answer.0, Value::Null))
+    }
+}
+
+/// #158: the three phases of a [`ReachingStep`] run in order, and `call` sees
+/// what `prepare` wrote only because the runner commits `prepare`'s
+/// transaction first. Driven by hand — the runner does not dispatch
+/// `ReachingStep` yet, only `Step` — which is exactly what "landed, unused"
+/// means at this stage of #158's migration.
+#[tokio::test]
+async fn reaching_step_phases_run_in_order_and_prepare_commits_before_call() {
+    let shop = Shop::open().await;
+    let log = log();
+
+    // A one-step `Step` workflow, just to get a real `workflow_run` row to
+    // use as the marker: nothing about it is driven with `run`/`work`.
+    let flow = Workflow::new("fake-reaching-flow").then(Skips {
+        name: "placeholder",
+        log: log.clone(),
+    });
+    let id = workflow::start(&shop.pool, &shop.ctx(), &flow, "fake-reaching-1", json!({}))
+        .await
+        .expect("the run row to exist");
+
+    let fake = FakeReaching {
+        log: log.clone(),
+        run_id: id,
+        pool: shop.pool.clone(),
+    };
+
+    let ctx = shop.ctx();
+    let mut prepare_tx = shop.begin().await;
+    let prepared = fake
+        .prepare(&mut prepare_tx, &ctx, &json!({}))
+        .await
+        .expect("prepare to succeed");
+    prepare_tx
+        .commit()
+        .await
+        .expect("prepare's transaction to commit");
+
+    let answer = fake.call(&ctx, &prepared).await.expect("call to succeed");
+
+    let mut record_tx = shop.begin().await;
+    let outcome = fake
+        .record(&mut record_tx, &ctx, &prepared, answer)
+        .await
+        .expect("record to succeed");
+    record_tx
+        .commit()
+        .await
+        .expect("record's transaction to commit");
+
+    assert_eq!(seen(&log), ["prepare", "call", "record"]);
+    match outcome {
+        Outcome::Ran { output, .. } => assert_eq!(output, json!("called")),
+        other => panic!("record should have produced Outcome::Ran: {other:?}"),
+    }
+
+    shop.close().await;
+}
+
+/// `ReachingStep` has landed but nothing drives it yet: a workflow built with
+/// [`Workflow::reaching_step`] is refused cleanly rather than run as a `Step`,
+/// and the row it left behind never reaches `done`.
+#[tokio::test]
+async fn a_reaching_step_slot_is_refused_rather_than_driven_as_a_step() {
+    let shop = Shop::open().await;
+    let log = log();
+
+    let fake = FakeReaching {
+        log: log.clone(),
+        run_id: tezgah::id::WorkflowRunId::from_uuid(uuid::Uuid::now_v7()),
+        pool: shop.pool.clone(),
+    };
+    let flow = Workflow::new("reaching-unused").reaching_step(fake);
+
+    let run = workflow::run(
+        &shop.pool,
+        &shop.ctx(),
+        &flow,
+        "reaching-unused-1",
+        json!({}),
+    )
+    .await
+    .expect("the run to be driven, and to report a failure rather than panic");
+
+    assert_eq!(run.state, State::Reverted);
+    assert!(
+        seen(&log).is_empty(),
+        "nothing on the fake ReachingStep should have been called"
+    );
+
+    shop.close().await;
+}
+
+/// A `called` row's lease running out does not put it back to `pending` —
+/// that would let a second driver call the provider again. It stays
+/// `called`, only the lease and the lock clear.
+#[tokio::test]
+async fn a_called_step_stays_called_when_its_lease_runs_out() {
+    let shop = Shop::open().await;
+    let log = log();
+
+    let flow = Workflow::new("called-lease").then(Probe::new("first", &log));
+    let id = workflow::start(&shop.pool, &shop.ctx(), &flow, "called-lease-1", json!({}))
+        .await
+        .expect("the run to be written");
+
+    // What a step split into prepare/call/record leaves behind mid-call: a
+    // separate connection commits this, the way `prepare` would.
+    let mut tx = shop.begin().await;
+    sqlx::query(
+        "update workflow_step
+         set state = 'called', attempts = 1, lease_until = now() - interval '1 hour',
+             locked_by = 'a worker mid-call'
+         where run_id = $1 and ordering = 0",
+    )
+    .bind(id.as_uuid())
+    .execute(&mut *tx)
+    .await
+    .expect("to write the called row");
+    tx.commit().await.expect("to commit on its own connection");
+
+    let recovered = workflow::recover(&shop.pool, &shop.ctx())
+        .await
+        .expect("recover to run");
+    assert_eq!(recovered, 1, "recover should have touched the called row");
+
+    let mut tx = shop.begin().await;
+    let (state, lease_until, locked_by): (
+        String,
+        Option<chrono::DateTime<chrono::Utc>>,
+        Option<String>,
+    ) = sqlx::query_as(
+        "select state, lease_until, locked_by from workflow_step
+             where run_id = $1 and ordering = 0",
+    )
+    .bind(id.as_uuid())
+    .fetch_one(&mut *tx)
+    .await
+    .expect("to read the row back");
+    tx.commit().await.expect("to commit");
+
+    assert_eq!(
+        state, "called",
+        "a called row's lease running out must not reset it to pending"
+    );
+    assert!(lease_until.is_none(), "the lease should have cleared");
+    assert!(locked_by.is_none(), "the lock should have cleared");
+
+    shop.close().await;
+}
+
+/// A `called` row whose lease has expired is claimable by a fresh driver —
+/// and the row it reads back still says `called`, not `pending`, so a
+/// claimant that only checks state cannot mistake it for one that never ran.
+#[tokio::test]
+async fn a_lease_expired_called_step_is_claimable_and_still_reads_called() {
+    let shop = Shop::open().await;
+    let log = log();
+
+    let flow = Workflow::new("called-claim").then(Probe::new("first", &log));
+    let id = workflow::start(&shop.pool, &shop.ctx(), &flow, "called-claim-1", json!({}))
+        .await
+        .expect("the run to be written");
+
+    let mut tx = shop.begin().await;
+    sqlx::query(
+        "update workflow_step
+         set state = 'called', attempts = 1, lease_until = now() - interval '1 hour',
+             locked_by = 'a worker mid-call'
+         where run_id = $1 and ordering = 0",
+    )
+    .bind(id.as_uuid())
+    .execute(&mut *tx)
+    .await
+    .expect("to write the called row");
+    tx.commit().await.expect("to commit");
+
+    // `invoke`'s own claim-and-run query does not yet recognise `called` (no
+    // `Step` produces it today), so a worker that takes this row cannot
+    // finish it — it loops. Bounding the wait is enough to see whether the
+    // row got claimed at all.
+    let _ = tokio::time::timeout(
+        Duration::from_millis(700),
+        workflow::work(
+            &shop.pool,
+            &shop.ctx(),
+            &[&flow],
+            std::future::pending::<()>(),
+        ),
+    )
+    .await;
+
+    let mut tx = shop.begin().await;
+    let (state, locked_by): (String, Option<String>) = sqlx::query_as(
+        "select state, locked_by from workflow_step where run_id = $1 and ordering = 0",
+    )
+    .bind(id.as_uuid())
+    .fetch_one(&mut *tx)
+    .await
+    .expect("to read the row back");
+    tx.commit().await.expect("to commit");
+
+    assert_eq!(
+        state, "called",
+        "a claimed called row must still read called, not pending: the \
+         claimant asks what happened rather than assuming nothing did"
+    );
+    assert_ne!(
+        locked_by,
+        Some("a worker mid-call".to_string()),
+        "the fresh driver should have taken the lease"
+    );
+    assert!(
+        seen(&log).is_empty(),
+        "the driver must not have invoked the step as if it were pending"
     );
 
     shop.close().await;
