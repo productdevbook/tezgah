@@ -7473,6 +7473,207 @@
         "x-tezgah-permission": "write"
       }
     },
+    "/admin/product-variants/{id}/bundle": {
+      "post": {
+        "operationId": "postAdminProductVariantsByIdBundle",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Mark a variant as a bundle, and how its price is decided",
+        "tags": [
+          "pricing"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/product-variants/{id}/bundle/components": {
+      "get": {
+        "operationId": "getAdminProductVariantsByIdBundleComponents",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "List what a bundle is made of",
+        "tags": [
+          "pricing"
+        ],
+        "x-tezgah-permission": "view"
+      },
+      "post": {
+        "operationId": "postAdminProductVariantsByIdBundleComponents",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Add a component to a bundle",
+        "tags": [
+          "pricing"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/product-variants/{id}/bundle/components/{component_variant_id}": {
+      "delete": {
+        "operationId": "deleteAdminProductVariantsByIdBundleComponentsByComponentVariantId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "component_variant_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Take a component out of a bundle",
+        "tags": [
+          "pricing"
+        ],
+        "x-tezgah-permission": "delete"
+      }
+    },
+    "/admin/product-variants/{id}/bundle/price": {
+      "get": {
+        "operationId": "getAdminProductVariantsByIdBundlePrice",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "What the bundle prices to now, allocated across its components",
+        "tags": [
+          "pricing"
+        ],
+        "x-tezgah-permission": "view"
+      }
+    },
     "/admin/product-variants/{id}/inventory-items": {
       "get": {
         "operationId": "getAdminProductVariantsByIdInventoryItems",
@@ -12993,6 +13194,45 @@
           }
         ],
         "summary": "Set a cart's e-mail address or addresses",
+        "tags": [
+          "cart"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/store/carts/{id}/bundle-items": {
+      "post": {
+        "operationId": "postStoreCartsByIdBundleItems",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "publishableKey": []
+          }
+        ],
+        "summary": "Put a bundle in the cart, priced and allocated across its components",
         "tags": [
           "cart"
         ],

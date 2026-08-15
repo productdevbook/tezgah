@@ -434,11 +434,16 @@ async fn add_bundle_prices_a_zero_parent_and_children_that_sum_to_the_bundle_tot
         assert_eq!(child.parent_line_item_id, Some(parent.id));
     }
 
+    // Each child's `unit_price` is already the allocated share for every
+    // component unit one bundle needs (`AddBundleComponent::quantity` fed
+    // into that at resolution); the cart line's own `quantity` is how many
+    // bundles, so the line total is `unit_price * bundle quantity` only —
+    // not multiplied a second time by the component's own quantity.
     let child_total: Decimal = children
         .iter()
         .map(|c| c.unit_price * Decimal::from(c.quantity))
         .sum();
-    assert_eq!(child_total, dec!(126), "27*2 + 18*2*2");
+    assert_eq!(child_total, dec!(90), "(27 + 18) * 2 bundles");
 
     // Adding the bundle a second time is a quantity change on each line, the
     // same as an ordinary variant.
