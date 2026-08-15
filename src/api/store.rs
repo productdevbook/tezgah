@@ -681,6 +681,13 @@ async fn published(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ProductId) -> Result<cata
 /// [`on_channel`]). Every read that takes a product id, a variant id or an
 /// option id directly must go through this rather than [`published`] alone,
 /// or a channel filter is only a listing filter.
+///
+/// A write that puts a catalogue id onto an existing cart checks it against
+/// the cart's own `sales_channel_id` instead of the token: `create_cart`
+/// already refused a channel the token did not hold, so the cart is the
+/// narrower and later fact, and checking it also stops a line from one
+/// channel landing on a cart opened under another. [`on_channel`] takes
+/// either list.
 async fn visible(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -1264,7 +1271,13 @@ pub async fn add_line_item(
     let currency = cart_currency(&holding)?;
 
     let variant = catalogue::variant(tx, ctx, input.variant_id).await?;
-    published(tx, ctx, variant.product_id).await?;
+    let product = published(tx, ctx, variant.product_id).await?;
+    let cart_channel: Vec<Uuid> = holding
+        .sales_channel_id
+        .map(SalesChannelId::as_uuid)
+        .into_iter()
+        .collect();
+    on_channel(tx, ctx, product, &cart_channel).await?;
 
     let at = pricing::PriceContext {
         quantity: input.quantity,

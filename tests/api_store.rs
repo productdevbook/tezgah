@@ -12,18 +12,21 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use common::Shop;
+use rust_decimal_macros::dec;
 use tezgah::api::store::{
-    self, CreateCart, ListOptions, ListPage, ListProducts, ListVariants, StartPayment,
+    self, AddLineItem, CreateCart, ListOptions, ListPage, ListProducts, ListVariants, StartPayment,
     StartPaymentSession,
 };
 use tezgah::catalogue::{self, NewProduct, NewVariant};
 use tezgah::id::{CartId, CustomerId, PaymentCollectionId};
+use tezgah::money::{Currency, Money};
 use tezgah::page::MAX_LIMIT;
 use tezgah::payment;
 use tezgah::ports::{
     Action, Actor, AuditEntry, AuditSink, Authorizer, Clock, Event, EventSink, Host, JobSpec, Jobs,
     Permit, Resource, Tx,
 };
+use tezgah::pricing::{self, NewPrice};
 use tezgah::store::{self as domain_store, NewSalesChannel};
 use uuid::Uuid;
 
@@ -754,6 +757,249 @@ async fn a_variant_of_an_unchanneled_product_is_read_by_any_token() -> tezgah::R
     let token = any_token(&mut tx, &ctx).await;
     let seen = store::get_variant(&mut tx, &ctx, &token, variant.id).await?;
     assert_eq!(seen.id, variant.id);
+
+    drop(tx);
+    shop.close().await;
+    Ok(())
+}
+
+/// A published product on the given channel, with one variant priced at a
+/// hundred lira.
+async fn a_priced_variant_on_channel(
+    tx: &mut Tx<'_>,
+    ctx: &tezgah::ports::Ctx<'_>,
+    handle: &str,
+    channel: tezgah::id::SalesChannelId,
+) -> tezgah::Result<tezgah::id::VariantId> {
+    let made = catalogue::create_product(tx, ctx, draft(handle)).await?;
+    catalogue::publish_product(tx, ctx, made.id).await?;
+    catalogue::add_product_to_channel(tx, ctx, made.id, channel).await?;
+
+    let variant = catalogue::create_variant(
+        tx,
+        ctx,
+        made.id,
+        NewVariant {
+            title: "One size".into(),
+            ..NewVariant::default()
+        },
+    )
+    .await?;
+
+    let set = pricing::create_price_set(tx, ctx).await?;
+    pricing::link_variant(tx, ctx, variant.id, set.id).await?;
+    pricing::add_price(
+        tx,
+        ctx,
+        NewPrice {
+            price_set_id: set.id,
+            price_list_id: None,
+            title: None,
+            amount: Money::new(dec!(100), Currency::parse("TRY")?),
+            min_quantity: None,
+            max_quantity: None,
+            rules: Vec::new(),
+        },
+    )
+    .await?;
+
+    Ok(variant.id)
+}
+
+/// A cart opened on `channel`, through a publishable key linked to nothing
+/// but it — mirroring what a real storefront token looks like.
+async fn a_cart_on_channel(
+    tx: &mut Tx<'_>,
+    ctx: &tezgah::ports::Ctx<'_>,
+    channel: tezgah::id::SalesChannelId,
+) -> tezgah::Result<CartId> {
+    let key = domain_store::create_publishable_key(tx, ctx, "storefront").await?;
+    domain_store::link_key_to_channel(tx, ctx, key.key.id, channel).await?;
+
+    let cart = store::create_cart(
+        tx,
+        ctx,
+        &key.token,
+        CreateCart {
+            currency_code: "TRY".into(),
+            region_id: None,
+            sales_channel_id: Some(channel),
+            email: None,
+        },
+    )
+    .await?;
+    Ok(cart.id)
+}
+
+/// #135: `add_line_item` used to take a variant id and check only that its
+/// product was published — never the channel, and it did not even take a
+/// token. The cart's own `sales_channel_id` is the authority here (not a
+/// token, since the route takes none): a cart opened on one channel cannot
+/// receive a line for a variant sold only on another.
+#[tokio::test]
+async fn a_line_of_another_channels_variant_is_not_added() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+    common::a_currency(&mut tx, shop.here, "TRY", 2).await;
+
+    let channel_a = domain_store::create_sales_channel(
+        &mut tx,
+        &ctx,
+        NewSalesChannel {
+            name: "Trade".into(),
+            description: None,
+            is_disabled: false,
+        },
+    )
+    .await?;
+    let channel_b = domain_store::create_sales_channel(
+        &mut tx,
+        &ctx,
+        NewSalesChannel {
+            name: "Retail".into(),
+            description: None,
+            is_disabled: false,
+        },
+    )
+    .await?;
+
+    let variant_a =
+        a_priced_variant_on_channel(&mut tx, &ctx, "wholesale-rug", channel_a.id).await?;
+    let cart_on_b = a_cart_on_channel(&mut tx, &ctx, channel_b.id).await?;
+
+    let refused = store::add_line_item(
+        &mut tx,
+        &ctx,
+        cart_on_b,
+        AddLineItem {
+            variant_id: variant_a,
+            quantity: 1,
+        },
+    )
+    .await
+    .expect_err("channel B's cart was never given this channel A product");
+    assert!(refused.is_not_found());
+
+    drop(tx);
+    shop.close().await;
+    Ok(())
+}
+
+/// The other direction of the same rule: a cart opened on channel A does not
+/// take a line for a variant sold only on channel B, even though both
+/// channels exist and both are real.
+#[tokio::test]
+async fn a_cart_on_one_channel_does_not_take_a_line_from_another() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+    common::a_currency(&mut tx, shop.here, "TRY", 2).await;
+
+    let channel_a = domain_store::create_sales_channel(
+        &mut tx,
+        &ctx,
+        NewSalesChannel {
+            name: "Trade".into(),
+            description: None,
+            is_disabled: false,
+        },
+    )
+    .await?;
+    let channel_b = domain_store::create_sales_channel(
+        &mut tx,
+        &ctx,
+        NewSalesChannel {
+            name: "Retail".into(),
+            description: None,
+            is_disabled: false,
+        },
+    )
+    .await?;
+
+    let variant_b = a_priced_variant_on_channel(&mut tx, &ctx, "retail-lamp", channel_b.id).await?;
+    let cart_on_a = a_cart_on_channel(&mut tx, &ctx, channel_a.id).await?;
+
+    let refused = store::add_line_item(
+        &mut tx,
+        &ctx,
+        cart_on_a,
+        AddLineItem {
+            variant_id: variant_b,
+            quantity: 1,
+        },
+    )
+    .await
+    .expect_err("channel A's cart was never given this channel B product");
+    assert!(refused.is_not_found());
+
+    drop(tx);
+    shop.close().await;
+    Ok(())
+}
+
+/// #109's backward-compatibility rule holds for the write side too: a
+/// product linked to no channel at all is addable to a cart on any channel.
+#[tokio::test]
+async fn a_line_of_an_unchanneled_variant_is_added_from_any_channel() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+    common::a_currency(&mut tx, shop.here, "TRY", 2).await;
+
+    let channel_a = domain_store::create_sales_channel(
+        &mut tx,
+        &ctx,
+        NewSalesChannel {
+            name: "Trade".into(),
+            description: None,
+            is_disabled: false,
+        },
+    )
+    .await?;
+
+    let made = catalogue::create_product(&mut tx, &ctx, draft("open-to-all")).await?;
+    catalogue::publish_product(&mut tx, &ctx, made.id).await?;
+    let variant = catalogue::create_variant(
+        &mut tx,
+        &ctx,
+        made.id,
+        NewVariant {
+            title: "One size".into(),
+            ..NewVariant::default()
+        },
+    )
+    .await?;
+    let set = pricing::create_price_set(&mut tx, &ctx).await?;
+    pricing::link_variant(&mut tx, &ctx, variant.id, set.id).await?;
+    pricing::add_price(
+        &mut tx,
+        &ctx,
+        NewPrice {
+            price_set_id: set.id,
+            price_list_id: None,
+            title: None,
+            amount: Money::new(dec!(100), Currency::parse("TRY")?),
+            min_quantity: None,
+            max_quantity: None,
+            rules: Vec::new(),
+        },
+    )
+    .await?;
+
+    let cart_on_a = a_cart_on_channel(&mut tx, &ctx, channel_a.id).await?;
+
+    let added = store::add_line_item(
+        &mut tx,
+        &ctx,
+        cart_on_a,
+        AddLineItem {
+            variant_id: variant.id,
+            quantity: 1,
+        },
+    )
+    .await?;
+    assert_eq!(added.variant_id, Some(variant.id));
 
     drop(tx);
     shop.close().await;
