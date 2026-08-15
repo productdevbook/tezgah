@@ -611,3 +611,105 @@ async fn a_bundle_cannot_be_inserted_as_its_own_component() {
     shop.close().await;
 }
 
+/// Two bundles sharing a component get one line each, and a return of one
+/// bundle never touches the other's line.
+#[tokio::test]
+async fn two_bundles_sharing_a_component_keep_separate_lines() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+    seed_currency(&mut tx, shop.here).await;
+
+    let honey = a_priced_variant(&mut tx, &ctx, "honey", dec!(10)).await;
+    let starter = a_priced_variant(&mut tx, &ctx, "starter-kit", dec!(0)).await;
+    let gift = a_priced_variant(&mut tx, &ctx, "gift-set", dec!(0)).await;
+
+    let cart = cart::create(&mut tx, &ctx, cart::NewCart::guest(lira()))
+        .await
+        .expect("a cart");
+
+    let starter_lines = cart::add_bundle(
+        &mut tx,
+        &ctx,
+        cart.id,
+        AddBundle {
+            variant_id: starter,
+            quantity: 1,
+            is_tax_inclusive: false,
+            components: vec![AddBundleComponent {
+                variant_id: honey,
+                quantity: 1,
+                unit_price: money(dec!(10)),
+            }],
+        },
+    )
+    .await
+    .expect("the starter kit to be added");
+
+    let gift_lines = cart::add_bundle(
+        &mut tx,
+        &ctx,
+        cart.id,
+        AddBundle {
+            variant_id: gift,
+            quantity: 1,
+            is_tax_inclusive: false,
+            components: vec![AddBundleComponent {
+                variant_id: honey,
+                quantity: 1,
+                unit_price: money(dec!(10)),
+            }],
+        },
+    )
+    .await
+    .expect("the gift set to be added, not merged into the starter kit's honey line");
+
+    let starter_honey = &starter_lines[1];
+    let gift_honey = &gift_lines[1];
+    assert_ne!(
+        starter_honey.id, gift_honey.id,
+        "each bundle's honey line is its own row"
+    );
+    assert_eq!(starter_honey.parent_line_item_id, Some(starter_lines[0].id));
+    assert_eq!(gift_honey.parent_line_item_id, Some(gift_lines[0].id));
+
+    // The same variant bought loose does not merge into either bundle's line.
+    let standalone = cart::add_line(
+        &mut tx,
+        &ctx,
+        cart.id,
+        AddLine {
+            variant_id: honey,
+            quantity: 1,
+            unit_price: money(dec!(10)),
+            is_tax_inclusive: false,
+        },
+    )
+    .await
+    .expect("a loose jar to be its own line");
+    assert!(standalone.parent_line_item_id.is_none());
+    assert_ne!(standalone.id, starter_honey.id);
+    assert_ne!(standalone.id, gift_honey.id);
+
+    assert_eq!(
+        line_count(&mut tx, cart.id).await,
+        5,
+        "two parents, two bundle-component lines and one standalone line"
+    );
+
+    // Returning the starter kit's honey does not touch the gift set's line.
+    cart::remove_line(&mut tx, &ctx, cart.id, starter_honey.id)
+        .await
+        .expect("to remove the starter kit's component");
+
+    let remaining_gift = cart::lines(&mut tx, &ctx, cart.id)
+        .await
+        .expect("the cart's lines")
+        .into_iter()
+        .find(|l| l.id == gift_honey.id)
+        .expect("the gift set's honey line to be untouched");
+    assert_eq!(remaining_gift.quantity, gift_honey.quantity);
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}

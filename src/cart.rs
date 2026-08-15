@@ -598,6 +598,21 @@ pub async fn add_line(
     cart_id: CartId,
     line: AddLine,
 ) -> Result<LineItem> {
+    insert_line(tx, ctx, cart_id, line, None).await
+}
+
+/// What [`add_line`] and [`add_bundle`] share. A bundle's child line merges
+/// only with another child of the *same* parent — `cart_line_item_bundle_
+/// component_key` is unique on `(cart_id, variant_id, parent_line_item_id)` —
+/// while an ordinary line still merges on `(cart_id, variant_id)` alone, so
+/// the two never collide with each other no matter which is added first.
+async fn insert_line(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    cart_id: CartId,
+    line: AddLine,
+    parent_line_item_id: Option<LineItemId>,
+) -> Result<LineItem> {
     let cart = open(tx, ctx, cart_id, Action::Write).await?;
 
     if line.quantity <= 0 {
@@ -610,13 +625,21 @@ pub async fn add_line(
         return Err(Error::invalid("a price cannot be negative"));
     }
 
+    let on_conflict = if parent_line_item_id.is_some() {
+        "on conflict (scope, cart_id, variant_id, parent_line_item_id)
+             where variant_id is not null and parent_line_item_id is not null"
+    } else {
+        "on conflict (scope, cart_id, variant_id)
+             where variant_id is not null and parent_line_item_id is null"
+    };
+
     let id = LineItemId::new();
     let item = sqlx::query_as::<_, LineItem>(&format!(
         "insert into cart_line_item
              (id, scope, cart_id, variant_id, product_id, product_title, product_handle,
               variant_title, variant_sku, variant_barcode, variant_option_values, thumbnail,
               quantity, unit_price, currency_code, is_tax_inclusive, is_discountable,
-              requires_shipping)
+              requires_shipping, parent_line_item_id)
          select $1::uuid, $2::uuid, $3::uuid, v.id, p.id, p.title, p.handle, v.title, v.sku,
                 v.barcode,
                 (select jsonb_object_agg(o.title, ov.value)
@@ -640,11 +663,12 @@ pub async fn add_line(
                                   on i.scope = vi.scope
                                  and i.id = vi.inventory_item_id
                                  and i.deleted_at is null
-                               where vi.scope = v.scope and vi.variant_id = v.id), true)
+                               where vi.scope = v.scope and vi.variant_id = v.id), true),
+                $9::uuid
          from product_variant v
          join product p on p.scope = v.scope and p.id = v.product_id
          where v.scope = $2 and v.id = $4 and v.deleted_at is null and p.deleted_at is null
-         on conflict (scope, cart_id, variant_id) where variant_id is not null
+         {on_conflict}
          do update set quantity = cart_line_item.quantity + excluded.quantity
          returning {LINE_COLUMNS}"
     ))
@@ -656,6 +680,7 @@ pub async fn add_line(
     .bind(line.unit_price.amount)
     .bind(line.unit_price.currency.as_str())
     .bind(line.is_tax_inclusive)
+    .bind(parent_line_item_id.map(|id| id.as_uuid()))
     .fetch_optional(&mut **tx)
     .await?
     .ok_or_else(|| Error::not_found("variant"))?;
@@ -685,10 +710,10 @@ pub async fn add_line(
 /// return values one component by returning its own line, which is the point
 /// of giving it one.
 ///
-/// Sharing a component variant between two bundles in the same cart, or
-/// between a bundle and the same variant bought on its own, is not supported:
-/// [`add_line`]'s one-line-per-variant index would merge them into a line
-/// that cannot say which bundle it belongs to.
+/// A component shared with another bundle, or with the same variant bought
+/// on its own, gets its own line: `cart_line_item_bundle_component_key` is
+/// unique on the parent as well as the variant, so this bundle's child never
+/// merges into one that belongs to a different parent.
 pub async fn add_bundle(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -728,7 +753,7 @@ pub async fn add_bundle(
             return Err(Error::invalid("that price is in another currency"));
         }
 
-        let child = add_line(
+        let child = insert_line(
             tx,
             ctx,
             cart_id,
@@ -738,23 +763,11 @@ pub async fn add_bundle(
                 unit_price: component.unit_price,
                 is_tax_inclusive: bundle.is_tax_inclusive,
             },
+            Some(parent.id),
         )
         .await?;
 
-        sqlx::query(
-            "update cart_line_item set parent_line_item_id = $3
-             where scope = $1 and id = $2",
-        )
-        .bind(ctx.scope.0)
-        .bind(child.id.as_uuid())
-        .bind(parent.id.as_uuid())
-        .execute(&mut **tx)
-        .await?;
-
-        lines.push(LineItem {
-            parent_line_item_id: Some(parent.id),
-            ..child
-        });
+        lines.push(child);
     }
 
     Ok(lines)
