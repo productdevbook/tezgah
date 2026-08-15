@@ -127,9 +127,22 @@ async fn describe(shop: &Shop) -> Vec<Table> {
             .map(|(_, def)| strip_casts(def))
             .collect();
 
+        // A check mentioning more than one of this table's own columns is not
+        // a claim about any single column's domain — it correlates them, the
+        // way `payout_line_reference_valid`'s neighbour ties `reference` to
+        // `order_id` and `payout_id` (#143). Mining a literal out of one of
+        // those reads it as a value assertion and fights whatever check
+        // actually owns that column's domain, so only a single-column check
+        // is eligible here; a correlated one is left for `satisfy_checks` to
+        // solve instead.
+        let single_column_checks: Vec<&String> = mine
+            .iter()
+            .filter(|def| columns.iter().filter(|c| mentions(def, &c.name)).count() == 1)
+            .collect();
+
         let mut literals: HashMap<String, String> = HashMap::new();
         for column in &columns {
-            let said = mine
+            let said = single_column_checks
                 .iter()
                 .filter(|def| mentions(def, &column.name))
                 .find_map(|def| accepted_literal(def));
@@ -137,7 +150,7 @@ async fn describe(shop: &Shop) -> Vec<Table> {
             let value = match said {
                 Some(literal) => Some(literal),
                 None => {
-                    let pattern = mine
+                    let pattern = single_column_checks
                         .iter()
                         .filter(|def| mentions(def, &column.name))
                         .find_map(|def| regex_in(def));
@@ -371,6 +384,51 @@ fn value(
     })
 }
 
+/// A check relating one column's *value* to whether two others are set —
+/// `(a <> 'x' AND b IS NOT NULL AND c IS NULL) OR (a = 'x' AND b IS NULL AND
+/// c IS NOT NULL)` — rather than constraining any single column's own domain.
+/// Each `Vec` entry is one `OR`-branch: the literal conditions that select it,
+/// and the nullability it then demands.
+fn correlated_nullability(
+    def: &str,
+) -> Option<Vec<(Vec<(String, String, bool)>, Vec<(String, bool)>)>> {
+    if !def.contains(" IS NULL") || !def.contains(" IS NOT NULL") || !def.contains(" OR ") {
+        return None;
+    }
+
+    let mut branches = Vec::new();
+    for branch in def.split(" OR ") {
+        let mut conditions = Vec::new();
+        let mut nullability = Vec::new();
+
+        for clause in branch.split(" AND ") {
+            let clause = clause.trim_matches(|c| c == '(' || c == ')');
+            if let Some(at) = clause.find(" = '") {
+                let column = ident_before(&clause[..at])?;
+                let rest = &clause[at + " = '".len()..];
+                let (literal, _) = rest.split_once('\'')?;
+                conditions.push((column.to_string(), literal.to_string(), true));
+            } else if let Some(at) = clause.find(" <> '") {
+                let column = ident_before(&clause[..at])?;
+                let rest = &clause[at + " <> '".len()..];
+                let (literal, _) = rest.split_once('\'')?;
+                conditions.push((column.to_string(), literal.to_string(), false));
+            } else if let Some(at) = clause.find(" IS NOT NULL") {
+                nullability.push((ident_before(&clause[..at])?.to_string(), true));
+            } else if let Some(at) = clause.find(" IS NULL") {
+                nullability.push((ident_before(&clause[..at])?.to_string(), false));
+            }
+        }
+
+        if conditions.is_empty() || nullability.is_empty() {
+            return None;
+        }
+        branches.push((conditions, nullability));
+    }
+
+    (!branches.is_empty()).then_some(branches)
+}
+
 /// Bends the columns already chosen until the checks that tie them together
 /// are satisfied: an array that may not be empty, an array that must contain
 /// another column, a column that is only required because of what a second one
@@ -441,6 +499,30 @@ fn satisfy_checks(
             if let (true, None, Some(column)) = (triggered, held(chosen, needed), column) {
                 let filled = value(table, column, id, seeded)?;
                 chosen.push((needed.to_string(), filled));
+            }
+        }
+
+        if let Some(branches) = correlated_nullability(def) {
+            for (conditions, nullability) in &branches {
+                let selected = conditions.iter().all(|(column, literal, equals)| {
+                    matches!(held(chosen, column), Some(value)
+                        if (value == format!("'{literal}'")) == *equals)
+                });
+                if !selected {
+                    continue;
+                }
+                for (column_name, required) in nullability {
+                    if *required {
+                        let column = table.columns.iter().find(|c| &c.name == column_name);
+                        if let (None, Some(column)) = (held(chosen, column_name), column) {
+                            let filled = value(table, column, id, seeded)?;
+                            chosen.push((column_name.clone(), filled));
+                        }
+                    } else {
+                        chosen.retain(|(name, _)| name != column_name);
+                    }
+                }
+                break;
             }
         }
     }
