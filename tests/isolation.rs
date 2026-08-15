@@ -384,14 +384,21 @@ fn value(
     })
 }
 
+/// A column, the literal it is compared to, and whether that comparison is
+/// `=` (true) or `<>` (false).
+type LiteralCondition = (String, String, bool);
+
+/// A column and whether it must be `IS NOT NULL` (true) or `IS NULL` (false).
+type Nullability = (String, bool);
+
+/// One `OR`-branch of a [`correlated_nullability`] check: the literal
+/// conditions that select it, and the nullability it then demands.
+type Branch = (Vec<LiteralCondition>, Vec<Nullability>);
+
 /// A check relating one column's *value* to whether two others are set —
 /// `(a <> 'x' AND b IS NOT NULL AND c IS NULL) OR (a = 'x' AND b IS NULL AND
 /// c IS NOT NULL)` — rather than constraining any single column's own domain.
-/// Each `Vec` entry is one `OR`-branch: the literal conditions that select it,
-/// and the nullability it then demands.
-fn correlated_nullability(
-    def: &str,
-) -> Option<Vec<(Vec<(String, String, bool)>, Vec<(String, bool)>)>> {
+fn correlated_nullability(def: &str) -> Option<Vec<Branch>> {
     if !def.contains(" IS NULL") || !def.contains(" IS NOT NULL") || !def.contains(" OR ") {
         return None;
     }
