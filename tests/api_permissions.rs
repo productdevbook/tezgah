@@ -31,7 +31,7 @@ use tezgah::api::{
 };
 use tezgah::id::{
     AddressId, AgreementVersionId, CampaignId, CartCreditId, CartId, CategoryId, CollectionId,
-    CommissionRuleId, CustomerGroupId, CustomerId, DigitalContentId, ExchangeId, FulfillmentId,
+    CommissionRuleId, CustomerGroupId, CustomerId, DigitalContentId, FulfillmentId,
     FulfillmentSetId, GiftCardId, InventoryItemId, InventoryLotId, LineItemId, OptionId,
     OrderBasketId, OrderChangeId, OrderEntitlementId, OrderId, OrderInvoiceId, PaymentCollectionId,
     PaymentId, PriceId, PriceListId, PriceSetId, ProductId, ProductImageId, ProductTagId,
@@ -712,7 +712,7 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
             &ctx,
             PromotionId::new(),
             "rules",
-            uuid::Uuid::new_v4()
+            uuid::Uuid::now_v7()
         )
     );
     denied!(
@@ -875,14 +875,14 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
             TaxRateId::new(),
             admin_rest::CreateTaxRateRule {
                 reference: tezgah::tax::TaxReference::Product,
-                reference_id: uuid::Uuid::new_v4(),
+                reference_id: uuid::Uuid::now_v7(),
             }
         )
     );
     denied!(
         Method::Delete,
         "/admin/tax-rates/{id}/rules/{rule_id}",
-        admin_rest::delete_tax_rate_rule(&mut tx, &ctx, uuid::Uuid::new_v4())
+        admin_rest::delete_tax_rate_rule(&mut tx, &ctx, uuid::Uuid::now_v7())
     );
     denied!(
         Method::Get,
@@ -1645,7 +1645,7 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
     denied!(
         Method::Delete,
         "/admin/prices/{id}/rules/{rule_id}",
-        admin_catalogue::remove_price_rule(&mut tx, &ctx, PriceId::new(), uuid::Uuid::new_v4())
+        admin_catalogue::remove_price_rule(&mut tx, &ctx, PriceId::new(), uuid::Uuid::now_v7())
     );
     denied!(
         Method::Get,
@@ -3788,7 +3788,7 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
             payout::CreatePayout {
                 currency_code: "TRY".into(),
                 reference: "ref-1".into(),
-                reference_id: uuid::Uuid::new_v4(),
+                reference_id: uuid::Uuid::now_v7(),
                 metadata: None,
             }
         )
@@ -3824,7 +3824,7 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
     denied!(
         Method::Delete,
         "/admin/tax-registrations/{id}",
-        tax_identity::delete_registration(&mut tx, &ctx, uuid::Uuid::new_v4())
+        tax_identity::delete_registration(&mut tx, &ctx, uuid::Uuid::now_v7())
     );
     denied!(
         Method::Get,
@@ -3850,7 +3850,7 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
     denied!(
         Method::Delete,
         "/admin/tax-ids/{id}",
-        tax_identity::delete_tax_id(&mut tx, &ctx, uuid::Uuid::new_v4())
+        tax_identity::delete_tax_id(&mut tx, &ctx, uuid::Uuid::now_v7())
     );
     denied!(
         Method::Get,
@@ -3883,7 +3883,7 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
         tax_identity::revoke_exemption(
             &mut tx,
             &ctx,
-            uuid::Uuid::new_v4(),
+            uuid::Uuid::now_v7(),
             tax_identity::RevokeExemption::default()
         )
     );
