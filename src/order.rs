@@ -45,9 +45,10 @@ use crate::cart::{CartTotals, TotalsLine, TotalsShipping, compute};
 use crate::error::{Error, Result};
 use crate::id::{
     AddressId, AgreementVersionId, CaptureId, ClaimId, CustomerId, ExchangeId, LineItemId,
-    OrderAgreementId, OrderChangeId, OrderId, OrderInvoiceId, OrderItemId, OrderTransactionId,
-    OrderTransferId, PaymentCollectionId, PaymentId, PromotionId, RefundId, RegionId, ReturnId,
-    SalesChannelId, SellingPlanId, ShippingOptionId, StockLocationId, SubscriptionId, VariantId,
+    OrderAgreementId, OrderBasketId, OrderChangeId, OrderId, OrderInvoiceId, OrderItemId,
+    OrderTransactionId, OrderTransferId, PaymentCollectionId, PaymentId, PromotionId, RefundId,
+    RegionId, ReturnId, SalesChannelId, SellingPlanId, ShippingOptionId, StockLocationId,
+    SubscriptionId, VariantId,
 };
 use crate::money::{Currency, Money};
 use crate::page::{Cursor, Page, Paging};
@@ -55,9 +56,10 @@ use crate::ports::{Action, Actor, AuditEntry, Ctx, Event, Permit, Resource, Tx};
 
 const ORDER_COLUMNS: &str = "id, display_id, region_id, sales_channel_id, customer_id, \
                              shipping_address_id, billing_address_id, payment_collection_id, \
-                             subscription_id, email, currency_code, locale, version, status, \
-                             payment_status, fulfillment_status, is_draft, no_notification, \
-                             metadata, completed_at, canceled_at, created_at, updated_at";
+                             basket_id, subscription_id, email, currency_code, locale, version, \
+                             status, payment_status, fulfillment_status, is_draft, \
+                             no_notification, metadata, completed_at, canceled_at, created_at, \
+                             updated_at";
 
 const LINE_COLUMNS: &str = "id, order_id, variant_id, product_id, title, subtitle, thumbnail, \
                             product_title, product_handle, variant_title, variant_sku, \
@@ -224,6 +226,12 @@ pub struct Order {
     pub shipping_address_id: Option<Uuid>,
     pub billing_address_id: Option<Uuid>,
     pub payment_collection_id: Option<PaymentCollectionId>,
+    /// The basket this order was split from at checkout, when it was placed
+    /// alongside another seller's. `null` for a single-seller order, forever —
+    /// nothing backfills it. Set, `payment_collection_id` is not: which
+    /// collection paid is read through the basket instead, so there is one
+    /// answer to that question rather than two that can disagree.
+    pub basket_id: Option<OrderBasketId>,
     /// The contract this order was placed under, if any — the initial order
     /// a subscription is sold on, or one a renewal placed.
     pub subscription_id: Option<SubscriptionId>,
@@ -252,6 +260,21 @@ impl Order {
 
     pub fn status(&self) -> Result<OrderStatus> {
         OrderStatus::parse(&self.status)
+    }
+
+    /// Which collection paid: this order's own, or — when it carries none
+    /// because it was split from a basket — the basket's. The basket lives in
+    /// the marketplace's scope, not this order's, so reading it is a second
+    /// query under a second `Ctx` that the caller runs and hands the answer
+    /// to here; this crosses no scope itself; it only decides which of two
+    /// already-fetched answers is the real one, which is what
+    /// `order_basket_payment_single_source` guarantees is never both.
+    pub fn payment_collection(
+        &self,
+        basket: Option<&crate::order_basket::OrderBasket>,
+    ) -> Option<PaymentCollectionId> {
+        self.payment_collection_id
+            .or_else(|| basket.and_then(|b| b.payment_collection_id))
     }
 }
 
@@ -703,6 +726,10 @@ pub struct NewOrder {
     pub currency_code: Currency,
     pub locale: Option<String>,
     pub payment_collection_id: Option<PaymentCollectionId>,
+    /// Which basket this order was split from at checkout. Carries no
+    /// `payment_collection_id` of its own when this is set — the basket's is
+    /// the one that paid.
+    pub basket_id: Option<OrderBasketId>,
     pub subscription_id: Option<SubscriptionId>,
     pub shipping_address: Option<OrderAddress>,
     pub billing_address: Option<OrderAddress>,
@@ -722,6 +749,7 @@ impl NewOrder {
             currency_code,
             locale: None,
             payment_collection_id: None,
+            basket_id: None,
             subscription_id: None,
             shipping_address: None,
             billing_address: None,
@@ -767,6 +795,11 @@ async fn place(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewOrder, draft: bool) -> Re
     if new.lines.is_empty() {
         return Err(Error::invalid("an order needs something on it"));
     }
+    if new.basket_id.is_some() && new.payment_collection_id.is_some() {
+        return Err(Error::invalid(
+            "an order under a basket has no payment collection of its own",
+        ));
+    }
 
     let currency = new.currency_code;
     for line in &new.lines {
@@ -811,9 +844,10 @@ async fn place(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewOrder, draft: bool) -> Re
     let order = sqlx::query_as::<_, Order>(&format!(
         r#"insert into "order"
                (id, scope, display_id, region_id, sales_channel_id, customer_id,
-                shipping_address_id, billing_address_id, payment_collection_id, subscription_id,
-                email, currency_code, locale, status, is_draft, no_notification, metadata)
-           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+                shipping_address_id, billing_address_id, payment_collection_id, basket_id,
+                subscription_id, email, currency_code, locale, status, is_draft,
+                no_notification, metadata)
+           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
            returning {ORDER_COLUMNS}"#
     ))
     .bind(id.as_uuid())
@@ -825,6 +859,7 @@ async fn place(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewOrder, draft: bool) -> Re
     .bind(shipping_address_id)
     .bind(billing_address_id)
     .bind(new.payment_collection_id.map(PaymentCollectionId::as_uuid))
+    .bind(new.basket_id.map(OrderBasketId::as_uuid))
     .bind(new.subscription_id.map(SubscriptionId::as_uuid))
     .bind(new.email.map(|value| value.trim().to_lowercase()))
     .bind(currency.as_str())
@@ -1020,6 +1055,38 @@ pub async fn list(
     .bind(ctx.scope.0)
     .bind(customer_id.map(CustomerId::as_uuid))
     .bind(drafts)
+    .bind(paging.after.map(|c| c.at))
+    .bind(paging.after.map(|c| c.id))
+    .bind(paging.probe())
+    .fetch_all(&mut **tx)
+    .await?;
+
+    Ok(Page::build(rows, paging, |row| Cursor {
+        at: row.created_at,
+        id: row.id.as_uuid(),
+    }))
+}
+
+/// This scope's own orders under one basket. The permit is asked by
+/// [`crate::order_basket::orders`], the only caller: a basket id crosses
+/// scopes on its own, so what may be asked about one is a question for the
+/// basket, not this table.
+pub(crate) async fn in_basket(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    basket_id: OrderBasketId,
+    paging: Paging,
+) -> Result<Page<Order>> {
+    let rows = sqlx::query_as::<_, Order>(&format!(
+        r#"select {ORDER_COLUMNS} from "order"
+           where scope = $1
+             and basket_id = $2
+             and ($3::timestamptz is null or (created_at, id) > ($3, $4))
+           order by created_at, id
+           limit $5"#
+    ))
+    .bind(ctx.scope.0)
+    .bind(basket_id.as_uuid())
     .bind(paging.after.map(|c| c.at))
     .bind(paging.after.map(|c| c.id))
     .bind(paging.probe())

@@ -644,6 +644,11 @@ impl Step for CreateOrder {
             currency_code: currency,
             locale: None,
             payment_collection_id: Some(collection.id),
+            // A marketplace splitting a checkout across seller scopes opens
+            // its own runs of this workflow, one per scope, and attaches the
+            // shared basket afterwards; this step has no basket of its own to
+            // carry.
+            basket_id: None,
             // A selling plan on a cart line names a policy, not yet a
             // contract: the subscription this order might start does not
             // exist until after it is placed.

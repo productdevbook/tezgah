@@ -135,6 +135,15 @@ pub enum Resource {
         id: Option<Uuid>,
         customer: Option<Uuid>,
     },
+    /// What a customer sees as one order and pays for once — a marketplace's
+    /// own row, joining the seller-scoped orders split from it at checkout.
+    /// Not an [`Resource::Order`]: a basket lives in the marketplace's scope,
+    /// not a seller's, and granting the two apart is the whole point of that
+    /// split.
+    Basket {
+        id: Option<Uuid>,
+        customer: Option<Uuid>,
+    },
     Pricing,
     /// Shop-wide settings: its name, its default currency, how tax is shown.
     Store,

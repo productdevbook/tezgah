@@ -125,6 +125,9 @@ pub struct OrderView {
     pub fulfillment_status: String,
     pub is_draft: bool,
     pub payment_collection_id: Option<PaymentCollectionId>,
+    /// The basket this order was split from, if a checkout that spanned more
+    /// than one seller-scope opened one.
+    pub basket_id: Option<crate::id::OrderBasketId>,
     pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
     pub canceled_at: Option<chrono::DateTime<chrono::Utc>>,
     pub created_at: chrono::DateTime<chrono::Utc>,
@@ -143,6 +146,7 @@ impl From<order::Order> for OrderView {
             fulfillment_status: row.fulfillment_status,
             is_draft: row.is_draft,
             payment_collection_id: row.payment_collection_id,
+            basket_id: row.basket_id,
             completed_at: row.completed_at,
             canceled_at: row.canceled_at,
             created_at: row.created_at,

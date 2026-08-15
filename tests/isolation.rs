@@ -12,6 +12,7 @@ use std::collections::HashMap;
 
 use common::Shop;
 use sqlx::{Row, postgres::PgRow};
+use tezgah::ports::Scope;
 use uuid::Uuid;
 
 /// A column as the catalogue describes it.
@@ -466,6 +467,7 @@ fn repeats(parents_used: &mut HashMap<String, u32>, parent: &str) -> bool {
 /// gets a row of its own in turn.
 async fn insert_extra_row(
     shop: &Shop,
+    scope: Scope,
     tables: &[Table],
     parent_name: &str,
     seeded: &HashMap<String, Uuid>,
@@ -486,7 +488,7 @@ async fn insert_extra_row(
         let literal = match table.parents.get(&column.name) {
             Some(parent) if parent == &table.name => format!("'{id}'::uuid"),
             Some(parent) if repeats(&mut parents_used, parent) => {
-                Box::pin(insert_extra_row(shop, tables, parent, seeded))
+                Box::pin(insert_extra_row(shop, scope, tables, parent, seeded))
                     .await
                     .map(|extra_id| format!("'{extra_id}'::uuid"))?
             }
@@ -498,7 +500,7 @@ async fn insert_extra_row(
     satisfy_checks(table, &mut chosen, id, seeded)?;
 
     let mut names = vec![quote("id"), quote("scope")];
-    let mut values = vec![format!("'{id}'::uuid"), format!("'{}'::uuid", shop.here.0)];
+    let mut values = vec![format!("'{id}'::uuid"), format!("'{}'::uuid", scope.0)];
     for (column, literal) in &chosen {
         names.push(quote(column));
         values.push(literal.clone());
@@ -511,7 +513,7 @@ async fn insert_extra_row(
         values.join(", ")
     );
 
-    let mut tx = shop.begin().await;
+    let mut tx = shop.begin_as(scope).await;
     sqlx::query(&statement)
         .execute(&mut *tx)
         .await
@@ -521,10 +523,78 @@ async fn insert_extra_row(
     Ok(id)
 }
 
-/// Seeds one row per table in `shop.here`, parents before children.
+/// A fresh row in `table_name`, in `scope`, built the way [`seed`] builds its
+/// rows except for `override_column`, which takes `override_value` instead of
+/// whatever a same-scope parent would have supplied. Used to ask whether a
+/// row may point, through one particular column, at a row that was seeded in
+/// a different scope.
+async fn insert_pointing_elsewhere(
+    shop: &Shop,
+    scope: Scope,
+    tables: &[Table],
+    table_name: &str,
+    seeded: &HashMap<String, Uuid>,
+    override_column: &str,
+    override_value: Uuid,
+) -> Result<(), String> {
+    let table = tables
+        .iter()
+        .find(|t| t.name == table_name)
+        .ok_or_else(|| format!("{table_name} is not a known table"))?;
+
+    let id = Uuid::now_v7();
+    let mut chosen: Vec<(String, String)> = Vec::new();
+
+    for column in &table.columns {
+        if column.name == override_column {
+            chosen.push((column.name.clone(), format!("'{override_value}'::uuid")));
+            continue;
+        }
+        if !column.required || column.name == "id" || column.name == "scope" {
+            continue;
+        }
+        let literal = match table.parents.get(&column.name) {
+            Some(parent) if parent == &table.name => format!("'{id}'::uuid"),
+            _ => value(table, column, id, seeded)?,
+        };
+        chosen.push((column.name.clone(), literal));
+    }
+
+    satisfy_checks(table, &mut chosen, id, seeded)?;
+
+    let mut names = vec![quote("id"), quote("scope")];
+    let mut values = vec![format!("'{id}'::uuid"), format!("'{}'::uuid", scope.0)];
+    for (column, literal) in &chosen {
+        names.push(quote(column));
+        values.push(literal.clone());
+    }
+
+    let statement = format!(
+        "insert into {} ({}) values ({})",
+        quote(&table.name),
+        names.join(", "),
+        values.join(", ")
+    );
+
+    let mut tx = shop.begin_as(scope).await;
+    let outcome = sqlx::query(&statement).execute(&mut *tx).await;
+    match outcome {
+        Ok(_) => {
+            tx.rollback().await.expect("to give the connection back");
+            Ok(())
+        }
+        Err(error) => {
+            let _ = tx.rollback().await;
+            Err(error.to_string())
+        }
+    }
+}
+
+/// Seeds one row per table in `scope`, parents before children.
 ///
-/// Returns the tables that got a row, and the ones that did not with the reason.
-async fn seed(shop: &Shop) -> (Vec<String>, Vec<(String, String)>) {
+/// Returns, for every table that got a row, the id it was given; and the
+/// tables that did not, with the reason.
+async fn seed(shop: &Shop, scope: Scope) -> (HashMap<String, Uuid>, Vec<(String, String)>) {
     let tables = describe(shop).await;
 
     let mut seeded: HashMap<String, Uuid> = HashMap::new();
@@ -561,7 +631,7 @@ async fn seed(shop: &Shop) -> (Vec<String>, Vec<(String, String)>) {
                 }
                 let outcome = match table.parents.get(&column.name) {
                     Some(parent) if parent != &table.name && repeats(&mut parents_used, parent) => {
-                        Box::pin(insert_extra_row(shop, &tables, parent, &seeded))
+                        Box::pin(insert_extra_row(shop, scope, &tables, parent, &seeded))
                             .await
                             .map(|extra_id| format!("'{extra_id}'::uuid"))
                     }
@@ -589,7 +659,7 @@ async fn seed(shop: &Shop) -> (Vec<String>, Vec<(String, String)>) {
             }
 
             let mut names = vec![quote("id"), quote("scope")];
-            let mut values = vec![format!("'{id}'::uuid"), format!("'{}'::uuid", shop.here.0)];
+            let mut values = vec![format!("'{id}'::uuid"), format!("'{}'::uuid", scope.0)];
             for (column, literal) in &chosen {
                 names.push(quote(column));
                 values.push(literal.clone());
@@ -602,7 +672,7 @@ async fn seed(shop: &Shop) -> (Vec<String>, Vec<(String, String)>) {
                 values.join(", ")
             );
 
-            let mut tx = shop.begin().await;
+            let mut tx = shop.begin_as(scope).await;
             let written = sqlx::query(&statement).execute(&mut *tx).await;
             match written {
                 Ok(_) => {
@@ -632,16 +702,16 @@ async fn seed(shop: &Shop) -> (Vec<String>, Vec<(String, String)>) {
         pending = next;
     }
 
-    let mut covered: Vec<String> = seeded.into_keys().collect();
-    covered.sort();
     skipped.sort();
-    (covered, skipped)
+    (seeded, skipped)
 }
 
 #[tokio::test]
 async fn no_registered_table_shows_its_rows_to_another_scope() {
     let shop = Shop::open().await;
-    let (covered, skipped) = seed(&shop).await;
+    let (seeded, skipped) = seed(&shop, shop.here).await;
+    let mut covered: Vec<String> = seeded.into_keys().collect();
+    covered.sort();
 
     assert!(
         !covered.is_empty(),
@@ -711,7 +781,7 @@ const NOT_YET_SEEDED: &[&str] = &[];
 #[tokio::test]
 async fn every_registered_table_can_be_seeded_so_isolation_is_actually_asked() {
     let shop = Shop::open().await;
-    let (covered, skipped) = seed(&shop).await;
+    let (covered, skipped) = seed(&shop, shop.here).await;
     shop.close().await;
 
     let skipped: Vec<_> = skipped
@@ -778,6 +848,136 @@ async fn a_row_cannot_reference_another_scopes_row() {
         refused.is_err(),
         "a row in one scope referenced an order in another"
     );
+
+    shop.close().await;
+}
+
+/// `tezgah_cross_scope_fk` (0062) is the one way a single-column key may
+/// legitimately name a row outside its own scope — `order.basket_id`, into
+/// the marketplace's own `order_basket`, so a customer's one order number can
+/// join what fulfilment splits per seller. Adding to this list is a schema
+/// decision to defend in review, not a test to satisfy, and it may only
+/// shrink.
+const ALLOWED_CROSS_SCOPE: [(&str, &str); 1] = [("order", "basket_id")];
+
+/// Sweeps every single-column foreign key naming a plain `id` — the shape
+/// `tezgah_fk`'s unscoped form builds, and the one #91 spent 33 keys clearing
+/// of exactly this hazard. Each is proved same-scope, the same way
+/// [`a_row_cannot_reference_another_scopes_row`] proves the one case by hand,
+/// except for [`ALLOWED_CROSS_SCOPE`], which is proved to do the opposite: the
+/// reference across scopes is accepted, while the row it names stays as
+/// unreadable through the referencing scope's own connection as any other
+/// table's — the exception is that the reference exists, not that reading
+/// through it is granted.
+#[tokio::test]
+async fn only_the_named_exception_crosses_a_scope() {
+    let shop = Shop::open().await;
+    let tables = describe(&shop).await;
+
+    let pairs: Vec<(String, String, String)> = sqlx::query_as(
+        "select c.relname::text, a.attname::text, f.relname::text
+         from pg_constraint con
+         join pg_class c on c.oid = con.conrelid
+         join pg_namespace n on n.oid = c.relnamespace and n.nspname = 'public'
+         join pg_class f on f.oid = con.confrelid
+         join unnest(con.conkey) with ordinality as k(att, ord) on true
+         join pg_attribute a on a.attrelid = con.conrelid and a.attnum = k.att
+         join unnest(con.confkey) with ordinality as fk(att, ord) on fk.ord = k.ord
+         join pg_attribute fa on fa.attrelid = con.confrelid and fa.attnum = fk.att
+         where con.contype = 'f'
+           and fa.attname = 'id'
+           and cardinality(con.conkey) = 1
+           and c.relname <> f.relname",
+    )
+    .fetch_all(&shop.pool)
+    .await
+    .expect("to read single-column foreign keys");
+
+    assert!(
+        !pairs.is_empty(),
+        "no single-column foreign key was found, so this test proved nothing"
+    );
+
+    let registered: Vec<(String, String)> =
+        sqlx::query_as("select child_table, child_column from tezgah_cross_scope_fk")
+            .fetch_all(&shop.pool)
+            .await
+            .expect("to read tezgah_cross_scope_fk");
+
+    for (child, column) in &registered {
+        assert!(
+            ALLOWED_CROSS_SCOPE.contains(&(child.as_str(), column.as_str())),
+            "{child}.{column} is registered with tezgah_cross_scope_fk but is not in \
+             ALLOWED_CROSS_SCOPE — say why it is allowed, or it is a regression to what \
+             #91 removed"
+        );
+    }
+    for (child, column) in ALLOWED_CROSS_SCOPE {
+        assert!(
+            registered
+                .iter()
+                .any(|(c, col)| c == child && col == column),
+            "{child}.{column} is in ALLOWED_CROSS_SCOPE but no migration registered it \
+             with tezgah_cross_scope_fk"
+        );
+    }
+
+    let (here_seeded, _) = seed(&shop, shop.here).await;
+    let (elsewhere_seeded, _) = seed(&shop, shop.elsewhere).await;
+
+    let mut wrong = Vec::new();
+
+    for (child, column, parent) in &pairs {
+        let is_exception = ALLOWED_CROSS_SCOPE.contains(&(child.as_str(), column.as_str()));
+
+        let (Some(&elsewhere_id), Some(_)) = (elsewhere_seeded.get(parent), here_seeded.get(child))
+        else {
+            // Neither table can be seeded, and the seeding tests already say
+            // so; nothing here would prove anything either way.
+            continue;
+        };
+
+        let outcome = insert_pointing_elsewhere(
+            &shop,
+            shop.here,
+            &tables,
+            child,
+            &here_seeded,
+            column,
+            elsewhere_id,
+        )
+        .await;
+
+        match (is_exception, outcome) {
+            (false, Ok(())) => wrong.push(format!(
+                "{child}.{column} accepted a reference into another scope's {parent}"
+            )),
+            (true, Err(why)) => wrong.push(format!(
+                "{child}.{column} is the named exception and should have accepted a \
+                 reference into another scope's {parent}, but was refused: {why}"
+            )),
+            _ => {}
+        }
+    }
+
+    assert!(wrong.is_empty(), "{}", wrong.join("\n  "));
+
+    // The exception is the reference, not a right to read what it names: the
+    // basket in `elsewhere` stays as invisible to `here`'s own connection as
+    // any other table's row.
+    if let Some(&basket_id) = elsewhere_seeded.get("order_basket") {
+        let mut mine = shop.begin().await;
+        let seen: i64 = sqlx::query_scalar("select count(*) from order_basket where id = $1")
+            .bind(basket_id)
+            .fetch_one(&mut *mine)
+            .await
+            .expect("the count itself to succeed");
+        mine.rollback().await.expect("to give the connection back");
+        assert_eq!(
+            seen, 0,
+            "a scope could read the basket its own order names in another scope"
+        );
+    }
 
     shop.close().await;
 }

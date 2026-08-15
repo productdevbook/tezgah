@@ -48,6 +48,11 @@ async fn every_registered_table_is_unique_on_scope_and_id() {
 async fn no_key_on_a_scoped_table_can_cross_a_scope() {
     let shop = Shop::open().await;
 
+    // `tezgah_cross_scope_fk` (0062) is the one named exception: a single
+    // column key, on a table otherwise held to scoped keys, that points at
+    // another scope on purpose. `tests/isolation.rs` proves it is the only
+    // one that may, by name; this only has to not flag it as if it were the
+    // hazard #91 removed.
     let bare: Vec<(String, String)> = sqlx::query_as(
         "select c.relname::text, con.conname::text
          from tezgah_scoped_fk_table f
@@ -59,6 +64,13 @@ async fn no_key_on_a_scoped_table_can_cross_a_scope() {
              where a.attrelid = con.conrelid
                and a.attname = 'scope'
                and a.attnum = any (con.conkey)
+         )
+         and not exists (
+             select 1
+             from tezgah_cross_scope_fk x
+             join pg_attribute a
+                 on a.attrelid = con.conrelid and a.attname = x.child_column
+             where x.child_table = c.relname and a.attnum = any (con.conkey)
          )
          order by 1, 2",
     )
@@ -525,13 +537,14 @@ async fn the_migrations_apply_to_an_empty_database() {
 /// Tables that carry no scope on purpose: the scope registry itself, the table
 /// registry, sqlx's own, and the order transitions, which are the library's
 /// rules rather than a shop's.
-const UNSCOPED: [&str; 6] = [
+const UNSCOPED: [&str; 7] = [
     "tezgah_scope",
     "tezgah_table",
     "_sqlx_migrations",
     "tezgah_order_status_move",
     "tezgah_evidence_table",
     "tezgah_scoped_fk_table",
+    "tezgah_cross_scope_fk",
 ];
 
 #[tokio::test]

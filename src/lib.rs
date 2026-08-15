@@ -14,6 +14,7 @@ pub mod id;
 pub mod inventory;
 pub mod money;
 pub mod order;
+pub mod order_basket;
 pub mod page;
 pub mod payment;
 pub mod ports;

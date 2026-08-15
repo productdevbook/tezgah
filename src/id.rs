@@ -123,6 +123,7 @@ ids! {
     CartId => "cart",
     LineItemId => "line item",
     OrderId => "order",
+    OrderBasketId => "order basket",
     OrderItemId => "order item",
     OrderChangeId => "order change",
     OrderTransferId => "order transfer",
