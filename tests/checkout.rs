@@ -742,7 +742,9 @@ async fn a_second_factor_keeps_everything_it_has() -> Result<()> {
     let placed = checkout
         .place(&shop.pool, &shop.ctx(), here.cart_id)
         .await?;
-    assert_eq!(placed.run.state, State::Done);
+    // A run held open by a second factor has not finished: the shopper is
+    // still expected to come back and the run has to be resumable when they do.
+    assert_eq!(placed.run.state, State::Waiting);
     assert!(placed.requires_more);
 
     let order_id = placed.order_id.expect("an order that is waiting");
