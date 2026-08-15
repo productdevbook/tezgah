@@ -332,12 +332,7 @@ const TOLERATED_TABLES: [(&str, &str); 5] = [
 /// SQL the scanner does not read, written from a caller's string the
 /// scanner cannot follow, or genuinely not offered yet, in which case the
 /// reason names the issue.
-const TOLERATED_VALUES: [(&str, &str); 17] = [
-    (
-        "workflow_step.state = 'skipped'",
-        "a step a compensation walked past; the runner has no branch that \
-         writes it yet, and no issue tracks it",
-    ),
+const TOLERATED_VALUES: [(&str, &str); 16] = [
     (
         "order.fulfillment_status = 'not_fulfilled'",
         "written by the tezgah_order_fulfillment_status trigger installed in \
