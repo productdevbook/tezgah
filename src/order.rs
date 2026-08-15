@@ -4793,8 +4793,21 @@ async fn open_transfer(
     .bind(ctx.scope.0)
     .bind(order_id.as_uuid())
     .fetch_optional(&mut **tx)
-    .await?
-    .ok_or_else(|| Error::not_found("order transfer"))?;
+    .await?;
+
+    let transfer = match transfer {
+        Some(transfer) => transfer,
+        None => {
+            let _: Permit = ctx.permit(
+                Action::Write,
+                Resource::Order {
+                    id: order_id.as_uuid(),
+                    customer: None,
+                },
+            )?;
+            return Err(Error::not_found("order transfer"));
+        }
+    };
 
     if let Some(token) = token {
         let hash: String = sqlx::query_scalar(
