@@ -1133,6 +1133,7 @@ async fn a_book_and_an_audiobook_are_taxed_in_two_different_countries() {
                 quantity: 1,
                 unit_price: Money::new(price, Currency::parse("TRY").expect("a currency")),
                 is_tax_inclusive: false,
+                selling_plan_id: None,
             },
         )
         .await

@@ -30,7 +30,7 @@ const LINE_COLUMNS: &str = "id, cart_id, variant_id, product_id, product_title, 
                             variant_title, variant_sku, variant_barcode, variant_option_values, \
                             thumbnail, quantity, unit_price, compare_at_unit_price, \
                             currency_code, is_tax_inclusive, is_discountable, requires_shipping, \
-                            parent_line_item_id, metadata, created_at, updated_at";
+                            parent_line_item_id, selling_plan_id, metadata, created_at, updated_at";
 
 /// Most line items one cart may be read with. Every caller here totals a
 /// whole cart, so this is a ceiling rather than a page: a cursor would hand
@@ -132,6 +132,9 @@ pub struct LineItem {
     /// The bundle line this one is a component of, when it is one. `cart::
     /// add_bundle` is what sets it; an ordinary line never has one.
     pub parent_line_item_id: Option<LineItemId>,
+    /// The plan this line is sold on, when it is a subscription's. `checkout`'s
+    /// `create_subscriptions` step is what a contract is opened from.
+    pub selling_plan_id: Option<crate::id::SellingPlanId>,
     pub metadata: Option<serde_json::Value>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
@@ -146,6 +149,10 @@ pub struct AddLine {
     pub quantity: i32,
     pub unit_price: Money,
     pub is_tax_inclusive: bool,
+    /// Bought on a plan rather than once. `selling_plan::attach_variant` is
+    /// what makes a variant eligible; this does not check it, the same as
+    /// `unit_price` above is not looked up here.
+    pub selling_plan_id: Option<crate::id::SellingPlanId>,
 }
 
 /// One component of a bundle being added, already priced: `unit_price` is the
@@ -639,7 +646,7 @@ async fn insert_line(
              (id, scope, cart_id, variant_id, product_id, product_title, product_handle,
               variant_title, variant_sku, variant_barcode, variant_option_values, thumbnail,
               quantity, unit_price, currency_code, is_tax_inclusive, is_discountable,
-              requires_shipping, parent_line_item_id)
+              requires_shipping, parent_line_item_id, selling_plan_id)
          select $1::uuid, $2::uuid, $3::uuid, v.id, p.id, p.title, p.handle, v.title, v.sku,
                 v.barcode,
                 (select jsonb_object_agg(o.title, ov.value)
@@ -664,7 +671,7 @@ async fn insert_line(
                                  and i.id = vi.inventory_item_id
                                  and i.deleted_at is null
                                where vi.scope = v.scope and vi.variant_id = v.id), true),
-                $9::uuid
+                $9::uuid, $10::uuid
          from product_variant v
          join product p on p.scope = v.scope and p.id = v.product_id
          where v.scope = $2 and v.id = $4 and v.deleted_at is null and p.deleted_at is null
@@ -681,6 +688,7 @@ async fn insert_line(
     .bind(line.unit_price.currency.as_str())
     .bind(line.is_tax_inclusive)
     .bind(parent_line_item_id.map(|id| id.as_uuid()))
+    .bind(line.selling_plan_id.map(|id| id.as_uuid()))
     .fetch_optional(&mut **tx)
     .await?
     .ok_or_else(|| Error::not_found("variant"))?;
@@ -742,6 +750,7 @@ pub async fn add_bundle(
             quantity: bundle.quantity,
             unit_price: Money::new(Decimal::ZERO, currency),
             is_tax_inclusive: bundle.is_tax_inclusive,
+            selling_plan_id: None,
         },
     )
     .await?;
@@ -762,6 +771,7 @@ pub async fn add_bundle(
                 quantity: bundle.quantity,
                 unit_price: component.unit_price,
                 is_tax_inclusive: bundle.is_tax_inclusive,
+                selling_plan_id: None,
             },
             Some(parent.id),
         )

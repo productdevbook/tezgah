@@ -29,7 +29,7 @@ use tezgah::ports::{
     Permit, Resource, Tx,
 };
 use tezgah::subscription::{self, NewLine, NewPlan, NewPlanGroup, NewSubscription, Renewals};
-use tezgah::{Paging, inventory, pricing};
+use tezgah::{Paging, credit, inventory, pricing};
 use uuid::Uuid;
 
 fn try_() -> Currency {
@@ -428,6 +428,243 @@ async fn a_contract(shop: &Shop, price: Decimal, max_cycles: Option<i32>) -> Con
         customer_id: customer,
         holder_id: holder.id,
     }
+}
+
+/// The same seed as [`a_contract`], with the plan built from whatever `plan`
+/// asks for rather than only its `max_cycles` — pause, skip, swap and prepaid
+/// terms all need a knob `a_contract` does not expose.
+async fn a_contract_with(shop: &Shop, price: Decimal, plan: NewPlan) -> Contract {
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    sqlx::query(
+        "insert into payment_provider (id, scope, code, is_enabled) values ($1, $2, 'bank', true)
+         on conflict do nothing",
+    )
+    .bind(Uuid::now_v7())
+    .bind(shop.here.0)
+    .execute(&mut *tx)
+    .await
+    .expect("a payment provider");
+
+    let location = inventory::create_stock_location(
+        &mut tx,
+        &ctx,
+        inventory::NewStockLocation {
+            name: format!("warehouse {}", Uuid::now_v7()),
+            address: None,
+        },
+    )
+    .await
+    .expect("a location");
+
+    let item = inventory::create_inventory_item(
+        &mut tx,
+        &ctx,
+        inventory::NewInventoryItem {
+            sku: Some(format!("sku-{}", Uuid::now_v7())),
+            title: Some("a monthly thing".into()),
+            requires_shipping: true,
+        },
+    )
+    .await
+    .expect("an inventory item");
+
+    inventory::set_stock(&mut tx, &ctx, item.id, location.id, 100, 0)
+        .await
+        .expect("a level");
+
+    let product = Uuid::now_v7();
+    sqlx::query("insert into product (id, scope, handle, title) values ($1, $2, $3, $4)")
+        .bind(product)
+        .bind(shop.here.0)
+        .bind(format!("thing-{product}"))
+        .bind("A thing")
+        .execute(&mut *tx)
+        .await
+        .expect("a product");
+
+    let variant = VariantId::new();
+    sqlx::query(
+        "insert into product_variant (id, scope, product_id, title) values ($1, $2, $3, $4)",
+    )
+    .bind(variant.as_uuid())
+    .bind(shop.here.0)
+    .bind(product)
+    .bind("The only one")
+    .execute(&mut *tx)
+    .await
+    .expect("a variant");
+
+    inventory::attach_inventory_item(&mut tx, &ctx, variant, item.id, 1)
+        .await
+        .expect("the variant to consume the item");
+
+    let set = pricing::create_price_set(&mut tx, &ctx)
+        .await
+        .expect("a price set");
+    pricing::link_variant(&mut tx, &ctx, variant, set.id)
+        .await
+        .expect("the variant to be priced by it");
+    let written = pricing::add_price(
+        &mut tx,
+        &ctx,
+        pricing::NewPrice {
+            price_set_id: set.id,
+            price_list_id: None,
+            title: None,
+            amount: Money::new(price, try_()),
+            min_quantity: None,
+            max_quantity: None,
+            rules: Vec::new(),
+        },
+    )
+    .await
+    .expect("a price");
+
+    let customer = common::a_customer(&mut tx, &ctx).await;
+
+    let address = Uuid::now_v7();
+    sqlx::query(
+        "insert into customer_address (id, scope, customer_id, address_1, city, country_code)
+         values ($1, $2, $3, '1 Example Street', 'Istanbul', 'TR')",
+    )
+    .bind(address)
+    .bind(shop.here.0)
+    .bind(customer.as_uuid())
+    .execute(&mut *tx)
+    .await
+    .expect("an address");
+
+    let holder = payment::save_account_holder(
+        &mut tx,
+        &ctx,
+        payment::NewAccountHolder {
+            provider_code: "bank".into(),
+            customer_id: Some(customer),
+            external_id: format!("cus_{}", Uuid::now_v7().simple()),
+            email: None,
+            data: serde_json::json!({}),
+        },
+    )
+    .await
+    .expect("an account holder");
+
+    let group = subscription::create_plan_group(
+        &mut tx,
+        &ctx,
+        NewPlanGroup {
+            name: "Monthly".into(),
+            ..NewPlanGroup::default()
+        },
+    )
+    .await
+    .expect("a group");
+
+    let plan = subscription::create_plan(&mut tx, &ctx, group.id, plan)
+        .await
+        .expect("a plan");
+
+    subscription::attach_variant(&mut tx, &ctx, plan.id, variant)
+        .await
+        .expect("the variant to be sold on it");
+
+    let contract = subscription::create(
+        &mut tx,
+        &ctx,
+        NewSubscription {
+            customer_id: customer,
+            selling_plan_id: plan.id,
+            currency: try_(),
+            region_id: None,
+            sales_channel_id: None,
+            account_holder_id: Some(holder.id),
+            payment_method_reference: Some("pm_a_saved_card".into()),
+            mandate_reference: Some("mandate-1".into()),
+            mandate_accepted_at: Some(Utc::now()),
+            shipping_address_id: Some(tezgah::id::AddressId::from_uuid(address)),
+            billing_address_id: None,
+            starts_at: Some(Utc::now()),
+            lines: vec![NewLine {
+                variant_id: variant,
+                title: Some("A thing, monthly".into()),
+                quantity: 1,
+                unit_price: Money::new(price, try_()),
+            }],
+        },
+    )
+    .await
+    .expect("a contract");
+
+    tx.commit().await.expect("to commit the seed");
+
+    Contract {
+        id: contract.id,
+        plan_id: plan.id,
+        variant_id: variant,
+        price_id: written.id,
+        location_id: location.id,
+        customer_id: customer,
+        holder_id: holder.id,
+    }
+}
+
+/// A second variant, sellable on the same plan a contract already exists
+/// under — what [`subscription::swap`] moves a contract onto.
+async fn a_second_variant(shop: &Shop, plan_id: SellingPlanId, price: Decimal) -> VariantId {
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let product = Uuid::now_v7();
+    sqlx::query("insert into product (id, scope, handle, title) values ($1, $2, $3, $4)")
+        .bind(product)
+        .bind(shop.here.0)
+        .bind(format!("thing-{product}"))
+        .bind("Another thing")
+        .execute(&mut *tx)
+        .await
+        .expect("a product");
+
+    let variant = VariantId::new();
+    sqlx::query(
+        "insert into product_variant (id, scope, product_id, title) values ($1, $2, $3, $4)",
+    )
+    .bind(variant.as_uuid())
+    .bind(shop.here.0)
+    .bind(product)
+    .bind("The bigger one")
+    .execute(&mut *tx)
+    .await
+    .expect("a variant");
+
+    let set = pricing::create_price_set(&mut tx, &ctx)
+        .await
+        .expect("a price set");
+    pricing::link_variant(&mut tx, &ctx, variant, set.id)
+        .await
+        .expect("the variant to be priced by it");
+    pricing::add_price(
+        &mut tx,
+        &ctx,
+        pricing::NewPrice {
+            price_set_id: set.id,
+            price_list_id: None,
+            title: None,
+            amount: Money::new(price, try_()),
+            min_quantity: None,
+            max_quantity: None,
+            rules: Vec::new(),
+        },
+    )
+    .await
+    .expect("a price");
+
+    subscription::attach_variant(&mut tx, &ctx, plan_id, variant)
+        .await
+        .expect("the variant to be sold on the plan");
+
+    tx.commit().await.expect("to commit");
+    variant
 }
 
 async fn orders(shop: &Shop) -> i64 {
@@ -866,5 +1103,311 @@ async fn a_contract_belongs_to_the_customer_and_the_plan_it_was_opened_on() {
     assert_eq!(found.account_holder_id, Some(seeded.holder_id));
 
     tx.commit().await.expect("to commit");
+    shop.close().await;
+}
+
+// ---------------------------------------------------------------------------
+// Pause, resume, skip and swap
+// ---------------------------------------------------------------------------
+
+fn a_month_plan() -> NewPlan {
+    NewPlan {
+        name: "Every month".into(),
+        billing_interval_unit: "month".into(),
+        billing_interval_count: 1,
+        ..NewPlan::default()
+    }
+}
+
+#[tokio::test]
+async fn a_paused_contract_is_not_due_and_resuming_does_not_bill_for_what_it_missed() {
+    let shop = Shop::open().await;
+    // Backdated sixty days, the same as `a_contract`: the first period ended
+    // about a month ago, so `next_billing_at` is already in the past.
+    let seeded = a_contract(&shop, dec!(10), None).await;
+    let overdue = read(&shop, seeded.id).await;
+    assert!(overdue.next_billing_at < Utc::now());
+
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    subscription::pause(&mut tx, &ctx, seeded.id, None)
+        .await
+        .expect("to pause");
+    tx.commit().await.expect("to commit");
+
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    let owed = subscription::due(&mut tx, &ctx, Utc::now(), Paging::first(10))
+        .await
+        .expect("what is due");
+    assert!(
+        !owed.items.iter().any(|s| s.id == seeded.id),
+        "a paused contract must not come back from due()"
+    );
+    tx.commit().await.expect("to commit");
+
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    let resumed = subscription::resume(&mut tx, &ctx, seeded.id)
+        .await
+        .expect("to resume");
+    tx.commit().await.expect("to commit");
+
+    assert_eq!(resumed.status, "active");
+    // The calendar shifted forward to the moment it resumed rather than
+    // catching up on the month it missed while paused.
+    assert!(resumed.next_billing_at >= Utc::now() - Duration::seconds(5));
+    assert!(resumed.next_billing_at > overdue.next_billing_at);
+
+    shop.close().await;
+}
+
+#[tokio::test]
+async fn skipping_passes_exactly_one_period_and_writes_an_event() {
+    let shop = Shop::open().await;
+    let seeded = a_contract(&shop, dec!(10), None).await;
+    let before = read(&shop, seeded.id).await;
+    let orders_before = orders(&shop).await;
+
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    let after = subscription::skip_next(&mut tx, &ctx, seeded.id)
+        .await
+        .expect("to skip");
+    tx.commit().await.expect("to commit");
+
+    assert_eq!(after.cycle, before.cycle + 1);
+    assert_eq!(orders(&shop).await, orders_before, "a skip bills nothing");
+
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    let events = subscription::events(&mut tx, &ctx, seeded.id, Paging::first(20))
+        .await
+        .expect("its events");
+    tx.commit().await.expect("to commit");
+    assert!(events.items.iter().any(|e| e.kind == "skipped"));
+
+    shop.close().await;
+}
+
+#[tokio::test]
+async fn swapping_writes_a_new_line_version_and_the_next_renewal_bills_it() {
+    let shop = Shop::open().await;
+    let mut plan = a_month_plan();
+    plan.name = "Swap plan".into();
+    let seeded = a_contract_with(&shop, dec!(10), plan).await;
+    let bigger = a_second_variant(&shop, seeded.plan_id, dec!(20)).await;
+
+    // A third of the period already used, so the proration split is nowhere
+    // near either edge and the assertions below are not at the mercy of
+    // rounding a near-whole period to the whole cent.
+    let mut tx = shop.begin().await;
+    sqlx::query(
+        "update subscription
+         set current_period_start = $2, current_period_end = $3, next_billing_at = $3
+         where scope = $1 and id = $4",
+    )
+    .bind(shop.here.0)
+    .bind(Utc::now() - Duration::days(20))
+    .bind(Utc::now() + Duration::days(10))
+    .bind(seeded.id.as_uuid())
+    .execute(&mut *tx)
+    .await
+    .expect("to set a mid-period clock");
+    tx.commit().await.expect("to commit");
+
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    let before = subscription::get(&mut tx, &ctx, seeded.id)
+        .await
+        .expect("the contract");
+    let swapped = subscription::swap(
+        &mut tx,
+        &ctx,
+        seeded.id,
+        vec![NewLine {
+            variant_id: bigger,
+            title: Some("The bigger one".into()),
+            quantity: 1,
+            unit_price: Money::new(dec!(20), try_()),
+        }],
+    )
+    .await
+    .expect("to swap");
+    tx.commit().await.expect("to commit");
+
+    assert_eq!(swapped.line_version, before.line_version + 1);
+    // Upgrading mid-period costs more for the days left than the old lines
+    // did: nothing is charged off-session on the spot, so it waits here.
+    assert!(swapped.pending_adjustment > Decimal::ZERO);
+    assert!(swapped.pending_adjustment < dec!(10));
+
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    let held = subscription::lines(&mut tx, &ctx, seeded.id)
+        .await
+        .expect("its lines");
+    tx.commit().await.expect("to commit");
+    assert_eq!(held.len(), 1);
+    assert_eq!(held[0].variant_id, bigger);
+
+    // Force the contract due, then let the next renewal collect the
+    // adjustment along with the bigger variant's own price.
+    let mut tx = shop.begin().await;
+    sqlx::query("update subscription set next_billing_at = $2 where scope = $1 and id = $3")
+        .bind(shop.here.0)
+        .bind(Utc::now() - Duration::minutes(1))
+        .bind(seeded.id.as_uuid())
+        .execute(&mut *tx)
+        .await
+        .expect("to force it due");
+    tx.commit().await.expect("to commit");
+
+    let renewals = Renewals::new(Arc::new(Standing), seeded.location_id);
+    let renewed = renewals
+        .renew(&shop.pool, &shop.ctx(), seeded.id)
+        .await
+        .expect("the renewal");
+    assert!(!renewed.declined);
+
+    let after = read(&shop, seeded.id).await;
+    assert_eq!(
+        after.pending_adjustment,
+        Decimal::ZERO,
+        "the balance is collected once and then cleared"
+    );
+
+    shop.close().await;
+}
+
+#[tokio::test]
+async fn downgrading_mid_period_is_credited_on_the_spot() {
+    let shop = Shop::open().await;
+    let mut plan = a_month_plan();
+    plan.name = "Downgrade plan".into();
+    let seeded = a_contract_with(&shop, dec!(20), plan).await;
+    let cheaper = a_second_variant(&shop, seeded.plan_id, dec!(5)).await;
+
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    subscription::swap(
+        &mut tx,
+        &ctx,
+        seeded.id,
+        vec![NewLine {
+            variant_id: cheaper,
+            title: Some("The cheaper one".into()),
+            quantity: 1,
+            unit_price: Money::new(dec!(5), try_()),
+        }],
+    )
+    .await
+    .expect("to swap down");
+    tx.commit().await.expect("to commit");
+
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    let balance = credit::store_credit(&mut tx, &ctx, seeded.customer_id, try_())
+        .await
+        .expect("a credit balance");
+    tx.commit().await.expect("to commit");
+
+    assert!(balance.balance > Decimal::ZERO);
+
+    shop.close().await;
+}
+
+#[tokio::test]
+async fn a_minimum_term_refuses_an_immediate_cancel_but_allows_one_at_period_end() {
+    let shop = Shop::open().await;
+    let mut plan = a_month_plan();
+    plan.name = "Committed plan".into();
+    plan.min_cycles = Some(3);
+    let seeded = a_contract_with(&shop, dec!(10), plan).await;
+
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    let refused = subscription::cancel(&mut tx, &ctx, seeded.id, false, None).await;
+    assert!(refused.is_err(), "a minimum term is not done yet");
+    tx.rollback().await.expect("to roll back");
+
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    let allowed = subscription::cancel(&mut tx, &ctx, seeded.id, true, None)
+        .await
+        .expect("to stop at period end even short of the minimum");
+    tx.commit().await.expect("to commit");
+    assert!(allowed.cancel_at_period_end);
+
+    shop.close().await;
+}
+
+// ---------------------------------------------------------------------------
+// Prepaid terms
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn a_prepaid_term_ships_a_delivery_without_charging_anything() {
+    let shop = Shop::open().await;
+    let plan = NewPlan {
+        name: "Six months, monthly boxes".into(),
+        billing_interval_unit: "month".into(),
+        billing_interval_count: 6,
+        delivery_interval_unit: Some("month".into()),
+        delivery_interval_count: Some(1),
+        prepaid_cycles: Some(6),
+        ..NewPlan::default()
+    };
+    let seeded = a_contract_with(&shop, dec!(60), plan).await;
+
+    // The bundled first delivery went out with the order the contract opened
+    // under; back-date the contract so the second one is already due.
+    let mut tx = shop.begin().await;
+    sqlx::query(
+        "update subscription set next_delivery_at = $2, current_period_start = $2
+         where scope = $1 and id = $3",
+    )
+    .bind(shop.here.0)
+    .bind(Utc::now() - Duration::days(1))
+    .bind(seeded.id.as_uuid())
+    .execute(&mut *tx)
+    .await
+    .expect("to force a delivery due");
+    tx.commit().await.expect("to commit");
+
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    let owed = subscription::due_deliveries(&mut tx, &ctx, Utc::now(), Paging::first(10))
+        .await
+        .expect("what is owed a delivery");
+    assert!(owed.items.iter().any(|s| s.id == seeded.id));
+    tx.commit().await.expect("to commit");
+
+    let orders_before = orders(&shop).await;
+
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    let order_id = subscription::deliver(&mut tx, &ctx, seeded.id, seeded.location_id)
+        .await
+        .expect("to ship the delivery");
+    tx.commit().await.expect("to commit");
+
+    assert_eq!(orders(&shop).await, orders_before + 1);
+
+    let mut tx = shop.begin().await;
+    let charged: Option<Uuid> = sqlx::query_scalar(
+        r#"select payment_collection_id from "order" where scope = $1 and id = $2"#,
+    )
+    .bind(shop.here.0)
+    .bind(order_id.as_uuid())
+    .fetch_one(&mut *tx)
+    .await
+    .expect("the order");
+    tx.commit().await.expect("to commit");
+    assert!(charged.is_none(), "a prepaid delivery takes no money");
+
+    let after = read(&shop, seeded.id).await;
+    assert_eq!(after.delivery_cycle, 1);
+
     shop.close().await;
 }

@@ -764,6 +764,7 @@ async fn a_gift_card_line_cannot_carry_tax() {
         &ctx,
         NewOrder {
             lines: vec![NewOrderLine {
+                selling_plan_id: None,
                 is_giftcard: true,
                 tax_lines: vec![NewTaxLine {
                     rate: dec!(20),
@@ -840,6 +841,7 @@ async fn a_card_was_bought(
         ctx,
         NewOrder {
             lines: vec![NewOrderLine {
+                selling_plan_id: None,
                 is_giftcard: true,
                 ..NewOrderLine::of("A gift card", quantity, money(price))
             }],

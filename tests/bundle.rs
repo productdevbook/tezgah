@@ -510,16 +510,19 @@ async fn a_bundle_component_returns_at_its_allocated_share_not_an_equal_split() 
         }),
         lines: vec![
             NewOrderLine {
+                selling_plan_id: None,
                 requires_shipping: false,
                 reserved_for: Some(cart_parent),
                 ..NewOrderLine::of("A gift set", 1, money(dec!(0)))
             },
             NewOrderLine {
+                selling_plan_id: None,
                 reserved_for: Some(cart_expensive),
                 parent_cart_line: Some(cart_parent),
                 ..NewOrderLine::of("A candle", 1, money(dec!(70)))
             },
             NewOrderLine {
+                selling_plan_id: None,
                 reserved_for: Some(cart_cheap),
                 parent_cart_line: Some(cart_parent),
                 ..NewOrderLine::of("A bar of soap", 1, money(dec!(30)))
@@ -683,6 +686,7 @@ async fn two_bundles_sharing_a_component_keep_separate_lines() {
             quantity: 1,
             unit_price: money(dec!(10)),
             is_tax_inclusive: false,
+            selling_plan_id: None,
         },
     )
     .await

@@ -499,6 +499,121 @@ pub async fn cancel_subscription(
     ))
 }
 
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Pause {
+    pub until: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+pub async fn pause_subscription(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: SubscriptionId,
+    body: Pause,
+) -> Result<SubscriptionView> {
+    Ok(SubscriptionView::from(
+        subscription::pause(tx, ctx, id, body.until).await?,
+    ))
+}
+
+pub async fn resume_subscription(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: SubscriptionId,
+) -> Result<SubscriptionView> {
+    Ok(SubscriptionView::from(
+        subscription::resume(tx, ctx, id).await?,
+    ))
+}
+
+pub async fn skip_subscription(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: SubscriptionId,
+) -> Result<SubscriptionView> {
+    Ok(SubscriptionView::from(
+        subscription::skip_next(tx, ctx, id).await?,
+    ))
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SwapLine {
+    pub variant_id: VariantId,
+    pub title: Option<String>,
+    pub quantity: i32,
+    pub unit_price: rust_decimal::Decimal,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Swap {
+    pub lines: Vec<SwapLine>,
+}
+
+pub async fn swap_subscription(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: SubscriptionId,
+    body: Swap,
+) -> Result<SubscriptionView> {
+    let contract = subscription::get(tx, ctx, id).await?;
+    let currency = contract.currency()?;
+
+    let lines = body
+        .lines
+        .into_iter()
+        .map(|line| subscription::NewLine {
+            variant_id: line.variant_id,
+            title: line.title,
+            quantity: line.quantity,
+            unit_price: Money::new(line.unit_price, currency),
+        })
+        .collect();
+
+    Ok(SubscriptionView::from(
+        subscription::swap(tx, ctx, id, lines).await?,
+    ))
+}
+
+/// What is owed a delivery, on a prepaid term. The delivery counterpart of
+/// [`list_due`].
+pub async fn list_due_deliveries(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    query: ListDue,
+) -> Result<Page<SubscriptionView>> {
+    let paging = List {
+        after: query.after,
+        limit: query.limit,
+    }
+    .paging()?;
+
+    let page = subscription::due_deliveries(tx, ctx, query.at.unwrap_or_else(|| ctx.now()), paging)
+        .await?;
+
+    Ok(Page {
+        items: page.items.into_iter().map(SubscriptionView::from).collect(),
+        next: page.next,
+    })
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Deliver {
+    pub location_id: crate::id::StockLocationId,
+}
+
+/// Ships one delivery a prepaid term already paid for, by hand.
+pub async fn deliver_subscription(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: SubscriptionId,
+    body: Deliver,
+) -> Result<OrderId> {
+    subscription::deliver(tx, ctx, id, body.location_id).await
+}
+
 // ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
@@ -534,6 +649,49 @@ pub async fn cancel_my_subscription(
 
     Ok(SubscriptionView::from(
         subscription::cancel(tx, ctx, id, true, body.reason.as_deref()).await?,
+    ))
+}
+
+async fn owned(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: SubscriptionId) -> Result<()> {
+    let customer = signed_in(ctx)?;
+    let contract = subscription::get(tx, ctx, id).await?;
+    if contract.customer_id != customer {
+        return Err(crate::Error::denied());
+    }
+    Ok(())
+}
+
+pub async fn pause_my_subscription(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: SubscriptionId,
+    body: Pause,
+) -> Result<SubscriptionView> {
+    owned(tx, ctx, id).await?;
+    Ok(SubscriptionView::from(
+        subscription::pause(tx, ctx, id, body.until).await?,
+    ))
+}
+
+pub async fn resume_my_subscription(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: SubscriptionId,
+) -> Result<SubscriptionView> {
+    owned(tx, ctx, id).await?;
+    Ok(SubscriptionView::from(
+        subscription::resume(tx, ctx, id).await?,
+    ))
+}
+
+pub async fn skip_my_subscription(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: SubscriptionId,
+) -> Result<SubscriptionView> {
+    owned(tx, ctx, id).await?;
+    Ok(SubscriptionView::from(
+        subscription::skip_next(tx, ctx, id).await?,
     ))
 }
 
@@ -643,6 +801,54 @@ pub(super) static ROUTES: &[Route] = &[
         summary: "Stop a contract",
     },
     Route {
+        surface: Surface::Admin,
+        method: Method::Post,
+        path: "/admin/subscriptions/{id}/pause",
+        action: Action::Write,
+        domain: "subscription",
+        summary: "Stop a contract renewing until it is resumed",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Post,
+        path: "/admin/subscriptions/{id}/resume",
+        action: Action::Write,
+        domain: "subscription",
+        summary: "Start a paused contract renewing again",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Post,
+        path: "/admin/subscriptions/{id}/skip",
+        action: Action::Write,
+        domain: "subscription",
+        summary: "Pass over the next period without billing it",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Post,
+        path: "/admin/subscriptions/{id}/swap",
+        action: Action::Write,
+        domain: "subscription",
+        summary: "Swap what a contract is for",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Get,
+        path: "/admin/subscriptions/due-deliveries",
+        action: Action::View,
+        domain: "subscription",
+        summary: "What is owed a delivery on a prepaid term",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Post,
+        path: "/admin/subscriptions/{id}/deliver",
+        action: Action::Write,
+        domain: "subscription",
+        summary: "Ship one delivery a prepaid term already paid for",
+    },
+    Route {
         surface: Surface::Store,
         method: Method::Get,
         path: "/store/subscriptions",
@@ -657,5 +863,29 @@ pub(super) static ROUTES: &[Route] = &[
         action: Action::Write,
         domain: "subscription",
         summary: "Stop mine at the end of this period",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Post,
+        path: "/store/subscriptions/{id}/pause",
+        action: Action::Write,
+        domain: "subscription",
+        summary: "Stop mine renewing until I resume it",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Post,
+        path: "/store/subscriptions/{id}/resume",
+        action: Action::Write,
+        domain: "subscription",
+        summary: "Start mine renewing again",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Post,
+        path: "/store/subscriptions/{id}/skip",
+        action: Action::Write,
+        domain: "subscription",
+        summary: "Pass over my next period without billing it",
     },
 ];

@@ -23,11 +23,12 @@ use tezgah::id::{CartId, StockLocationId, VariantId};
 use tezgah::money::{Currency, Money};
 use tezgah::order::{self, OrderStatus};
 use tezgah::payment::{
-    Authorization, AuthorizationStatus, AuthorizeRequest, CancelRequest, CaptureRequest,
+    self, Authorization, AuthorizationStatus, AuthorizeRequest, CancelRequest, CaptureRequest,
     CaptureResult, PaymentProvider, RefundRequest, RefundResult, SessionRequest, SessionResponse,
     SessionStatus, WebhookEvent,
 };
 use tezgah::ports::{Ctx, Scope, Tx};
+use tezgah::subscription;
 use tezgah::workflow::{Failure, Outcome, State, Step};
 use tezgah::{Error, Result, inventory};
 use uuid::Uuid;
@@ -280,6 +281,7 @@ async fn ready_with(shop: &Shop, stocked: i32, quantity: i32, ships: bool) -> Re
                 quantity,
                 unit_price: Money::new(dec!(10), Currency::parse("TRY").expect("a currency")),
                 is_tax_inclusive: false,
+                selling_plan_id: None,
             },
         )
         .await
@@ -1299,6 +1301,7 @@ async fn a_purchased_gift_card_pays_for_the_next_basket() -> Result<()> {
         &ctx,
         order::NewOrder {
             lines: vec![order::NewOrderLine {
+                selling_plan_id: None,
                 is_giftcard: true,
                 ..order::NewOrderLine::of("A gift card", 1, Money::new(dec!(50), lira))
             }],
@@ -1356,6 +1359,241 @@ async fn a_purchased_gift_card_pays_for_the_next_basket() -> Result<()> {
     );
     tx.commit().await.expect("to commit");
 
+    shop.close().await;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Subscribing from the storefront
+// ---------------------------------------------------------------------------
+
+struct SubscribeReady {
+    cart_id: CartId,
+    location_id: StockLocationId,
+}
+
+/// A cart holding one line sold on a plan, for a signed-in customer who
+/// already has an instrument on file with `bank`.
+async fn ready_to_subscribe(shop: &Shop) -> SubscribeReady {
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    seed_currency(&mut tx, shop.here).await;
+
+    sqlx::query(
+        "insert into payment_provider (id, scope, code, is_enabled) values ($1, $2, 'bank', true)",
+    )
+    .bind(Uuid::now_v7())
+    .bind(shop.here.0)
+    .execute(&mut *tx)
+    .await
+    .expect("a payment provider");
+
+    let location = inventory::create_stock_location(
+        &mut tx,
+        &ctx,
+        inventory::NewStockLocation {
+            name: format!("warehouse {}", Uuid::now_v7()),
+            address: None,
+        },
+    )
+    .await
+    .expect("a location");
+
+    let item = inventory::create_inventory_item(
+        &mut tx,
+        &ctx,
+        inventory::NewInventoryItem {
+            sku: Some(format!("sku-{}", Uuid::now_v7())),
+            title: Some("a monthly thing".into()),
+            requires_shipping: true,
+        },
+    )
+    .await
+    .expect("an inventory item");
+
+    inventory::set_stock(&mut tx, &ctx, item.id, location.id, 10, 0)
+        .await
+        .expect("a level");
+
+    let product = Uuid::now_v7();
+    sqlx::query("insert into product (id, scope, handle, title) values ($1, $2, $3, $4)")
+        .bind(product)
+        .bind(shop.here.0)
+        .bind(format!("thing-{product}"))
+        .bind("A thing")
+        .execute(&mut *tx)
+        .await
+        .expect("a product");
+
+    let variant = VariantId::new();
+    sqlx::query(
+        "insert into product_variant (id, scope, product_id, title) values ($1, $2, $3, $4)",
+    )
+    .bind(variant.as_uuid())
+    .bind(shop.here.0)
+    .bind(product)
+    .bind("The only one")
+    .execute(&mut *tx)
+    .await
+    .expect("a variant");
+
+    inventory::attach_inventory_item(&mut tx, &ctx, variant, item.id, 1)
+        .await
+        .expect("the variant to consume the item");
+
+    let customer = common::a_customer(&mut tx, &ctx).await;
+
+    payment::save_account_holder(
+        &mut tx,
+        &ctx,
+        payment::NewAccountHolder {
+            provider_code: "bank".into(),
+            customer_id: Some(customer),
+            external_id: format!("cus_{}", Uuid::now_v7().simple()),
+            email: None,
+            data: serde_json::json!({}),
+        },
+    )
+    .await
+    .expect("an account holder");
+
+    let group = subscription::create_plan_group(
+        &mut tx,
+        &ctx,
+        subscription::NewPlanGroup {
+            name: "Monthly".into(),
+            ..subscription::NewPlanGroup::default()
+        },
+    )
+    .await
+    .expect("a group");
+
+    let plan = subscription::create_plan(
+        &mut tx,
+        &ctx,
+        group.id,
+        subscription::NewPlan {
+            name: "Every month".into(),
+            billing_interval_unit: "month".into(),
+            billing_interval_count: 1,
+            ..subscription::NewPlan::default()
+        },
+    )
+    .await
+    .expect("a plan");
+
+    subscription::attach_variant(&mut tx, &ctx, plan.id, variant)
+        .await
+        .expect("the variant to be sold on it");
+
+    let address = Uuid::now_v7();
+    sqlx::query(
+        "insert into cart_address (id, scope, address_1, city, country_code)
+         values ($1, $2, '1 Example Street', 'Istanbul', 'TR')",
+    )
+    .bind(address)
+    .bind(shop.here.0)
+    .execute(&mut *tx)
+    .await
+    .expect("an address");
+
+    let cart_id = CartId::new();
+    sqlx::query(
+        "insert into cart
+             (id, scope, customer_id, currency_code, email, shipping_address_id, idempotency_key)
+         values ($1, $2, $3, 'TRY', 'shopper@example.com', $4, $5)",
+    )
+    .bind(cart_id.as_uuid())
+    .bind(shop.here.0)
+    .bind(customer.as_uuid())
+    .bind(address)
+    .bind(format!("key-{}", cart_id.as_uuid()))
+    .execute(&mut *tx)
+    .await
+    .expect("a cart");
+
+    cart::add_line(
+        &mut tx,
+        &ctx,
+        cart_id,
+        cart::AddLine {
+            variant_id: variant,
+            quantity: 1,
+            unit_price: Money::new(dec!(10), Currency::parse("TRY").expect("a currency")),
+            is_tax_inclusive: false,
+            selling_plan_id: Some(plan.id),
+        },
+    )
+    .await
+    .expect("a line sold on a plan");
+
+    tx.commit().await.expect("to commit the seed");
+
+    SubscribeReady {
+        cart_id,
+        location_id: location.id,
+    }
+}
+
+#[tokio::test]
+async fn subscribing_from_the_storefront_opens_a_contract() -> Result<()> {
+    let shop = Shop::open().await;
+    let here = ready_to_subscribe(&shop).await;
+    let bank = Bank::saying(Answer::Authorize);
+    let checkout = Checkout::new(
+        Arc::clone(&bank) as Arc<dyn PaymentProvider>,
+        here.location_id,
+    );
+
+    let placed = checkout
+        .place(&shop.pool, &shop.ctx(), here.cart_id)
+        .await?;
+    assert_eq!(placed.run.state, State::Done, "{:?}", placed.run.failure);
+
+    let count: i64 = {
+        let mut tx = shop.begin().await;
+        let value: i64 = sqlx::query_scalar("select count(*) from subscription where scope = $1")
+            .bind(shop.here.0)
+            .fetch_one(&mut *tx)
+            .await
+            .expect("to count contracts");
+        tx.commit().await.expect("to commit");
+        value
+    };
+    assert_eq!(count, 1, "one contract opened for the line sold on a plan");
+
+    shop.close().await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_declined_card_rolls_back_the_contract_it_would_have_opened() -> Result<()> {
+    let shop = Shop::open().await;
+    let here = ready_to_subscribe(&shop).await;
+    let bank = Bank::saying(Answer::Decline);
+    let checkout = Checkout::new(
+        Arc::clone(&bank) as Arc<dyn PaymentProvider>,
+        here.location_id,
+    );
+
+    let placed = checkout
+        .place(&shop.pool, &shop.ctx(), here.cart_id)
+        .await?;
+    assert_eq!(placed.run.state, State::Reverted);
+
+    let count: i64 = {
+        let mut tx = shop.begin().await;
+        let value: i64 = sqlx::query_scalar("select count(*) from subscription where scope = $1")
+            .bind(shop.here.0)
+            .fetch_one(&mut *tx)
+            .await
+            .expect("to count contracts");
+        tx.commit().await.expect("to commit");
+        value
+    };
+    assert_eq!(count, 0, "a declined card leaves no contract behind");
+
+    nothing_left_behind(&shop, here.cart_id).await;
     shop.close().await;
     Ok(())
 }

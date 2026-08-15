@@ -416,17 +416,20 @@ async fn capturing_does_everything_money_arriving_obligates() {
         money(dec!(150.00)),
         vec![
             NewOrderLine {
+                selling_plan_id: None,
                 variant_id: Some(seed.giftcard_variant),
                 is_giftcard: true,
                 requires_shipping: false,
                 ..NewOrderLine::of("A card", 1, money(dec!(50.00)))
             },
             NewOrderLine {
+                selling_plan_id: None,
                 variant_id: Some(seed.digital_variant),
                 requires_shipping: false,
                 ..NewOrderLine::of("The book", 1, money(dec!(50.00)))
             },
             NewOrderLine {
+                selling_plan_id: None,
                 variant_id: Some(seed.subscription_variant),
                 requires_shipping: false,
                 ..NewOrderLine::of("A thing, monthly", 1, money(dec!(50.00)))
@@ -464,12 +467,14 @@ async fn a_second_capture_is_a_no_op() {
         money(dec!(100.00)),
         vec![
             NewOrderLine {
+                selling_plan_id: None,
                 variant_id: Some(seed.giftcard_variant),
                 is_giftcard: true,
                 requires_shipping: false,
                 ..NewOrderLine::of("A card", 1, money(dec!(50.00)))
             },
             NewOrderLine {
+                selling_plan_id: None,
                 variant_id: Some(seed.subscription_variant),
                 requires_shipping: false,
                 ..NewOrderLine::of("A thing, monthly", 1, money(dec!(50.00)))
@@ -512,6 +517,7 @@ async fn authorising_alone_settles_nothing() {
         &shop,
         money(dec!(50.00)),
         vec![NewOrderLine {
+            selling_plan_id: None,
             variant_id: Some(seed.giftcard_variant),
             is_giftcard: true,
             requires_shipping: false,
@@ -540,12 +546,14 @@ async fn refunding_revokes_the_entitlement_and_leaves_the_card_alone() {
         money(dec!(100.00)),
         vec![
             NewOrderLine {
+                selling_plan_id: None,
                 variant_id: Some(seed.giftcard_variant),
                 is_giftcard: true,
                 requires_shipping: false,
                 ..NewOrderLine::of("A card", 1, money(dec!(50.00)))
             },
             NewOrderLine {
+                selling_plan_id: None,
                 variant_id: Some(seed.digital_variant),
                 requires_shipping: false,
                 ..NewOrderLine::of("The book", 1, money(dec!(50.00)))
@@ -606,10 +614,12 @@ async fn a_mixed_order_fulfils_only_its_digital_half_on_capture() {
         money(dec!(100.00)),
         vec![
             NewOrderLine {
+                selling_plan_id: None,
                 variant_id: Some(parcel_variant),
                 ..NewOrderLine::of("A parcel", 1, money(dec!(50.00)))
             },
             NewOrderLine {
+                selling_plan_id: None,
                 variant_id: Some(seed.digital_variant),
                 requires_shipping: false,
                 ..NewOrderLine::of("The book", 1, money(dec!(50.00)))

@@ -47,7 +47,7 @@ use crate::id::{
     AddressId, AgreementVersionId, CaptureId, ClaimId, CustomerId, ExchangeId, LineItemId,
     OrderAgreementId, OrderChangeId, OrderId, OrderInvoiceId, OrderItemId, OrderTransactionId,
     OrderTransferId, PaymentCollectionId, PaymentId, PromotionId, RefundId, RegionId, ReturnId,
-    SalesChannelId, ShippingOptionId, StockLocationId, SubscriptionId, VariantId,
+    SalesChannelId, SellingPlanId, ShippingOptionId, StockLocationId, SubscriptionId, VariantId,
 };
 use crate::money::{Currency, Money};
 use crate::page::{Cursor, Page, Paging};
@@ -64,7 +64,7 @@ const LINE_COLUMNS: &str = "id, order_id, variant_id, product_id, title, subtitl
                             variant_option_values, unit_price, compare_at_unit_price, \
                             currency_code, requires_shipping, is_tax_inclusive, is_discountable, \
                             is_giftcard, withdrawal_eligible, withdrawal_exclusion_reason, \
-                            parent_line_item_id, metadata, created_at, updated_at";
+                            parent_line_item_id, selling_plan_id, metadata, created_at, updated_at";
 
 const ITEM_COLUMNS: &str = "id, order_id, order_line_item_id, version, unit_price, \
                             compare_at_unit_price, currency_code, quantity, fulfilled_quantity, \
@@ -284,6 +284,8 @@ pub struct OrderLineItem {
     /// came from was one — carried across from `cart_line_item` the same way
     /// everything else on this row is, at the moment the order is placed.
     pub parent_line_item_id: Option<LineItemId>,
+    /// The plan this line was bought on, when it was a subscription's.
+    pub selling_plan_id: Option<SellingPlanId>,
     pub metadata: Option<Value>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
@@ -644,6 +646,10 @@ pub struct NewOrderLine {
     /// batch has an id, the same two-pass shape `reserved_for` would need if
     /// a cart line could ever depend on another cart line's new order id.
     pub parent_cart_line: Option<LineItemId>,
+    /// The plan this line was bought on, when it was a subscription's.
+    /// `checkout`'s `create_subscriptions` step is what a contract is opened
+    /// from, reading this off the line rather than the cart it came from.
+    pub selling_plan_id: Option<SellingPlanId>,
 }
 
 impl NewOrderLine {
@@ -671,6 +677,7 @@ impl NewOrderLine {
             withdrawal_exclusion: None,
             reserved_for: None,
             parent_cart_line: None,
+            selling_plan_id: None,
         }
     }
 }
@@ -856,9 +863,9 @@ async fn place(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewOrder, draft: bool) -> Re
                   product_title, product_handle, variant_title, variant_sku,
                   variant_option_values, unit_price, compare_at_unit_price, currency_code,
                   requires_shipping, is_tax_inclusive, is_discountable, is_giftcard,
-                  withdrawal_eligible, withdrawal_exclusion_reason)
+                  withdrawal_eligible, withdrawal_exclusion_reason, selling_plan_id)
              values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
-                     $17, $18, $19, $20, $21, $22)",
+                     $17, $18, $19, $20, $21, $22, $23)",
         )
         .bind(line_id.as_uuid())
         .bind(ctx.scope.0)
@@ -882,6 +889,7 @@ async fn place(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewOrder, draft: bool) -> Re
         .bind(line.is_giftcard)
         .bind(line.withdrawal_exclusion.is_none())
         .bind(line.withdrawal_exclusion.map(WithdrawalExclusion::as_str))
+        .bind(line.selling_plan_id.map(SellingPlanId::as_uuid))
         .execute(&mut **tx)
         .await?;
 

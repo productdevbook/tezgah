@@ -90,6 +90,7 @@ async fn an_order_for(
         NewOrder {
             customer_id,
             lines: vec![NewOrderLine {
+                selling_plan_id: None,
                 variant_id: Some(variant),
                 requires_shipping: false,
                 ..NewOrderLine::of("The book", 1, money(price))
@@ -404,11 +405,13 @@ async fn a_mixed_order_grants_its_digital_half_and_leaves_the_parcel_alone() {
         NewOrder {
             lines: vec![
                 NewOrderLine {
+                    selling_plan_id: None,
                     variant_id: Some(file),
                     requires_shipping: false,
                     ..NewOrderLine::of("The audiobook", 1, money(dec!(20)))
                 },
                 NewOrderLine {
+                    selling_plan_id: None,
                     variant_id: Some(parcel),
                     ..NewOrderLine::of("The hardback", 1, money(dec!(30)))
                 },

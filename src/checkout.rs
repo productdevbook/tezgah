@@ -14,6 +14,7 @@
 //! | `claim_promotions` | [`promotion::claim`] | [`promotion::release`] |
 //! | `reserve_stock` | [`inventory::reserve`] | [`inventory::release`] |
 //! | `create_order` | order, lines, items at version 1, summary | deletes them |
+//! | `create_subscriptions` | [`subscription::create`] for a line sold on a plan | erases the contract |
 //! | `redeem_credit` | [`credit::redeem_gift_card`] | puts the balances back |
 //! | `authorize_payment` | [`payment::authorize`] | [`payment::cancel`] |
 //! | `complete_cart` | stamps `completed_at` | clears it |
@@ -48,8 +49,8 @@ use uuid::Uuid;
 use crate::error::{Error, Result};
 use crate::id::{
     CartId, CustomerId, GiftCardId, LineItemId, OrderId, PaymentCollectionId, PaymentId,
-    PaymentSessionId, PromotionId, ReservationId, ShippingOptionId, StockLocationId, StoreCreditId,
-    VariantId,
+    PaymentSessionId, PromotionId, ReservationId, SellingPlanId, ShippingOptionId, StockLocationId,
+    StoreCreditId, SubscriptionId, VariantId,
 };
 use crate::money::{Currency, Money};
 use crate::order::{
@@ -62,7 +63,7 @@ use crate::payment::{
 };
 use crate::ports::{Action, AuditEntry, Ctx, Event, Permit, Resource, Tx};
 use crate::workflow::{self, Failure, Outcome, Step, Workflow};
-use crate::{cart, catalogue, credit, inventory, promotion};
+use crate::{cart, catalogue, credit, inventory, promotion, subscription};
 
 /// What the run is holding as it goes, and what a compensation is handed back.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -80,6 +81,8 @@ struct Carried {
     payment_id: Option<PaymentId>,
     #[serde(default)]
     requires_more: bool,
+    #[serde(default)]
+    subscription_ids: Vec<SubscriptionId>,
 }
 
 impl Carried {
@@ -158,6 +161,9 @@ impl Checkout {
                 location_id: self.location_id,
             })
             .then(CreateOrder)
+            .then(CreateSubscriptions {
+                provider_code: self.provider.code().to_string(),
+            })
             .then(RedeemCredit)
             .then(AuthorizePayment {
                 provider: Arc::clone(&self.provider),
@@ -421,6 +427,7 @@ struct CartLine {
     is_discountable: bool,
     requires_shipping: bool,
     parent_line_item_id: Option<LineItemId>,
+    selling_plan_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, FromRow)]
@@ -650,6 +657,7 @@ impl Step for CreateOrder {
             lines: lines
                 .into_iter()
                 .map(|line| NewOrderLine {
+                    selling_plan_id: line.selling_plan_id.map(SellingPlanId::from_uuid),
                     reserved_for: Some(line.id),
                     parent_cart_line: line.parent_line_item_id,
                     variant_id: line.variant_id.map(VariantId::from_uuid),
@@ -722,6 +730,189 @@ impl Step for CreateOrder {
         };
 
         erase_order(tx, ctx, order_id).await
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 4b. Open a contract for whatever was bought on a plan
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct WrittenSubscriptions {
+    #[serde(default)]
+    subscription_ids: Vec<SubscriptionId>,
+    order_id: Option<OrderId>,
+}
+
+/// Opens one contract per plan a cart line named, after the order but before
+/// the card is asked to hold anything: a decline this run cannot recover from
+/// is one that leaves a contract nobody is paying for behind, so it has to be
+/// gone by the time `authorize_payment` fails.
+///
+/// One order supports one contract. A cart mixing lines from two different
+/// plans is refused here rather than silently keeping only one of them —
+/// `"order".subscription_id` is a single column, the same one
+/// `settlement::start_first_period` reads to start the period this order
+/// already paid for.
+struct CreateSubscriptions {
+    provider_code: String,
+}
+
+#[async_trait]
+impl Step for CreateSubscriptions {
+    fn name(&self) -> &'static str {
+        "create_subscriptions"
+    }
+
+    async fn invoke(
+        &self,
+        tx: &mut Tx<'_>,
+        ctx: &Ctx<'_>,
+        input: &Value,
+    ) -> std::result::Result<Outcome, Failure> {
+        let mut carried = Carried::of(input)?;
+        let cart_id = carried.cart()?;
+        let order_id = carried
+            .order_id
+            .ok_or_else(|| Failure::Final(Error::bug("a checkout lost its order")))?;
+
+        let planned: Vec<CartLine> = cart_lines(tx, ctx, cart_id)
+            .await
+            .map_err(Failure::Final)?
+            .into_iter()
+            .filter(|line| line.selling_plan_id.is_some())
+            .collect();
+
+        if planned.is_empty() {
+            return Ok(Outcome::skipped(carried.value()?));
+        }
+
+        let plan_id = planned[0].selling_plan_id;
+        if planned.iter().any(|line| line.selling_plan_id != plan_id) {
+            return Err(Failure::Final(Error::invalid(
+                "a cart may open one subscription contract, not several plans at once",
+            )));
+        }
+        let plan_id = SellingPlanId::from_uuid(plan_id.expect("checked non-empty above"));
+
+        let cart = cart::get(tx, ctx, cart_id).await.map_err(Failure::Final)?;
+        let currency = cart.currency().map_err(Failure::Final)?;
+        let customer_id = cart.customer_id.ok_or_else(|| {
+            Failure::Final(Error::invalid(
+                "a subscription needs a customer; a guest cart cannot open one",
+            ))
+        })?;
+
+        // The instrument this contract will charge later is not this
+        // checkout's own session — that authorizes one payment, not a
+        // standing permission — but whatever the customer already has on
+        // file with the shop's recurring provider.
+        let holder = payment::account_holder(tx, ctx, &self.provider_code, customer_id)
+            .await
+            .map_err(Failure::Final)?
+            .ok_or_else(|| {
+                Failure::Final(Error::invalid(
+                    "that customer has no payment method on file to renew a subscription with",
+                ))
+            })?;
+        let payment_method_reference = cart
+            .metadata
+            .as_ref()
+            .and_then(|meta| meta.get("payment_method_reference"))
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let mandate_reference = cart
+            .metadata
+            .as_ref()
+            .and_then(|meta| meta.get("mandate_reference"))
+            .and_then(Value::as_str)
+            .map(str::to_string);
+
+        let new = subscription::NewSubscription {
+            customer_id,
+            selling_plan_id: plan_id,
+            currency,
+            region_id: cart.region_id,
+            sales_channel_id: cart.sales_channel_id,
+            account_holder_id: Some(holder.id),
+            payment_method_reference,
+            mandate_reference,
+            mandate_accepted_at: Some(ctx.now()),
+            shipping_address_id: cart
+                .shipping_address_id
+                .map(crate::id::AddressId::from_uuid),
+            billing_address_id: cart.billing_address_id.map(crate::id::AddressId::from_uuid),
+            starts_at: Some(ctx.now()),
+            lines: planned
+                .iter()
+                .filter_map(|line| {
+                    Some(subscription::NewLine {
+                        variant_id: VariantId::from_uuid(line.variant_id?),
+                        title: Some(line.product_title.clone()),
+                        quantity: line.quantity,
+                        unit_price: Money::new(line.unit_price, currency),
+                    })
+                })
+                .collect(),
+        };
+
+        let contract = subscription::create(tx, ctx, new)
+            .await
+            .map_err(Failure::Final)?;
+
+        sqlx::query(r#"update "order" set subscription_id = $3 where scope = $1 and id = $2"#)
+            .bind(ctx.scope.0)
+            .bind(order_id.as_uuid())
+            .bind(contract.id.as_uuid())
+            .execute(&mut **tx)
+            .await
+            .map_err(|err| Failure::Retry(Error::from(err)))?;
+
+        carried.subscription_ids = vec![contract.id];
+
+        let undo = WrittenSubscriptions {
+            subscription_ids: vec![contract.id],
+            order_id: Some(order_id),
+        };
+
+        Ok(Outcome::new(carried.value()?, kept(&undo)))
+    }
+
+    async fn compensate(&self, tx: &mut Tx<'_>, ctx: &Ctx<'_>, keep: &Value) -> Result<()> {
+        let undo: WrittenSubscriptions = recall(keep);
+        if undo.subscription_ids.is_empty() {
+            return Ok(());
+        }
+
+        if let Some(order_id) = undo.order_id {
+            sqlx::query(
+                r#"update "order" set subscription_id = null where scope = $1 and id = $2"#,
+            )
+            .bind(ctx.scope.0)
+            .bind(order_id.as_uuid())
+            .execute(&mut **tx)
+            .await?;
+        }
+
+        for id in undo.subscription_ids {
+            sqlx::query("delete from subscription_line where scope = $1 and subscription_id = $2")
+                .bind(ctx.scope.0)
+                .bind(id.as_uuid())
+                .execute(&mut **tx)
+                .await?;
+            sqlx::query("delete from subscription_event where scope = $1 and subscription_id = $2")
+                .bind(ctx.scope.0)
+                .bind(id.as_uuid())
+                .execute(&mut **tx)
+                .await?;
+            sqlx::query("delete from subscription where scope = $1 and id = $2")
+                .bind(ctx.scope.0)
+                .bind(id.as_uuid())
+                .execute(&mut **tx)
+                .await?;
+        }
+
+        Ok(())
     }
 }
 
@@ -1218,7 +1409,7 @@ async fn cart_lines(tx: &mut Tx<'_>, ctx: &Ctx<'_>, cart_id: CartId) -> Result<V
         "select l.id, l.variant_id, l.product_id, l.product_title, l.product_handle,
                 l.variant_title, l.variant_sku, l.variant_option_values, l.thumbnail,
                 l.quantity, l.unit_price, l.compare_at_unit_price, l.is_tax_inclusive,
-                l.is_discountable, l.requires_shipping, l.parent_line_item_id
+                l.is_discountable, l.requires_shipping, l.parent_line_item_id, l.selling_plan_id
          from cart_line_item l
          where l.scope = $1 and l.cart_id = $2
          order by l.created_at, l.id",

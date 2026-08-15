@@ -12084,6 +12084,36 @@
         "x-tezgah-permission": "view"
       }
     },
+    "/admin/subscriptions/due-deliveries": {
+      "get": {
+        "operationId": "getAdminSubscriptionsDueDeliveries",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "What is owed a delivery on a prepaid term",
+        "tags": [
+          "subscription"
+        ],
+        "x-tezgah-permission": "view"
+      }
+    },
     "/admin/subscriptions/{id}": {
       "get": {
         "operationId": "getAdminSubscriptionsById",
@@ -12162,6 +12192,45 @@
         "x-tezgah-permission": "write"
       }
     },
+    "/admin/subscriptions/{id}/deliver": {
+      "post": {
+        "operationId": "postAdminSubscriptionsByIdDeliver",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Ship one delivery a prepaid term already paid for",
+        "tags": [
+          "subscription"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
     "/admin/subscriptions/{id}/events": {
       "get": {
         "operationId": "getAdminSubscriptionsByIdEvents",
@@ -12201,6 +12270,45 @@
         "x-tezgah-permission": "view"
       }
     },
+    "/admin/subscriptions/{id}/pause": {
+      "post": {
+        "operationId": "postAdminSubscriptionsByIdPause",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Stop a contract renewing until it is resumed",
+        "tags": [
+          "subscription"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
     "/admin/subscriptions/{id}/renew": {
       "post": {
         "operationId": "postAdminSubscriptionsByIdRenew",
@@ -12238,6 +12346,123 @@
           "subscription"
         ],
         "x-tezgah-permission": "settle"
+      }
+    },
+    "/admin/subscriptions/{id}/resume": {
+      "post": {
+        "operationId": "postAdminSubscriptionsByIdResume",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Start a paused contract renewing again",
+        "tags": [
+          "subscription"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/subscriptions/{id}/skip": {
+      "post": {
+        "operationId": "postAdminSubscriptionsByIdSkip",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Pass over the next period without billing it",
+        "tags": [
+          "subscription"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/subscriptions/{id}/swap": {
+      "post": {
+        "operationId": "postAdminSubscriptionsByIdSwap",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Swap what a contract is for",
+        "tags": [
+          "subscription"
+        ],
+        "x-tezgah-permission": "write"
       }
     },
     "/admin/tax-exemptions/{id}/revoke": {
@@ -15448,6 +15673,123 @@
           }
         ],
         "summary": "Stop mine at the end of this period",
+        "tags": [
+          "subscription"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/store/subscriptions/{id}/pause": {
+      "post": {
+        "operationId": "postStoreSubscriptionsByIdPause",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "publishableKey": []
+          }
+        ],
+        "summary": "Stop mine renewing until I resume it",
+        "tags": [
+          "subscription"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/store/subscriptions/{id}/resume": {
+      "post": {
+        "operationId": "postStoreSubscriptionsByIdResume",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "publishableKey": []
+          }
+        ],
+        "summary": "Start mine renewing again",
+        "tags": [
+          "subscription"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/store/subscriptions/{id}/skip": {
+      "post": {
+        "operationId": "postStoreSubscriptionsByIdSkip",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "publishableKey": []
+          }
+        ],
+        "summary": "Pass over my next period without billing it",
         "tags": [
           "subscription"
         ],

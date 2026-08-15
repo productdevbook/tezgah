@@ -297,6 +297,7 @@ async fn a_made_to_order_line_is_marked_exempt_at_the_sale_and_stays_exempt() ->
         &mut tx,
         &ctx,
         an_order(NewOrderLine {
+            selling_plan_id: None,
             withdrawal_exclusion: Some(WithdrawalExclusion::CustomMade),
             ..NewOrderLine::of("A name engraved on it", 1, money(dec!(10)))
         }),
@@ -485,6 +486,7 @@ async fn an_exempt_line_cannot_be_withdrawn_from() -> tezgah::Result<()> {
         &mut tx,
         &ctx,
         an_order(NewOrderLine {
+            selling_plan_id: None,
             withdrawal_exclusion: Some(WithdrawalExclusion::Hygiene),
             ..NewOrderLine::of("Something opened", 1, money(dec!(10)))
         }),

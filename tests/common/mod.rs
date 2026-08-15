@@ -550,6 +550,7 @@ pub async fn a_cart_ready(shop: &Shop, stocked: i32, quantity: i32) -> Shelf {
                 quantity,
                 unit_price: Money::new(dec!(10), Currency::parse("TRY").expect("a currency")),
                 is_tax_inclusive: false,
+                selling_plan_id: None,
             },
         )
         .await

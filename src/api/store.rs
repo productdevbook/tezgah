@@ -27,7 +27,7 @@ use crate::error::{Error, Result};
 use crate::id::{
     AddressId, CartId, CategoryId, CollectionId, CustomerId, LineItemId, OptionId, OrderId,
     PaymentCollectionId, PaymentSessionId, ProductId, ProductTagId, ProductTypeId, RegionId,
-    SalesChannelId, ShippingOptionId, VariantId,
+    SalesChannelId, SellingPlanId, ShippingOptionId, VariantId,
 };
 use crate::money::{Currency, Money};
 use crate::page::{Cursor, Page, Paging};
@@ -294,6 +294,8 @@ pub struct LineItemView {
     pub requires_shipping: bool,
     /// The bundle line this one is a component of, when it is one.
     pub parent_line_item_id: Option<LineItemId>,
+    /// The plan this line is bought on, when it is a subscription's.
+    pub selling_plan_id: Option<SellingPlanId>,
 }
 
 impl LineItemView {
@@ -313,6 +315,7 @@ impl LineItemView {
             }),
             requires_shipping: row.requires_shipping,
             parent_line_item_id: row.parent_line_item_id,
+            selling_plan_id: row.selling_plan_id,
         })
     }
 }
@@ -1260,6 +1263,10 @@ pub async fn list_line_items(
 pub struct AddLineItem {
     pub variant_id: VariantId,
     pub quantity: i32,
+    /// Buy it on a plan instead of once. The variant has to be one the plan
+    /// offers — `selling_plan::attach_variant` is what says so — or this
+    /// refuses rather than adding a line nothing can ever renew.
+    pub selling_plan_id: Option<SellingPlanId>,
 }
 
 /// The price is the shop's, resolved here. A storefront that could send one
@@ -1295,6 +1302,21 @@ pub async fn add_line_item(
 
     let is_tax_inclusive = pricing::is_tax_inclusive(tx, ctx, &at).await?;
 
+    if let Some(plan_id) = input.selling_plan_id {
+        let offered: Option<Uuid> = sqlx::query_scalar(
+            "select selling_plan_id from selling_plan_variant
+             where scope = $1 and selling_plan_id = $2 and variant_id = $3",
+        )
+        .bind(ctx.scope.0)
+        .bind(plan_id.as_uuid())
+        .bind(input.variant_id.as_uuid())
+        .fetch_optional(&mut **tx)
+        .await?;
+        if offered.is_none() {
+            return Err(Error::invalid("that variant is not sold on that plan"));
+        }
+    }
+
     let item = cart::add_line(
         tx,
         ctx,
@@ -1304,6 +1326,7 @@ pub async fn add_line_item(
             quantity: input.quantity,
             unit_price: price.calculated,
             is_tax_inclusive,
+            selling_plan_id: input.selling_plan_id,
         },
     )
     .await?;

@@ -410,6 +410,7 @@ async fn one_step(
                     quantity: rng.between(1, 4),
                     unit_price: rng.money(1, 90),
                     is_tax_inclusive: false,
+                    selling_plan_id: None,
                 },
             )
             .await?;

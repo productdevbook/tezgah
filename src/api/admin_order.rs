@@ -1004,6 +1004,7 @@ impl NewLineIn {
             .transpose()?;
 
         Ok(order::NewOrderLine {
+            selling_plan_id: None,
             variant_id: self.variant_id,
             product_id: self.product_id,
             title: self.title,

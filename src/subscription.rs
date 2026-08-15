@@ -72,7 +72,7 @@ use crate::payment::{
 };
 use crate::ports::{Action, AuditEntry, Ctx, Event, JobSpec, Permit, Resource, Tx};
 use crate::workflow::{self, Failure, Outcome, Step, Workflow};
-use crate::{inventory, pricing, store, tax};
+use crate::{credit, inventory, pricing, store, tax};
 
 /// Most lines one contract may carry. A box of six things is a contract; a
 /// thousand is an import that went wrong.
@@ -98,7 +98,8 @@ const SUBSCRIPTION_COLUMNS: &str = "id, customer_id, selling_plan_id, currency_c
      sales_channel_id, status, account_holder_id, payment_method_reference, mandate_reference, \
      mandate_accepted_at, shipping_address_id, billing_address_id, next_billing_at, \
      current_period_start, current_period_end, cycle, line_version, cancel_at_period_end, \
-     paused_until, ended_at, dunning_attempts, created_at";
+     paused_until, ended_at, dunning_attempts, next_delivery_at, delivery_cycle, \
+     pending_adjustment, created_at";
 
 const LINE_COLUMNS: &str =
     "id, subscription_id, version, variant_id, title, quantity, unit_price, currency_code";
@@ -205,6 +206,18 @@ pub struct Subscription {
     pub paused_until: Option<DateTime<Utc>>,
     pub ended_at: Option<DateTime<Utc>>,
     pub dunning_attempts: i32,
+    /// When the next delivery-only shipment is owed, on a plan that delivers
+    /// more often than it bills. `None` on a plan with no delivery interval
+    /// of its own, which bills and delivers together.
+    pub next_delivery_at: Option<DateTime<Utc>>,
+    /// Deliveries produced since this period was last billed. The bundled
+    /// first one — the order the contract opened under, or the last renewal —
+    /// is not counted here; this is what [`deliver`] has added since.
+    pub delivery_cycle: i32,
+    /// A signed balance a swap left behind: negative was already granted as
+    /// store credit, so only positive ever reaches here — what the next
+    /// renewal still owes for the plan change.
+    pub pending_adjustment: Decimal,
     pub created_at: DateTime<Utc>,
 }
 
@@ -590,13 +603,25 @@ pub async fn create(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewSubscription) -> Res
         plan.billing_interval_count,
     )?;
 
+    // A plan billed and delivered on the same schedule has nothing here: the
+    // renewal that bills it is the delivery. A prepaid plan's first delivery
+    // goes out with the order this contract is opened under — `cycle` 0,
+    // `delivery_sequence` 0 — so the next one this schedules is the second.
+    let next_delivery_at = match (
+        plan.delivery_interval_unit.as_deref(),
+        plan.delivery_interval_count,
+    ) {
+        (Some(unit), Some(count)) => Some(advance(starts_at, unit, count)?),
+        _ => None,
+    };
+
     let contract = sqlx::query_as::<_, Subscription>(&format!(
         "insert into subscription
              (id, scope, customer_id, selling_plan_id, currency_code, region_id,
               sales_channel_id, account_holder_id, payment_method_reference, mandate_reference,
               mandate_accepted_at, shipping_address_id, billing_address_id, next_billing_at,
-              current_period_start, current_period_end)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+              current_period_start, current_period_end, next_delivery_at)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
          returning {SUBSCRIPTION_COLUMNS}"
     ))
     .bind(id.as_uuid())
@@ -615,6 +640,7 @@ pub async fn create(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewSubscription) -> Res
     .bind(ends_at)
     .bind(starts_at)
     .bind(ends_at)
+    .bind(next_delivery_at)
     .fetch_one(&mut **tx)
     .await?;
 
@@ -892,6 +918,20 @@ pub async fn cancel(
         return Err(Error::conflict("that contract has already ended"));
     }
 
+    // A minimum term is a promise the shop sold at a lower price for; stopping
+    // it early is still allowed at period end — the shop keeps every period
+    // already paid for either way — but not on the spot, which would hand back
+    // periods the discount assumed the shop would keep.
+    if !at_period_end {
+        let plan = plan(tx, ctx, contract.selling_plan_id).await?;
+        if plan.min_cycles.is_some_and(|min| contract.cycle < min) {
+            return Err(Error::conflict(
+                "that contract has a minimum term it has not completed yet; \
+                 it may still be told to stop at the end of this period",
+            ));
+        }
+    }
+
     let changed = sqlx::query_as::<_, Subscription>(&format!(
         "update subscription
          set cancel_at_period_end = true,
@@ -942,6 +982,597 @@ pub async fn cancel(
     .await?;
 
     Ok(changed)
+}
+
+/// Stops a contract renewing until [`resume`] is called, or until `until`
+/// passes and the host's cron finds it still `paused` — `due` never returns a
+/// paused contract, so passing a moment in the past is indistinguishable from
+/// pausing indefinitely until this is called again.
+pub async fn pause(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: SubscriptionId,
+    until: Option<DateTime<Utc>>,
+) -> Result<Subscription> {
+    let contract = get(tx, ctx, id).await?;
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Subscription {
+            id: Some(id.as_uuid()),
+            customer: Some(contract.customer_id.as_uuid()),
+        },
+    )?;
+
+    if !contract.is_live() {
+        return Err(Error::conflict("that contract is not one that renews"));
+    }
+
+    let changed = sqlx::query_as::<_, Subscription>(&format!(
+        "update subscription set status = 'paused', paused_until = $3
+         where scope = $1 and id = $2
+         returning {SUBSCRIPTION_COLUMNS}"
+    ))
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .bind(until)
+    .fetch_one(&mut **tx)
+    .await?;
+
+    record(tx, ctx, id, "paused", serde_json::json!({ "until": until })).await?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "subscription",
+            entity_id: id.as_uuid(),
+            summary: serde_json::json!({ "paused": true, "until": until }),
+        },
+    )
+    .await?;
+
+    ctx.emit(
+        tx,
+        Event {
+            name: "subscription.paused",
+            entity_id: id.as_uuid(),
+            payload: serde_json::json!({ "until": until }),
+        },
+    )
+    .await?;
+
+    Ok(changed)
+}
+
+/// Starts a paused contract renewing again.
+///
+/// **The calendar shifts forward; missed periods are not billed for.** A
+/// contract paused past its `next_billing_at` does not catch up on what it
+/// missed while resuming — that would bill for a period the shop did not
+/// serve — it is simply due again from the moment it resumes. A contract
+/// still short of its date when paused keeps that date: pausing for a week
+/// inside a thirty-day period does not shorten it.
+pub async fn resume(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: SubscriptionId) -> Result<Subscription> {
+    let contract = get(tx, ctx, id).await?;
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Subscription {
+            id: Some(id.as_uuid()),
+            customer: Some(contract.customer_id.as_uuid()),
+        },
+    )?;
+
+    if contract.status != "paused" {
+        return Err(Error::conflict("that contract is not paused"));
+    }
+
+    let now = ctx.now();
+    let changed = sqlx::query_as::<_, Subscription>(&format!(
+        "update subscription
+         set status = 'active', paused_until = null,
+             next_billing_at = greatest(next_billing_at, $3)
+         where scope = $1 and id = $2
+         returning {SUBSCRIPTION_COLUMNS}"
+    ))
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .bind(now)
+    .fetch_one(&mut **tx)
+    .await?;
+
+    record(
+        tx,
+        ctx,
+        id,
+        "resumed",
+        serde_json::json!({ "next_billing_at": changed.next_billing_at }),
+    )
+    .await?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "subscription",
+            entity_id: id.as_uuid(),
+            summary: serde_json::json!({ "resumed": true }),
+        },
+    )
+    .await?;
+
+    ctx.emit(
+        tx,
+        Event {
+            name: "subscription.resumed",
+            entity_id: id.as_uuid(),
+            payload: serde_json::json!({ "next_billing_at": changed.next_billing_at }),
+        },
+    )
+    .await?;
+
+    Ok(changed)
+}
+
+/// Passes over the next period without billing it: the cycle it would have
+/// been is marked spent and the calendar moves on to the one after, so a
+/// later renewal cannot retry the period this skipped.
+pub async fn skip_next(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: SubscriptionId) -> Result<Subscription> {
+    let contract = get(tx, ctx, id).await?;
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Subscription {
+            id: Some(id.as_uuid()),
+            customer: Some(contract.customer_id.as_uuid()),
+        },
+    )?;
+
+    if !contract.is_live() {
+        return Err(Error::conflict("that contract is not one that renews"));
+    }
+
+    let plan = plan(tx, ctx, contract.selling_plan_id).await?;
+    let skipped_cycle = contract.cycle + 1;
+    if plan.max_cycles.is_some_and(|most| skipped_cycle > most) {
+        return Err(Error::conflict(
+            "that contract has had every cycle it was sold",
+        ));
+    }
+
+    let period_start = contract.current_period_end;
+    let period_end = advance(
+        period_start,
+        &plan.billing_interval_unit,
+        plan.billing_interval_count,
+    )?;
+
+    let changed = sqlx::query_as::<_, Subscription>(&format!(
+        "update subscription
+         set cycle = $3, current_period_start = $4, current_period_end = $5,
+             next_billing_at = $5, dunning_attempts = 0
+         where scope = $1 and id = $2
+         returning {SUBSCRIPTION_COLUMNS}"
+    ))
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .bind(skipped_cycle)
+    .bind(period_start)
+    .bind(period_end)
+    .fetch_one(&mut **tx)
+    .await?;
+
+    record(
+        tx,
+        ctx,
+        id,
+        "skipped",
+        serde_json::json!({ "cycle": skipped_cycle }),
+    )
+    .await?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "subscription",
+            entity_id: id.as_uuid(),
+            summary: serde_json::json!({ "skipped_cycle": skipped_cycle }),
+        },
+    )
+    .await?;
+
+    ctx.emit(
+        tx,
+        Event {
+            name: "subscription.skipped",
+            entity_id: id.as_uuid(),
+            payload: serde_json::json!({ "cycle": skipped_cycle }),
+        },
+    )
+    .await?;
+
+    Ok(changed)
+}
+
+/// Swaps what a contract is for, writing a new version of its lines rather
+/// than editing the version it had — the pattern stage one set for a price
+/// that moves mid-contract.
+///
+/// # Proration
+///
+/// What is left of the period already paid for is worth the old lines' price
+/// for the days used and the new lines' price for the days left, split by
+/// `money::allocate` so each half adds back to its
+/// own total. The difference is a signed balance: negative, the customer paid
+/// for more than the new lines are worth for the days left, and that is
+/// granted back as store credit on the spot, through
+/// [`credit::grant_store_credit`], which asks its own [`Action::Settle`].
+/// Positive, the new lines cost more for those days than the old ones would
+/// have, and nothing is charged off-session outside a renewal — it accumulates
+/// in `pending_adjustment` for the next one to collect.
+///
+/// **Rounding favours the customer.** `money::allocate` walks its weights from
+/// the front and gives the first one any cent it cannot split evenly; the
+/// days already used are first here, so a cent that will not divide cleanly
+/// is the shop's to absorb and the customer's share is never the one holding
+/// the correction.
+pub async fn swap(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: SubscriptionId,
+    new_lines: Vec<NewLine>,
+) -> Result<Subscription> {
+    let contract = get(tx, ctx, id).await?;
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Subscription {
+            id: Some(id.as_uuid()),
+            customer: Some(contract.customer_id.as_uuid()),
+        },
+    )?;
+
+    if !contract.is_live() {
+        return Err(Error::conflict("that contract is not one that renews"));
+    }
+    if new_lines.is_empty() {
+        return Err(Error::invalid("a contract needs something on it"));
+    }
+    let currency = contract.currency()?;
+    for line in &new_lines {
+        if line.quantity <= 0 {
+            return Err(Error::invalid("a line needs a quantity of at least one"));
+        }
+        if line.unit_price.currency != currency {
+            return Err(Error::invalid("a line is priced in another currency"));
+        }
+    }
+
+    let old_lines = lines(tx, ctx, id).await?;
+    let old_total = old_lines.iter().try_fold(Decimal::ZERO, |sum, line| {
+        Ok::<_, Error>(sum + line.unit_price * Decimal::from(line.quantity))
+    })?;
+    let new_total = new_lines.iter().fold(Decimal::ZERO, |sum, line| {
+        sum + line.unit_price.amount * Decimal::from(line.quantity)
+    });
+
+    let now = ctx.now();
+    let total_days = (contract.current_period_end - contract.current_period_start)
+        .num_seconds()
+        .max(1);
+    let remaining_days = (contract.current_period_end - now)
+        .num_seconds()
+        .clamp(0, total_days);
+    let used_days = total_days - remaining_days;
+
+    let exponent = store::exponent(tx, ctx, currency).await?;
+    // `money::allocate` gives any leftover cent to the first weight it cannot
+    // split evenly, walking the slice from the start; putting the days
+    // already used first means that leftover always lands on the shop's
+    // share, and what remains — the customer's — is never the one holding a
+    // drift correction.
+    let weights = [
+        Decimal::from(used_days.max(1)),
+        Decimal::from(remaining_days),
+    ];
+
+    let delta = if remaining_days > 0 && old_total > Decimal::ZERO || new_total > Decimal::ZERO {
+        let old_split =
+            crate::money::allocate(Money::new(old_total, currency), &weights, exponent)?;
+        let new_split =
+            crate::money::allocate(Money::new(new_total, currency), &weights, exponent)?;
+        new_split[1].amount - old_split[1].amount
+    } else {
+        Decimal::ZERO
+    };
+
+    let version = contract.line_version + 1;
+    for line in &new_lines {
+        write_line(tx, ctx, id, version, line).await?;
+    }
+
+    let changed = if delta < Decimal::ZERO {
+        credit::grant_store_credit(
+            tx,
+            ctx,
+            contract.customer_id,
+            Money::new(-delta, currency),
+            Some("subscription plan change".to_string()),
+        )
+        .await?;
+
+        sqlx::query_as::<_, Subscription>(&format!(
+            "update subscription set line_version = $3 where scope = $1 and id = $2
+             returning {SUBSCRIPTION_COLUMNS}"
+        ))
+        .bind(ctx.scope.0)
+        .bind(id.as_uuid())
+        .bind(version)
+        .fetch_one(&mut **tx)
+        .await?
+    } else {
+        sqlx::query_as::<_, Subscription>(&format!(
+            "update subscription
+             set line_version = $3, pending_adjustment = pending_adjustment + $4
+             where scope = $1 and id = $2
+             returning {SUBSCRIPTION_COLUMNS}"
+        ))
+        .bind(ctx.scope.0)
+        .bind(id.as_uuid())
+        .bind(version)
+        .bind(delta)
+        .fetch_one(&mut **tx)
+        .await?
+    };
+
+    record(
+        tx,
+        ctx,
+        id,
+        "swapped",
+        serde_json::json!({ "from_version": contract.line_version, "to_version": version }),
+    )
+    .await?;
+
+    if !delta.is_zero() {
+        record(
+            tx,
+            ctx,
+            id,
+            "prorated",
+            serde_json::json!({ "amount": delta, "credited": delta < Decimal::ZERO }),
+        )
+        .await?;
+    }
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "subscription",
+            entity_id: id.as_uuid(),
+            summary: serde_json::json!({ "swapped": true, "version": version }),
+        },
+    )
+    .await?;
+
+    ctx.emit(
+        tx,
+        Event {
+            name: "subscription.swapped",
+            entity_id: id.as_uuid(),
+            payload: serde_json::json!({ "version": version, "adjustment": delta }),
+        },
+    )
+    .await?;
+
+    Ok(changed)
+}
+
+/// The contracts owed a delivery, on a plan whose deliveries run more often
+/// than its bills — a term paid up front, arriving one box at a time.
+pub async fn due_deliveries(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    at: DateTime<Utc>,
+    paging: Paging,
+) -> Result<Page<Subscription>> {
+    let _: Permit = ctx.permit(
+        Action::View,
+        Resource::Subscription {
+            id: None,
+            customer: None,
+        },
+    )?;
+
+    let rows = sqlx::query_as::<_, Subscription>(&format!(
+        "select s.{cols} from subscription s
+         join selling_plan p on p.scope = s.scope and p.id = s.selling_plan_id
+         where s.scope = $1
+           and s.status in ('active', 'past_due')
+           and s.next_delivery_at is not null
+           and s.next_delivery_at <= $2
+           and p.prepaid_cycles is not null
+           and s.delivery_cycle < p.prepaid_cycles - 1
+           and ($3::timestamptz is null or (s.next_delivery_at, s.id) > ($3, $4))
+         order by s.next_delivery_at, s.id
+         limit $5",
+        cols = SUBSCRIPTION_COLUMNS
+    ))
+    .bind(ctx.scope.0)
+    .bind(at)
+    .bind(paging.after.map(|c| c.at))
+    .bind(paging.after.map(|c| c.id))
+    .bind(paging.probe())
+    .fetch_all(&mut **tx)
+    .await?;
+
+    Ok(Page::build(rows, paging, |row| Cursor {
+        at: row.next_delivery_at.unwrap_or(row.created_at),
+        id: row.id.as_uuid(),
+    }))
+}
+
+/// Ships what a prepaid term already paid for, without taking any more money.
+///
+/// One transaction, unlike [`Renewals::renew`]: nothing here calls a provider,
+/// so there is no round-trip a later step needs to have survived, and no
+/// compensation to write for one that did not happen.
+pub async fn deliver(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: SubscriptionId,
+    location_id: StockLocationId,
+) -> Result<OrderId> {
+    let contract = get(tx, ctx, id).await?;
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Subscription {
+            id: Some(id.as_uuid()),
+            customer: Some(contract.customer_id.as_uuid()),
+        },
+    )?;
+
+    if !contract.is_live() {
+        return Err(Error::conflict("that contract is not one that renews"));
+    }
+    let plan = plan(tx, ctx, contract.selling_plan_id).await?;
+    let (Some(unit), Some(count)) = (
+        plan.delivery_interval_unit.as_deref(),
+        plan.delivery_interval_count,
+    ) else {
+        return Err(Error::conflict(
+            "that plan delivers on the same schedule it bills",
+        ));
+    };
+    let Some(due_at) = contract.next_delivery_at else {
+        return Err(Error::conflict("that contract has no delivery due"));
+    };
+    if due_at > ctx.now() {
+        return Err(Error::conflict("that delivery is not due yet"));
+    }
+    if plan
+        .prepaid_cycles
+        .is_none_or(|most| contract.delivery_cycle >= most - 1)
+    {
+        return Err(Error::conflict(
+            "that term has had every delivery it paid for",
+        ));
+    }
+
+    let currency = contract.currency()?;
+    let held = lines(tx, ctx, id).await?;
+    if held.is_empty() {
+        return Err(Error::invalid("that contract has nothing on it"));
+    }
+
+    let mut wanted = Vec::new();
+    for line in &held {
+        let items = inventory::inventory_items_for_variant(tx, ctx, line.variant_id).await?;
+        for item in items {
+            wanted.push((
+                item.inventory_item_id,
+                line.quantity * item.required_quantity,
+            ));
+        }
+    }
+    wanted.sort_by_key(|(item, _)| item.as_uuid());
+    for (item, quantity) in wanted {
+        inventory::reserve(tx, ctx, item, location_id, quantity, None, false, None).await?;
+    }
+
+    let new = NewOrder {
+        region_id: contract.region_id,
+        sales_channel_id: contract.sales_channel_id,
+        customer_id: Some(contract.customer_id),
+        currency_code: currency,
+        payment_collection_id: None,
+        subscription_id: Some(id),
+        shipping_address: copy_address(tx, ctx, contract.shipping_address_id).await?,
+        billing_address: copy_address(tx, ctx, contract.billing_address_id).await?,
+        lines: held
+            .iter()
+            .map(|line| {
+                let mut ordered = NewOrderLine::of(
+                    line.title.clone().unwrap_or_else(|| "Delivery".to_string()),
+                    line.quantity,
+                    Money::new(line.unit_price, currency),
+                );
+                ordered.variant_id = Some(line.variant_id);
+                ordered
+            })
+            .collect(),
+        metadata: Some(serde_json::json!({ "cycle": contract.cycle, "prepaid_delivery": true })),
+        ..NewOrder::of(currency)
+    };
+
+    let placed = order::create(tx, ctx, new).await?;
+
+    let sequence = contract.delivery_cycle + 1;
+    let next_delivery_at = advance(due_at, unit, count)?;
+
+    sqlx::query(
+        "insert into subscription_order
+             (id, scope, subscription_id, order_id, cycle, period_start, period_end, kind,
+              delivery_sequence)
+         values ($1, $2, $3, $4, $5, $6, $7, 'delivery', $8)",
+    )
+    .bind(SubscriptionOrderId::new().as_uuid())
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .bind(placed.id.as_uuid())
+    .bind(contract.cycle)
+    .bind(due_at)
+    .bind(next_delivery_at)
+    .bind(sequence)
+    .execute(&mut **tx)
+    .await?;
+
+    sqlx::query(
+        "update subscription set delivery_cycle = $3, next_delivery_at = $4
+         where scope = $1 and id = $2",
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .bind(sequence)
+    .bind(next_delivery_at)
+    .execute(&mut **tx)
+    .await?;
+
+    record(
+        tx,
+        ctx,
+        id,
+        "renewed",
+        serde_json::json!({ "delivery": true, "sequence": sequence, "order": placed.id }),
+    )
+    .await?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "subscription",
+            entity_id: id.as_uuid(),
+            summary: serde_json::json!({ "delivered": true, "order": placed.id }),
+        },
+    )
+    .await?;
+
+    ctx.emit(
+        tx,
+        Event {
+            name: "subscription.delivered",
+            entity_id: id.as_uuid(),
+            payload: serde_json::json!({ "order": placed.id, "sequence": sequence }),
+        },
+    )
+    .await?;
+
+    Ok(placed.id)
 }
 
 // ---------------------------------------------------------------------------
@@ -1780,6 +2411,9 @@ async fn taxable_address(
 struct WrittenOrder {
     order_id: Option<OrderId>,
     subscription_order_id: Option<SubscriptionOrderId>,
+    /// What `pending_adjustment` held before this step collected it, put back
+    /// if a later step fails and this run unwinds.
+    cleared_adjustment: Option<Decimal>,
 }
 
 struct CreateOrder;
@@ -1807,13 +2441,24 @@ impl Step for CreateOrder {
             return Err(Failure::Final(Error::bug("a renewal lost its period")));
         };
 
-        let total = carried.lines.iter().try_fold(
+        let mut total = carried.lines.iter().try_fold(
             Money::new(Decimal::ZERO, currency),
             |sum, line| -> std::result::Result<Money, Failure> {
                 let line_total = carried.money(line.unit_price * Decimal::from(line.quantity))?;
                 sum.plus(line_total).map_err(Failure::Final)
             },
         )?;
+
+        // A swap's proration only ever leaves a positive balance here — a
+        // negative one was already granted as credit on the spot — so this is
+        // always something still owed, collected with everything else this
+        // cycle charges rather than off-session on its own.
+        let adjustment = contract.pending_adjustment;
+        if adjustment > Decimal::ZERO {
+            total = total
+                .plus(Money::new(adjustment, currency))
+                .map_err(Failure::Final)?;
+        }
 
         let collection = payment::create_collection(
             tx,
@@ -1860,6 +2505,14 @@ impl Step for CreateOrder {
             ordered.variant_id = Some(line.variant_id);
             ordered.tax_lines = tax_lines;
             lines.push(ordered);
+        }
+
+        if adjustment > Decimal::ZERO {
+            lines.push(NewOrderLine::of(
+                "Plan change adjustment",
+                1,
+                Money::new(adjustment, currency),
+            ));
         }
 
         let new = NewOrder {
@@ -1910,9 +2563,24 @@ impl Step for CreateOrder {
         carried.order_id = Some(placed.id);
         carried.payment_collection_id = Some(collection.id);
 
+        let mut cleared_adjustment = None;
+        if adjustment > Decimal::ZERO {
+            sqlx::query(
+                "update subscription set pending_adjustment = 0
+                 where scope = $1 and id = $2",
+            )
+            .bind(ctx.scope.0)
+            .bind(id.as_uuid())
+            .execute(&mut **tx)
+            .await
+            .map_err(|err| Failure::Retry(Error::from(err)))?;
+            cleared_adjustment = Some(adjustment);
+        }
+
         let undo = WrittenOrder {
             order_id: Some(placed.id),
             subscription_order_id: Some(join),
+            cleared_adjustment,
         };
 
         Ok(Outcome::new(carried.value()?, kept(&undo)))
@@ -1929,6 +2597,27 @@ impl Step for CreateOrder {
             .bind(order_id.as_uuid())
             .execute(&mut **tx)
             .await?;
+
+        if let Some(amount) = undo.cleared_adjustment {
+            let contract_id: Option<Uuid> = sqlx::query_scalar(
+                r#"select subscription_id from "order" where scope = $1 and id = $2"#,
+            )
+            .bind(ctx.scope.0)
+            .bind(order_id.as_uuid())
+            .fetch_optional(&mut **tx)
+            .await?;
+            if let Some(contract_id) = contract_id {
+                sqlx::query(
+                    "update subscription set pending_adjustment = pending_adjustment + $3
+                     where scope = $1 and id = $2",
+                )
+                .bind(ctx.scope.0)
+                .bind(contract_id)
+                .bind(amount)
+                .execute(&mut **tx)
+                .await?;
+            }
+        }
 
         erase_order(tx, ctx, order_id).await
     }
@@ -2243,11 +2932,25 @@ impl Step for AdvancePeriod {
         let spent = plan.max_cycles.is_some_and(|most| cycle >= most);
         let status = if spent { "expired" } else { "active" };
 
+        // A prepaid term's deliveries are counted against the period this
+        // renewal just paid for; a fresh period gets a fresh count, and the
+        // next delivery due is one delivery-interval past its own start.
+        let next_delivery_at = match (
+            plan.delivery_interval_unit.as_deref(),
+            plan.delivery_interval_count,
+        ) {
+            (Some(unit), Some(count)) => {
+                Some(advance(period_start, unit, count).map_err(Failure::Final)?)
+            }
+            _ => None,
+        };
+
         sqlx::query(
             "update subscription
              set current_period_start = $3, current_period_end = $4, next_billing_at = $4,
                  cycle = $5, status = $6, dunning_attempts = 0,
-                 ended_at = case when $7 then $8 else ended_at end
+                 ended_at = case when $7 then $8 else ended_at end,
+                 delivery_cycle = 0, next_delivery_at = $9
              where scope = $1 and id = $2",
         )
         .bind(ctx.scope.0)
@@ -2258,6 +2961,7 @@ impl Step for AdvancePeriod {
         .bind(status)
         .bind(spent)
         .bind(ctx.now())
+        .bind(next_delivery_at)
         .execute(&mut **tx)
         .await
         .map_err(|err| Failure::Retry(Error::from(err)))?;

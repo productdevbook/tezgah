@@ -67,6 +67,7 @@ async fn adding_the_same_variant_twice_leaves_one_line() -> tezgah::Result<()> {
             quantity: 2,
             unit_price: money(dec!(19.99))?,
             is_tax_inclusive: false,
+            selling_plan_id: None,
         },
     )
     .await?;
@@ -80,6 +81,7 @@ async fn adding_the_same_variant_twice_leaves_one_line() -> tezgah::Result<()> {
             quantity: 3,
             unit_price: money(dec!(19.99))?,
             is_tax_inclusive: false,
+            selling_plan_id: None,
         },
     )
     .await?;
@@ -114,6 +116,7 @@ async fn a_quantity_of_zero_takes_the_line_away() -> tezgah::Result<()> {
             quantity: 1,
             unit_price: money(dec!(5))?,
             is_tax_inclusive: false,
+            selling_plan_id: None,
         },
     )
     .await?;
@@ -150,6 +153,7 @@ async fn a_price_in_another_currency_is_refused() -> tezgah::Result<()> {
             quantity: 1,
             unit_price: Money::new(dec!(5), Currency::parse("EUR")?),
             is_tax_inclusive: false,
+            selling_plan_id: None,
         },
     )
     .await;
@@ -179,6 +183,7 @@ async fn the_totals_of_a_real_cart_add_up() -> tezgah::Result<()> {
             quantity: 3,
             unit_price: money(dec!(19.99))?,
             is_tax_inclusive: false,
+            selling_plan_id: None,
         },
     )
     .await?;
@@ -303,6 +308,7 @@ async fn a_guest_cart_becomes_the_customers_and_merges_with_theirs() -> tezgah::
             quantity: 1,
             unit_price: money(dec!(40))?,
             is_tax_inclusive: false,
+            selling_plan_id: None,
         },
     )
     .await?;
@@ -318,6 +324,7 @@ async fn a_guest_cart_becomes_the_customers_and_merges_with_theirs() -> tezgah::
                 quantity,
                 unit_price: money(dec!(40))?,
                 is_tax_inclusive: false,
+                selling_plan_id: None,
             },
         )
         .await?;
@@ -364,6 +371,7 @@ async fn a_guest_cart_with_no_cart_to_merge_into_is_simply_claimed() -> tezgah::
             quantity: 1,
             unit_price: money(dec!(12))?,
             is_tax_inclusive: false,
+            selling_plan_id: None,
         },
     )
     .await?;
@@ -469,6 +477,7 @@ async fn another_scope_cannot_reach_the_cart() -> tezgah::Result<()> {
             quantity: 1,
             unit_price: money(dec!(9))?,
             is_tax_inclusive: false,
+            selling_plan_id: None,
         },
     )
     .await?;
@@ -557,6 +566,7 @@ async fn a_variant_marked_non_physical_does_not_ask_to_be_shipped() -> tezgah::R
             quantity: 1,
             unit_price: money(dec!(30))?,
             is_tax_inclusive: false,
+            selling_plan_id: None,
         },
     )
     .await?;
@@ -569,6 +579,7 @@ async fn a_variant_marked_non_physical_does_not_ask_to_be_shipped() -> tezgah::R
             quantity: 1,
             unit_price: money(dec!(50))?,
             is_tax_inclusive: false,
+            selling_plan_id: None,
         },
     )
     .await?;
@@ -608,6 +619,7 @@ async fn a_shop_that_does_not_track_stock_still_ships_a_physical_variant() -> te
             quantity: 1,
             unit_price: money(dec!(50))?,
             is_tax_inclusive: false,
+            selling_plan_id: None,
         },
     )
     .await?;
@@ -620,6 +632,7 @@ async fn a_shop_that_does_not_track_stock_still_ships_a_physical_variant() -> te
             quantity: 1,
             unit_price: money(dec!(30))?,
             is_tax_inclusive: false,
+            selling_plan_id: None,
         },
     )
     .await?;
@@ -655,6 +668,7 @@ async fn an_inventory_item_that_ships_nothing_makes_a_line_that_ships_nothing() 
             quantity: 1,
             unit_price: money(dec!(100))?,
             is_tax_inclusive: false,
+            selling_plan_id: None,
         },
     )
     .await?;
@@ -688,6 +702,7 @@ async fn a_merge_does_not_spread_a_line_that_ships_nowhere() -> tezgah::Result<(
             quantity: 1,
             unit_price: money(dec!(50))?,
             is_tax_inclusive: false,
+            selling_plan_id: None,
         },
     )
     .await?;
@@ -702,6 +717,7 @@ async fn a_merge_does_not_spread_a_line_that_ships_nowhere() -> tezgah::Result<(
             quantity: 1,
             unit_price: money(dec!(20))?,
             is_tax_inclusive: false,
+            selling_plan_id: None,
         },
     )
     .await?;
@@ -782,6 +798,7 @@ async fn totals_in(code: &str, exponent: i16, unit: Decimal) -> tezgah::Result<D
             quantity: 3,
             unit_price: money,
             is_tax_inclusive: false,
+            selling_plan_id: None,
         },
     )
     .await?;
@@ -823,6 +840,7 @@ async fn a_currency_this_shop_has_not_configured_is_not_two_decimals() -> tezgah
             quantity: 1,
             unit_price: Money::new(dec!(9.999), Currency::parse("NOK")?),
             is_tax_inclusive: false,
+            selling_plan_id: None,
         },
     )
     .await?;
