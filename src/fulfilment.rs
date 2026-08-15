@@ -1204,7 +1204,7 @@ pub(crate) async fn deliver_digital(
         barcode: Option<String>,
     }
 
-    let ids: Vec<Uuid> = line_item_ids.iter().map(LineItemId::as_uuid).collect();
+    let ids: Vec<Uuid> = line_item_ids.iter().map(|id| id.as_uuid()).collect();
     let rows = sqlx::query_as::<_, Row>(
         "select i.id as order_item_id, i.quantity, i.fulfilled_quantity,
                 l.title, l.variant_sku as sku, l.variant_barcode as barcode
