@@ -131,7 +131,15 @@ pub async fn refund(
     if let Some(transaction) = written {
         digital::revoke(tx, ctx, transaction.order_id, Some("refunded")).await?;
 
-        payout::record_reversal(tx, ctx, transaction.order_id, amount, refund.id.as_uuid()).await?;
+        payout::record_reversal(
+            tx,
+            ctx,
+            transaction.order_id,
+            id,
+            amount,
+            refund.id.as_uuid(),
+        )
+        .await?;
     }
 
     Ok(refund)

@@ -519,3 +519,209 @@ async fn a_seller_cannot_read_another_sellers_payout_lines() {
 
     shop.close().await;
 }
+
+/// The case #144 was opened for: an order captured in two parts either side
+/// of a commission rate change. Refunding the first, 10%-rate capture must
+/// unwind at 10% — the rate that capture's own ledger lines recorded — not
+/// the order's blended 12.5%, which is what `commission_to_date /
+/// captured_to_date` would give once the second capture landed at 15%.
+#[tokio::test]
+async fn a_refund_uses_the_rate_its_own_capture_earned_at_not_the_blended_one() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let category = catalogue::create_category(
+        &mut tx,
+        &ctx,
+        NewCategory {
+            parent_id: None,
+            name: "Electronics".into(),
+            handle: "electronics".into(),
+            description: None,
+            rank: None,
+            is_active: None,
+            is_internal: None,
+            metadata: None,
+        },
+    )
+    .await
+    .expect("a category");
+
+    payout::set_commission_rule(
+        &mut tx,
+        &ctx,
+        NewCommissionRule {
+            category_id: Some(category.id),
+            kind: CommissionKind::Percentage,
+            value: dec!(10),
+            currency_code: None,
+        },
+    )
+    .await
+    .expect("a 10% commission rule");
+
+    let commissioned = a_categorized_variant(&mut tx, &ctx, "gadget", category.id).await;
+    tx.commit().await.expect("to commit the seed");
+
+    let (order_id, paid) = an_order(
+        &shop,
+        money(dec!(200.00)),
+        vec![line(
+            "A gadget",
+            commissioned.0,
+            commissioned.1,
+            4,
+            dec!(50.00),
+        )],
+    )
+    .await;
+
+    // Half captured at 10%: seller 90.00, commission 10.00.
+    let mut tx = shop.begin().await;
+    settlement::capture(&mut tx, &ctx, paid, money(dec!(100.00)), None)
+        .await
+        .expect("the first capture to settle");
+    tx.commit().await.expect("to commit");
+
+    // The shop raises its rate to 15% before the rest is captured.
+    let mut tx = shop.begin().await;
+    payout::set_commission_rule(
+        &mut tx,
+        &ctx,
+        NewCommissionRule {
+            category_id: Some(category.id),
+            kind: CommissionKind::Percentage,
+            value: dec!(15),
+            currency_code: None,
+        },
+    )
+    .await
+    .expect("to raise the commission rule");
+    tx.commit().await.expect("to commit");
+
+    // The rest captured at 15%: seller 85.00, commission 15.00. The order's
+    // blended ratio is now 25.00 / 200.00 = 12.5%.
+    let mut tx = shop.begin().await;
+    settlement::capture(&mut tx, &ctx, paid, money(dec!(100.00)), None)
+        .await
+        .expect("the second capture to settle");
+    tx.commit().await.expect("to commit");
+
+    // Refund exactly the first, 10%-rate capture.
+    let mut tx = shop.begin().await;
+    settlement::refund(&mut tx, &ctx, paid, money(dec!(100.00)), None, None)
+        .await
+        .expect("the refund to settle");
+    tx.commit().await.expect("to commit");
+
+    let lines = payout_lines_of(&shop, order_id).await;
+    let refund_seller = amount_of(&lines, "refund_seller_share");
+    let refund_commission = amount_of(&lines, "refund_commission");
+
+    // 10% of the 100.00 given back, not the blended 12.5%.
+    assert_eq!(refund_commission, dec!(-10.00));
+    assert_eq!(refund_seller, dec!(-90.00));
+
+    // The running balance is exactly right: 90.00 + 85.00 - 90.00 seller
+    // share left after refunding the first capture's share.
+    let seller = amount_of(&lines, "seller_share");
+    assert_eq!(seller + refund_seller, dec!(85.00));
+
+    shop.close().await;
+}
+
+/// A partial refund of a single capture takes that capture's own rate by
+/// construction, not by coincidence: the commission rule has already moved
+/// on by the time the refund happens, and the refund still uses the rate
+/// the capture actually earned at.
+#[tokio::test]
+async fn a_single_captures_partial_refund_ignores_a_later_rule_change() {
+    let (shop, commissioned, pass_through) = a_seeded_shop().await;
+    let ctx = shop.ctx();
+
+    let (order_id, paid) = an_order(
+        &shop,
+        money(dec!(120.00)),
+        vec![
+            line("A gadget", commissioned.0, commissioned.1, 2, dec!(50.00)),
+            line("Delivery", pass_through.0, pass_through.1, 1, dec!(20.00)),
+        ],
+    )
+    .await;
+
+    let mut tx = shop.begin().await;
+    settlement::capture(&mut tx, &ctx, paid, money(dec!(120.00)), None)
+        .await
+        .expect("the capture to settle");
+    tx.commit().await.expect("to commit");
+
+    // The rule moves to 50% after capture, before the refund. A blended or
+    // re-resolved rate would leak this into the refund; the frozen capture
+    // rate must not.
+    let mut tx = shop.begin().await;
+    payout::set_commission_rule(
+        &mut tx,
+        &ctx,
+        NewCommissionRule {
+            category_id: None,
+            kind: CommissionKind::Percentage,
+            value: dec!(50),
+            currency_code: None,
+        },
+    )
+    .await
+    .expect("to change the default rule");
+    tx.commit().await.expect("to commit");
+
+    let mut tx = shop.begin().await;
+    settlement::refund(&mut tx, &ctx, paid, money(dec!(60.00)), None, None)
+        .await
+        .expect("the refund to settle");
+    tx.commit().await.expect("to commit");
+
+    let lines = payout_lines_of(&shop, order_id).await;
+    assert_eq!(amount_of(&lines, "refund_commission"), dec!(-5.00));
+    assert_eq!(amount_of(&lines, "refund_seller_share"), dec!(-55.00));
+
+    shop.close().await;
+}
+
+/// Refunding a captured order in full zeros out both the seller's share and
+/// the commission the marketplace no longer keeps.
+#[tokio::test]
+async fn a_full_refund_zeros_the_seller_share_and_the_commission() {
+    let (shop, commissioned, pass_through) = a_seeded_shop().await;
+    let ctx = shop.ctx();
+
+    let (order_id, paid) = an_order(
+        &shop,
+        money(dec!(120.00)),
+        vec![
+            line("A gadget", commissioned.0, commissioned.1, 2, dec!(50.00)),
+            line("Delivery", pass_through.0, pass_through.1, 1, dec!(20.00)),
+        ],
+    )
+    .await;
+
+    let mut tx = shop.begin().await;
+    settlement::capture(&mut tx, &ctx, paid, money(dec!(120.00)), None)
+        .await
+        .expect("the capture to settle");
+    tx.commit().await.expect("to commit");
+
+    let mut tx = shop.begin().await;
+    settlement::refund(&mut tx, &ctx, paid, money(dec!(120.00)), None, None)
+        .await
+        .expect("the refund to settle");
+    tx.commit().await.expect("to commit");
+
+    let lines = payout_lines_of(&shop, order_id).await;
+    let seller = amount_of(&lines, "seller_share") + amount_of(&lines, "refund_seller_share");
+    let commission = amount_of(&lines, "commission") + amount_of(&lines, "refund_commission");
+
+    assert_eq!(seller, dec!(0.00));
+    assert_eq!(commission, dec!(0.00));
+
+    shop.close().await;
+}

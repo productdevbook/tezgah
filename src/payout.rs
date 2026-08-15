@@ -41,8 +41,12 @@
 //! authority's share) and keeps `record_earning` from having to reconstruct
 //! `cart::compute`'s tax and shipping split for a single split it does not
 //! otherwise need. A refund does not re-resolve `commission_rule` — rules may
-//! have moved since the money was captured — it unwinds in the same
-//! commission-to-total ratio the order's own ledger already recorded.
+//! have moved since the money was captured — it unwinds capture by capture,
+//! oldest first, each fragment at that capture's own commission ratio rather
+//! than the order's blended one. The two are the same number while an order
+//! has one capture, and only diverge once it is captured in parts across a
+//! rate change; `payout_line.capture_id` is what freezes the fact a
+//! reversal reads instead of recomputing it.
 
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -50,7 +54,7 @@ use sqlx::FromRow;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
-use crate::id::{CategoryId, CommissionRuleId, OrderId, PayoutId, PayoutLineId};
+use crate::id::{CategoryId, CommissionRuleId, OrderId, PaymentId, PayoutId, PayoutLineId};
 use crate::money::{self, Currency, Money};
 use crate::order;
 use crate::page::{Cursor, Page, Paging};
@@ -226,6 +230,7 @@ pub struct PayoutLine {
     pub currency_code: String,
     pub reference: String,
     pub reference_id: Option<Uuid>,
+    pub capture_id: Option<Uuid>,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -331,7 +336,17 @@ pub async fn record_earning(
 
     let (seller, commission) = split(tx, ctx, order_id, captured).await?;
 
-    write_line(tx, ctx, order_id, "seller_share", capture_id, seller, None).await?;
+    write_line(
+        tx,
+        ctx,
+        order_id,
+        "seller_share",
+        capture_id,
+        seller,
+        None,
+        Some(capture_id),
+    )
+    .await?;
     write_line(
         tx,
         ctx,
@@ -340,6 +355,7 @@ pub async fn record_earning(
         capture_id,
         commission,
         None,
+        Some(capture_id),
     )
     .await?;
 
@@ -347,71 +363,120 @@ pub async fn record_earning(
 }
 
 /// Unwinds a refund's share of both what the seller earned and what the
-/// marketplace kept, in the same ratio the order's own ledger already
-/// recorded rather than re-resolving `commission_rule` — a rule may have
-/// changed since the money it applies to was captured.
+/// marketplace kept — capture by capture, oldest first, each fragment taking
+/// that capture's own commission ratio rather than the order's blended one.
+/// With one capture per order this is the same number the order's overall
+/// ratio would give; the two diverge only once an order is captured across a
+/// commission rate change, which is exactly the case a blended rate got
+/// wrong.
+///
+/// `capture_id` is the attribution, frozen per fragment; `refund_id` stays
+/// the event every fragment shares, so a redelivered refund webhook dedupes
+/// per capture rather than only against the first fragment it wrote.
 pub async fn record_reversal(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
     order_id: OrderId,
+    payment_id: PaymentId,
     refunded: Money,
     refund_id: Uuid,
 ) -> Result<()> {
     let _: Permit = ctx.permit(Action::Settle, Resource::Payout { id: None })?;
 
-    let totals: (Option<Decimal>, Option<Decimal>) = sqlx::query_as(
-        "select sum(amount) filter (where reference = 'commission'),
-                sum(amount) filter (where reference in ('seller_share', 'commission'))
-         from payout_line
-         where scope = $1 and order_id = $2",
+    let exponent = store::exponent(tx, ctx, refunded.currency).await?;
+
+    let captures: Vec<Uuid> = sqlx::query_scalar(
+        "select id from capture
+         where scope = $1 and payment_id = $2
+         order by created_at, id",
     )
     .bind(ctx.scope.0)
-    .bind(order_id.as_uuid())
-    .fetch_one(&mut **tx)
+    .bind(payment_id.as_uuid())
+    .fetch_all(&mut **tx)
     .await?;
 
-    let (commission_to_date, captured_to_date) = (
-        totals.0.unwrap_or(Decimal::ZERO),
-        totals.1.unwrap_or(Decimal::ZERO),
-    );
-    let rate = if captured_to_date.is_zero() {
-        Decimal::ZERO
-    } else {
-        commission_to_date / captured_to_date
-    };
+    let mut remaining = refunded.amount;
+    for capture_id in captures {
+        if remaining.is_zero() {
+            break;
+        }
 
-    let exponent = store::exponent(tx, ctx, refunded.currency).await?;
-    let commission_part =
-        (refunded.amount * rate).clamp(Decimal::ZERO, refunded.amount.max(Decimal::ZERO));
-    let seller_part = refunded.amount - commission_part;
-    let parts = money::allocate(refunded, &[commission_part, seller_part], exponent)?;
-    let commission = parts[0];
-    let seller = parts[1];
+        let totals: (Option<Decimal>, Option<Decimal>, Option<Decimal>) = sqlx::query_as(
+            "select
+                 sum(amount) filter (where reference = 'commission'),
+                 sum(amount) filter (where reference in ('seller_share', 'commission')),
+                 sum(-amount) filter (where reference in ('refund_seller_share', 'refund_commission'))
+             from payout_line
+             where scope = $1 and order_id = $2 and capture_id = $3",
+        )
+        .bind(ctx.scope.0)
+        .bind(order_id.as_uuid())
+        .bind(capture_id)
+        .fetch_one(&mut **tx)
+        .await?;
 
-    write_line(
-        tx,
-        ctx,
-        order_id,
-        "refund_seller_share",
-        refund_id,
-        Money::new(-seller.amount, seller.currency),
-        None,
-    )
-    .await?;
-    write_line(
-        tx,
-        ctx,
-        order_id,
-        "refund_commission",
-        refund_id,
-        Money::new(-commission.amount, commission.currency),
-        None,
-    )
-    .await?;
+        let commission_earned = totals.0.unwrap_or(Decimal::ZERO);
+        let captured_earned = totals.1.unwrap_or(Decimal::ZERO);
+        let already_reversed = totals.2.unwrap_or(Decimal::ZERO);
+
+        let capture_remaining = (captured_earned - already_reversed).max(Decimal::ZERO);
+        if capture_remaining.is_zero() {
+            continue;
+        }
+
+        let take = remaining.min(capture_remaining);
+        let rate = if captured_earned.is_zero() {
+            Decimal::ZERO
+        } else {
+            commission_earned / captured_earned
+        };
+
+        let commission_part = (take * rate).clamp(Decimal::ZERO, take.max(Decimal::ZERO));
+        let seller_part = take - commission_part;
+        let parts = money::allocate(
+            Money::new(take, refunded.currency),
+            &[commission_part, seller_part],
+            exponent,
+        )?;
+        let commission = parts[0];
+        let seller = parts[1];
+
+        write_line(
+            tx,
+            ctx,
+            order_id,
+            "refund_seller_share",
+            refund_id,
+            Money::new(-seller.amount, seller.currency),
+            None,
+            Some(capture_id),
+        )
+        .await?;
+        write_line(
+            tx,
+            ctx,
+            order_id,
+            "refund_commission",
+            refund_id,
+            Money::new(-commission.amount, commission.currency),
+            None,
+            Some(capture_id),
+        )
+        .await?;
+
+        remaining -= take;
+    }
+
+    if !remaining.is_zero() {
+        return Err(Error::bug(
+            "a refund did not fully attribute to a capture on this payment",
+        ));
+    }
 
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn write_line(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -420,6 +485,7 @@ async fn write_line(
     reference_id: Uuid,
     amount: Money,
     payout_id: Option<PayoutId>,
+    capture_id: Option<Uuid>,
 ) -> Result<()> {
     if amount.amount.is_zero() {
         return Ok(());
@@ -427,9 +493,10 @@ async fn write_line(
 
     sqlx::query(
         "insert into payout_line
-             (id, scope, order_id, payout_id, amount, currency_code, reference, reference_id)
-         values ($1, $2, $3, $4, $5, $6, $7, $8)
-         on conflict (scope, order_id, reference, reference_id)
+             (id, scope, order_id, payout_id, amount, currency_code, reference, reference_id,
+              capture_id)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         on conflict (scope, order_id, reference, reference_id, capture_id)
              where reference_id is not null and order_id is not null
          do nothing",
     )
@@ -441,6 +508,7 @@ async fn write_line(
     .bind(amount.currency.as_str())
     .bind(reference)
     .bind(reference_id)
+    .bind(capture_id)
     .execute(&mut **tx)
     .await?;
 
@@ -566,7 +634,8 @@ pub async fn payout_lines(
     let _: Permit = ctx.permit(Action::View, Resource::Payout { id: None })?;
 
     let rows = sqlx::query_as::<_, PayoutLine>(
-        "select id, order_id, payout_id, amount, currency_code, reference, reference_id, created_at
+        "select id, order_id, payout_id, amount, currency_code, reference, reference_id,
+                capture_id, created_at
          from payout_line
          where scope = $1 and order_id = $2
            and ($3::timestamptz is null or (created_at, id) > ($3, $4))
