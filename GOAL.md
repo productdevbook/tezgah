@@ -34,9 +34,9 @@ already solved by whatever embeds this, so it is asked for through
 table, 329 paths / 440 operations in the snapshotted OpenAPI document
 generated from it. Most domains in stages 2 to 13 are module, schema and
 test complete and reachable from a route; the exceptions are marked below,
-not hidden in prose: sales channels and publishable keys have the code but no
-route (#109), saved payment account holders are never read back, and lot
-reservation is unreached from checkout (#110). The stage 15 proof suite
+not hidden in prose. Three functions are reachable from nothing and are
+tracked as #149: which warehouses serve a channel, reserving a named lot by
+hand, and saving a customer at a payment provider. The stage 15 proof suite
 already has substantive tests for all six of its claims — the gap left there
 is that no route or matrix test exhaustively proves every one of the 443
 routes checks the permission it declares; `tests/api_permissions.rs` proves
@@ -105,9 +105,9 @@ writes an order, and the provider is not in your database.
 ### 6. Inventory and locations
 
 - [x] `inventory_item`, `inventory_level`, `reservation_item`
-- [ ] stock locations, and which channels each serves — locations are, which
-      channels serve them (`locations_for_sales_channel`) is written but has
-      no route (#109)
+- [ ] stock locations, and which channels each serves — locations have their
+      routes; `locations_for_sales_channel` is written and reachable from
+      nothing (#149)
 - [x] reserving raises `reserved` and leaves `stocked` alone
 - [x] fulfilling drops the reservation and lowers `stocked`
 - [x] reservations expire, on the host's clock — see `Jobs` in the README
