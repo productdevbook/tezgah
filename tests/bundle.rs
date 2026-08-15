@@ -564,4 +564,5 @@ async fn a_bundle_component_returns_at_its_allocated_share_not_an_equal_split() 
 
     tx.rollback().await.expect("to roll back");
     shop.close().await;
+    Ok(())
 }
