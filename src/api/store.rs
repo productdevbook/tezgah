@@ -1168,6 +1168,7 @@ pub async fn create_cart(
             currency_code: Currency::parse(&input.currency_code)?,
             region_id: input.region_id,
             sales_channel_id: input.sales_channel_id,
+            basket_id: None,
             expires_at: None,
             metadata: None,
         },
@@ -1745,7 +1746,7 @@ pub async fn complete_cart(
 ) -> Result<CompletedView> {
     own_cart(tx, ctx, id, Action::Settle).await?;
 
-    let placed = how.place(pool, ctx, id).await?;
+    let placed = how.place(pool, ctx, id, None).await?;
 
     Ok(CompletedView {
         order_id: placed.order_id,

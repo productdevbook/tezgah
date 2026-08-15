@@ -26,7 +26,7 @@ async fn an_order(shop: &Shop, here: &common::Shelf) -> OrderId {
         here.location_id,
     );
     checkout
-        .place(&shop.pool, &shop.ctx(), here.cart_id)
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
         .await
         .expect("a checkout")
         .order_id

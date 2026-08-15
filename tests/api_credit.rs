@@ -106,7 +106,7 @@ async fn a_gift_card_issued_on_a_route_is_spent_by_a_checkout() {
         here.location_id,
     );
     let placed = checkout
-        .place(&shop.pool, &shop.ctx(), here.cart_id)
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
         .await
         .expect("a checkout");
     assert_eq!(
@@ -205,8 +205,8 @@ async fn one_card_spent_twice_at_once_comes_off_once() {
 
     let ctx = shop.ctx();
     let (left, right) = tokio::join!(
-        one.place(&shop.pool, &ctx, first.cart_id),
-        two.place(&shop.pool, &ctx, second.cart_id),
+        one.place(&shop.pool, &ctx, first.cart_id, None),
+        two.place(&shop.pool, &ctx, second.cart_id, None),
     );
 
     // The loser may unwind rather than place: what is not allowed is both of
@@ -312,7 +312,7 @@ async fn store_credit_granted_on_a_route_is_readable_and_spendable() {
         here.location_id,
     );
     let placed = checkout
-        .place(&shop.pool, &shop.ctx(), here.cart_id)
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
         .await
         .expect("a checkout");
 
@@ -511,7 +511,7 @@ async fn a_credit_taken_off_a_cart_is_not_charged() {
         here.location_id,
     );
     let placed = checkout
-        .place(&shop.pool, &shop.ctx(), here.cart_id)
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
         .await
         .expect("a checkout");
     let order_id = placed.order_id.expect("an order");

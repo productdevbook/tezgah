@@ -105,7 +105,7 @@ async fn a_lot_tracked_item_sells_its_earliest_date_first_and_answers_a_recall()
         here.location_id,
     );
     let placed = checkout
-        .place(&shop.pool, &shop.ctx(), here.cart_id)
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
         .await
         .expect("a checkout");
     assert_eq!(

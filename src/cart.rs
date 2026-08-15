@@ -15,16 +15,16 @@ use sqlx::FromRow;
 
 use crate::error::{Error, Result};
 use crate::id::{
-    CartId, CustomerId, LineItemId, RegionId, SalesChannelId, ShippingMethodId, ShippingOptionId,
-    VariantId,
+    CartId, CustomerId, LineItemId, OrderBasketId, RegionId, SalesChannelId, ShippingMethodId,
+    ShippingOptionId, VariantId,
 };
 use crate::money::{Currency, Money};
 use crate::page::{Cursor, Page, Paging};
 use crate::ports::{Action, AuditEntry, Ctx, Event, Permit, Resource, Tx};
 
 const COLUMNS: &str = "id, customer_id, email, region_id, currency_code, sales_channel_id, \
-                       shipping_address_id, billing_address_id, completed_at, expires_at, \
-                       metadata, created_at, updated_at";
+                       shipping_address_id, billing_address_id, basket_id, completed_at, \
+                       expires_at, metadata, created_at, updated_at";
 
 const LINE_COLUMNS: &str = "id, cart_id, variant_id, product_id, product_title, product_handle, \
                             variant_title, variant_sku, variant_barcode, variant_option_values, \
@@ -59,6 +59,10 @@ pub struct Cart {
     pub sales_channel_id: Option<SalesChannelId>,
     pub shipping_address_id: Option<uuid::Uuid>,
     pub billing_address_id: Option<uuid::Uuid>,
+    /// The basket this cart is one seller-scope's leg of, if a checkout
+    /// spanning more than one seller joins it under one. `None` for a
+    /// single-seller shop, forever.
+    pub basket_id: Option<OrderBasketId>,
     /// Set when the cart became an order; every write after that is refused.
     pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
     pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -84,6 +88,11 @@ pub struct NewCart {
     pub currency_code: Currency,
     pub region_id: Option<RegionId>,
     pub sales_channel_id: Option<SalesChannelId>,
+    /// The marketplace basket this cart is one seller-scope's leg of. Set by
+    /// a host that already opened the basket under its own scope's `Ctx` —
+    /// tezgah never opens one on a cart's behalf, the same way it never picks
+    /// which scope a checkout runs under.
+    pub basket_id: Option<OrderBasketId>,
     pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
     pub metadata: Option<serde_json::Value>,
 }
@@ -96,6 +105,7 @@ impl NewCart {
             currency_code,
             region_id: None,
             sales_channel_id: None,
+            basket_id: None,
             expires_at: None,
             metadata: None,
         }
@@ -336,8 +346,8 @@ pub async fn create(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewCart) -> Result<Cart
     let cart = sqlx::query_as::<_, Cart>(&format!(
         "insert into cart
              (id, scope, customer_id, email, region_id, currency_code, sales_channel_id,
-              expires_at, metadata)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+              basket_id, expires_at, metadata)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          returning {COLUMNS}"
     ))
     .bind(id.as_uuid())
@@ -347,6 +357,7 @@ pub async fn create(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewCart) -> Result<Cart
     .bind(new.region_id.map(RegionId::as_uuid))
     .bind(new.currency_code.as_str())
     .bind(new.sales_channel_id.map(SalesChannelId::as_uuid))
+    .bind(new.basket_id.map(OrderBasketId::as_uuid))
     .bind(new.expires_at)
     .bind(new.metadata)
     .fetch_one(&mut **tx)
@@ -397,6 +408,48 @@ pub async fn list(
     ))
     .bind(ctx.scope.0)
     .bind(customer_id.map(CustomerId::as_uuid))
+    .bind(paging.after.map(|c| c.at))
+    .bind(paging.after.map(|c| c.id))
+    .bind(paging.probe())
+    .fetch_all(&mut **tx)
+    .await?;
+
+    Ok(Page::build(rows, paging, |row| Cursor {
+        at: row.created_at,
+        id: row.id.as_uuid(),
+    }))
+}
+
+/// This scope's own carts under one basket — the entry point a host's own
+/// multi-scope checkout orchestration calls, once per seller-scope it knows
+/// about, to find that scope's leg of a shared checkout. Not the basket's
+/// whole cross-seller cart: a connection scoped to one seller cannot read
+/// another's, by the same row-level security [`crate::order_basket::orders`]
+/// answers the same question for orders rather than carts.
+pub async fn for_basket(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    basket_id: OrderBasketId,
+    paging: Paging,
+) -> Result<Page<Cart>> {
+    let _: Permit = ctx.permit(
+        Action::View,
+        Resource::Cart {
+            id: basket_id.as_uuid(),
+            customer: None,
+        },
+    )?;
+
+    let rows = sqlx::query_as::<_, Cart>(&format!(
+        "select {COLUMNS} from cart
+         where scope = $1
+           and basket_id = $2
+           and ($3::timestamptz is null or (created_at, id) > ($3, $4))
+         order by created_at, id
+         limit $5"
+    ))
+    .bind(ctx.scope.0)
+    .bind(basket_id.as_uuid())
     .bind(paging.after.map(|c| c.at))
     .bind(paging.after.map(|c| c.id))
     .bind(paging.probe())

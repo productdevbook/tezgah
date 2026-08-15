@@ -66,6 +66,25 @@ timed out."
 You assemble a `Ctx` once per request and pass it down. A host with none of
 this uses `Permit::granted()` and a clock, and everything works.
 
+**Splitting a checkout across sellers is a host boundary, the same shape as
+`Jobs`.** A marketplace seller is its own scope, and driving a checkout run
+under a scope needs a `Tx` and a `Ctx` for that scope — only a host can open
+those; a library that opened its own connections per seller would be doing
+the one thing this crate refuses everywhere else. So: tezgah owns the join —
+`order_basket` and `order.basket_id`/`cart.basket_id` are how a customer's one
+order number and one payment survive being split — and `checkout::Machine::place`
+takes an optional `basket_id` for a run that is one seller's leg rather than
+the whole checkout. What tezgah does **not** do is decide when to call it more
+than once. The host: opens the basket in its own (marketplace) scope, opens
+one cart per seller-scope carrying that `basket_id`, then for each seller
+scope it knows the basket touches — found through `cart::for_basket`, read
+under that scope's own `Ctx`, the same way `order_basket::orders` answers the
+same question for orders — opens a `Tx`/`Ctx` for that scope and calls `place`
+with that leg's cart and the basket id. Each leg's `redeem_credit` and
+`authorize_payment` steps skip themselves: the shopper pays once, into the
+collection `order_basket::attach_payment_collection` attaches to the basket
+after every leg has an order, not once per seller.
+
 Every public function that reaches the database asks your `Authorizer` before
 it does, and `tests/permit_asked.rs` reads the crate's own source to keep that
 true — a new function that queries without asking fails CI. The `Permit` an

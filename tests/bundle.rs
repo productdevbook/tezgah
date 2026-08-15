@@ -400,6 +400,7 @@ async fn add_bundle_prices_a_zero_parent_and_children_that_sum_to_the_bundle_tot
             currency_code: lira(),
             region_id: None,
             sales_channel_id: None,
+            basket_id: None,
             expires_at: None,
             metadata: None,
         },

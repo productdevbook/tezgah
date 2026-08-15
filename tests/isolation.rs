@@ -853,12 +853,14 @@ async fn a_row_cannot_reference_another_scopes_row() {
 }
 
 /// `tezgah_cross_scope_fk` (0062) is the one way a single-column key may
-/// legitimately name a row outside its own scope — `order.basket_id`, into
-/// the marketplace's own `order_basket`, so a customer's one order number can
-/// join what fulfilment splits per seller. Adding to this list is a schema
-/// decision to defend in review, not a test to satisfy, and it may only
-/// shrink.
-const ALLOWED_CROSS_SCOPE: [(&str, &str); 1] = [("order", "basket_id")];
+/// legitimately name a row outside its own scope: `order.basket_id`, into the
+/// marketplace's own `order_basket`, so a customer's one order number can
+/// join what checkout splits per seller; and `cart.basket_id` (0064), the
+/// same join one step earlier, letting a host mark a seller-scope's own cart
+/// as one leg of a basket before that leg is even placed. Adding to this list
+/// is a schema decision to defend in review, not a test to satisfy, and it
+/// may only shrink.
+const ALLOWED_CROSS_SCOPE: [(&str, &str); 2] = [("order", "basket_id"), ("cart", "basket_id")];
 
 /// Sweeps every single-column foreign key naming a plain `id` — the shape
 /// `tezgah_fk`'s unscoped form builds, and the one #91 spent 33 keys clearing

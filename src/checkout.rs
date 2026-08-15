@@ -19,6 +19,15 @@
 //! | `authorize_payment` | [`payment::authorize`] | [`payment::cancel`] |
 //! | `complete_cart` | stamps `completed_at` | clears it |
 //!
+//! **A basket leg pays nothing of its own.** [`Checkout::place`] takes an
+//! optional `basket_id` for exactly the case a single cart cannot cover: a
+//! checkout that spans more than one seller scope. `redeem_credit` and
+//! `authorize_payment` both skip themselves when one is given, because
+//! `order_basket_payment_single_source` allows one payment collection per
+//! basket, not one per leg, and it is minted once the basket has every
+//! order, not by any leg here. See [`Checkout::place`] for how a host drives
+//! the split; tezgah does not drive it itself.
+//!
 //! **There is no capture here and there will not be one.** Taking the money is
 //! a separate act with a separate permission, and it has no compensation: a
 //! captured amount comes back as a refund, which is another provider call and
@@ -48,9 +57,9 @@ use uuid::Uuid;
 
 use crate::error::{Error, Result};
 use crate::id::{
-    CartId, CustomerId, GiftCardId, LineItemId, OrderId, PaymentCollectionId, PaymentId,
-    PaymentSessionId, PromotionId, ReservationId, SellingPlanId, ShippingOptionId, StockLocationId,
-    StoreCreditId, SubscriptionId, VariantId,
+    CartId, CustomerId, GiftCardId, LineItemId, OrderBasketId, OrderId, PaymentCollectionId,
+    PaymentId, PaymentSessionId, PromotionId, ReservationId, SellingPlanId, ShippingOptionId,
+    StockLocationId, StoreCreditId, SubscriptionId, VariantId,
 };
 use crate::money::{Currency, Money};
 use crate::order::{
@@ -71,6 +80,10 @@ use crate::{cart, catalogue, credit, inventory, promotion, subscription};
 struct Carried {
     cart_id: Option<CartId>,
     customer_id: Option<CustomerId>,
+    /// The basket this run is one seller-scope's leg of. Set only when a
+    /// host is driving a split checkout — see [`Checkout::place`] — never by
+    /// a step itself.
+    basket_id: Option<OrderBasketId>,
     #[serde(default)]
     promotions: Vec<Claimed>,
     #[serde(default)]
@@ -175,7 +188,29 @@ impl Checkout {
     ///
     /// Takes the pool rather than a transaction: the engine opens one per step
     /// so a step that finished stays finished when a later one does not.
-    pub async fn place(&self, pool: &PgPool, ctx: &Ctx<'_>, cart_id: CartId) -> Result<Placed> {
+    ///
+    /// `basket_id` is how a host splits a checkout across seller scopes: this
+    /// crate cannot drive that split itself, because doing so needs a `Tx`
+    /// and a `Ctx` per scope, and only a host holds those. What tezgah offers
+    /// instead is this parameter and [`cart::for_basket`] — a host groups a
+    /// basket's carts by asking each seller scope it knows about for its own
+    /// leg, then calls `place` once per leg, each under that scope's own
+    /// `Ctx`, passing that leg's `basket_id`. Pass `None` and this is exactly
+    /// today's single-seller checkout: one order, `basket_id` left null.
+    ///
+    /// A leg run this way pays nothing of its own — `redeem_credit` and
+    /// `authorize_payment` both skip themselves — because
+    /// `order_basket_payment_single_source` allows exactly one payment
+    /// collection per basket, and it is the basket's, attached by
+    /// [`crate::order_basket::attach_payment_collection`] once every leg has
+    /// landed its order, not minted per leg here.
+    pub async fn place(
+        &self,
+        pool: &PgPool,
+        ctx: &Ctx<'_>,
+        cart_id: CartId,
+        basket_id: Option<OrderBasketId>,
+    ) -> Result<Placed> {
         let _: Permit = ctx.permit(
             Action::Write,
             Resource::Cart {
@@ -191,7 +226,7 @@ impl Checkout {
             ctx,
             &self.workflow(),
             &key,
-            serde_json::json!({ "cart_id": cart_id }),
+            serde_json::json!({ "cart_id": cart_id, "basket_id": basket_id }),
         )
         .await?;
 
@@ -606,17 +641,25 @@ impl Step for CreateOrder {
             .await
             .map_err(Failure::Final)?;
 
-        let collection = payment::create_collection(
-            tx,
-            ctx,
-            NewCollection {
-                amount: totals.total,
-                cart_id: Some(cart_id),
-                metadata: Some(serde_json::json!({ "cart_id": cart_id })),
-            },
-        )
-        .await
-        .map_err(Failure::Final)?;
+        // A basket leg pays through the basket's own collection, attached
+        // once every leg has an order — not one minted per leg here, which
+        // `order_basket_payment_single_source` would then refuse to attach.
+        let collection_id = if carried.basket_id.is_none() {
+            let collection = payment::create_collection(
+                tx,
+                ctx,
+                NewCollection {
+                    amount: totals.total,
+                    cart_id: Some(cart_id),
+                    metadata: Some(serde_json::json!({ "cart_id": cart_id })),
+                },
+            )
+            .await
+            .map_err(Failure::Final)?;
+            Some(collection.id)
+        } else {
+            None
+        };
 
         let lines = cart_lines(tx, ctx, cart_id).await.map_err(Failure::Final)?;
         let sold: Vec<VariantId> = lines
@@ -643,12 +686,11 @@ impl Step for CreateOrder {
             email: cart.email.clone(),
             currency_code: currency,
             locale: None,
-            payment_collection_id: Some(collection.id),
-            // A marketplace splitting a checkout across seller scopes opens
-            // its own runs of this workflow, one per scope, and attaches the
-            // shared basket afterwards; this step has no basket of its own to
-            // carry.
-            basket_id: None,
+            // `order_basket_payment_single_source` allows only one of these:
+            // a basket leg's order carries `basket_id` and defers to the
+            // basket's own collection instead of one of its own.
+            payment_collection_id: collection_id,
+            basket_id: carried.basket_id,
             // A selling plan on a cart line names a policy, not yet a
             // contract: the subscription this order might start does not
             // exist until after it is placed.
@@ -716,7 +758,7 @@ impl Step for CreateOrder {
         let placed = order::create(tx, ctx, new).await.map_err(Failure::Final)?;
 
         carried.order_id = Some(placed.id);
-        carried.payment_collection_id = Some(collection.id);
+        carried.payment_collection_id = collection_id;
 
         let undo = WrittenOrder {
             order_id: Some(placed.id),
@@ -972,6 +1014,12 @@ impl Step for RedeemCredit {
         let carried = Carried::of(input)?;
         let cart_id = carried.cart()?;
 
+        // A basket leg pays through the basket's own collection, once every
+        // leg has landed its order — not through anything this leg holds.
+        if carried.basket_id.is_some() {
+            return Ok(Outcome::skipped(carried.value()?));
+        }
+
         let collection_id = carried
             .payment_collection_id
             .ok_or_else(|| Failure::Final(Error::bug("a checkout lost its payment collection")))?;
@@ -1177,6 +1225,12 @@ impl Step for AuthorizePayment {
         input: &Value,
     ) -> std::result::Result<Outcome, Failure> {
         let mut carried = Carried::of(input)?;
+
+        // A basket leg pays through the basket's own collection, once every
+        // leg has landed its order — not through anything this leg holds.
+        if carried.basket_id.is_some() {
+            return Ok(Outcome::skipped(carried.value()?));
+        }
 
         let collection_id = carried
             .payment_collection_id

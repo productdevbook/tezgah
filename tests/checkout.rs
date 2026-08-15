@@ -19,15 +19,16 @@ use serde_json::Value;
 use sqlx::PgPool;
 use tezgah::cart;
 use tezgah::checkout::Checkout;
-use tezgah::id::{CartId, StockLocationId, VariantId};
+use tezgah::id::{CartId, OrderBasketId, StockLocationId, VariantId};
 use tezgah::money::{Currency, Money};
 use tezgah::order::{self, OrderStatus};
+use tezgah::order_basket;
 use tezgah::payment::{
     self, Authorization, AuthorizationStatus, AuthorizeRequest, CancelRequest, CaptureRequest,
     CaptureResult, PaymentProvider, RefundRequest, RefundResult, SessionRequest, SessionResponse,
     SessionStatus, WebhookEvent,
 };
-use tezgah::ports::{Ctx, Scope, Tx};
+use tezgah::ports::{Actor, Ctx, Host, Scope, Tx};
 use tezgah::subscription;
 use tezgah::workflow::{Failure, Outcome, State, Step};
 use tezgah::{Error, Result, inventory};
@@ -421,7 +422,7 @@ async fn a_cart_becomes_an_order() -> Result<()> {
     );
 
     let placed = checkout
-        .place(&shop.pool, &shop.ctx(), here.cart_id)
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
         .await?;
     assert_eq!(
         placed.run.state,
@@ -487,7 +488,7 @@ async fn validate_cart_failing_leaves_nothing_behind() -> Result<()> {
     );
 
     let placed = checkout
-        .place(&shop.pool, &shop.ctx(), here.cart_id)
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
         .await?;
     assert_eq!(placed.run.state, State::Reverted);
     assert!(placed.order_id.is_none());
@@ -537,7 +538,7 @@ async fn claim_promotions_failing_leaves_nothing_behind() -> Result<()> {
     );
 
     let placed = checkout
-        .place(&shop.pool, &shop.ctx(), here.cart_id)
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
         .await?;
     assert_eq!(placed.run.state, State::Reverted);
 
@@ -577,7 +578,7 @@ async fn reserve_stock_failing_leaves_nothing_behind() -> Result<()> {
     );
 
     let placed = checkout
-        .place(&shop.pool, &shop.ctx(), here.cart_id)
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
         .await?;
     assert_eq!(placed.run.state, State::Reverted);
 
@@ -615,7 +616,7 @@ async fn create_order_failing_leaves_nothing_behind() -> Result<()> {
     );
 
     let placed = checkout
-        .place(&shop.pool, &shop.ctx(), here.cart_id)
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
         .await?;
     assert_eq!(placed.run.state, State::Reverted);
 
@@ -637,7 +638,7 @@ async fn a_declined_card_leaves_nothing_behind() -> Result<()> {
     );
 
     let placed = checkout
-        .place(&shop.pool, &shop.ctx(), here.cart_id)
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
         .await?;
     assert_eq!(placed.run.state, State::Reverted);
 
@@ -703,10 +704,10 @@ async fn one_key_makes_one_order() -> Result<()> {
     );
 
     let first = checkout
-        .place(&shop.pool, &shop.ctx(), here.cart_id)
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
         .await?;
     let second = checkout
-        .place(&shop.pool, &shop.ctx(), here.cart_id)
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
         .await?;
 
     assert_eq!(first.order_id, second.order_id);
@@ -742,7 +743,7 @@ async fn a_second_factor_keeps_everything_it_has() -> Result<()> {
     );
 
     let placed = checkout
-        .place(&shop.pool, &shop.ctx(), here.cart_id)
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
         .await?;
     // A run held open by a second factor has not finished: the shopper is
     // still expected to come back and the run has to be resumable when they do.
@@ -795,7 +796,7 @@ async fn a_cart_without_a_key_is_not_placed() -> Result<()> {
     );
 
     let refused = checkout
-        .place(&shop.pool, &shop.ctx(), here.cart_id)
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
         .await
         .expect_err("a cart with no key is not placed");
     assert_eq!(refused.code(), "invalid");
@@ -815,7 +816,7 @@ async fn a_cart_in_another_scope_is_not_reachable() -> Result<()> {
     );
 
     let refused = checkout
-        .place(&shop.pool, &shop.theirs(), here.cart_id)
+        .place(&shop.pool, &shop.theirs(), here.cart_id, None)
         .await
         .expect_err("somebody else's cart is not there");
     assert!(refused.is_not_found());
@@ -854,7 +855,7 @@ async fn the_order_is_worth_what_the_cart_was() -> Result<()> {
         here.location_id,
     );
     let placed = checkout
-        .place(&shop.pool, &shop.ctx(), here.cart_id)
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
         .await?;
     let order_id = placed.order_id.expect("an order");
 
@@ -897,7 +898,7 @@ async fn a_line_in_the_wrong_currency_stops_at_the_gate() -> Result<()> {
     );
 
     let placed = checkout
-        .place(&shop.pool, &shop.ctx(), here.cart_id)
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
         .await?;
     assert_eq!(placed.run.state, State::Reverted);
 
@@ -993,7 +994,7 @@ async fn a_checkout_that_would_overspend_a_campaign_is_refused() -> Result<()> {
     );
 
     let placed = checkout
-        .place(&shop.pool, &shop.ctx(), here.cart_id)
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
         .await?;
 
     assert_eq!(placed.run.state, State::Reverted);
@@ -1098,7 +1099,7 @@ async fn the_order_copies_the_cart_s_adjustments_and_rates() -> Result<()> {
         here.location_id,
     );
     let placed = checkout
-        .place(&shop.pool, &shop.ctx(), here.cart_id)
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
         .await?;
     let order_id = placed.order_id.unwrap_or_else(|| {
         panic!(
@@ -1164,7 +1165,7 @@ async fn a_gift_card_is_sold_without_a_shipping_address() -> Result<()> {
     );
 
     let placed = checkout
-        .place(&shop.pool, &shop.ctx(), here.cart_id)
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
         .await?;
     assert_eq!(
         placed.run.state,
@@ -1240,7 +1241,7 @@ async fn a_gift_card_variant_is_sold_untaxed_and_says_so() -> Result<()> {
         here.location_id,
     );
     let placed = checkout
-        .place(&shop.pool, &shop.ctx(), here.cart_id)
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
         .await?;
     let order_id = placed.order_id.unwrap_or_else(|| {
         panic!(
@@ -1346,7 +1347,7 @@ async fn a_purchased_gift_card_pays_for_the_next_basket() -> Result<()> {
         here.location_id,
     );
     let placed = checkout
-        .place(&shop.pool, &shop.ctx(), here.cart_id)
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
         .await?;
     assert_eq!(placed.run.state, State::Done, "{:?}", placed.run.failure);
 
@@ -1546,7 +1547,7 @@ async fn subscribing_from_the_storefront_opens_a_contract() -> Result<()> {
     );
 
     let placed = checkout
-        .place(&shop.pool, &shop.ctx(), here.cart_id)
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
         .await?;
     assert_eq!(placed.run.state, State::Done, "{:?}", placed.run.failure);
 
@@ -1577,7 +1578,7 @@ async fn a_declined_card_rolls_back_the_contract_it_would_have_opened() -> Resul
     );
 
     let placed = checkout
-        .place(&shop.pool, &shop.ctx(), here.cart_id)
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
         .await?;
     assert_eq!(placed.run.state, State::Reverted);
 
@@ -1594,6 +1595,289 @@ async fn a_declined_card_rolls_back_the_contract_it_would_have_opened() -> Resul
     assert_eq!(count, 0, "a declined card leaves no contract behind");
 
     nothing_left_behind(&shop, here.cart_id).await;
+    shop.close().await;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// A checkout that spans two seller scopes
+// ---------------------------------------------------------------------------
+
+/// A basket, opened under its own (marketplace) scope, and one ready-to-place
+/// cart per seller scope in `sellers`, each carrying that basket's id — the
+/// shape `README.md` describes a host assembling: one scope per seller,
+/// joined by a basket only the marketplace's own scope can open.
+async fn basket_with_legs(shop: &Shop, sellers: &[Scope]) -> (Scope, OrderBasketId, Vec<Ready>) {
+    let marketplace = Scope(Uuid::now_v7());
+    sqlx::query("insert into tezgah_scope (id) values ($1)")
+        .bind(marketplace.0)
+        .execute(&shop.pool)
+        .await
+        .expect("a marketplace scope");
+    let marketplace_ctx = Ctx::new(marketplace, Actor::System, shop.host.as_ref() as &dyn Host);
+
+    let basket = {
+        let mut tx = shop.begin_as(marketplace).await;
+        let basket = order_basket::open(
+            &mut tx,
+            &marketplace_ctx,
+            order_basket::NewOrderBasket {
+                customer_id: None,
+                currency_code: Currency::parse("TRY").expect("a currency"),
+                email: Some("shopper@example.com".into()),
+                metadata: None,
+            },
+        )
+        .await
+        .expect("a basket");
+        tx.commit().await.expect("to commit the basket");
+        basket.id
+    };
+
+    let mut legs = Vec::new();
+    for &scope in sellers {
+        legs.push(seller_leg(shop, scope, basket).await);
+    }
+
+    (marketplace, basket, legs)
+}
+
+/// The same fixture [`ready_with`] builds, under an arbitrary scope and
+/// carrying a basket's id on the cart — a normal, single-scope cart in every
+/// way except that it is one leg of a shared checkout.
+async fn seller_leg(shop: &Shop, scope: Scope, basket_id: OrderBasketId) -> Ready {
+    let mut tx = shop.begin_as(scope).await;
+    let ctx = Ctx::new(scope, Actor::System, shop.host.as_ref() as &dyn Host);
+    seed_currency(&mut tx, scope).await;
+
+    sqlx::query(
+        "insert into payment_provider (id, scope, code, is_enabled) values ($1, $2, $3, true)",
+    )
+    .bind(Uuid::now_v7())
+    .bind(scope.0)
+    .bind("bank")
+    .execute(&mut *tx)
+    .await
+    .expect("a payment provider");
+
+    let location = inventory::create_stock_location(
+        &mut tx,
+        &ctx,
+        inventory::NewStockLocation {
+            name: format!("warehouse {}", Uuid::now_v7()),
+            address: None,
+        },
+    )
+    .await
+    .expect("a location");
+
+    let item = inventory::create_inventory_item(
+        &mut tx,
+        &ctx,
+        inventory::NewInventoryItem {
+            sku: Some(format!("sku-{}", Uuid::now_v7())),
+            title: Some("a thing".into()),
+            requires_shipping: true,
+        },
+    )
+    .await
+    .expect("an inventory item");
+
+    inventory::set_stock(&mut tx, &ctx, item.id, location.id, 10, 0)
+        .await
+        .expect("a level");
+
+    let product = Uuid::now_v7();
+    sqlx::query("insert into product (id, scope, handle, title) values ($1, $2, $3, $4)")
+        .bind(product)
+        .bind(scope.0)
+        .bind(format!("thing-{product}"))
+        .bind("A thing")
+        .execute(&mut *tx)
+        .await
+        .expect("a product");
+
+    let variant = VariantId::new();
+    sqlx::query(
+        "insert into product_variant (id, scope, product_id, title) values ($1, $2, $3, $4)",
+    )
+    .bind(variant.as_uuid())
+    .bind(scope.0)
+    .bind(product)
+    .bind("The only one")
+    .execute(&mut *tx)
+    .await
+    .expect("a variant");
+
+    inventory::attach_inventory_item(&mut tx, &ctx, variant, item.id, 1)
+        .await
+        .expect("the variant to consume the item");
+
+    let address = Uuid::now_v7();
+    sqlx::query(
+        "insert into cart_address (id, scope, address_1, city, country_code)
+         values ($1, $2, '1 Example Street', 'Istanbul', 'TR')",
+    )
+    .bind(address)
+    .bind(scope.0)
+    .execute(&mut *tx)
+    .await
+    .expect("an address");
+
+    let cart = CartId::new();
+    sqlx::query(
+        "insert into cart
+             (id, scope, currency_code, email, shipping_address_id, idempotency_key, basket_id)
+         values ($1, $2, 'TRY', 'shopper@example.com', $3, $4, $5)",
+    )
+    .bind(cart.as_uuid())
+    .bind(scope.0)
+    .bind(address)
+    .bind(format!("key-{}", cart.as_uuid()))
+    .bind(basket_id.as_uuid())
+    .execute(&mut *tx)
+    .await
+    .expect("a cart");
+
+    cart::add_line(
+        &mut tx,
+        &ctx,
+        cart,
+        cart::AddLine {
+            variant_id: variant,
+            quantity: 1,
+            unit_price: Money::new(dec!(10), Currency::parse("TRY").expect("a currency")),
+            is_tax_inclusive: false,
+            selling_plan_id: None,
+        },
+    )
+    .await
+    .expect("a line");
+
+    tx.commit().await.expect("to commit the seed");
+
+    Ready {
+        cart_id: cart,
+        location_id: location.id,
+        variant_id: variant,
+    }
+}
+
+/// The grouping a host is expected to do: for a scope it knows touched a
+/// basket, `cart::for_basket` under that scope's own `Ctx` finds exactly that
+/// scope's own leg and nothing of any other seller's.
+#[tokio::test]
+async fn a_basket_s_carts_group_correctly_by_seller() -> Result<()> {
+    let shop = Shop::open().await;
+    let (_, basket_id, legs) = basket_with_legs(&shop, &[shop.here, shop.elsewhere]).await;
+
+    let mut tx = shop.begin().await;
+    let mine = cart::for_basket(&mut tx, &shop.ctx(), basket_id, tezgah::Paging::first(10))
+        .await
+        .expect("this scope's own leg");
+    tx.rollback().await.expect("to give the connection back");
+    assert_eq!(mine.items.len(), 1);
+    assert_eq!(mine.items[0].id, legs[0].cart_id);
+
+    let mut tx = shop.begin_as(shop.elsewhere).await;
+    let theirs = cart::for_basket(
+        &mut tx,
+        &shop.theirs(),
+        basket_id,
+        tezgah::Paging::first(10),
+    )
+    .await
+    .expect("the other scope's own leg");
+    tx.rollback().await.expect("to give the connection back");
+    assert_eq!(theirs.items.len(), 1);
+    assert_eq!(theirs.items[0].id, legs[1].cart_id);
+
+    shop.close().await;
+    Ok(())
+}
+
+/// The shape README.md now describes: a host opens a basket, opens one cart
+/// per seller scope carrying it, and places each leg under that scope's own
+/// `Ctx`. Two orders land, both under the one basket, and only one payment
+/// collection ever exists — the basket's, attached after both legs are in.
+#[tokio::test]
+async fn a_checkout_splits_across_seller_scopes_and_pays_once() -> Result<()> {
+    let shop = Shop::open().await;
+    let (marketplace_scope, basket_id, legs) =
+        basket_with_legs(&shop, &[shop.here, shop.elsewhere]).await;
+
+    let bank = Bank::saying(Answer::Authorize);
+    let ctxs = [shop.ctx(), shop.theirs()];
+    let mut order_ids = Vec::new();
+    for (leg, ctx) in legs.iter().zip(&ctxs) {
+        let checkout = Checkout::new(
+            Arc::clone(&bank) as Arc<dyn PaymentProvider>,
+            leg.location_id,
+        );
+        let placed = checkout
+            .place(&shop.pool, ctx, leg.cart_id, Some(basket_id))
+            .await?;
+        assert_eq!(placed.run.state, State::Done);
+        order_ids.push(placed.order_id.expect("a basket leg still places an order"));
+    }
+    assert_eq!(order_ids.len(), 2);
+    assert_eq!(
+        *bank.authorized.lock(),
+        0,
+        "a basket leg pays nothing of its own"
+    );
+
+    let seller_a_order: (Option<Uuid>, Option<Uuid>) = {
+        let mut tx = shop.begin().await;
+        let row: (Option<Uuid>, Option<Uuid>) = sqlx::query_as(
+            "select basket_id, payment_collection_id from \"order\" where scope = $1 and id = $2",
+        )
+        .bind(shop.here.0)
+        .bind(order_ids[0].as_uuid())
+        .fetch_one(&mut *tx)
+        .await
+        .expect("seller A's own order");
+        tx.rollback().await.expect("to give the connection back");
+        row
+    };
+    assert_eq!(seller_a_order.0, Some(basket_id.as_uuid()));
+    assert_eq!(
+        seller_a_order.1, None,
+        "a basket leg's order defers to the basket's own collection"
+    );
+
+    // Now the marketplace attaches the one collection every order under this
+    // basket pays from.
+    let marketplace_ctx = Ctx::new(
+        marketplace_scope,
+        Actor::System,
+        shop.host.as_ref() as &dyn Host,
+    );
+    let mut tx = shop.begin_as(marketplace_scope).await;
+    let collection = payment::create_collection(
+        &mut tx,
+        &marketplace_ctx,
+        payment::NewCollection {
+            amount: Money::new(dec!(20), Currency::parse("TRY").expect("a currency")),
+            cart_id: None,
+            metadata: None,
+        },
+    )
+    .await
+    .expect("the basket's own collection");
+    order_basket::attach_payment_collection(&mut tx, &marketplace_ctx, basket_id, collection.id)
+        .await
+        .expect("to attach it to the basket");
+    tx.commit().await.expect("to commit");
+
+    // Seller A still cannot read seller B's order through its own connection.
+    let mut tx = shop.begin().await;
+    let refused = order::get(&mut tx, &shop.ctx(), order_ids[1])
+        .await
+        .expect_err("seller A's own connection cannot see seller B's order");
+    assert!(refused.is_not_found());
+    tx.rollback().await.expect("to give the connection back");
+
     shop.close().await;
     Ok(())
 }
