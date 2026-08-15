@@ -2204,6 +2204,26 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
     );
     denied!(
         Method::Get,
+        "/admin/orders/{id}/order-edits",
+        admin_order::list_order_edits(
+            &mut tx,
+            &ctx,
+            OrderId::new(),
+            admin_order::Listing::default()
+        )
+    );
+    denied!(
+        Method::Post,
+        "/admin/orders/{id}/order-edits",
+        admin_order::open_order_edit(
+            &mut tx,
+            &ctx,
+            OrderId::new(),
+            admin_order::OpenEdit { description: None }
+        )
+    );
+    denied!(
+        Method::Get,
         "/admin/order-edits/{id}",
         admin_order::get_order_edit(&mut tx, &ctx, OrderChangeId::new())
     );
