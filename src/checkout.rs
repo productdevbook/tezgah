@@ -420,6 +420,7 @@ struct CartLine {
     is_tax_inclusive: bool,
     is_discountable: bool,
     requires_shipping: bool,
+    parent_line_item_id: Option<LineItemId>,
 }
 
 #[derive(Debug, Clone, FromRow)]
@@ -1215,7 +1216,7 @@ async fn cart_lines(tx: &mut Tx<'_>, ctx: &Ctx<'_>, cart_id: CartId) -> Result<V
         "select l.id, l.variant_id, l.product_id, l.product_title, l.product_handle,
                 l.variant_title, l.variant_sku, l.variant_option_values, l.thumbnail,
                 l.quantity, l.unit_price, l.compare_at_unit_price, l.is_tax_inclusive,
-                l.is_discountable, l.requires_shipping
+                l.is_discountable, l.requires_shipping, l.parent_line_item_id
          from cart_line_item l
          where l.scope = $1 and l.cart_id = $2
          order by l.created_at, l.id",

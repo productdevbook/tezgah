@@ -1267,7 +1267,7 @@ pub async fn resolve_bundle(
 ) -> Result<Option<BundlePrice>> {
     let _: Permit = ctx.permit(Action::View, Resource::Pricing)?;
 
-    let found: Option<(Option<String>, Option<Decimal>)> = sqlx::query_as(
+    let found: (Option<String>, Option<Decimal>) = sqlx::query_as(
         "select bundle_price_mode, bundle_discount_percent from product_variant
          where scope = $1 and id = $2 and deleted_at is null",
     )
