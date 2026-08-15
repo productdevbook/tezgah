@@ -1726,6 +1726,21 @@ pub async fn record_transaction(
     .await?
     .ok_or_else(|| Error::conflict("that movement is already in the ledger"))?;
 
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Settle,
+            entity: "order",
+            entity_id: order_id.as_uuid(),
+            summary: serde_json::json!({
+                "amount": amount.amount.to_string(),
+                "reference": reference,
+            }),
+        },
+    )
+    .await?;
+
     ctx.emit(
         tx,
         Event {

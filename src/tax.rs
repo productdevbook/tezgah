@@ -977,6 +977,18 @@ pub async fn delete_tax_rate_rule(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: Uuid) -> R
         return Err(Error::not_found("tax rate rule"));
     }
 
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Delete,
+            entity: "tax_rate_rule",
+            entity_id: id,
+            summary: serde_json::json!({}),
+        },
+    )
+    .await?;
+
     Ok(())
 }
 
@@ -1729,6 +1741,18 @@ pub async fn delete_tax_id(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: Uuid) -> Result<(
         return Err(Error::not_found("customer tax id"));
     }
 
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Delete,
+            entity: "customer_tax_id",
+            entity_id: id,
+            summary: serde_json::json!({}),
+        },
+    )
+    .await?;
+
     Ok(())
 }
 
@@ -1933,6 +1957,18 @@ pub async fn delete_registration(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: Uuid) -> Re
     if done.rows_affected() == 0 {
         return Err(Error::not_found("tax registration"));
     }
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Delete,
+            entity: "tax_registration",
+            entity_id: id,
+            summary: serde_json::json!({}),
+        },
+    )
+    .await?;
 
     Ok(())
 }

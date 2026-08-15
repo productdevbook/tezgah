@@ -1333,6 +1333,18 @@ pub async fn expire(
             .await?;
 
     for id in &gone {
+        ctx.audit(
+            tx,
+            AuditEntry {
+                actor: ctx.actor.clone(),
+                action: Action::Delete,
+                entity: "cart",
+                entity_id: id.as_uuid(),
+                summary: serde_json::json!({ "at": now }),
+            },
+        )
+        .await?;
+
         ctx.emit(
             tx,
             Event {

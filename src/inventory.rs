@@ -630,6 +630,18 @@ pub async fn unlink_sales_channel(
         return Err(Error::not_found("stock location sales channel"));
     }
 
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Delete,
+            entity: "stock_location_sales_channel",
+            entity_id: location_id.as_uuid(),
+            summary: serde_json::json!({ "sales_channel_id": sales_channel_id }),
+        },
+    )
+    .await?;
+
     Ok(())
 }
 
@@ -882,6 +894,18 @@ pub async fn detach_inventory_item(
     if done.rows_affected() == 0 {
         return Err(Error::not_found("variant inventory item"));
     }
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Delete,
+            entity: "variant_inventory_item",
+            entity_id: variant_id.as_uuid(),
+            summary: serde_json::json!({ "inventory_item_id": inventory_item_id }),
+        },
+    )
+    .await?;
 
     Ok(())
 }

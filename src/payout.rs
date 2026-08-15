@@ -369,6 +369,21 @@ pub async fn record_earning(
     )
     .await?;
 
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Settle,
+            entity: "payout_line",
+            entity_id: order_id.as_uuid(),
+            summary: serde_json::json!({
+                "seller_share": seller.amount.to_string(),
+                "commission": commission.amount.to_string(),
+            }),
+        },
+    )
+    .await?;
+
     Ok(())
 }
 
@@ -482,6 +497,18 @@ pub async fn record_reversal(
             "a refund did not fully attribute to a capture on this payment",
         ));
     }
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Settle,
+            entity: "payout_line",
+            entity_id: order_id.as_uuid(),
+            summary: serde_json::json!({ "refunded": refunded.amount.to_string() }),
+        },
+    )
+    .await?;
 
     Ok(())
 }

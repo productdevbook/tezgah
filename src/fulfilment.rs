@@ -593,6 +593,18 @@ pub async fn delete_set(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: FulfillmentSetId) ->
         return Err(Error::not_found("fulfilment set"));
     }
 
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Delete,
+            entity: "fulfillment_set",
+            entity_id: id.as_uuid(),
+            summary: serde_json::json!({}),
+        },
+    )
+    .await?;
+
     Ok(())
 }
 
