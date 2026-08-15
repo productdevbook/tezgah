@@ -118,6 +118,13 @@ stock forever behind it. A deferred constraint is an issue, not a comment.
 **A partial unique index whose predicate is not repeated in `on conflict`.**
 Postgres refuses the whole statement, and it has broken checkout twice.
 
+**An error that tells you what a permission would have hidden.** A missing row
+answered `not_found` without asking anybody, while a row that existed and was
+not yours asked and answered `denied` — so the pair told a stranger which ids
+exist. Eighty-nine routes did this. Ids here are uuidv7 and carry a timestamp,
+so an oracle over them leaks when a shop trades, not just whether. Ask before
+you answer, on the branch where there is nothing to answer about.
+
 **Documentation asserting the opposite of the code.** The README told readers
 four features were deliberately absent that had already landed; the roadmap
 blamed closed issues for gaps they closed. Verify a claim about behaviour
