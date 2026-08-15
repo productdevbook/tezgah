@@ -302,7 +302,7 @@ fn every_settle_or_delete_writes_an_audit_row() {
         silent.is_empty(),
         "these public functions ask for Action::Settle or Action::Delete and leave \
          no audit row:\n  {}\n\
-         Write one — `ctx.audit(tx, AuditEntry { .. }).await?;` — matching the shape \
+         Write one — `ctx.audit(tx, AuditEntry {{ .. }}).await?;` — matching the shape \
          other functions writing that field use, or, if the asymmetry is real, name it \
          in TOLERATED with the reason.",
         silent.join("\n  ")
