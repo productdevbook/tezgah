@@ -4308,6 +4308,45 @@
         "x-tezgah-permission": "view"
       }
     },
+    "/admin/order-baskets/{id}/carts": {
+      "get": {
+        "operationId": "getAdminOrderBasketsByIdCarts",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "This scope's own carts under a basket, the next leg to place",
+        "tags": [
+          "order_basket"
+        ],
+        "x-tezgah-permission": "view"
+      }
+    },
     "/admin/order-baskets/{id}/orders": {
       "get": {
         "operationId": "getAdminOrderBasketsByIdOrders",
