@@ -268,6 +268,14 @@ async fn split(
     let order = order::get(tx, ctx, order_id).await?;
     let exponent = store::exponent(tx, ctx, total.currency).await?;
 
+    // The order's own grand total, not `total` — `total` is only this
+    // capture's slice of it, and an order captured in parts must still
+    // resolve to the same rate on each slice as it would in one shot.
+    let order_total = order::totals(tx, ctx, order_id, order.version)
+        .await?
+        .total
+        .amount;
+
     let lines: Vec<CommissionBasis> =
         sqlx::query_as::<_, (i32, Decimal, Option<String>, Option<Decimal>)>(
             "select i.quantity, coalesce(i.unit_price, l.unit_price) as unit_price,
@@ -312,8 +320,8 @@ async fn split(
         commission_total += commission;
     }
 
-    commission_total = commission_total.clamp(Decimal::ZERO, total.amount.max(Decimal::ZERO));
-    let seller_total = total.amount - commission_total;
+    commission_total = commission_total.clamp(Decimal::ZERO, order_total.max(Decimal::ZERO));
+    let seller_total = order_total - commission_total;
 
     let parts = money::allocate(total, &[commission_total, seller_total], exponent)?;
     let commission = parts[0];
