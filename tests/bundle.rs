@@ -12,7 +12,7 @@ mod common;
 use common::Shop;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
-use tezgah::cart::{self, AddBundle, AddBundleComponent};
+use tezgah::cart::{self, AddBundle, AddBundleComponent, AddLine};
 use tezgah::catalogue;
 use tezgah::id::VariantId;
 use tezgah::money::{Currency, Money};
