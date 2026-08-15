@@ -1388,14 +1388,17 @@ pub async fn due_deliveries(
     )?;
 
     let rows = sqlx::query_as::<_, Subscription>(&format!(
-        "select s.{cols} from subscription s
-         join selling_plan p on p.scope = s.scope and p.id = s.selling_plan_id
+        "select {cols} from subscription s
          where s.scope = $1
            and s.status in ('active', 'past_due')
            and s.next_delivery_at is not null
            and s.next_delivery_at <= $2
-           and p.prepaid_cycles is not null
-           and s.delivery_cycle < p.prepaid_cycles - 1
+           and exists (
+               select 1 from selling_plan p
+               where p.scope = s.scope and p.id = s.selling_plan_id
+                 and p.prepaid_cycles is not null
+                 and s.delivery_cycle < p.prepaid_cycles - 1
+           )
            and ($3::timestamptz is null or (s.next_delivery_at, s.id) > ($3, $4))
          order by s.next_delivery_at, s.id
          limit $5",

@@ -161,7 +161,7 @@ async fn start_first_period(tx: &mut Tx<'_>, ctx: &Ctx<'_>, order_id: OrderId) -
         "insert into subscription_order
              (id, scope, subscription_id, order_id, cycle, period_start, period_end, kind)
          values ($1, $2, $3, $4, 0, $5, $6, 'initial')
-         on conflict (scope, subscription_id, cycle) do nothing",
+         on conflict (scope, subscription_id, cycle, delivery_sequence) do nothing",
     )
     .bind(SubscriptionOrderId::new().as_uuid())
     .bind(ctx.scope.0)

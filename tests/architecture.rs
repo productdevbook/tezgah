@@ -308,6 +308,9 @@ fn a_domain_reaches_only_for_the_kernel_and_what_is_declared_shared() {
         // among them — before it lets an order be placed, so it reaches
         // catalogue for the same reason cart's totals do. Nothing reaches
         // back: catalogue's only edge is to order, never to checkout.
+        // A cart line sold on a plan opens the contract it named, after the
+        // order and before the card is asked to hold anything, so a declined
+        // charge rolls the contract back with everything else.
         (
             "checkout",
             &[
@@ -318,6 +321,7 @@ fn a_domain_reaches_only_for_the_kernel_and_what_is_declared_shared() {
                 "order",
                 "payment",
                 "promotion",
+                "subscription",
             ][..],
         ),
         // A gift card is money owed against an order and carried on a payment
@@ -333,9 +337,11 @@ fn a_domain_reaches_only_for_the_kernel_and_what_is_declared_shared() {
         // shop. Nothing reaches back: the day `order` wants to know which
         // contract produced it, it asks through a surface, because the arrow
         // reversing is the cycle.
+        // A swap's proration that favours the customer is granted back on the
+        // spot as store credit, through `credit::grant_store_credit`.
         (
             "subscription",
-            &["inventory", "order", "payment", "pricing", "tax"][..],
+            &["credit", "inventory", "order", "payment", "pricing", "tax"][..],
         ),
         ("providers", &["payment"][..]),
         // The top of the graph: everything that must happen because money

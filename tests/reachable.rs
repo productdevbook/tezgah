@@ -56,7 +56,7 @@ use std::path::{Path, PathBuf};
 
 /// Public functions nothing in the crate calls, each with the reason.
 /// Adding to this is not a fix.
-const TOLERATED: [(&str, &str); 49] = [
+const TOLERATED: [(&str, &str); 48] = [
     (
         "batch::import_workflow",
         "the import workflow a host runs through the runner when a file is large \
@@ -179,11 +179,6 @@ const TOLERATED: [(&str, &str); 49] = [
     ),
     (
         "payment::save_account_holder",
-        "a customer as one provider knows them; nothing saves or reads a saved \
-         card yet",
-    ),
-    (
-        "payment::account_holder",
         "a customer as one provider knows them; nothing saves or reads a saved \
          card yet",
     ),

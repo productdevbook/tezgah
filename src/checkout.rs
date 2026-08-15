@@ -838,10 +838,14 @@ impl Step for CreateSubscriptions {
             payment_method_reference,
             mandate_reference,
             mandate_accepted_at: Some(ctx.now()),
-            shipping_address_id: cart
-                .shipping_address_id
-                .map(crate::id::AddressId::from_uuid),
-            billing_address_id: cart.billing_address_id.map(crate::id::AddressId::from_uuid),
+            // `cart.shipping_address_id`/`billing_address_id` name a
+            // `cart_address` row, not a `customer_address` one — the two are
+            // different tables, and a contract's address column has a
+            // restrict foreign key to the latter. A renewal copies the
+            // customer's saved address at the moment it bills; nothing here
+            // has one to copy from yet.
+            shipping_address_id: None,
+            billing_address_id: None,
             starts_at: Some(ctx.now()),
             lines: planned
                 .iter()
