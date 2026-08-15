@@ -636,10 +636,12 @@ async fn drive(
                 // Nothing outside this run has said what it turned into yet:
                 // report the wait back rather than invoking a step that
                 // already ran.
+                outputs[k] = row.output.clone().unwrap_or(Value::Null);
+                let carried = settle(outputs);
                 return Ok(Run {
                     id,
                     state: State::Waiting,
-                    output: Value::Null,
+                    output: carried,
                     failure: None,
                     transaction_key: head.transaction_key,
                 });
@@ -673,7 +675,10 @@ async fn drive(
             for (&k, result) in waiting.iter().zip(all(running).await) {
                 match result {
                     Ok(StepResult::Output(output)) => outputs[k] = output,
-                    Ok(StepResult::Waiting) => paused = true,
+                    Ok(StepResult::Waiting(output)) => {
+                        outputs[k] = output;
+                        paused = true;
+                    }
                     Err(Stop::Lost) => lost = true,
                     Err(Stop::Refused(failure)) => {
                         if failed.is_none() {
@@ -696,21 +701,18 @@ async fn drive(
 
             if paused {
                 set_state(pool, ctx, id, State::Waiting, None).await?;
+                let carried = settle(outputs);
                 return Ok(Run {
                     id,
                     state: State::Waiting,
-                    output: Value::Null,
+                    output: carried,
                     failure: None,
                     transaction_key: head.transaction_key,
                 });
             }
         }
 
-        carried = if outputs.len() == 1 {
-            outputs.into_iter().next().unwrap_or(Value::Null)
-        } else {
-            Value::Array(outputs)
-        };
+        carried = settle(outputs);
     }
 
     finish(pool, ctx, id, State::Done, Some(carried.clone()), None).await?;
@@ -821,11 +823,23 @@ async fn step_row(pool: &PgPool, ctx: &Ctx<'_>, id: WorkflowRunId, at: i32) -> R
         .ok_or_else(|| Error::bug("a workflow lost a step it wrote"))
 }
 
+/// A slot's outputs, folded the way a single step's carried input is: one
+/// value if there was one step, an array in the same order if there were
+/// several running in parallel.
+fn settle(outputs: Vec<Value>) -> Value {
+    if outputs.len() == 1 {
+        outputs.into_iter().next().unwrap_or(Value::Null)
+    } else {
+        Value::Array(outputs)
+    }
+}
+
 /// What one invoked step handed back, once it settled on a row.
 enum StepResult {
     Output(Value),
-    /// The step answered [`Outcome::waiting`]; the run stops after this slot.
-    Waiting,
+    /// The step answered [`Outcome::waiting`]; the run stops after this slot,
+    /// carrying its output forward the same as a step that finished.
+    Waiting(Value),
 }
 
 /// Runs one step, retrying while it says to and the ceiling allows.
@@ -903,7 +917,7 @@ async fn invoke(
                     .map_err(|err| Stop::Refused(Failure::Final(Error::from(err))))?;
 
                 return Ok(match outcome {
-                    Outcome::Waiting { .. } => StepResult::Waiting,
+                    Outcome::Waiting { .. } => StepResult::Waiting(outcome.output().clone()),
                     _ => StepResult::Output(outcome.output().clone()),
                 });
             }
