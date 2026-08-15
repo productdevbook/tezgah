@@ -4094,6 +4094,82 @@
         "x-tezgah-permission": "write"
       }
     },
+    "/admin/inventory-items/{id}/transfers": {
+      "get": {
+        "operationId": "getAdminInventoryItemsByIdTransfers",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "List an item's transfers between locations",
+        "tags": [
+          "inventory"
+        ],
+        "x-tezgah-permission": "view"
+      },
+      "post": {
+        "operationId": "postAdminInventoryItemsByIdTransfers",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Move stock from one location to another in one act",
+        "tags": [
+          "inventory"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
     "/admin/inventory-lots/expiring": {
       "get": {
         "operationId": "getAdminInventoryLotsExpiring",
@@ -12277,6 +12353,45 @@
           "inventory"
         ],
         "x-tezgah-permission": "delete"
+      }
+    },
+    "/admin/stock-transfers/{id}": {
+      "get": {
+        "operationId": "getAdminStockTransfersById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Fetch one transfer",
+        "tags": [
+          "inventory"
+        ],
+        "x-tezgah-permission": "view"
       }
     },
     "/admin/store-credits/{id}/adjust": {

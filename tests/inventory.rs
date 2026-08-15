@@ -1460,6 +1460,11 @@ async fn a_transfer_is_one_movement_not_two_adjustments() {
     let (item, from, _) = seed(&shop, 8).await;
     let to = second_location(&shop).await;
 
+    // Seeding writes its own audits (creating the location, setting the
+    // starting stock); only what the transfer itself writes is the point of
+    // this test.
+    shop.host.audits.lock().clear();
+
     let mut tx = shop.begin().await;
     let transfer = inventory::transfer_stock(&mut tx, &shop.ctx(), item, from, to, 3, None)
         .await
