@@ -1072,37 +1072,65 @@ pub async fn transfer_to_customer(
         return set_customer(tx, ctx, cart_id, customer_id).await;
     };
 
-    let ids: Vec<uuid::Uuid> = sqlx::query_scalar(
-        "select id from cart_line_item
-         where scope = $1 and cart_id = $2 order by created_at, id",
+    // Parents first, so a child's `parent_line_item_id` can always be remapped
+    // to its new (or merged-into) row before the child itself is inserted.
+    let sources: Vec<(uuid::Uuid, Option<uuid::Uuid>)> = sqlx::query_as(
+        "select id, parent_line_item_id from cart_line_item
+         where scope = $1 and cart_id = $2
+         order by parent_line_item_id is not null, created_at, id",
     )
     .bind(ctx.scope.0)
     .bind(cart_id.as_uuid())
     .fetch_all(&mut **tx)
     .await?;
 
-    for from in ids {
-        sqlx::query(
+    let mut remap: std::collections::HashMap<uuid::Uuid, uuid::Uuid> =
+        std::collections::HashMap::new();
+
+    for (from, old_parent) in sources {
+        let parent_id = match old_parent {
+            Some(old_parent) => Some(
+                *remap
+                    .get(&old_parent)
+                    .expect("a bundle's parent line merges before its children"),
+            ),
+            None => None,
+        };
+
+        let on_conflict = if parent_id.is_some() {
+            "on conflict (scope, cart_id, variant_id, parent_line_item_id)
+                 where variant_id is not null and parent_line_item_id is not null"
+        } else {
+            "on conflict (scope, cart_id, variant_id)
+                 where variant_id is not null and parent_line_item_id is null"
+        };
+
+        let new_id: uuid::Uuid = sqlx::query_scalar(&format!(
             "insert into cart_line_item
                  (id, scope, cart_id, variant_id, product_id, product_title, product_handle,
                   variant_title, variant_sku, variant_barcode, variant_option_values, thumbnail,
                   quantity, unit_price, compare_at_unit_price, currency_code, is_tax_inclusive,
-                  is_discountable, requires_shipping, metadata)
+                  is_discountable, requires_shipping, parent_line_item_id, metadata)
              select $1::uuid, scope, $2::uuid, variant_id, product_id, product_title,
                     product_handle, variant_title, variant_sku, variant_barcode,
                     variant_option_values, thumbnail, quantity, unit_price, compare_at_unit_price,
-                    currency_code, is_tax_inclusive, is_discountable, requires_shipping, metadata
+                    currency_code, is_tax_inclusive, is_discountable, requires_shipping,
+                    $5::uuid, metadata
              from cart_line_item
              where scope = $3 and id = $4
-             on conflict (scope, cart_id, variant_id) where variant_id is not null
-             do update set quantity = cart_line_item.quantity + excluded.quantity",
-        )
+             {on_conflict}
+             do update set quantity = cart_line_item.quantity + excluded.quantity
+             returning id"
+        ))
         .bind(LineItemId::new().as_uuid())
         .bind(target.id.as_uuid())
         .bind(ctx.scope.0)
         .bind(from)
-        .execute(&mut **tx)
+        .bind(parent_id)
+        .fetch_one(&mut **tx)
         .await?;
+
+        remap.insert(from, new_id);
     }
 
     sqlx::query("delete from cart where scope = $1 and id = $2")
