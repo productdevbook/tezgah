@@ -56,6 +56,7 @@ use chrono::{DateTime, Utc};
 use common::Shop;
 use rust_decimal_macros::dec;
 use tezgah::api::agreement::{AcceptAgreement, PublishAgreement};
+use tezgah::api::credit as api_credit;
 use tezgah::api::credit::{ApplyGiftCard, ApplyStoreCredit};
 use tezgah::api::digital;
 use tezgah::api::store::{
@@ -803,7 +804,7 @@ async fn every_owned_store_route_refuses_the_other_shoppers_resource() -> tezgah
         Method::Post,
         "/store/carts/{id}/gift-cards",
         is_denied,
-        mine: store::apply_gift_card(
+        mine: api_credit::apply_gift_card(
             &mut tx,
             &ctx_a,
             a.cart_id,
@@ -815,7 +816,7 @@ async fn every_owned_store_route_refuses_the_other_shoppers_resource() -> tezgah
                 },
             }
         ),
-        theirs: store::apply_gift_card(
+        theirs: api_credit::apply_gift_card(
             &mut tx,
             &ctx_b,
             a.cart_id,
@@ -840,7 +841,7 @@ async fn every_owned_store_route_refuses_the_other_shoppers_resource() -> tezgah
         Method::Post,
         "/store/carts/{id}/store-credit",
         is_denied,
-        mine: store::apply_store_credit(
+        mine: api_credit::apply_store_credit(
             &mut tx,
             &ctx_a,
             a.cart_id,
@@ -851,7 +852,7 @@ async fn every_owned_store_route_refuses_the_other_shoppers_resource() -> tezgah
                 }
             }
         ),
-        theirs: store::apply_store_credit(
+        theirs: api_credit::apply_store_credit(
             &mut tx,
             &ctx_b,
             a.cart_id,
@@ -867,10 +868,10 @@ async fn every_owned_store_route_refuses_the_other_shoppers_resource() -> tezgah
         Method::Get,
         "/store/carts/{id}/credits",
         is_denied,
-        mine: store::list_cart_credits(&mut tx, &ctx_a, a.cart_id),
-        theirs: store::list_cart_credits(&mut tx, &ctx_b, a.cart_id)
+        mine: api_credit::list_cart_credits(&mut tx, &ctx_a, a.cart_id),
+        theirs: api_credit::list_cart_credits(&mut tx, &ctx_b, a.cart_id)
     );
-    let a_credit = store::list_cart_credits(&mut tx, &ctx_a, a.cart_id)
+    let a_credit = api_credit::list_cart_credits(&mut tx, &ctx_a, a.cart_id)
         .await?
         .into_iter()
         .next()
@@ -879,8 +880,8 @@ async fn every_owned_store_route_refuses_the_other_shoppers_resource() -> tezgah
         Method::Delete,
         "/store/carts/{id}/credits/{credit_id}",
         is_denied,
-        mine: store::remove_cart_credit(&mut tx, &ctx_a, a.cart_id, a_credit.id),
-        theirs: store::remove_cart_credit(&mut tx, &ctx_b, a.cart_id, a_credit.id)
+        mine: api_credit::remove_cart_credit(&mut tx, &ctx_a, a.cart_id, a_credit.id),
+        theirs: api_credit::remove_cart_credit(&mut tx, &ctx_b, a.cart_id, a_credit.id)
     );
 
     // ------------------------------------------------------ addresses ----
@@ -1090,7 +1091,7 @@ async fn every_owned_store_route_refuses_the_other_shoppers_resource() -> tezgah
         Method::Delete,
         "/store/customers/me/addresses/{address_id}",
         is_denied,
-        mine: async { Ok(()) },
+        mine: async { Ok::<(), tezgah::Error>(()) },
         theirs: store::delete_my_address(&mut tx, &ctx_b, a.address_id)
     );
     store::delete_my_address(&mut tx, &ctx_a, a.address_id).await?;
@@ -1154,7 +1155,7 @@ async fn every_owned_store_route_refuses_the_other_shoppers_resource() -> tezgah
     );
 
     // ---------------------------------------------------- completeness ---
-    let store_routes: Vec<&Route> = routes()
+    let store_routes: Vec<Route> = routes()
         .into_iter()
         .filter(|route| route.surface == Surface::Store)
         .collect();
