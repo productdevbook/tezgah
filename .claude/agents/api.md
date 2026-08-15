@@ -103,7 +103,8 @@ reasoning goes: what was wrong, what it does now, why that way.
 told which number is yours; another agent holds the ones around it.
 
 Scratch files go in `$CLAUDE_JOB_DIR/tmp`, never `/tmp` — parallel jobs clobber
-each other there.
+each other there — and never inside the repository. This one is public; a draft
+left in a working tree is a draft one `git add` away from being published.
 
 Report back: what changed and why, which decisions you took and on what
 grounds, how many CI rounds, and — this one matters — what you noticed and did
