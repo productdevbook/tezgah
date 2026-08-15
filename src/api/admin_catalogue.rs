@@ -1593,7 +1593,11 @@ pub async fn set_bundle_price(
     variant_id: VariantId,
     body: SetBundlePrice,
 ) -> Result<()> {
-    let mode = body.mode.as_deref().map(pricing::BundlePriceMode::parse).transpose()?;
+    let mode = body
+        .mode
+        .as_deref()
+        .map(pricing::BundlePriceMode::parse)
+        .transpose()?;
     pricing::set_bundle_price_mode(tx, ctx, variant_id, mode, body.discount_percent).await
 }
 
