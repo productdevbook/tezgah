@@ -1088,14 +1088,11 @@ pub async fn transfer_to_customer(
         std::collections::HashMap::new();
 
     for (from, old_parent) in sources {
-        let parent_id = match old_parent {
-            Some(old_parent) => Some(
-                *remap
-                    .get(&old_parent)
-                    .expect("a bundle's parent line merges before its children"),
-            ),
-            None => None,
-        };
+        let parent_id = old_parent.map(|old_parent| {
+            *remap
+                .get(&old_parent)
+                .expect("a bundle's parent line merges before its children")
+        });
 
         let on_conflict = if parent_id.is_some() {
             "on conflict (scope, cart_id, variant_id, parent_line_item_id)
