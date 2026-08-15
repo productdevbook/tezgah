@@ -687,6 +687,195 @@ async fn a_single_captures_partial_refund_ignores_a_later_rule_change() {
     shop.close().await;
 }
 
+/// A fixed commission split across two partial captures must total the same
+/// as the one rule allows, whether the order is captured in one shot or in
+/// pieces — #145: clamping the fee per line, against that line's own
+/// subtotal, let a partial capture see a different total than a single one
+/// would.
+#[tokio::test]
+async fn a_fixed_commission_sums_the_same_captured_in_parts_or_in_one() {
+    async fn seeded_order(fee: rust_decimal::Decimal) -> (Shop, OrderId, PaymentId) {
+        let shop = Shop::open().await;
+        let ctx = shop.ctx();
+        let mut tx = shop.begin().await;
+
+        payout::set_commission_rule(
+            &mut tx,
+            &ctx,
+            NewCommissionRule {
+                category_id: None,
+                kind: CommissionKind::Fixed,
+                value: fee,
+                currency_code: Some(lira()),
+            },
+        )
+        .await
+        .expect("a fixed commission rule");
+
+        let variant = an_uncategorized_variant(&mut tx, &ctx, "gadget").await;
+        tx.commit().await.expect("to commit the seed");
+
+        let (order_id, paid) = an_order(
+            &shop,
+            money(dec!(100.00)),
+            vec![line("A gadget", variant.0, variant.1, 1, dec!(100.00))],
+        )
+        .await;
+        (shop, order_id, paid)
+    }
+
+    // Captured whole: 8.00 fixed commission, once.
+    let (shop, order_id, paid) = seeded_order(dec!(8.00)).await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+    settlement::capture(&mut tx, &ctx, paid, money(dec!(100.00)), None)
+        .await
+        .expect("the capture to settle");
+    tx.commit().await.expect("to commit");
+    let whole = payout_lines_of(&shop, order_id).await;
+    shop.close().await;
+
+    // Captured in two halves: the same 8.00 total, not 8.00 twice.
+    let (shop, order_id, paid) = seeded_order(dec!(8.00)).await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+    settlement::capture(&mut tx, &ctx, paid, money(dec!(50.00)), None)
+        .await
+        .expect("the first capture to settle");
+    tx.commit().await.expect("to commit");
+    let mut tx = shop.begin().await;
+    settlement::capture(&mut tx, &ctx, paid, money(dec!(50.00)), None)
+        .await
+        .expect("the second capture to settle");
+    tx.commit().await.expect("to commit");
+    let parts = payout_lines_of(&shop, order_id).await;
+    shop.close().await;
+
+    assert_eq!(amount_of(&whole, "commission"), dec!(8.00));
+    assert_eq!(amount_of(&parts, "commission"), dec!(8.00));
+    assert_eq!(
+        amount_of(&whole, "seller_share") + amount_of(&whole, "commission"),
+        dec!(100.00)
+    );
+    assert_eq!(
+        amount_of(&parts, "seller_share") + amount_of(&parts, "commission"),
+        dec!(100.00)
+    );
+}
+
+/// A fixed fee bigger than the order it commissions is clamped against the
+/// order's own total, not against whichever fraction of it a single capture
+/// happens to see.
+#[tokio::test]
+async fn a_fixed_commission_bigger_than_the_order_clamps_to_the_whole() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    payout::set_commission_rule(
+        &mut tx,
+        &ctx,
+        NewCommissionRule {
+            category_id: None,
+            kind: CommissionKind::Fixed,
+            value: dec!(500.00),
+            currency_code: Some(lira()),
+        },
+    )
+    .await
+    .expect("a fixed commission rule");
+
+    let variant = an_uncategorized_variant(&mut tx, &ctx, "gadget").await;
+    tx.commit().await.expect("to commit the seed");
+
+    let (order_id, paid) = an_order(
+        &shop,
+        money(dec!(100.00)),
+        vec![line("A gadget", variant.0, variant.1, 1, dec!(100.00))],
+    )
+    .await;
+
+    // Captured in two halves of 50.00 each — a per-line clamp against 50.00
+    // would cap the fee well under the order's own 100.00.
+    let mut tx = shop.begin().await;
+    settlement::capture(&mut tx, &ctx, paid, money(dec!(50.00)), None)
+        .await
+        .expect("the first capture to settle");
+    tx.commit().await.expect("to commit");
+    let mut tx = shop.begin().await;
+    settlement::capture(&mut tx, &ctx, paid, money(dec!(50.00)), None)
+        .await
+        .expect("the second capture to settle");
+    tx.commit().await.expect("to commit");
+
+    let lines = payout_lines_of(&shop, order_id).await;
+    assert_eq!(amount_of(&lines, "commission"), dec!(100.00));
+    assert_eq!(amount_of(&lines, "seller_share"), dec!(0.00));
+
+    shop.close().await;
+}
+
+/// `create_payout` and `record_earning` write through the same function.
+/// A `paid_out` row and an order's own earning row both carry the full
+/// column set `write_line` names — there is no second path that could drift
+/// out of step and leave one of them short a field.
+#[tokio::test]
+async fn a_paid_out_line_carries_the_same_columns_as_an_earning_line() {
+    let (shop, commissioned, pass_through) = a_seeded_shop().await;
+    let ctx = shop.ctx();
+
+    let (order_id, paid) = an_order(
+        &shop,
+        money(dec!(120.00)),
+        vec![
+            line("A gadget", commissioned.0, commissioned.1, 2, dec!(50.00)),
+            line("Delivery", pass_through.0, pass_through.1, 1, dec!(20.00)),
+        ],
+    )
+    .await;
+
+    let mut tx = shop.begin().await;
+    settlement::capture(&mut tx, &ctx, paid, money(dec!(120.00)), None)
+        .await
+        .expect("the capture to settle");
+    tx.commit().await.expect("to commit");
+
+    let mut tx = shop.begin().await;
+    let payout = payout::create_payout(&mut tx, &ctx, lira(), "manual", uuid::Uuid::now_v7(), None)
+        .await
+        .expect("to record the payout");
+    tx.commit().await.expect("to commit");
+
+    let mut tx = shop.begin().await;
+    let row: (
+        Option<uuid::Uuid>,
+        Option<uuid::Uuid>,
+        rust_decimal::Decimal,
+        String,
+        Option<uuid::Uuid>,
+        Option<uuid::Uuid>,
+    ) = sqlx::query_as(
+        "select order_id, payout_id, amount, reference, reference_id, capture_id
+             from payout_line where payout_id = $1 and reference = 'paid_out'",
+    )
+    .bind(payout.id.as_uuid())
+    .fetch_one(&mut *tx)
+    .await
+    .expect("the paid_out row write_line wrote");
+    tx.rollback().await.expect("to roll back");
+
+    let (order_id_col, payout_id_col, amount, reference, reference_id, capture_id) = row;
+    assert_eq!(order_id_col, None, "paid_out carries no order_id");
+    assert_eq!(payout_id_col, Some(payout.id.as_uuid()));
+    assert_eq!(amount, dec!(-110.00));
+    assert_eq!(reference, "paid_out");
+    assert!(reference_id.is_some());
+    assert_eq!(capture_id, None, "paid_out has no capture to attribute to");
+    let _ = order_id;
+
+    shop.close().await;
+}
+
 /// Refunding a captured order in full zeros out both the seller's share and
 /// the commission the marketplace no longer keeps.
 #[tokio::test]

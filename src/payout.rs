@@ -313,7 +313,9 @@ async fn split(
         let subtotal = Decimal::from(line.quantity) * line.unit_price;
         let Some(value) = line.value else { continue };
         let commission = match line.kind.as_deref() {
-            Some("fixed") => value.min(subtotal),
+            // Not clamped per line: a fixed fee is defined against the
+            // order, and the order-wide clamp below is where it belongs.
+            Some("fixed") => value,
             Some("percentage") => subtotal * value / Decimal::from(100),
             _ => continue,
         };
@@ -347,7 +349,7 @@ pub async fn record_earning(
     write_line(
         tx,
         ctx,
-        order_id,
+        Some(order_id),
         "seller_share",
         capture_id,
         seller,
@@ -358,7 +360,7 @@ pub async fn record_earning(
     write_line(
         tx,
         ctx,
-        order_id,
+        Some(order_id),
         "commission",
         capture_id,
         commission,
@@ -452,7 +454,7 @@ pub async fn record_reversal(
         write_line(
             tx,
             ctx,
-            order_id,
+            Some(order_id),
             "refund_seller_share",
             refund_id,
             Money::new(-seller.amount, seller.currency),
@@ -463,7 +465,7 @@ pub async fn record_reversal(
         write_line(
             tx,
             ctx,
-            order_id,
+            Some(order_id),
             "refund_commission",
             refund_id,
             Money::new(-commission.amount, commission.currency),
@@ -484,11 +486,13 @@ pub async fn record_reversal(
     Ok(())
 }
 
+/// The one place `payout_line` is written. `order_id` is `None` only for
+/// `paid_out`: a fact about the scope's whole balance, not about one order.
 #[allow(clippy::too_many_arguments)]
 async fn write_line(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
-    order_id: OrderId,
+    order_id: Option<OrderId>,
     reference: &str,
     reference_id: Uuid,
     amount: Money,
@@ -510,7 +514,7 @@ async fn write_line(
     )
     .bind(PayoutLineId::new().as_uuid())
     .bind(ctx.scope.0)
-    .bind(order_id.as_uuid())
+    .bind(order_id.map(OrderId::as_uuid))
     .bind(payout_id.map(PayoutId::as_uuid))
     .bind(amount.amount)
     .bind(amount.currency.as_str())
@@ -580,18 +584,16 @@ pub async fn create_payout(
     .fetch_one(&mut **tx)
     .await?;
 
-    sqlx::query(
-        "insert into payout_line
-             (id, scope, order_id, payout_id, amount, currency_code, reference, reference_id)
-         values ($1, $2, null, $3, $4, $5, 'paid_out', $6)",
+    write_line(
+        tx,
+        ctx,
+        None,
+        "paid_out",
+        reference_id,
+        Money::new(-owed.amount, owed.currency),
+        Some(payout.id),
+        None,
     )
-    .bind(PayoutLineId::new().as_uuid())
-    .bind(ctx.scope.0)
-    .bind(payout.id.as_uuid())
-    .bind(-owed.amount)
-    .bind(owed.currency.as_str())
-    .bind(reference_id)
-    .execute(&mut **tx)
     .await?;
 
     ctx.audit(
