@@ -650,6 +650,7 @@ impl Step for CreateOrder {
                 .into_iter()
                 .map(|line| NewOrderLine {
                     reserved_for: Some(line.id),
+                    parent_cart_line: line.parent_line_item_id,
                     variant_id: line.variant_id.map(VariantId::from_uuid),
                     product_id: line.product_id,
                     title: line.product_title.clone(),

@@ -12,9 +12,9 @@ use crate::batch;
 use crate::catalogue;
 use crate::error::{Error, Result};
 use crate::id::{
-    CategoryId, CollectionId, InventoryItemId, InventoryLevelId, LineItemId, OptionId,
-    OptionValueId, PriceId, PriceListId, PriceSetId, ProductId, ProductImageId, ProductTagId,
-    ProductTypeId, ReservationId, SalesChannelId, StockLocationId, VariantId,
+    BundleComponentId, CategoryId, CollectionId, InventoryItemId, InventoryLevelId, LineItemId,
+    OptionId, OptionValueId, PriceId, PriceListId, PriceSetId, ProductId, ProductImageId,
+    ProductTagId, ProductTypeId, ReservationId, SalesChannelId, StockLocationId, VariantId,
 };
 use crate::inventory;
 use crate::money::{Currency, Money};
@@ -1575,6 +1575,160 @@ pub async fn link_variant_price_set(
     pricing::link_variant(tx, ctx, variant_id, body.price_set_id).await
 }
 
+// ---------------------------------------------------------------------------
+// Bundles
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SetBundlePrice {
+    /// `null` un-marks the variant as a bundle.
+    pub mode: Option<String>,
+    pub discount_percent: Option<Decimal>,
+}
+
+pub async fn set_bundle_price(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    variant_id: VariantId,
+    body: SetBundlePrice,
+) -> Result<()> {
+    let mode = body.mode.as_deref().map(pricing::BundlePriceMode::parse).transpose()?;
+    pricing::set_bundle_price_mode(tx, ctx, variant_id, mode, body.discount_percent).await
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BundleComponentView {
+    pub id: BundleComponentId,
+    pub bundle_variant_id: VariantId,
+    pub component_variant_id: VariantId,
+    pub quantity: i32,
+    pub sort_order: i32,
+}
+
+impl From<pricing::BundleComponent> for BundleComponentView {
+    fn from(row: pricing::BundleComponent) -> Self {
+        BundleComponentView {
+            id: row.id,
+            bundle_variant_id: row.bundle_variant_id,
+            component_variant_id: row.component_variant_id,
+            quantity: row.quantity,
+            sort_order: row.sort_order,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NewBundleComponentInput {
+    pub component_variant_id: VariantId,
+    pub quantity: i32,
+    #[serde(default)]
+    pub sort_order: i32,
+}
+
+pub async fn add_bundle_component(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    bundle_variant_id: VariantId,
+    body: NewBundleComponentInput,
+) -> Result<BundleComponentView> {
+    Ok(BundleComponentView::from(
+        pricing::add_bundle_component(
+            tx,
+            ctx,
+            bundle_variant_id,
+            pricing::NewBundleComponent {
+                component_variant_id: body.component_variant_id,
+                quantity: body.quantity,
+                sort_order: body.sort_order,
+            },
+        )
+        .await?,
+    ))
+}
+
+pub async fn remove_bundle_component(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    bundle_variant_id: VariantId,
+    component_variant_id: VariantId,
+) -> Result<()> {
+    pricing::remove_bundle_component(tx, ctx, bundle_variant_id, component_variant_id).await
+}
+
+pub async fn list_bundle_components(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    bundle_variant_id: VariantId,
+) -> Result<Vec<BundleComponentView>> {
+    Ok(pricing::bundle_components(tx, ctx, bundle_variant_id)
+        .await?
+        .into_iter()
+        .map(BundleComponentView::from)
+        .collect())
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BundlePriceQuery {
+    pub currency_code: String,
+    #[serde(default = "one")]
+    pub quantity: i32,
+}
+
+fn one() -> i32 {
+    1
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BundlePriceComponentView {
+    pub component_variant_id: VariantId,
+    pub quantity: i32,
+    pub unit_price: Decimal,
+    pub allocated_total: Decimal,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BundlePriceView {
+    pub mode: String,
+    pub total: Decimal,
+    pub currency_code: String,
+    pub components: Vec<BundlePriceComponentView>,
+}
+
+/// What the bundle would be sold for right now, and the share of it each
+/// component was allocated. A host prices a bundle line the same way it
+/// prices an ordinary one: ask once, before adding it to a cart.
+pub async fn bundle_price(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    bundle_variant_id: VariantId,
+    query: BundlePriceQuery,
+) -> Result<BundlePriceView> {
+    let currency = Currency::parse(&query.currency_code)?;
+    let at = pricing::PriceContext::new(currency, query.quantity.max(1));
+    let price = pricing::resolve_bundle(tx, ctx, bundle_variant_id, &at)
+        .await?
+        .ok_or_else(|| Error::invalid("that variant is not a bundle"))?;
+
+    Ok(BundlePriceView {
+        mode: price.mode.as_str().to_string(),
+        total: price.total.amount,
+        currency_code: query.currency_code,
+        components: price
+            .components
+            .into_iter()
+            .map(|c| BundlePriceComponentView {
+                component_variant_id: c.component_variant_id,
+                quantity: c.quantity,
+                unit_price: c.unit_price.amount,
+                allocated_total: c.allocated_total.amount,
+            })
+            .collect(),
+    })
+}
+
 pub async fn list_prices(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -2983,6 +3137,46 @@ pub(super) static ROUTES: &[Route] = &[
         action: Action::Write,
         domain: PRICING,
         summary: "Point a variant at a price set",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Post,
+        path: "/admin/product-variants/{id}/bundle",
+        action: Action::Write,
+        domain: PRICING,
+        summary: "Mark a variant as a bundle, and how its price is decided",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Get,
+        path: "/admin/product-variants/{id}/bundle/components",
+        action: Action::View,
+        domain: PRICING,
+        summary: "List what a bundle is made of",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Post,
+        path: "/admin/product-variants/{id}/bundle/components",
+        action: Action::Write,
+        domain: PRICING,
+        summary: "Add a component to a bundle",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Delete,
+        path: "/admin/product-variants/{id}/bundle/components/{component_variant_id}",
+        action: Action::Delete,
+        domain: PRICING,
+        summary: "Take a component out of a bundle",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Get,
+        path: "/admin/product-variants/{id}/bundle/price",
+        action: Action::View,
+        domain: PRICING,
+        summary: "What the bundle prices to now, allocated across its components",
     },
     Route {
         surface: Surface::Admin,

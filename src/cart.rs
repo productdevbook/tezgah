@@ -30,7 +30,7 @@ const LINE_COLUMNS: &str = "id, cart_id, variant_id, product_id, product_title, 
                             variant_title, variant_sku, variant_barcode, variant_option_values, \
                             thumbnail, quantity, unit_price, compare_at_unit_price, \
                             currency_code, is_tax_inclusive, is_discountable, requires_shipping, \
-                            metadata, created_at, updated_at";
+                            parent_line_item_id, metadata, created_at, updated_at";
 
 /// Most line items one cart may be read with. Every caller here totals a
 /// whole cart, so this is a ceiling rather than a page: a cursor would hand
@@ -129,6 +129,9 @@ pub struct LineItem {
     pub is_tax_inclusive: bool,
     pub is_discountable: bool,
     pub requires_shipping: bool,
+    /// The bundle line this one is a component of, when it is one. `cart::
+    /// add_bundle` is what sets it; an ordinary line never has one.
+    pub parent_line_item_id: Option<LineItemId>,
     pub metadata: Option<serde_json::Value>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
@@ -143,6 +146,26 @@ pub struct AddLine {
     pub quantity: i32,
     pub unit_price: Money,
     pub is_tax_inclusive: bool,
+}
+
+/// One component of a bundle being added, already priced: `unit_price` is the
+/// share of the bundle's price `pricing::resolve_bundle` allocated to it, not
+/// the component's own list price.
+#[derive(Debug, Clone)]
+pub struct AddBundleComponent {
+    pub variant_id: VariantId,
+    pub quantity: i32,
+    pub unit_price: Money,
+}
+
+/// A bundle being added: one parent line and its components, priced the same
+/// way — resolved by `pricing::resolve_bundle` before the cart is touched.
+#[derive(Debug, Clone)]
+pub struct AddBundle {
+    pub variant_id: VariantId,
+    pub quantity: i32,
+    pub is_tax_inclusive: bool,
+    pub components: Vec<AddBundleComponent>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -650,6 +673,88 @@ pub async fn add_line(
     .await?;
 
     Ok(item)
+}
+
+/// Adds a bundle as one parent line carrying no price of its own and one
+/// child line per component, each already priced by `pricing::resolve_bundle`
+/// before this is called — cart.rs prices nothing, the same as [`add_line`].
+///
+/// The parent's price is zero on purpose: the money is on the children, so
+/// [`totals`] and [`compute`] sum a cart with a bundle in it exactly the way
+/// they sum any other, without learning a second way to add a cart up. A
+/// return values one component by returning its own line, which is the point
+/// of giving it one.
+///
+/// Sharing a component variant between two bundles in the same cart, or
+/// between a bundle and the same variant bought on its own, is not supported:
+/// [`add_line`]'s one-line-per-variant index would merge them into a line
+/// that cannot say which bundle it belongs to.
+pub async fn add_bundle(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    cart_id: CartId,
+    bundle: AddBundle,
+) -> Result<Vec<LineItem>> {
+    let cart = open(tx, ctx, cart_id, Action::Write).await?;
+    let currency = cart.currency()?;
+
+    if bundle.quantity <= 0 {
+        return Err(Error::invalid("a line needs a quantity of at least one"));
+    }
+    if bundle.components.is_empty() {
+        return Err(Error::invalid("a bundle needs at least one component"));
+    }
+
+    let parent = add_line(
+        tx,
+        ctx,
+        cart_id,
+        AddLine {
+            variant_id: bundle.variant_id,
+            quantity: bundle.quantity,
+            unit_price: Money::new(Decimal::ZERO, currency),
+            is_tax_inclusive: bundle.is_tax_inclusive,
+        },
+    )
+    .await?;
+
+    let mut lines = vec![parent.clone()];
+
+    for component in bundle.components {
+        if component.unit_price.currency != currency {
+            return Err(Error::invalid("that price is in another currency"));
+        }
+
+        let child = add_line(
+            tx,
+            ctx,
+            cart_id,
+            AddLine {
+                variant_id: component.variant_id,
+                quantity: bundle.quantity,
+                unit_price: component.unit_price,
+                is_tax_inclusive: bundle.is_tax_inclusive,
+            },
+        )
+        .await?;
+
+        sqlx::query(
+            "update cart_line_item set parent_line_item_id = $3
+             where scope = $1 and id = $2",
+        )
+        .bind(ctx.scope.0)
+        .bind(child.id.as_uuid())
+        .bind(parent.id.as_uuid())
+        .execute(&mut **tx)
+        .await?;
+
+        lines.push(LineItem {
+            parent_line_item_id: Some(parent.id),
+            ..child
+        });
+    }
+
+    Ok(lines)
 }
 
 /// A quantity of zero is a removal, because the schema has no zero line.

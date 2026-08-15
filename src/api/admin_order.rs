@@ -1025,6 +1025,7 @@ impl NewLineIn {
             tax_lines: taxed(self.tax_rate),
             withdrawal_exclusion: exclusion,
             reserved_for: None,
+            parent_cart_line: None,
         })
     }
 }

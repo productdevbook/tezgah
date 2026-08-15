@@ -181,6 +181,7 @@ ids! {
     OrderInvoiceId => "order invoice",
     OrderTransactionId => "order transaction",
     WorkflowRunId => "workflow run",
+    BundleComponentId => "bundle component",
 }
 
 #[cfg(test)]

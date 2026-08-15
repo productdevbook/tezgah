@@ -292,6 +292,8 @@ pub struct LineItemView {
     pub quantity: i32,
     pub unit_price: MoneyView,
     pub requires_shipping: bool,
+    /// The bundle line this one is a component of, when it is one.
+    pub parent_line_item_id: Option<LineItemId>,
 }
 
 impl LineItemView {
@@ -310,6 +312,7 @@ impl LineItemView {
                 currency,
             }),
             requires_shipping: row.requires_shipping,
+            parent_line_item_id: row.parent_line_item_id,
         })
     }
 }
@@ -1308,6 +1311,71 @@ pub async fn add_line_item(
     reprice(tx, ctx, id).await?;
 
     LineItemView::of(item)
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AddBundleItem {
+    pub variant_id: VariantId,
+    pub quantity: i32,
+}
+
+/// The same shape as [`add_line_item`], for a bundle: `pricing::resolve_bundle`
+/// is asked for the price once, and it comes back already allocated across
+/// the components — this only has to hand that allocation to
+/// [`cart::add_bundle`], not work it out itself.
+pub async fn add_bundle_item(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: CartId,
+    input: AddBundleItem,
+) -> Result<Vec<LineItemView>> {
+    let holding = own_cart(tx, ctx, id, Action::Write).await?;
+    let currency = cart_currency(&holding)?;
+
+    let variant = catalogue::variant(tx, ctx, input.variant_id).await?;
+    let product = published(tx, ctx, variant.product_id).await?;
+    let cart_channel: Vec<Uuid> = holding
+        .sales_channel_id
+        .map(SalesChannelId::as_uuid)
+        .into_iter()
+        .collect();
+    on_channel(tx, ctx, product, &cart_channel).await?;
+
+    let at = pricing::PriceContext {
+        quantity: input.quantity,
+        ..price_context(&holding, currency)
+    };
+    let price = pricing::resolve_bundle(tx, ctx, input.variant_id, &at)
+        .await?
+        .ok_or_else(|| Error::invalid("that variant is not a bundle"))?;
+
+    let is_tax_inclusive = pricing::is_tax_inclusive(tx, ctx, &at).await?;
+
+    let lines = cart::add_bundle(
+        tx,
+        ctx,
+        id,
+        cart::AddBundle {
+            variant_id: input.variant_id,
+            quantity: input.quantity,
+            is_tax_inclusive,
+            components: price
+                .components
+                .into_iter()
+                .map(|c| cart::AddBundleComponent {
+                    variant_id: c.component_variant_id,
+                    quantity: c.quantity,
+                    unit_price: c.allocated_total,
+                })
+                .collect(),
+        },
+    )
+    .await?;
+
+    reprice(tx, ctx, id).await?;
+
+    lines.into_iter().map(LineItemView::of).collect()
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -2405,6 +2473,14 @@ pub(super) static ROUTES: &[Route] = &[
         action: Action::Write,
         domain: "cart",
         summary: "Put a variant in the cart at the shop's price",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Post,
+        path: "/store/carts/{id}/bundle-items",
+        action: Action::Write,
+        domain: "cart",
+        summary: "Put a bundle in the cart, priced and allocated across its components",
     },
     Route {
         surface: Surface::Store,

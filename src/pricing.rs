@@ -19,10 +19,13 @@ use sqlx::FromRow;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
-use crate::id::{PriceId, PriceListId, PriceSetId, RegionId, ShippingOptionId, VariantId};
+use crate::id::{
+    BundleComponentId, PriceId, PriceListId, PriceSetId, RegionId, ShippingOptionId, VariantId,
+};
 use crate::money::{Currency, Money};
 use crate::page::{Cursor, Page, Paging};
 use crate::ports::{Action, AuditEntry, Ctx, Permit, Resource, Tx};
+use crate::store;
 
 /// The attribute names tezgah itself puts into a resolution context. A host's
 /// own rules may use any other name through [`PriceContext::extra`].
@@ -1049,6 +1052,303 @@ pub async fn resolve(
         price_id,
         price_list_id: row.price_list_id,
         original_price_id,
+    }))
+}
+
+// ---------------------------------------------------------------------------
+// Bundles
+// ---------------------------------------------------------------------------
+
+/// How a bundle's own price is decided. `Fixed` prices it like any other
+/// variant, through its own price set — nothing here does anything different
+/// for that case, only `resolve_bundle` reads the label rather than resolving
+/// components. `Components` prices it as the sum of what its components
+/// resolve to, less a discount.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BundlePriceMode {
+    Fixed,
+    Components,
+}
+
+impl BundlePriceMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            BundlePriceMode::Fixed => "fixed",
+            BundlePriceMode::Components => "components",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self> {
+        match value {
+            "fixed" => Ok(BundlePriceMode::Fixed),
+            "components" => Ok(BundlePriceMode::Components),
+            other => Err(Error::invalid(format!(
+                "{other:?} is not a bundle price mode"
+            ))),
+        }
+    }
+}
+
+/// One product this bundle is made of, for display and for a return to value.
+/// The inventory-level composition a bundle already reserves and fulfils
+/// through lives in `variant_inventory_item` (#87's survey); this is the
+/// product-level counterpart of it.
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct BundleComponent {
+    pub id: BundleComponentId,
+    pub bundle_variant_id: VariantId,
+    pub component_variant_id: VariantId,
+    pub quantity: i32,
+    pub sort_order: i32,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewBundleComponent {
+    pub component_variant_id: VariantId,
+    pub quantity: i32,
+    pub sort_order: i32,
+}
+
+pub async fn set_bundle_price_mode(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    variant: VariantId,
+    mode: Option<BundlePriceMode>,
+    discount_percent: Option<Decimal>,
+) -> Result<()> {
+    let _: Permit = ctx.permit(Action::Write, Resource::Pricing)?;
+
+    if let Some(percent) = discount_percent {
+        if mode != Some(BundlePriceMode::Components) {
+            return Err(Error::invalid(
+                "a discount percent only applies to a bundle priced from its components",
+            ));
+        }
+        if percent.is_sign_negative() || percent > Decimal::from(100) {
+            return Err(Error::invalid("a discount percent is between 0 and 100"));
+        }
+    }
+
+    let done = sqlx::query(
+        "update product_variant
+            set bundle_price_mode = $3, bundle_discount_percent = $4
+          where scope = $1 and id = $2 and deleted_at is null",
+    )
+    .bind(ctx.scope.0)
+    .bind(variant.as_uuid())
+    .bind(mode.map(|m| m.as_str()))
+    .bind(discount_percent)
+    .execute(&mut **tx)
+    .await?;
+
+    if done.rows_affected() == 0 {
+        return Err(Error::not_found("variant"));
+    }
+
+    Ok(())
+}
+
+pub async fn add_bundle_component(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    bundle_variant_id: VariantId,
+    new: NewBundleComponent,
+) -> Result<BundleComponent> {
+    let _: Permit = ctx.permit(Action::Write, Resource::Pricing)?;
+
+    if new.quantity <= 0 {
+        return Err(Error::invalid(
+            "a bundle component needs a quantity above zero",
+        ));
+    }
+    if new.component_variant_id == bundle_variant_id {
+        return Err(Error::invalid("a bundle cannot contain itself"));
+    }
+
+    let component = sqlx::query_as::<_, BundleComponent>(
+        "insert into product_bundle_component
+             (id, scope, bundle_variant_id, component_variant_id, quantity, sort_order)
+         values ($1, $2, $3, $4, $5, $6)
+         on conflict (scope, bundle_variant_id, component_variant_id)
+         do update set quantity = excluded.quantity, sort_order = excluded.sort_order
+         returning id, bundle_variant_id, component_variant_id, quantity, sort_order",
+    )
+    .bind(BundleComponentId::new().as_uuid())
+    .bind(ctx.scope.0)
+    .bind(bundle_variant_id.as_uuid())
+    .bind(new.component_variant_id.as_uuid())
+    .bind(new.quantity)
+    .bind(new.sort_order)
+    .fetch_one(&mut **tx)
+    .await?;
+
+    Ok(component)
+}
+
+pub async fn remove_bundle_component(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    bundle_variant_id: VariantId,
+    component_variant_id: VariantId,
+) -> Result<()> {
+    let _: Permit = ctx.permit(Action::Write, Resource::Pricing)?;
+
+    let done = sqlx::query(
+        "delete from product_bundle_component
+          where scope = $1 and bundle_variant_id = $2 and component_variant_id = $3",
+    )
+    .bind(ctx.scope.0)
+    .bind(bundle_variant_id.as_uuid())
+    .bind(component_variant_id.as_uuid())
+    .execute(&mut **tx)
+    .await?;
+
+    if done.rows_affected() == 0 {
+        return Err(Error::not_found("bundle component"));
+    }
+
+    Ok(())
+}
+
+pub async fn bundle_components(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    bundle_variant_id: VariantId,
+) -> Result<Vec<BundleComponent>> {
+    let _: Permit = ctx.permit(Action::View, Resource::Pricing)?;
+
+    Ok(sqlx::query_as::<_, BundleComponent>(
+        "select id, bundle_variant_id, component_variant_id, quantity, sort_order
+         from product_bundle_component
+         where scope = $1 and bundle_variant_id = $2
+         order by sort_order, id",
+    )
+    .bind(ctx.scope.0)
+    .bind(bundle_variant_id.as_uuid())
+    .fetch_all(&mut **tx)
+    .await?)
+}
+
+/// What one component is worth inside this bundle: its own resolved price,
+/// and the share of the bundle price it was allocated so the parts add back
+/// up to the whole (`money::allocate` is what guarantees that, the same tool
+/// a tax or a promotion split across lines uses for the same reason).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BundleComponentPrice {
+    pub component_variant_id: VariantId,
+    pub quantity: i32,
+    pub unit_price: Money,
+    pub allocated_total: Money,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BundlePrice {
+    pub mode: BundlePriceMode,
+    pub total: Money,
+    pub components: Vec<BundleComponentPrice>,
+}
+
+/// The bundle's price, worked out and allocated across its components in one
+/// pass. `None` when the variant is not a bundle at all — `bundle_price_mode`
+/// is null — so a caller pricing an ordinary variant does not have to ask
+/// twice.
+///
+/// A fixed-price bundle resolves like any other variant; the components are
+/// still allocated a share of that fixed price, because a return still needs
+/// to know what one component of it is worth. A components-priced bundle sums
+/// what each component resolves to, at the quantity the bundle needs of it,
+/// and applies `bundle_discount_percent` to the sum before allocating it back.
+pub async fn resolve_bundle(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    bundle_variant_id: VariantId,
+    at: &PriceContext,
+) -> Result<Option<BundlePrice>> {
+    let _: Permit = ctx.permit(Action::View, Resource::Pricing)?;
+
+    let found: Option<(Option<String>, Option<Decimal>)> = sqlx::query_as(
+        "select bundle_price_mode, bundle_discount_percent from product_variant
+         where scope = $1 and id = $2 and deleted_at is null",
+    )
+    .bind(ctx.scope.0)
+    .bind(bundle_variant_id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("variant"))?;
+
+    let Some(mode) = found.0 else {
+        return Ok(None);
+    };
+    let mode = BundlePriceMode::parse(&mode)?;
+    let discount_percent = found.1.unwrap_or(Decimal::ZERO);
+
+    let components = bundle_components(tx, ctx, bundle_variant_id).await?;
+    if components.is_empty() {
+        return Err(Error::invalid(
+            "a bundle priced from its components has no components",
+        ));
+    }
+
+    let mut weights = Vec::with_capacity(components.len());
+    let mut priced = Vec::with_capacity(components.len());
+    for component in &components {
+        let set = price_set_for_variant(tx, ctx, component.component_variant_id)
+            .await?
+            .ok_or_else(|| Error::invalid("a bundle component has no price"))?;
+        let component_at = PriceContext {
+            quantity: component.quantity,
+            ..at.clone()
+        };
+        let price = resolve(tx, ctx, set, &component_at)
+            .await?
+            .ok_or_else(|| Error::invalid("a bundle component has no price"))?;
+        let weight = price.calculated.amount * Decimal::from(component.quantity);
+        weights.push(weight);
+        priced.push((component.clone(), price.calculated));
+    }
+
+    let sum_of_components = Money::new(weights.iter().sum::<Decimal>(), at.currency);
+    let exponent = store::exponent(tx, ctx, at.currency).await?;
+
+    let target = match mode {
+        BundlePriceMode::Fixed => {
+            let set = price_set_for_variant(tx, ctx, bundle_variant_id)
+                .await?
+                .ok_or_else(|| Error::invalid("a fixed-price bundle has no price of its own"))?;
+            resolve(tx, ctx, set, at)
+                .await?
+                .ok_or_else(|| Error::invalid("a fixed-price bundle has no price of its own"))?
+                .calculated
+        }
+        BundlePriceMode::Components => {
+            let kept = (Decimal::from(100) - discount_percent) / Decimal::from(100);
+            Money::new(
+                (sum_of_components.amount * kept).round_dp(exponent),
+                at.currency,
+            )
+        }
+    };
+
+    let allocated = crate::money::allocate(target, &weights, exponent)?;
+
+    let components = priced
+        .into_iter()
+        .zip(allocated)
+        .map(
+            |((component, unit_price), allocated_total)| BundleComponentPrice {
+                component_variant_id: component.component_variant_id,
+                quantity: component.quantity,
+                unit_price,
+                allocated_total,
+            },
+        )
+        .collect();
+
+    Ok(Some(BundlePrice {
+        mode,
+        total: target,
+        components,
     }))
 }
 

@@ -65,7 +65,7 @@ const LINE_COLUMNS: &str = "id, order_id, variant_id, product_id, title, subtitl
                             variant_option_values, unit_price, compare_at_unit_price, \
                             currency_code, requires_shipping, is_tax_inclusive, is_discountable, \
                             is_giftcard, withdrawal_eligible, withdrawal_exclusion_reason, \
-                            metadata, created_at, updated_at";
+                            parent_line_item_id, metadata, created_at, updated_at";
 
 const ITEM_COLUMNS: &str = "id, order_id, order_line_item_id, version, unit_price, \
                             compare_at_unit_price, currency_code, quantity, fulfilled_quantity, \
@@ -281,6 +281,10 @@ pub struct OrderLineItem {
     /// day it was bought. Never derived again afterwards.
     pub withdrawal_eligible: bool,
     pub withdrawal_exclusion_reason: Option<String>,
+    /// The bundle line this one is a component of, when the order line it
+    /// came from was one — carried across from `cart_line_item` the same way
+    /// everything else on this row is, at the moment the order is placed.
+    pub parent_line_item_id: Option<LineItemId>,
     pub metadata: Option<Value>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
@@ -634,6 +638,13 @@ pub struct NewOrderLine {
     /// The cart line whose reservations this line inherits. Without it the
     /// stock a checkout held is unreachable from the order that holds it.
     pub reserved_for: Option<LineItemId>,
+    /// The cart line id of the bundle this line's cart line was a component
+    /// of, named by its cart line rather than by the order line it becomes —
+    /// the order line does not exist yet when the caller builds this. `create`
+    /// resolves it to the sibling order line once every line in the same
+    /// batch has an id, the same two-pass shape `reserved_for` would need if
+    /// a cart line could ever depend on another cart line's new order id.
+    pub parent_cart_line: Option<LineItemId>,
 }
 
 impl NewOrderLine {
@@ -660,6 +671,7 @@ impl NewOrderLine {
             tax_lines: Vec::new(),
             withdrawal_exclusion: None,
             reserved_for: None,
+            parent_cart_line: None,
         }
     }
 }
@@ -818,6 +830,16 @@ async fn place(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewOrder, draft: bool) -> Re
     .fetch_one(&mut **tx)
     .await?;
 
+    // A bundle's parent line is named in each child's `parent_cart_line` by
+    // the cart line it came from, not by the order line it becomes — the
+    // order line does not exist until this loop inserts it. `by_cart_line`
+    // is filled as each line is inserted and resolved once every line in the
+    // batch has an id, the same reason `reserved_for` names a cart line
+    // rather than something not yet written.
+    let mut by_cart_line: std::collections::HashMap<uuid::Uuid, LineItemId> =
+        std::collections::HashMap::new();
+    let mut pending_parents: Vec<(LineItemId, LineItemId)> = Vec::new();
+
     for line in new.lines {
         // A gift card is money changing form, not goods changing hands: the
         // tax is charged on what the card buys, and charging it twice is the
@@ -888,7 +910,26 @@ async fn place(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewOrder, draft: bool) -> Re
 
         if let Some(cart_line) = line.reserved_for {
             crate::inventory::rebind_reservations(tx, ctx, cart_line, line_id).await?;
+            by_cart_line.insert(cart_line.as_uuid(), line_id);
         }
+        if let Some(parent_cart_line) = line.parent_cart_line {
+            pending_parents.push((line_id, parent_cart_line));
+        }
+    }
+
+    for (child, parent_cart_line) in pending_parents {
+        let Some(&parent) = by_cart_line.get(&parent_cart_line.as_uuid()) else {
+            continue;
+        };
+        sqlx::query(
+            "update order_line_item set parent_line_item_id = $3
+             where scope = $1 and id = $2",
+        )
+        .bind(ctx.scope.0)
+        .bind(child.as_uuid())
+        .bind(parent.as_uuid())
+        .execute(&mut **tx)
+        .await?;
     }
 
     for method in new.shipping {
