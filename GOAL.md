@@ -100,7 +100,7 @@ writes an order, and the provider is not in your database.
 - [ ] stock locations, and which channels each serves
 - [ ] reserving raises `reserved` and leaves `stocked` alone
 - [ ] fulfilling drops the reservation and lowers `stocked`
-- [ ] reservations expire, and expiry is a job
+- [ ] reservations expire, on the host's clock — see `Jobs` in the README
 - [ ] backorder as an explicit allowance, never an accident
 - [ ] one variant over several items, for bundles
 - [ ] concurrency test: two carts, one last unit, exactly one wins
