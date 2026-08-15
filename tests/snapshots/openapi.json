@@ -4315,6 +4315,45 @@
         "x-tezgah-permission": "view"
       }
     },
+    "/admin/inventory-lots/{id}/reservations": {
+      "post": {
+        "operationId": "postAdminInventoryLotsByIdReservations",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Reserve a named lot, overriding FEFO/FIFO",
+        "tags": [
+          "inventory"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
     "/admin/invoices/{id}": {
       "patch": {
         "operationId": "patchAdminInvoicesById",
@@ -11445,6 +11484,45 @@
         "x-tezgah-permission": "write"
       }
     },
+    "/admin/sales-channels/{id}/stock-locations": {
+      "get": {
+        "operationId": "getAdminSalesChannelsByIdStockLocations",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "List the locations that ship for a sales channel",
+        "tags": [
+          "inventory"
+        ],
+        "x-tezgah-permission": "view"
+      }
+    },
     "/admin/selling-plan-groups": {
       "get": {
         "operationId": "getAdminSellingPlanGroups",
@@ -14786,6 +14864,36 @@
         "summary": "Change one's own account",
         "tags": [
           "customer"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/store/customers/me/account-holders": {
+      "post": {
+        "operationId": "postStoreCustomersMeAccountHolders",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "publishableKey": []
+          }
+        ],
+        "summary": "Save a card reference tokenised with a provider directly",
+        "tags": [
+          "payment"
         ],
         "x-tezgah-permission": "write"
       }
