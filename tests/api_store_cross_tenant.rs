@@ -318,6 +318,14 @@ async fn a_shopper(
     )
     .await?;
 
+    let order_line_id: uuid::Uuid = sqlx::query_scalar(
+        "select id from order_line_item where scope = $1 and order_id = $2 limit 1",
+    )
+    .bind(shop.here.0)
+    .bind(placed.id.as_uuid())
+    .fetch_one(&mut **tx)
+    .await?;
+
     // A digital content row and its grant, written directly: going through
     // `digital::grant` would need a captured payment on this order, which is
     // a whole checkout this file does not otherwise need. Nothing here tests
@@ -345,7 +353,7 @@ async fn a_shopper(
     .bind(entitlement_id)
     .bind(shop.here.0)
     .bind(placed.id.as_uuid())
-    .bind(uuid::Uuid::now_v7())
+    .bind(order_line_id)
     .bind(content_id)
     .bind(id.as_uuid())
     .execute(&mut **tx)
