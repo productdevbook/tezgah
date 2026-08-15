@@ -17,8 +17,15 @@
 //!
 //! Every route in [`routes()`] is either called here and asserted denied, or
 //! named in [`TOLERATED`] with the reason it is not — the completeness check
-//! at the bottom of [`every_route_is_either_denied_or_tolerated`] fails the
-//! build the day a route is added to the table and forgotten here.
+//! at the bottom of `every_route_is_denied_by_a_host_that_refuses_everything`
+//! fails the build the day a route is added to the table and forgotten here.
+//! Most of `TOLERATED` is the failure mode above, caught but not fixed: a
+//! handler whose permission needs an owner id only its own row carries loads
+//! that row before it asks, so a synthetic id answers `not_found` rather
+//! than `denied`. Existing rows stay protected — the permit check still
+//! runs once the row is loaded — but the distinction between "does not
+//! exist" and "exists, not yours" leaks to someone the crate's own rule
+//! says should never get an answer at all. See #151 and #152.
 
 mod common;
 
@@ -409,6 +416,251 @@ static TOLERATED: &[(Method, &str, &str)] = &[
         Method::Post,
         "/admin/claims/{id}/request",
         "loads the claim before permit; #151",
+    ),
+    // order::get, order::request_change and the rest of order.rs's OrderId
+    // functions; order_basket::get; subscription::get. Same shape of gap as
+    // #151, at the crate's own core rather than admin_order.rs's private
+    // helpers: permission needs customer_id off the row, so the row is read
+    // before ctx.permit. See productdevbook/tezgah#152.
+    (
+        Method::Get,
+        "/admin/orders/{id}",
+        "loads the order before permit; #152",
+    ),
+    (
+        Method::Post,
+        "/admin/orders/{id}/complete",
+        "loads the order before permit; #152",
+    ),
+    (
+        Method::Post,
+        "/admin/orders/{id}/cancel",
+        "loads the order before permit; #152",
+    ),
+    (
+        Method::Post,
+        "/admin/orders/{id}/archive",
+        "loads the order before permit; #152",
+    ),
+    (
+        Method::Get,
+        "/admin/orders/{id}/items",
+        "loads the order before permit; #152",
+    ),
+    (
+        Method::Get,
+        "/admin/orders/{id}/shipping-methods",
+        "loads the order before permit; #152",
+    ),
+    (
+        Method::Get,
+        "/admin/orders/{id}/summary",
+        "loads the order before permit; #152",
+    ),
+    (
+        Method::Get,
+        "/admin/orders/{id}/totals",
+        "loads the order before permit; #152",
+    ),
+    (
+        Method::Get,
+        "/admin/orders/{id}/withdrawal",
+        "loads the order before permit; #152",
+    ),
+    (
+        Method::Get,
+        "/admin/orders/{id}/agreements",
+        "loads the order before permit; #152",
+    ),
+    (
+        Method::Get,
+        "/admin/orders/{id}/shipping-options",
+        "loads the order before permit; #152",
+    ),
+    (
+        Method::Post,
+        "/admin/orders/{id}/transactions",
+        "loads the order before permit; #152",
+    ),
+    (
+        Method::Post,
+        "/admin/orders/{id}/payment-collection",
+        "loads the order before permit; #152",
+    ),
+    (
+        Method::Post,
+        "/admin/orders/{id}/order-edits",
+        "loads the order before permit (request_change); #152",
+    ),
+    (
+        Method::Post,
+        "/admin/draft-orders/{id}/edit",
+        "loads the order before permit (request_change); #152",
+    ),
+    (
+        Method::Get,
+        "/admin/draft-orders/{id}",
+        "loads the order before permit; #152",
+    ),
+    (
+        Method::Delete,
+        "/admin/draft-orders/{id}",
+        "loads the order before permit; #152",
+    ),
+    (
+        Method::Post,
+        "/admin/draft-orders/{id}/convert-to-order",
+        "loads the order before permit; #152",
+    ),
+    (
+        Method::Post,
+        "/admin/orders/{id}/invoices",
+        "loads the order before permit; #152",
+    ),
+    (
+        Method::Post,
+        "/admin/orders/{id}/invoices/{invoice_id}/credit-note",
+        "loads the order before permit; #152",
+    ),
+    (
+        Method::Patch,
+        "/admin/invoices/{id}",
+        "loads the order before permit; #152",
+    ),
+    (
+        Method::Post,
+        "/admin/returns",
+        "loads the order before permit (request_return); #152",
+    ),
+    (
+        Method::Post,
+        "/admin/returns/{id}/receive",
+        "loads the return's order before permit; #152",
+    ),
+    (
+        Method::Post,
+        "/admin/returns/{id}/dismiss-items",
+        "loads the return's order before permit; #152",
+    ),
+    (
+        Method::Post,
+        "/admin/returns/{id}/withdrawal",
+        "loads the order before permit; #152",
+    ),
+    (
+        Method::Post,
+        "/admin/exchanges",
+        "loads the order before permit (request_exchange); #152",
+    ),
+    (
+        Method::Post,
+        "/admin/claims",
+        "loads the order before permit (request_claim); #152",
+    ),
+    (
+        Method::Delete,
+        "/admin/order-edits/{id}",
+        "loads the order before permit (decline_change); #152",
+    ),
+    (
+        Method::Post,
+        "/admin/order-edits/{id}/items",
+        "loads the order before permit; #152",
+    ),
+    (
+        Method::Post,
+        "/admin/order-edits/{id}/shipping-method",
+        "loads the order before permit; #152",
+    ),
+    (
+        Method::Post,
+        "/admin/order-edits/{id}/confirm",
+        "loads the order before permit; #152",
+    ),
+    (
+        Method::Get,
+        "/admin/subscriptions/{id}",
+        "loads the subscription before permit; #152",
+    ),
+    (
+        Method::Get,
+        "/admin/subscriptions/{id}/events",
+        "loads the subscription before permit; #152",
+    ),
+    (
+        Method::Post,
+        "/admin/subscriptions/{id}/cancel",
+        "loads the subscription before permit; #152",
+    ),
+    (
+        Method::Post,
+        "/admin/subscriptions/{id}/pause",
+        "loads the subscription before permit; #152",
+    ),
+    (
+        Method::Post,
+        "/admin/subscriptions/{id}/resume",
+        "loads the subscription before permit; #152",
+    ),
+    (
+        Method::Post,
+        "/admin/subscriptions/{id}/skip",
+        "loads the subscription before permit; #152",
+    ),
+    (
+        Method::Post,
+        "/admin/subscriptions/{id}/swap",
+        "loads the subscription before permit; #152",
+    ),
+    (
+        Method::Post,
+        "/admin/subscriptions/{id}/deliver",
+        "loads the subscription before permit; #152",
+    ),
+    (
+        Method::Get,
+        "/admin/order-baskets/{id}",
+        "loads the basket before permit; #152",
+    ),
+    (
+        Method::Post,
+        "/admin/order-baskets/{id}/payment-collection",
+        "loads the basket before permit; #152",
+    ),
+    (
+        Method::Get,
+        "/store/orders/{id}",
+        "loads the order before permit; #152",
+    ),
+    (
+        Method::Get,
+        "/store/orders/{id}/agreements/{kind}",
+        "loads the order before permit; #152",
+    ),
+    (
+        Method::Post,
+        "/store/orders/{id}/agreements",
+        "loads the order before permit; #152",
+    ),
+    (
+        Method::Post,
+        "/store/orders/{id}/transfer/request",
+        "loads the order before permit; #152",
+    ),
+    (
+        Method::Post,
+        "/store/orders/{id}/transfer/decline",
+        "loads the order before permit; #152",
+    ),
+    (
+        Method::Post,
+        "/store/orders/{id}/transfer/cancel",
+        "loads the order before permit; #152",
+    ),
+    (
+        Method::Post,
+        "/store/returns",
+        "loads the order before permit (request_return); #152",
     ),
 ];
 
@@ -897,7 +1149,7 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
             &ctx,
             admin_rest::CreateRegion {
                 name: String::new(),
-                currency_code: String::new(),
+                currency_code: "USD".to_string(),
                 is_tax_inclusive: false
             }
         )
@@ -2015,48 +2267,8 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
     );
     denied!(
         Method::Get,
-        "/admin/orders/{id}",
-        admin_order::get_order(&mut tx, &ctx, OrderId::new())
-    );
-    denied!(
-        Method::Post,
-        "/admin/orders/{id}/complete",
-        admin_order::complete_order(&mut tx, &ctx, OrderId::new())
-    );
-    denied!(
-        Method::Post,
-        "/admin/orders/{id}/cancel",
-        admin_order::cancel_order(&mut tx, &ctx, OrderId::new())
-    );
-    denied!(
-        Method::Post,
-        "/admin/orders/{id}/archive",
-        admin_order::archive_order(&mut tx, &ctx, OrderId::new())
-    );
-    denied!(
-        Method::Get,
         "/admin/orders/{id}/line-items",
         admin_order::order_line_items(&mut tx, &ctx, OrderId::new())
-    );
-    denied!(
-        Method::Get,
-        "/admin/orders/{id}/items",
-        admin_order::order_items(&mut tx, &ctx, OrderId::new(), None)
-    );
-    denied!(
-        Method::Get,
-        "/admin/orders/{id}/shipping-methods",
-        admin_order::order_shipping_methods(&mut tx, &ctx, OrderId::new(), None)
-    );
-    denied!(
-        Method::Get,
-        "/admin/orders/{id}/summary",
-        admin_order::order_summary(&mut tx, &ctx, OrderId::new(), None)
-    );
-    denied!(
-        Method::Get,
-        "/admin/orders/{id}/totals",
-        admin_order::order_totals(&mut tx, &ctx, OrderId::new(), None)
     );
     denied!(
         Method::Get,
@@ -2067,32 +2279,6 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
         Method::Get,
         "/admin/orders/{id}/transactions",
         admin_order::order_transactions(&mut tx, &ctx, OrderId::new())
-    );
-    denied!(
-        Method::Post,
-        "/admin/orders/{id}/transactions",
-        admin_order::record_transaction(
-            &mut tx,
-            &ctx,
-            OrderId::new(),
-            admin_order::RecordTransaction {
-                amount: try_(dec!(0)),
-                reference: "x".into(),
-                reference_id: uuid::Uuid::now_v7(),
-            }
-        )
-    );
-    denied!(
-        Method::Post,
-        "/admin/orders/{id}/payment-collection",
-        admin_order::attach_order_payment_collection(
-            &mut tx,
-            &ctx,
-            OrderId::new(),
-            admin_order::AttachPaymentCollection {
-                payment_collection_id: PaymentCollectionId::new()
-            }
-        )
     );
     denied!(
         Method::Get,
@@ -2143,11 +2329,6 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
     );
     denied!(
         Method::Get,
-        "/admin/orders/{id}/shipping-options",
-        admin_order::order_shipping_options(&mut tx, &ctx, OrderId::new(), "TR")
-    );
-    denied!(
-        Method::Get,
         "/admin/draft-orders",
         admin_order::list_draft_orders(&mut tx, &ctx, admin_order::ListOrders::default())
     );
@@ -2172,38 +2353,6 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
     );
     denied!(
         Method::Get,
-        "/admin/draft-orders/{id}",
-        admin_order::get_draft_order(&mut tx, &ctx, OrderId::new())
-    );
-    denied!(
-        Method::Delete,
-        "/admin/draft-orders/{id}",
-        admin_order::cancel_draft_order(&mut tx, &ctx, OrderId::new())
-    );
-    denied!(
-        Method::Post,
-        "/admin/draft-orders/{id}/convert-to-order",
-        admin_order::convert_draft_order(
-            &mut tx,
-            &ctx,
-            OrderId::new(),
-            admin_order::ConvertDraft {
-                payment_collection_id: PaymentCollectionId::new()
-            }
-        )
-    );
-    denied!(
-        Method::Post,
-        "/admin/draft-orders/{id}/edit",
-        admin_order::open_draft_edit(
-            &mut tx,
-            &ctx,
-            OrderId::new(),
-            admin_order::OpenEdit { description: None }
-        )
-    );
-    denied!(
-        Method::Get,
         "/admin/orders/{id}/order-edits",
         admin_order::list_order_edits(
             &mut tx,
@@ -2213,64 +2362,9 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
         )
     );
     denied!(
-        Method::Post,
-        "/admin/orders/{id}/order-edits",
-        admin_order::open_order_edit(
-            &mut tx,
-            &ctx,
-            OrderId::new(),
-            admin_order::OpenEdit { description: None }
-        )
-    );
-    denied!(
         Method::Get,
         "/admin/order-edits/{id}",
         admin_order::get_order_edit(&mut tx, &ctx, OrderChangeId::new())
-    );
-    denied!(
-        Method::Delete,
-        "/admin/order-edits/{id}",
-        admin_order::decline_order_edit(
-            &mut tx,
-            &ctx,
-            OrderChangeId::new(),
-            admin_order::DeclineChange { reason: None }
-        )
-    );
-    denied!(
-        Method::Post,
-        "/admin/order-edits/{id}/items",
-        admin_order::add_order_edit_item(
-            &mut tx,
-            &ctx,
-            OrderChangeId::new(),
-            admin_order::AddItemAction {
-                action: admin_order::ItemAction::Add,
-                order_line_item_id: LineItemId::new(),
-                quantity: 1,
-                unit_price: None,
-                internal_note: None,
-            }
-        )
-    );
-    denied!(
-        Method::Post,
-        "/admin/order-edits/{id}/shipping-method",
-        admin_order::add_order_edit_shipping(
-            &mut tx,
-            &ctx,
-            OrderChangeId::new(),
-            admin_order::AddShippingAction {
-                name: "x".into(),
-                amount: try_(dec!(0)),
-                internal_note: None
-            }
-        )
-    );
-    denied!(
-        Method::Post,
-        "/admin/order-edits/{id}/confirm",
-        admin_order::confirm_order_edit(&mut tx, &ctx, OrderChangeId::new())
     );
     denied!(
         Method::Get,
@@ -2283,42 +2377,9 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
         admin_order::list_returns(&mut tx, &ctx, admin_order::Listing::default())
     );
     denied!(
-        Method::Post,
-        "/admin/returns",
-        admin_order::request_return(
-            &mut tx,
-            &ctx,
-            admin_order::RequestReturn {
-                order_id: OrderId::new(),
-                location_id: None,
-                lines: vec![]
-            }
-        )
-    );
-    denied!(
         Method::Get,
         "/admin/returns/{id}/items",
         admin_order::return_items(&mut tx, &ctx, ReturnId::new())
-    );
-    denied!(
-        Method::Post,
-        "/admin/returns/{id}/receive",
-        admin_order::receive_return(
-            &mut tx,
-            &ctx,
-            ReturnId::new(),
-            admin_order::ReceiveReturn { lines: vec![] }
-        )
-    );
-    denied!(
-        Method::Post,
-        "/admin/returns/{id}/dismiss-items",
-        admin_order::dismiss_return_items(
-            &mut tx,
-            &ctx,
-            ReturnId::new(),
-            admin_order::ReceiveReturn { lines: vec![] }
-        )
     );
     denied!(
         Method::Get,
@@ -2326,42 +2387,9 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
         admin_order::list_exchanges(&mut tx, &ctx, admin_order::Listing::default())
     );
     denied!(
-        Method::Post,
-        "/admin/exchanges",
-        admin_order::request_exchange(
-            &mut tx,
-            &ctx,
-            admin_order::RequestExchange {
-                order_id: OrderId::new(),
-                returning: vec![],
-                outbound: vec![],
-                location_id: None,
-                allow_backorder: false,
-                difference_due: None,
-            }
-        )
-    );
-    denied!(
         Method::Get,
         "/admin/claims",
         admin_order::list_claims(&mut tx, &ctx, admin_order::Listing::default())
-    );
-    denied!(
-        Method::Post,
-        "/admin/claims",
-        admin_order::request_claim(
-            &mut tx,
-            &ctx,
-            admin_order::RequestClaim {
-                order_id: OrderId::new(),
-                claim_type: admin_order::ClaimKind::Refund,
-                faulty: vec![],
-                replacements: vec![],
-                collect: false,
-                location_id: None,
-                refund_amount: None,
-            }
-        )
     );
     denied!(
         Method::Get,
@@ -2985,24 +3013,6 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
         store::list_my_orders(&mut tx, &ctx, store::ListPage::default())
     );
     denied!(
-        Method::Get,
-        "/store/orders/{id}",
-        store::get_my_order(&mut tx, &ctx, OrderId::new())
-    );
-    denied!(
-        Method::Post,
-        "/store/orders/{id}/transfer/request",
-        store::request_transfer(
-            &mut tx,
-            &ctx,
-            OrderId::new(),
-            store::RequestTransfer {
-                to_email: "friend@example.com".to_string(),
-                expires_at: chrono::Utc::now(),
-            }
-        )
-    );
-    denied!(
         Method::Post,
         "/store/orders/{id}/transfer/accept",
         store::accept_transfer(
@@ -3011,35 +3021,6 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
             OrderId::new(),
             store::ClaimTransfer {
                 token: "tok".to_string()
-            }
-        )
-    );
-    denied!(
-        Method::Post,
-        "/store/orders/{id}/transfer/decline",
-        store::decline_transfer(
-            &mut tx,
-            &ctx,
-            OrderId::new(),
-            store::ClaimTransfer {
-                token: "tok".to_string()
-            }
-        )
-    );
-    denied!(
-        Method::Post,
-        "/store/orders/{id}/transfer/cancel",
-        store::cancel_transfer(&mut tx, &ctx, OrderId::new())
-    );
-    denied!(
-        Method::Post,
-        "/store/returns",
-        store::request_return(
-            &mut tx,
-            &ctx,
-            store::RequestReturn {
-                order_id: OrderId::new(),
-                lines: vec![]
             }
         )
     );
@@ -3340,75 +3321,8 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
     );
     denied!(
         Method::Get,
-        "/admin/subscriptions/{id}",
-        subscription::get_subscription(&mut tx, &ctx, SubscriptionId::new())
-    );
-    denied!(
-        Method::Get,
-        "/admin/subscriptions/{id}/events",
-        subscription::list_events(
-            &mut tx,
-            &ctx,
-            SubscriptionId::new(),
-            subscription::List::default()
-        )
-    );
-    denied!(
-        Method::Post,
-        "/admin/subscriptions/{id}/cancel",
-        subscription::cancel_subscription(
-            &mut tx,
-            &ctx,
-            SubscriptionId::new(),
-            subscription::Cancel::default()
-        )
-    );
-    denied!(
-        Method::Post,
-        "/admin/subscriptions/{id}/pause",
-        subscription::pause_subscription(
-            &mut tx,
-            &ctx,
-            SubscriptionId::new(),
-            subscription::Pause::default()
-        )
-    );
-    denied!(
-        Method::Post,
-        "/admin/subscriptions/{id}/resume",
-        subscription::resume_subscription(&mut tx, &ctx, SubscriptionId::new())
-    );
-    denied!(
-        Method::Post,
-        "/admin/subscriptions/{id}/skip",
-        subscription::skip_subscription(&mut tx, &ctx, SubscriptionId::new())
-    );
-    denied!(
-        Method::Post,
-        "/admin/subscriptions/{id}/swap",
-        subscription::swap_subscription(
-            &mut tx,
-            &ctx,
-            SubscriptionId::new(),
-            subscription::Swap { lines: vec![] }
-        )
-    );
-    denied!(
-        Method::Get,
         "/admin/subscriptions/due-deliveries",
         subscription::list_due_deliveries(&mut tx, &ctx, subscription::ListDue::default())
-    );
-    denied!(
-        Method::Post,
-        "/admin/subscriptions/{id}/deliver",
-        subscription::deliver_subscription(
-            &mut tx,
-            &ctx,
-            SubscriptionId::new(),
-            subscription::Deliver {
-                location_id: StockLocationId::new()
-            }
-        )
     );
     denied!(
         Method::Get,
@@ -3454,7 +3368,7 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
             &mut tx,
             &ctx,
             agreement::PublishAgreement {
-                kind: "terms".into(),
+                kind: "other".into(),
                 locale: "en".into(),
                 body: "text".into(),
                 effective_from: None,
@@ -3474,102 +3388,13 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
     );
     denied!(
         Method::Get,
-        "/admin/orders/{id}/agreements",
-        agreement::order_agreements(&mut tx, &ctx, OrderId::new())
-    );
-    denied!(
-        Method::Get,
         "/admin/orders/{id}/agreements/{kind}",
-        agreement::accepted_text(&mut tx, &ctx, OrderId::new(), "terms")
-    );
-    denied!(
-        Method::Get,
-        "/admin/orders/{id}/withdrawal",
-        agreement::withdrawal_windows(&mut tx, &ctx, OrderId::new())
-    );
-    denied!(
-        Method::Post,
-        "/admin/returns/{id}/withdrawal",
-        agreement::notify_withdrawal(&mut tx, &ctx, ReturnId::new())
+        agreement::accepted_text(&mut tx, &ctx, OrderId::new(), "other")
     );
     denied!(
         Method::Get,
         "/admin/orders/{id}/invoices",
         agreement::list_invoices(&mut tx, &ctx, OrderId::new())
-    );
-    denied!(
-        Method::Post,
-        "/admin/orders/{id}/invoices",
-        agreement::record_invoice(
-            &mut tx,
-            &ctx,
-            OrderId::new(),
-            agreement::RecordInvoice {
-                number: "INV-1".into(),
-                external_id: None,
-                provider: None,
-                status: "issued".into(),
-                total: Decimal::ZERO,
-                currency_code: "TRY".into(),
-                issued_at: None,
-                document_url: None,
-                metadata: None,
-            }
-        )
-    );
-    denied!(
-        Method::Post,
-        "/admin/orders/{id}/invoices/{invoice_id}/credit-note",
-        agreement::record_credit_note(
-            &mut tx,
-            &ctx,
-            OrderId::new(),
-            OrderInvoiceId::new(),
-            agreement::RecordInvoice {
-                number: "CN-1".into(),
-                external_id: None,
-                provider: None,
-                status: "issued".into(),
-                total: Decimal::ZERO,
-                currency_code: "TRY".into(),
-                issued_at: None,
-                document_url: None,
-                metadata: None,
-            }
-        )
-    );
-    denied!(
-        Method::Patch,
-        "/admin/invoices/{id}",
-        agreement::set_invoice_status(
-            &mut tx,
-            &ctx,
-            OrderInvoiceId::new(),
-            agreement::SetInvoiceStatus {
-                status: "issued".into()
-            }
-        )
-    );
-    denied!(
-        Method::Post,
-        "/store/orders/{id}/agreements",
-        agreement::accept_agreement(
-            &mut tx,
-            &ctx,
-            OrderId::new(),
-            agreement::AcceptAgreement {
-                agreement_version_id: AgreementVersionId::new(),
-                accepted_at: None,
-                ip: None,
-                user_agent: None,
-                metadata: None,
-            }
-        )
-    );
-    denied!(
-        Method::Get,
-        "/store/orders/{id}/agreements/{kind}",
-        agreement::my_accepted_text(&mut tx, &ctx, OrderId::new(), "terms")
     );
 
     // --------------------------------------------------------- digital.rs --
@@ -3733,23 +3558,6 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
                 currency_code: "TRY".into(),
                 email: None,
                 metadata: None,
-            }
-        )
-    );
-    denied!(
-        Method::Get,
-        "/admin/order-baskets/{id}",
-        order_basket::get_basket(&mut tx, &ctx, OrderBasketId::new())
-    );
-    denied!(
-        Method::Post,
-        "/admin/order-baskets/{id}/payment-collection",
-        order_basket::attach_payment_collection(
-            &mut tx,
-            &ctx,
-            OrderBasketId::new(),
-            order_basket::AttachPaymentCollection {
-                payment_collection_id: PaymentCollectionId::new()
             }
         )
     );

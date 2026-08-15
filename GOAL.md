@@ -195,16 +195,26 @@ writes an order, and the provider is not in your database.
       generated and snapshotted (`tests/openapi.rs`); client-type generation
       unverified this session
 - [x] every route declares its permission, and a matrix test proves it —
-      `tests/api_permissions.rs` calls every one of the 446 routes in
-      `routes()` against a host that denies everything and asserts `denied`;
-      42 are named in a reasoned, shrink-only `TOLERATED` list rather than
-      called (a `PaymentProvider`/`RecurringProvider` fixture this test does
-      not build for 2 of them; for the other 40, a real gap in
-      `admin_order.rs` — the row is loaded before permission is asked, so a
-      synthetic id answers `not_found` instead of `denied` — tracked as
-      productdevbook/tezgah#151, not fixed here). The matrix already found
-      and fixed one live bug this way: `GET /admin/workflows-executions/{id}`
-      answered a denying host with `not_found`.
+      `tests/api_permissions.rs` calls 356 of the 446 routes in `routes()`
+      against a host that denies everything and asserts `denied`; 90 are
+      named in a reasoned, shrink-only `TOLERATED` list rather than called.
+      2 need a `PaymentProvider`/`RecurringProvider` fixture this test does
+      not build. The other 88 are a real ordering gap this matrix surfaced:
+      a handler loads its row and only then asks permission, because the
+      permission it must ask depends on an owner (`customer_id`) the row
+      alone carries — so a synthetic id answers `not_found` instead of
+      `denied`. 40 are `admin_order.rs`'s own return/exchange/claim helpers
+      (productdevbook/tezgah#151); 48 are the crate's own core —
+      `order::get` and the rest of `order.rs`'s `OrderId` functions,
+      `order_basket::get`, `subscription::get` — the same shape one layer
+      deeper (productdevbook/tezgah#152). Existing rows stay protected
+      either way; only a nonexistent id gets far enough to distinguish
+      "does not exist" from "exists but not yours". Neither is fixed here:
+      the fix changes how a resource whose owner is discovered by loading
+      it gets judged, a `ports.rs`-level decision, not a one-line one. The
+      matrix already found and fixed one live bug this way before this
+      session: `GET /admin/workflows-executions/{id}` answered a denying
+      host with `not_found`.
 - [x] listing, filtering and sorting consistent across every collection
 
 ### 15. Proof
