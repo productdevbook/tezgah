@@ -194,10 +194,17 @@ writes an order, and the provider is not in your database.
 - [ ] OpenAPI generated from the code, snapshotted, client types generated —
       generated and snapshotted (`tests/openapi.rs`); client-type generation
       unverified this session
-- [ ] every route declares its permission, and a matrix test proves it —
-      `tests/api_permissions.rs` proves the structural rule over the whole
-      route table, but the functional "handler actually refuses" test covers
-      only ~35 hand-picked handlers of 443 routes, not a full matrix
+- [x] every route declares its permission, and a matrix test proves it —
+      `tests/api_permissions.rs` calls every one of the 446 routes in
+      `routes()` against a host that denies everything and asserts `denied`;
+      42 are named in a reasoned, shrink-only `TOLERATED` list rather than
+      called (a `PaymentProvider`/`RecurringProvider` fixture this test does
+      not build for 2 of them; for the other 40, a real gap in
+      `admin_order.rs` — the row is loaded before permission is asked, so a
+      synthetic id answers `not_found` instead of `denied` — tracked as
+      productdevbook/tezgah#151, not fixed here). The matrix already found
+      and fixed one live bug this way: `GET /admin/workflows-executions/{id}`
+      answered a denying host with `not_found`.
 - [x] listing, filtering and sorting consistent across every collection
 
 ### 15. Proof
