@@ -588,6 +588,15 @@ async fn every_owned_store_route_refuses_the_other_shoppers_resource() -> tezgah
         theirs: store::update_cart(&mut tx, &ctx_b, a.cart_id, UpdateCart::default())
     );
     owned!(
+        Method::Post,
+        "/store/carts/{id}/customer",
+        is_denied,
+        // A's cart is already hers; handing it to its own owner again is a
+        // no-op, and still runs `own_cart` first, which is what is on trial.
+        mine: store::set_cart_customer(&mut tx, &ctx_a, a.cart_id),
+        theirs: store::set_cart_customer(&mut tx, &ctx_b, a.cart_id)
+    );
+    owned!(
         Method::Get,
         "/store/carts/{id}/line-items",
         is_denied,
@@ -665,6 +674,28 @@ async fn every_owned_store_route_refuses_the_other_shoppers_resource() -> tezgah
         is_denied,
         mine: store::update_line_item(&mut tx, &ctx_a, a.cart_id, a_line, UpdateLineItem { quantity: 2 }),
         theirs: store::update_line_item(&mut tx, &ctx_b, a.cart_id, a_line, UpdateLineItem { quantity: 2 })
+    );
+    // A second line, just for the delete below: removing `a_line` here would
+    // leave later routes that still expect a priced line on this cart with
+    // none.
+    let doomed_line = store::add_line_item(
+        &mut tx,
+        &ctx_a,
+        a.cart_id,
+        AddLineItem {
+            variant_id: variant,
+            quantity: 1,
+            selling_plan_id: Some(plan.id),
+        },
+    )
+    .await?
+    .id;
+    owned!(
+        Method::Delete,
+        "/store/carts/{id}/line-items/{line_id}",
+        is_denied,
+        mine: store::remove_line_item(&mut tx, &ctx_a, a.cart_id, doomed_line),
+        theirs: store::remove_line_item(&mut tx, &ctx_b, a.cart_id, doomed_line)
     );
     owned!(
         Method::Post,
@@ -935,6 +966,13 @@ async fn every_owned_store_route_refuses_the_other_shoppers_resource() -> tezgah
     // still there for `theirs` to be refused against; "mine" is proven above.
 
     // -------------------------------------------------------- payment ----
+    owned!(
+        Method::Post,
+        "/store/payment-collections",
+        is_denied,
+        mine: store::create_payment_collection(&mut tx, &ctx_a, StartPayment { cart_id: a.cart_id }),
+        theirs: store::create_payment_collection(&mut tx, &ctx_b, StartPayment { cart_id: a.cart_id })
+    );
     owned!(
         Method::Post,
         "/store/payment-collections/{id}/payment-sessions",
