@@ -232,6 +232,7 @@ async fn a_shopper(
     email: &str,
     variant: tezgah::id::VariantId,
     plan: SellingPlanId,
+    content_id: uuid::Uuid,
 ) -> tezgah::Result<Shopper> {
     let id = a_customer(tx, shop, email).await?;
     let ctx = shop.ctx_as(Actor::Customer { id: id.as_uuid() }, host as &dyn Host);
@@ -326,23 +327,14 @@ async fn a_shopper(
     .fetch_one(&mut **tx)
     .await?;
 
-    // A digital content row and its grant, written directly: going through
-    // `digital::grant` would need a captured payment on this order, which is
-    // a whole checkout this file does not otherwise need. Nothing here tests
-    // the granting path itself — only that a granted entitlement's id is not
-    // another shopper's to reach.
-    let content_id = uuid::Uuid::now_v7();
-    sqlx::query(
-        "insert into digital_content
-             (id, scope, variant_id, content_key, name, auto_grant, rank)
-         values ($1, $2, $3, 'file.pdf', 'A download', true, 0)",
-    )
-    .bind(content_id)
-    .bind(shop.here.0)
-    .bind(variant.as_uuid())
-    .execute(&mut **tx)
-    .await?;
-
+    // The grant, written directly: going through `digital::grant` would need
+    // a captured payment on this order, which is a whole checkout this file
+    // does not otherwise need. Nothing here tests the granting path itself —
+    // only that a granted entitlement's id is not another shopper's to reach.
+    // The content itself is shared with the other shopper on purpose: the
+    // same download sold twice, each buyer with their own entitlement, so a
+    // refusal below proves ownership is asked about the entitlement rather
+    // than inferred from the content being one shopper's alone.
     let entitlement_id = uuid::Uuid::now_v7();
     sqlx::query(
         "insert into order_entitlement
@@ -500,8 +492,41 @@ async fn every_owned_store_route_refuses_the_other_shoppers_resource() -> tezgah
     )
     .await?;
 
-    let a = a_shopper(&mut tx, &shop, &host, "a@example.test", variant, plan.id).await?;
-    let b = a_shopper(&mut tx, &shop, &host, "b@example.test", variant, plan.id).await?;
+    // Sold to both shoppers below: the same title, two separate entitlements,
+    // so the matrix proves ownership is asked about the entitlement rather
+    // than about who happens to hold the only copy.
+    let content_id = uuid::Uuid::now_v7();
+    sqlx::query(
+        "insert into digital_content
+             (id, scope, variant_id, content_key, name, auto_grant, rank)
+         values ($1, $2, $3, 'file.pdf', 'A download', true, 0)",
+    )
+    .bind(content_id)
+    .bind(shop.here.0)
+    .bind(variant.as_uuid())
+    .execute(&mut *tx)
+    .await?;
+
+    let a = a_shopper(
+        &mut tx,
+        &shop,
+        &host,
+        "a@example.test",
+        variant,
+        plan.id,
+        content_id,
+    )
+    .await?;
+    let b = a_shopper(
+        &mut tx,
+        &shop,
+        &host,
+        "b@example.test",
+        variant,
+        plan.id,
+        content_id,
+    )
+    .await?;
 
     let ctx_a = shop.ctx_as(Actor::Customer { id: a.id.as_uuid() }, &host as &dyn Host);
     let ctx_b = shop.ctx_as(Actor::Customer { id: b.id.as_uuid() }, &host as &dyn Host);
