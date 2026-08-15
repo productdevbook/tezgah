@@ -1801,6 +1801,10 @@ pub async fn list_workflow_run_steps(
         .collect())
 }
 
+/// Scope-wide, with no per-letter ownership check: a dead letter has no
+/// single owner to ask about, and this is an operator surface rather than one
+/// scoped to whoever's run failed. Gate it on the operator role at the host,
+/// the way every other `/admin` route already is.
 pub async fn list_workflow_dead_letters(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,

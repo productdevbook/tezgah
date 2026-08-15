@@ -278,6 +278,27 @@ pub async fn disable_gift_card(
     ))
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Adjustment {
+    pub amount: AmountIn,
+    pub reason: String,
+}
+
+/// A hand correction to a card's balance, in either direction: a chargeback
+/// reversed, a wrong amount put right. Distinct from [`issue_gift_card`] and
+/// from a redemption's refund, both of which already carry their own record —
+/// this is the one for a movement that has no other route to go through.
+pub async fn adjust_gift_card(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: GiftCardId,
+    body: Adjustment,
+) -> Result<GiftCardView> {
+    credit::adjust_gift_card(tx, ctx, id, body.amount.money()?, &body.reason).await?;
+    Ok(GiftCardView::from(credit::gift_card(tx, ctx, id).await?))
+}
+
 pub async fn gift_card_movements(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -342,6 +363,21 @@ pub async fn store_credit_movements(
     Ok(map(
         credit::store_credit_ledger(tx, ctx, id, query.paging()?).await?,
         CreditMovementView::from,
+    ))
+}
+
+/// The store-credit half of [`adjust_gift_card`]. `id` names the balance
+/// rather than the customer: a customer can carry one per currency, and only
+/// one of them is being corrected.
+pub async fn adjust_store_credit_balance(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: StoreCreditId,
+    body: Adjustment,
+) -> Result<StoreCreditView> {
+    credit::adjust_store_credit(tx, ctx, id, body.amount.money()?, &body.reason).await?;
+    Ok(StoreCreditView::from(
+        credit::store_credit_by_id(tx, ctx, id).await?,
     ))
 }
 
@@ -480,6 +516,14 @@ pub(super) static ROUTES: &[Route] = &[
     },
     Route {
         surface: Surface::Admin,
+        method: Method::Post,
+        path: "/admin/gift-cards/{id}/adjust",
+        action: Action::Settle,
+        domain: "credit",
+        summary: "Correct a card's balance by hand, with a reason",
+    },
+    Route {
+        surface: Surface::Admin,
         method: Method::Get,
         path: "/admin/customers/{id}/store-credit",
         action: Action::View,
@@ -501,6 +545,14 @@ pub(super) static ROUTES: &[Route] = &[
         action: Action::View,
         domain: "credit",
         summary: "List what moved on a balance",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Post,
+        path: "/admin/store-credits/{id}/adjust",
+        action: Action::Settle,
+        domain: "credit",
+        summary: "Correct a customer's balance by hand, with a reason",
     },
     Route {
         surface: Surface::Store,

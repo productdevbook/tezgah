@@ -775,6 +775,98 @@ pub async fn restore_gift_card(
     Ok(())
 }
 
+/// A hand correction to a card's balance — a chargeback reversed, a mistake
+/// accounting found — recorded under its own kind so it is never mistaken for
+/// a sale, a redemption or a refund.
+///
+/// One statement, the same way [`redeem_gift_card`] is: the floor is checked
+/// in the same `update` that moves the balance, so two corrections landing on
+/// the same card at once cannot together push it negative, whichever loses the
+/// race is told so rather than the balance going wrong quietly.
+pub async fn adjust_gift_card(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: GiftCardId,
+    amount: Money,
+    reason: &str,
+) -> Result<GiftCardTransaction> {
+    let _: Permit = ctx.permit(
+        Action::Settle,
+        Resource::Credit {
+            id: Some(id.as_uuid()),
+            customer: None,
+        },
+    )?;
+
+    if amount.amount == Decimal::ZERO {
+        return Err(Error::invalid("an adjustment moves something"));
+    }
+    let reason = reason.trim();
+    if reason.is_empty() {
+        return Err(Error::invalid("a manual adjustment carries a reason"));
+    }
+
+    let adjusted = sqlx::query_as::<_, GiftCardTransaction>(&format!(
+        "with moved as (
+             update gift_card
+                set balance = balance + $3
+              where scope = $1
+                and id = $2
+                and currency_code = $4
+                and balance + $3 >= 0
+             returning id
+         )
+         insert into gift_card_transaction
+             (id, scope, gift_card_id, kind, amount, currency_code, reason, created_by)
+         select $5, $1, moved.id, 'adjust', $3, $4, $6, $7 from moved
+         returning {CARD_LEDGER_COLUMNS}"
+    ))
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .bind(amount.amount)
+    .bind(amount.currency.as_str())
+    .bind(GiftCardTransactionId::new().as_uuid())
+    .bind(reason)
+    .bind(who(&ctx.actor))
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| {
+        Error::conflict(
+            "that card is not in that currency, or the adjustment would take its balance below zero",
+        )
+    })?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Settle,
+            entity: "gift_card",
+            entity_id: id.as_uuid(),
+            summary: serde_json::json!({
+                "adjusted": amount.amount.to_string(),
+                "reason": reason,
+            }),
+        },
+    )
+    .await?;
+
+    ctx.emit(
+        tx,
+        Event {
+            name: "gift_card.adjusted",
+            entity_id: id.as_uuid(),
+            payload: serde_json::json!({
+                "amount": amount.amount.to_string(),
+                "currency": amount.currency.as_str(),
+            }),
+        },
+    )
+    .await?;
+
+    Ok(adjusted)
+}
+
 // ---------------------------------------------------------------------------
 // Store credit
 // ---------------------------------------------------------------------------
@@ -1110,6 +1202,79 @@ pub async fn restore_store_credit(
     settle(tx, ctx, what).await?;
 
     Ok(())
+}
+
+/// The same correction as [`adjust_gift_card`], for a customer's balance
+/// rather than a card.
+pub async fn adjust_store_credit(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: StoreCreditId,
+    amount: Money,
+    reason: &str,
+) -> Result<StoreCreditTransaction> {
+    let _: Permit = ctx.permit(
+        Action::Settle,
+        Resource::Credit {
+            id: Some(id.as_uuid()),
+            customer: None,
+        },
+    )?;
+
+    if amount.amount == Decimal::ZERO {
+        return Err(Error::invalid("an adjustment moves something"));
+    }
+    let reason = reason.trim();
+    if reason.is_empty() {
+        return Err(Error::invalid("a manual adjustment carries a reason"));
+    }
+
+    let adjusted = sqlx::query_as::<_, StoreCreditTransaction>(&format!(
+        "with moved as (
+             update store_credit
+                set balance = balance + $3
+              where scope = $1
+                and id = $2
+                and currency_code = $4
+                and balance + $3 >= 0
+             returning id
+         )
+         insert into store_credit_transaction
+             (id, scope, store_credit_id, kind, amount, currency_code, reason, created_by)
+         select $5, $1, moved.id, 'adjust', $3, $4, $6, $7 from moved
+         returning {CREDIT_LEDGER_COLUMNS}"
+    ))
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .bind(amount.amount)
+    .bind(amount.currency.as_str())
+    .bind(StoreCreditTransactionId::new().as_uuid())
+    .bind(reason)
+    .bind(who(&ctx.actor))
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| {
+        Error::conflict(
+            "that balance is not in that currency, or the adjustment would take it below zero",
+        )
+    })?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Settle,
+            entity: "store_credit",
+            entity_id: id.as_uuid(),
+            summary: serde_json::json!({
+                "adjusted": amount.amount.to_string(),
+                "reason": reason,
+            }),
+        },
+    )
+    .await?;
+
+    Ok(adjusted)
 }
 
 // ---------------------------------------------------------------------------

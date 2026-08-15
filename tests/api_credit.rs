@@ -325,6 +325,66 @@ async fn store_credit_granted_on_a_route_is_readable_and_spendable() {
 }
 
 #[tokio::test]
+async fn a_manual_adjustment_route_moves_a_cards_balance_and_writes_a_reason() {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+
+    let issued = route::issue_gift_card(
+        &mut tx,
+        &ctx,
+        route::IssueGiftCard {
+            balance: lira(dec!(15)),
+            customer_id: None,
+            issued_order_id: None,
+            expires_at: None,
+            reason: None,
+        },
+    )
+    .await
+    .expect("a gift card");
+
+    let corrected = route::adjust_gift_card(
+        &mut tx,
+        &ctx,
+        issued.card.id,
+        route::Adjustment {
+            amount: lira(dec!(5)),
+            reason: "goodwill".into(),
+        },
+    )
+    .await
+    .expect("a correction");
+    assert_eq!(corrected.balance, dec!(20));
+
+    let refused = route::adjust_gift_card(
+        &mut tx,
+        &ctx,
+        issued.card.id,
+        route::Adjustment {
+            amount: lira(dec!(-1000)),
+            reason: "too much".into(),
+        },
+    )
+    .await
+    .expect_err("that would take the card negative");
+    assert!(refused.is_conflict());
+
+    let moved = route::gift_card_movements(&mut tx, &ctx, issued.card.id, route::List::default())
+        .await
+        .expect("the ledger");
+    let adjustment = moved
+        .items
+        .iter()
+        .find(|row| row.kind == "adjust")
+        .expect("the correction is on the ledger");
+    assert_eq!(adjustment.reason.as_deref(), Some("goodwill"));
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+#[tokio::test]
 async fn another_customers_cart_is_not_mine_to_pay_from() {
     let shop = Shop::open().await;
     let here = common::a_cart_ready(&shop, 10, 2).await;

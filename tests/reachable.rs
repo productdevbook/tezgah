@@ -332,7 +332,7 @@ const TOLERATED_TABLES: [(&str, &str); 5] = [
 /// SQL the scanner does not read, written from a caller's string the
 /// scanner cannot follow, or genuinely not offered yet, in which case the
 /// reason names the issue.
-const TOLERATED_VALUES: [(&str, &str); 19] = [
+const TOLERATED_VALUES: [(&str, &str); 17] = [
     (
         "workflow_step.state = 'skipped'",
         "a step a compensation walked past; the runner has no branch that \
@@ -409,16 +409,6 @@ const TOLERATED_VALUES: [(&str, &str); 19] = [
     (
         "tax_exemption.kind = 'export'",
         "same column, same reason: a caller's string, not a literal in src/",
-    ),
-    (
-        "gift_card_transaction.kind = 'adjust'",
-        "a manual correction to a gift card's balance, which nothing offers \
-         yet, see #128",
-    ),
-    (
-        "store_credit_transaction.kind = 'adjust'",
-        "a manual correction to a credit balance, which nothing offers yet, \
-         see #128",
     ),
 ];
 

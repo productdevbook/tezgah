@@ -579,6 +579,180 @@ async fn a_balance_cannot_be_spent_past_nothing() {
 }
 
 #[tokio::test]
+async fn a_manual_adjustment_moves_a_cards_balance_either_way() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+
+    let mut tx = shop.begin().await;
+    let (card, _) = a_card(&mut tx, &ctx, dec!(50)).await;
+
+    let up = credit::adjust_gift_card(&mut tx, &ctx, card, money(dec!(20)), "goodwill top-up")
+        .await
+        .expect("a correction that adds");
+    assert_eq!(up.kind, "adjust");
+    assert_eq!(up.amount, dec!(20));
+    assert_eq!(up.reason.as_deref(), Some("goodwill top-up"));
+
+    let down = credit::adjust_gift_card(
+        &mut tx,
+        &ctx,
+        card,
+        money(dec!(-30)),
+        "chargeback reversed by hand",
+    )
+    .await
+    .expect("a correction that removes");
+    assert_eq!(down.amount, dec!(-30));
+
+    let after = credit::gift_card(&mut tx, &ctx, card)
+        .await
+        .expect("the card");
+    assert_eq!(after.balance, dec!(40), "50 + 20 - 30");
+    assert_eq!(after.balance, ledger_sum(&mut tx, shop.here.0, card).await);
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+#[tokio::test]
+async fn a_manual_adjustment_that_would_go_negative_is_refused() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+
+    let mut tx = shop.begin().await;
+    let (card, _) = a_card(&mut tx, &ctx, dec!(10)).await;
+
+    let refused = credit::adjust_gift_card(&mut tx, &ctx, card, money(dec!(-11)), "typo fix")
+        .await
+        .expect_err("that would take the balance below zero");
+    assert!(refused.is_conflict());
+
+    let still = credit::gift_card(&mut tx, &ctx, card)
+        .await
+        .expect("the card");
+    assert_eq!(
+        still.balance,
+        dec!(10),
+        "the refused correction moved nothing"
+    );
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+#[tokio::test]
+async fn a_manual_adjustment_carries_a_reason() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+
+    let mut tx = shop.begin().await;
+    let (card, _) = a_card(&mut tx, &ctx, dec!(10)).await;
+
+    let refused = credit::adjust_gift_card(&mut tx, &ctx, card, money(dec!(5)), "   ")
+        .await
+        .expect_err("a blank reason is no reason");
+    assert_eq!(refused.code(), "invalid");
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+/// Two corrections landing on one card at the same moment: the read-then-write
+/// race [`two_people_spending_the_last_of_one_card_and_one_of_them_getting_it`]
+/// tests for redemption, tested the same way for a hand correction.
+#[tokio::test]
+async fn two_adjustments_on_one_card_at_once_leave_it_consistent() {
+    let shop = Shop::open().await;
+
+    let mut setup = shop.begin().await;
+    let (card, _) = a_card(&mut setup, &shop.ctx(), dec!(50)).await;
+    setup.commit().await.expect("to keep the card");
+
+    let correct = || async {
+        let mut tx = shop.begin().await;
+        let moved =
+            credit::adjust_gift_card(&mut tx, &shop.ctx(), card, money(dec!(-50)), "correction")
+                .await;
+
+        match moved {
+            Ok(_) => {
+                tx.commit().await.expect("to keep the correction");
+                Ok(())
+            }
+            Err(err) => {
+                tx.rollback().await.expect("to give it back");
+                Err(err)
+            }
+        }
+    };
+
+    let (first, second) = tokio::join!(correct(), correct());
+
+    assert_eq!(
+        i32::from(first.is_ok()) + i32::from(second.is_ok()),
+        1,
+        "fifty lira left the card twice, or the second correction was not refused"
+    );
+
+    let mut after = shop.begin().await;
+    let left = credit::gift_card(&mut after, &shop.ctx(), card)
+        .await
+        .expect("the card");
+    let sum = ledger_sum(&mut after, shop.here.0, card).await;
+    after.commit().await.expect("to finish reading");
+
+    assert_eq!(left.balance, Decimal::ZERO);
+    assert_eq!(left.balance, sum);
+
+    shop.close().await;
+}
+
+#[tokio::test]
+async fn a_manual_adjustment_moves_a_customers_balance_either_way() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+
+    let mut tx = shop.begin().await;
+    let customer = common::a_customer(&mut tx, &ctx).await;
+    let account = credit::grant_store_credit(&mut tx, &ctx, customer, money(dec!(30)), None)
+        .await
+        .expect("a grant");
+
+    credit::adjust_store_credit(
+        &mut tx,
+        &ctx,
+        account.id,
+        money(dec!(15)),
+        "support gesture",
+    )
+    .await
+    .expect("a correction that adds");
+
+    let refused = credit::adjust_store_credit(
+        &mut tx,
+        &ctx,
+        account.id,
+        money(dec!(-1000)),
+        "would go negative",
+    )
+    .await
+    .expect_err("that would take the balance below zero");
+    assert!(refused.is_conflict());
+
+    let after = credit::store_credit(&mut tx, &ctx, customer, lira())
+        .await
+        .expect("the balance");
+    assert_eq!(
+        after.balance,
+        dec!(45),
+        "30 + 15, the refused correction moved nothing"
+    );
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+#[tokio::test]
 async fn a_gift_card_line_cannot_carry_tax() {
     let shop = Shop::open().await;
     let ctx = shop.ctx();
