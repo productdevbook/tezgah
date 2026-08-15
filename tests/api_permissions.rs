@@ -770,6 +770,11 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
         )
     );
     denied!(
+        Method::Get,
+        "/admin/sales-channels/{id}",
+        admin_rest::get_sales_channel(&mut tx, &ctx, SalesChannelId::new())
+    );
+    denied!(
         Method::Patch,
         "/admin/sales-channels/{id}",
         admin_rest::update_sales_channel(
@@ -799,6 +804,11 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
                 title: String::new()
             }
         )
+    );
+    denied!(
+        Method::Get,
+        "/admin/publishable-api-keys/{id}",
+        admin_rest::get_publishable_key(&mut tx, &ctx, PublishableKeyId::new())
     );
     denied!(
         Method::Post,
@@ -1976,6 +1986,19 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
                 amount: try_(dec!(0)),
                 reason_id: None,
                 note: None
+            }
+        )
+    );
+    denied!(
+        Method::Post,
+        "/admin/orders/{id}/refund-to-credit",
+        admin_order::refund_order_to_credit(
+            &mut tx,
+            &ctx,
+            OrderId::new(),
+            admin_order::RefundToCredit {
+                amount: try_(dec!(0)),
+                reason: None
             }
         )
     );

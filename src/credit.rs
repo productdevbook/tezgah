@@ -999,7 +999,19 @@ pub async fn refund_to_credit(
     .fetch_optional(&mut **tx)
     .await?;
 
-    let (customer_id, currency_code) = owner.ok_or_else(|| Error::not_found("order"))?;
+    // No row to name a customer with yet, so the ask below is on nobody's
+    // behalf — same rule as `order::read`: ask before answering, even when
+    // the answer is that there is nothing to answer about.
+    let Some((customer_id, currency_code)) = owner else {
+        let _: Permit = ctx.permit(
+            Action::Settle,
+            Resource::Credit {
+                id: None,
+                customer: None,
+            },
+        )?;
+        return Err(Error::not_found("order"));
+    };
     let customer_id = customer_id
         .map(CustomerId::from_uuid)
         .ok_or_else(|| Error::invalid("a guest order has nobody to hold the credit"))?;
