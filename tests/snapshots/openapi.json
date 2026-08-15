@@ -6602,6 +6602,45 @@
         "x-tezgah-permission": "settle"
       }
     },
+    "/admin/payout-balance/{currency_code}": {
+      "get": {
+        "operationId": "getAdminPayoutBalanceByCurrencyCode",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "currency_code",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "What this scope is owed right now, in one currency",
+        "tags": [
+          "payout"
+        ],
+        "x-tezgah-permission": "view"
+      }
+    },
     "/admin/payouts": {
       "get": {
         "operationId": "getAdminPayouts",

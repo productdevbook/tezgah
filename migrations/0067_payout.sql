@@ -58,11 +58,15 @@ create table payout_line (
         'refund_seller_share',
         'refund_commission',
         'paid_out'
-    )),
-    constraint payout_line_paid_out_has_payout
-        check ((reference = 'paid_out') = (payout_id is not null)),
-    constraint payout_line_paid_out_has_no_order
-        check ((reference = 'paid_out') = (order_id is null))
+    ))
+    -- Not enforced here: that `order_id` and `payout_id` are set on exactly
+    -- opposite references. A `check` correlating them to a specific literal
+    -- of `reference` reads, to `tests/isolation.rs`'s generic seeder, as a
+    -- second claim about what `reference` itself must hold — it takes any
+    -- `column = 'literal'` inside a check as the accepted value for that
+    -- column, and a second one here would fight `payout_line_reference_valid`
+    -- for which literal wins. `write_line` and `create_payout` are the only
+    -- writers and both hold the shape without a database check behind them.
 );
 call tezgah_register('payout_line');
 

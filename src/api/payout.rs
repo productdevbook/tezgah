@@ -207,6 +207,23 @@ pub async fn create_payout(
     .into())
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BalanceView {
+    pub amount: rust_decimal::Decimal,
+    pub currency_code: String,
+}
+
+/// What this scope is owed right now, in one currency — negative when a
+/// refund outran what was already paid out.
+pub async fn balance(tx: &mut Tx<'_>, ctx: &Ctx<'_>, currency_code: String) -> Result<BalanceView> {
+    let currency = Currency::parse(&currency_code)?;
+    let owed = payout::balance(tx, ctx, currency).await?;
+    Ok(BalanceView {
+        amount: owed.amount,
+        currency_code: owed.currency.as_str().to_string(),
+    })
+}
+
 pub(super) static ROUTES: &[Route] = &[
     Route {
         surface: Surface::Admin,
@@ -255,5 +272,13 @@ pub(super) static ROUTES: &[Route] = &[
         action: Action::Settle,
         domain: "payout",
         summary: "Record that the host has already paid this scope's balance",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Get,
+        path: "/admin/payout-balance/{currency_code}",
+        action: Action::View,
+        domain: "payout",
+        summary: "What this scope is owed right now, in one currency",
     },
 ];
