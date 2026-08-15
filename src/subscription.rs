@@ -754,8 +754,21 @@ pub async fn get(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: SubscriptionId) -> Result<S
     .bind(ctx.scope.0)
     .bind(id.as_uuid())
     .fetch_optional(&mut **tx)
-    .await?
-    .ok_or_else(|| Error::not_found("subscription"))?;
+    .await?;
+
+    let found = match found {
+        Some(found) => found,
+        None => {
+            let _: Permit = ctx.permit(
+                Action::View,
+                Resource::Subscription {
+                    id: Some(id.as_uuid()),
+                    customer: None,
+                },
+            )?;
+            return Err(Error::not_found("subscription"));
+        }
+    };
 
     let _: Permit = ctx.permit(
         Action::View,

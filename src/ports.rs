@@ -87,6 +87,12 @@ pub enum Resource {
     },
     Order {
         id: Uuid,
+        /// A third meaning here, past "unowned" and "owned by this
+        /// customer": when the id above did not resolve to a row, `None` is
+        /// "we do not know whose this is, and will not find out unless you
+        /// say yes" — the check that stands between a miss and `not_found`,
+        /// so a caller who could never have been told "not yours" is not
+        /// told "no such order" either.
         customer: Option<Uuid>,
     },
     Payment {

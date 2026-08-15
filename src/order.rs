@@ -999,7 +999,7 @@ async fn place(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewOrder, draft: bool) -> Re
 }
 
 pub async fn get(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: OrderId) -> Result<Order> {
-    let order = read(tx, ctx, id).await?;
+    let order = read(tx, ctx, Action::View, id).await?;
 
     let _: Permit = ctx.permit(
         Action::View,
@@ -1229,7 +1229,7 @@ async fn add_up(
     order_id: OrderId,
     version: i32,
 ) -> Result<CartTotals> {
-    let order = read(tx, ctx, order_id).await?;
+    let order = read(tx, ctx, Action::View, order_id).await?;
     let currency = order.currency()?;
     let exponent = crate::store::exponent(tx, ctx, currency).await?;
 
@@ -1316,7 +1316,7 @@ pub async fn set_status(
     order_id: OrderId,
     to: OrderStatus,
 ) -> Result<Order> {
-    let order = read(tx, ctx, order_id).await?;
+    let order = read(tx, ctx, Action::Write, order_id).await?;
 
     let _: Permit = ctx.permit(
         Action::Write,
@@ -1351,7 +1351,7 @@ pub async fn set_status(
 /// customer is owed a return rather than a cancellation. That is refused here
 /// rather than half-done.
 pub async fn cancel(tx: &mut Tx<'_>, ctx: &Ctx<'_>, order_id: OrderId) -> Result<Order> {
-    let order = read(tx, ctx, order_id).await?;
+    let order = read(tx, ctx, Action::Write, order_id).await?;
 
     let _: Permit = ctx.permit(
         Action::Write,
@@ -1585,7 +1585,7 @@ pub async fn send_draft_for_payment(
     order_id: OrderId,
     payment_collection_id: PaymentCollectionId,
 ) -> Result<Order> {
-    let order = read(tx, ctx, order_id).await?;
+    let order = read(tx, ctx, Action::Write, order_id).await?;
 
     let _: Permit = ctx.permit(
         Action::Write,
@@ -1619,7 +1619,7 @@ pub async fn attach_payment_collection(
     order_id: OrderId,
     payment_collection_id: PaymentCollectionId,
 ) -> Result<Order> {
-    let order = read(tx, ctx, order_id).await?;
+    let order = read(tx, ctx, Action::Write, order_id).await?;
 
     let _: Permit = ctx.permit(
         Action::Write,
@@ -1667,7 +1667,7 @@ pub async fn attach_payment_collection(
         .await?;
     }
 
-    read(tx, ctx, order_id).await
+    read(tx, ctx, Action::Write, order_id).await
 }
 
 // ---------------------------------------------------------------------------
@@ -1686,7 +1686,7 @@ pub async fn record_transaction(
     reference: &str,
     reference_id: Uuid,
 ) -> Result<OrderTransaction> {
-    let order = read(tx, ctx, order_id).await?;
+    let order = read(tx, ctx, Action::Settle, order_id).await?;
 
     let _: Permit = ctx.permit(
         Action::Settle,
@@ -1862,7 +1862,7 @@ pub async fn ledger(tx: &mut Tx<'_>, ctx: &Ctx<'_>, order_id: OrderId) -> Result
         },
     )?;
 
-    let order = read(tx, ctx, order_id).await?;
+    let order = read(tx, ctx, Action::View, order_id).await?;
     let currency = order.currency()?;
     let totals = add_up(tx, ctx, order_id, order.version).await?;
 
@@ -2121,7 +2121,7 @@ async fn write_invoice(
     replaces: Option<OrderInvoiceId>,
     new: NewInvoice,
 ) -> Result<OrderInvoice> {
-    let order = read(tx, ctx, order_id).await?;
+    let order = read(tx, ctx, Action::Write, order_id).await?;
 
     let _: Permit = ctx.permit(
         Action::Write,
@@ -2285,8 +2285,21 @@ pub async fn invoice(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: OrderInvoiceId) -> Resu
     .bind(ctx.scope.0)
     .bind(id.as_uuid())
     .fetch_optional(&mut **tx)
-    .await?
-    .ok_or_else(|| Error::not_found("order invoice"))?;
+    .await?;
+
+    let found = match found {
+        Some(found) => found,
+        None => {
+            let _: Permit = ctx.permit(
+                Action::View,
+                Resource::Order {
+                    id: id.as_uuid(),
+                    customer: None,
+                },
+            )?;
+            return Err(Error::not_found("order invoice"));
+        }
+    };
 
     let _: Permit = ctx.permit(
         Action::View,
@@ -2437,7 +2450,7 @@ pub async fn request_change(
     change_type: ChangeType,
     description: Option<String>,
 ) -> Result<OrderChange> {
-    let order = read(tx, ctx, order_id).await?;
+    let order = read(tx, ctx, Action::Write, order_id).await?;
 
     let _: Permit = ctx.permit(
         Action::Write,
@@ -2556,7 +2569,7 @@ pub async fn confirm_change(
     change_id: OrderChangeId,
 ) -> Result<Order> {
     let change = read_change(tx, ctx, change_id).await?;
-    let order = read(tx, ctx, change.order_id).await?;
+    let order = read(tx, ctx, Action::Write, change.order_id).await?;
 
     let _: Permit = ctx.permit(
         Action::Write,
@@ -2788,7 +2801,7 @@ pub async fn request_return(
     location_id: Option<StockLocationId>,
     lines: Vec<ReturnLine>,
 ) -> Result<Return> {
-    let order = read(tx, ctx, order_id).await?;
+    let order = read(tx, ctx, Action::Write, order_id).await?;
 
     let _: Permit = ctx.permit(
         Action::Write,
@@ -2854,7 +2867,7 @@ pub async fn receive_return(
     lines: Vec<ReceivedLine>,
 ) -> Result<Return> {
     let order_return = read_return(tx, ctx, return_id).await?;
-    let order = read(tx, ctx, order_return.order_id).await?;
+    let order = read(tx, ctx, Action::Write, order_return.order_id).await?;
 
     let _: Permit = ctx.permit(
         Action::Write,
@@ -2983,7 +2996,7 @@ pub async fn dismiss_return(
     lines: Vec<ReceivedLine>,
 ) -> Result<Return> {
     let order_return = read_return(tx, ctx, return_id).await?;
-    let order = read(tx, ctx, order_return.order_id).await?;
+    let order = read(tx, ctx, Action::Write, order_return.order_id).await?;
 
     let _: Permit = ctx.permit(
         Action::Write,
@@ -3442,7 +3455,7 @@ pub async fn accept_agreement(
     order_id: OrderId,
     acceptance: Acceptance,
 ) -> Result<OrderAgreement> {
-    let order = read(tx, ctx, order_id).await?;
+    let order = read(tx, ctx, Action::Write, order_id).await?;
 
     let _: Permit = ctx.permit(
         Action::Write,
@@ -3511,7 +3524,7 @@ pub async fn agreements(
     ctx: &Ctx<'_>,
     order_id: OrderId,
 ) -> Result<Vec<OrderAgreement>> {
-    let order = read(tx, ctx, order_id).await?;
+    let order = read(tx, ctx, Action::View, order_id).await?;
 
     let _: Permit = ctx.permit(
         Action::View,
@@ -3542,7 +3555,7 @@ pub async fn accepted_text(
     order_id: OrderId,
     kind: AgreementKind,
 ) -> Result<AgreementVersion> {
-    let order = read(tx, ctx, order_id).await?;
+    let order = read(tx, ctx, Action::View, order_id).await?;
 
     let _: Permit = ctx.permit(
         Action::View,
@@ -3599,7 +3612,7 @@ pub async fn withdrawal_deadline(
     ctx: &Ctx<'_>,
     order_id: OrderId,
 ) -> Result<Vec<LineWithdrawal>> {
-    let order = read(tx, ctx, order_id).await?;
+    let order = read(tx, ctx, Action::View, order_id).await?;
 
     let _: Permit = ctx.permit(
         Action::View,
@@ -3659,7 +3672,7 @@ pub async fn notify_withdrawal(
     return_id: ReturnId,
 ) -> Result<Return> {
     let order_return = read_return(tx, ctx, return_id).await?;
-    let order = read(tx, ctx, order_return.order_id).await?;
+    let order = read(tx, ctx, Action::Write, order_return.order_id).await?;
 
     let _: Permit = ctx.permit(
         Action::Write,
@@ -3798,7 +3811,7 @@ pub async fn request_exchange(
     order_id: OrderId,
     request: ExchangeRequest,
 ) -> Result<Exchange> {
-    let order = read(tx, ctx, order_id).await?;
+    let order = read(tx, ctx, Action::Write, order_id).await?;
 
     let _: Permit = ctx.permit(
         Action::Write,
@@ -3965,7 +3978,7 @@ pub async fn request_claim(
     order_id: OrderId,
     request: ClaimRequest,
 ) -> Result<Claim> {
-    let order = read(tx, ctx, order_id).await?;
+    let order = read(tx, ctx, Action::Write, order_id).await?;
 
     let _: Permit = ctx.permit(
         Action::Write,
@@ -4565,7 +4578,7 @@ pub async fn request_transfer(
     to_email: String,
     expires_at: chrono::DateTime<chrono::Utc>,
 ) -> Result<RequestedTransfer> {
-    let order = read(tx, ctx, order_id).await?;
+    let order = read(tx, ctx, Action::Write, order_id).await?;
 
     let _: Permit = ctx.permit(
         Action::Write,
@@ -4739,7 +4752,7 @@ pub async fn cancel_transfer(
     ctx: &Ctx<'_>,
     order_id: OrderId,
 ) -> Result<OrderTransfer> {
-    let order = read(tx, ctx, order_id).await?;
+    let order = read(tx, ctx, Action::Write, order_id).await?;
 
     let _: Permit = ctx.permit(
         Action::Write,
@@ -4858,37 +4871,88 @@ async fn fresh_token(tx: &mut Tx<'_>) -> Result<String> {
 // The small shared parts
 // ---------------------------------------------------------------------------
 
-async fn read(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: OrderId) -> Result<Order> {
-    sqlx::query_as::<_, Order>(&format!(
+/// Loads the row, or asks whether the caller may even be told it is missing.
+///
+/// A nonexistent id and one that exists and belongs to somebody else must not
+/// answer differently to a caller with no standing to ask either — order ids
+/// carry a uuidv7 timestamp, so a distinguishable `not_found` would let
+/// anybody probe when this shop's orders were created. So a miss asks
+/// `action` against the order before saying so; only a caller that could have
+/// been told "no, that is not yours" is told "there is no such order".
+async fn read(tx: &mut Tx<'_>, ctx: &Ctx<'_>, action: Action, id: OrderId) -> Result<Order> {
+    let order = sqlx::query_as::<_, Order>(&format!(
         r#"select {ORDER_COLUMNS} from "order" where scope = $1 and id = $2"#
     ))
     .bind(ctx.scope.0)
     .bind(id.as_uuid())
     .fetch_optional(&mut **tx)
-    .await?
-    .ok_or_else(|| Error::not_found("order"))
+    .await?;
+
+    match order {
+        Some(order) => Ok(order),
+        None => {
+            let _: Permit = ctx.permit(
+                action,
+                Resource::Order {
+                    id: id.as_uuid(),
+                    customer: None,
+                },
+            )?;
+            Err(Error::not_found("order"))
+        }
+    }
 }
 
+/// Same shape as [`read`], for a change reached by its own id rather than the
+/// order's: every caller in this module asks `Action::Write` of the order it
+/// resolves to, so a miss asks that in the change's stead.
 async fn read_change(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: OrderChangeId) -> Result<OrderChange> {
-    sqlx::query_as::<_, OrderChange>(&format!(
+    let change = sqlx::query_as::<_, OrderChange>(&format!(
         "select {CHANGE_COLUMNS} from order_change where scope = $1 and id = $2"
     ))
     .bind(ctx.scope.0)
     .bind(id.as_uuid())
     .fetch_optional(&mut **tx)
-    .await?
-    .ok_or_else(|| Error::not_found("order change"))
+    .await?;
+
+    match change {
+        Some(change) => Ok(change),
+        None => {
+            let _: Permit = ctx.permit(
+                Action::Write,
+                Resource::Order {
+                    id: id.as_uuid(),
+                    customer: None,
+                },
+            )?;
+            Err(Error::not_found("order change"))
+        }
+    }
 }
 
+/// Same shape as [`read_change`].
 async fn read_return(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ReturnId) -> Result<Return> {
-    sqlx::query_as::<_, Return>(&format!(
+    let order_return = sqlx::query_as::<_, Return>(&format!(
         "select {RETURN_COLUMNS} from order_return where scope = $1 and id = $2"
     ))
     .bind(ctx.scope.0)
     .bind(id.as_uuid())
     .fetch_optional(&mut **tx)
-    .await?
-    .ok_or_else(|| Error::not_found("return"))
+    .await?;
+
+    match order_return {
+        Some(order_return) => Ok(order_return),
+        None => {
+            let _: Permit = ctx.permit(
+                Action::Write,
+                Resource::Order {
+                    id: id.as_uuid(),
+                    customer: None,
+                },
+            )?;
+            Err(Error::not_found("return"))
+        }
+    }
 }
 
 async fn open_return(

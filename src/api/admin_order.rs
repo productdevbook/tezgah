@@ -811,37 +811,70 @@ impl Parent {
     }
 }
 
+/// A miss on any of these asks `Action::View` of the order before saying so —
+/// the id in hand is the row's own, not the order's, since the row was never
+/// found; see [`Resource::Order`]'s doc on what `customer: None` means there.
 async fn read_return(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ReturnId) -> Result<order::Return> {
-    sqlx::query_as::<_, order::Return>(&format!(
+    let row = sqlx::query_as::<_, order::Return>(&format!(
         "select {RETURN_COLUMNS} from order_return where scope = $1 and id = $2"
     ))
     .bind(ctx.scope.0)
     .bind(id.as_uuid())
     .fetch_optional(&mut **tx)
-    .await?
-    .ok_or_else(|| Error::not_found("return"))
+    .await?;
+
+    match row {
+        Some(row) => Ok(row),
+        None => {
+            let _: Permit = ctx.permit(
+                Action::View,
+                order_resource(OrderId::from_uuid(id.as_uuid()), None),
+            )?;
+            Err(Error::not_found("return"))
+        }
+    }
 }
 
 async fn read_exchange(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ExchangeId) -> Result<order::Exchange> {
-    sqlx::query_as::<_, order::Exchange>(&format!(
+    let row = sqlx::query_as::<_, order::Exchange>(&format!(
         "select {EXCHANGE_COLUMNS} from order_exchange where scope = $1 and id = $2"
     ))
     .bind(ctx.scope.0)
     .bind(id.as_uuid())
     .fetch_optional(&mut **tx)
-    .await?
-    .ok_or_else(|| Error::not_found("exchange"))
+    .await?;
+
+    match row {
+        Some(row) => Ok(row),
+        None => {
+            let _: Permit = ctx.permit(
+                Action::View,
+                order_resource(OrderId::from_uuid(id.as_uuid()), None),
+            )?;
+            Err(Error::not_found("exchange"))
+        }
+    }
 }
 
 async fn read_claim(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ClaimId) -> Result<order::Claim> {
-    sqlx::query_as::<_, order::Claim>(&format!(
+    let row = sqlx::query_as::<_, order::Claim>(&format!(
         "select {CLAIM_COLUMNS} from order_claim where scope = $1 and id = $2"
     ))
     .bind(ctx.scope.0)
     .bind(id.as_uuid())
     .fetch_optional(&mut **tx)
-    .await?
-    .ok_or_else(|| Error::not_found("claim"))
+    .await?;
+
+    match row {
+        Some(row) => Ok(row),
+        None => {
+            let _: Permit = ctx.permit(
+                Action::View,
+                order_resource(OrderId::from_uuid(id.as_uuid()), None),
+            )?;
+            Err(Error::not_found("claim"))
+        }
+    }
 }
 
 async fn read_change(
@@ -849,14 +882,24 @@ async fn read_change(
     ctx: &Ctx<'_>,
     id: OrderChangeId,
 ) -> Result<order::OrderChange> {
-    sqlx::query_as::<_, order::OrderChange>(&format!(
+    let row = sqlx::query_as::<_, order::OrderChange>(&format!(
         "select {CHANGE_COLUMNS} from order_change where scope = $1 and id = $2"
     ))
     .bind(ctx.scope.0)
     .bind(id.as_uuid())
     .fetch_optional(&mut **tx)
-    .await?
-    .ok_or_else(|| Error::not_found("order change"))
+    .await?;
+
+    match row {
+        Some(row) => Ok(row),
+        None => {
+            let _: Permit = ctx.permit(
+                Action::View,
+                order_resource(OrderId::from_uuid(id.as_uuid()), None),
+            )?;
+            Err(Error::not_found("order change"))
+        }
+    }
 }
 
 /// The one change still open against a return, an exchange or a claim.
@@ -869,7 +912,7 @@ async fn open_change(
     parent: Parent,
     id: Uuid,
 ) -> Result<order::OrderChange> {
-    sqlx::query_as::<_, order::OrderChange>(&format!(
+    let change = sqlx::query_as::<_, order::OrderChange>(&format!(
         "select {CHANGE_COLUMNS} from order_change
          where scope = $1 and {} = $2 and status in ('pending', 'requested')
          order by created_at desc
@@ -879,14 +922,25 @@ async fn open_change(
     .bind(ctx.scope.0)
     .bind(id)
     .fetch_optional(&mut **tx)
-    .await?
-    .ok_or_else(|| Error::conflict(format!("that {} has no change open on it", parent.entity())))
+    .await?;
+
+    match change {
+        Some(change) => Ok(change),
+        None => {
+            let _: Permit =
+                ctx.permit(Action::View, order_resource(OrderId::from_uuid(id), None))?;
+            Err(Error::conflict(format!(
+                "that {} has no change open on it",
+                parent.entity()
+            )))
+        }
+    }
 }
 
 /// The change open against an order that has no return, exchange or claim
 /// behind it: an edit.
 async fn open_edit(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: OrderId) -> Result<order::OrderChange> {
-    sqlx::query_as::<_, order::OrderChange>(&format!(
+    let change = sqlx::query_as::<_, order::OrderChange>(&format!(
         "select {CHANGE_COLUMNS} from order_change
          where scope = $1 and order_id = $2 and change_type = 'edit'
            and status in ('pending', 'requested')
@@ -896,8 +950,15 @@ async fn open_edit(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: OrderId) -> Result<order:
     .bind(ctx.scope.0)
     .bind(id.as_uuid())
     .fetch_optional(&mut **tx)
-    .await?
-    .ok_or_else(|| Error::conflict("that order has no edit open on it"))
+    .await?;
+
+    match change {
+        Some(change) => Ok(change),
+        None => {
+            let _: Permit = ctx.permit(Action::View, order_resource(id, None))?;
+            Err(Error::conflict("that order has no edit open on it"))
+        }
+    }
 }
 
 /// Takes an action off a change that has not been settled yet.

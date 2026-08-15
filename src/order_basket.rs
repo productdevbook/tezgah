@@ -134,8 +134,21 @@ pub async fn get(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: OrderBasketId) -> Result<Or
     .bind(ctx.scope.0)
     .bind(id.as_uuid())
     .fetch_optional(&mut **tx)
-    .await?
-    .ok_or_else(|| Error::not_found("order basket"))?;
+    .await?;
+
+    let basket = match basket {
+        Some(basket) => basket,
+        None => {
+            let _: Permit = ctx.permit(
+                Action::View,
+                Resource::Basket {
+                    id: Some(id.as_uuid()),
+                    customer: None,
+                },
+            )?;
+            return Err(Error::not_found("order basket"));
+        }
+    };
 
     let _: Permit = ctx.permit(
         Action::View,
