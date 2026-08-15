@@ -49,7 +49,7 @@ create index stock_transfer_lot_stock_transfer_id_idx
 create index stock_transfer_lot_inventory_lot_id_idx
     on stock_transfer_lot (scope, inventory_lot_id, id);
 
-call tezgah_fk('stock_transfer_lot', 'stock_transfer_id', 'stock_transfer', 'cascade', true);
+call tezgah_fk('stock_transfer_lot', 'stock_transfer_id', 'stock_transfer', 'restrict', true);
 call tezgah_fk('stock_transfer_lot', 'inventory_lot_id', 'inventory_lot', 'restrict', true);
 
 insert into tezgah_scoped_fk_table (name)
