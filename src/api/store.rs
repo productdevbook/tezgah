@@ -676,6 +676,21 @@ async fn published(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ProductId) -> Result<cata
     shown(catalogue::product(tx, ctx, id).await?)
 }
 
+/// A product this key's channel is allowed to see at all — published, and on
+/// one of the channels the token is linked to (or on none, per
+/// [`on_channel`]). Every read that takes a product id, a variant id or an
+/// option id directly must go through this rather than [`published`] alone,
+/// or a channel filter is only a listing filter.
+async fn visible(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    token: &str,
+    id: ProductId,
+) -> Result<catalogue::Product> {
+    let channels = visible_channels(tx, ctx, token).await?;
+    on_channel(tx, ctx, published(tx, ctx, id).await?, &channels).await
+}
+
 /// A product not linked to any of these channels — and linked to at least one
 /// channel that is not among them — is not here either. A product linked to
 /// no channel at all is unaffected, the same backward-compatibility rule
@@ -884,9 +899,10 @@ pub struct ListVariants {
 pub async fn list_variants(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
+    token: &str,
     query: ListVariants,
 ) -> Result<Page<VariantView>> {
-    published(tx, ctx, query.product_id).await?;
+    visible(tx, ctx, token, query.product_id).await?;
 
     let page = catalogue::variants(
         tx,
@@ -902,9 +918,14 @@ pub async fn list_variants(
     })
 }
 
-pub async fn get_variant(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: VariantId) -> Result<VariantView> {
+pub async fn get_variant(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    token: &str,
+    id: VariantId,
+) -> Result<VariantView> {
     let row = catalogue::variant(tx, ctx, id).await?;
-    published(tx, ctx, row.product_id).await?;
+    visible(tx, ctx, token, row.product_id).await?;
     Ok(VariantView::from(row))
 }
 
@@ -917,9 +938,10 @@ pub struct ListOptions {
 pub async fn list_product_options(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
+    token: &str,
     query: ListOptions,
 ) -> Result<Vec<OptionView>> {
-    published(tx, ctx, query.product_id).await?;
+    visible(tx, ctx, token, query.product_id).await?;
 
     let found = catalogue::option_matrix(tx, ctx, query.product_id).await?;
     Ok(found.into_iter().map(OptionView::from).collect())
@@ -928,10 +950,11 @@ pub async fn list_product_options(
 pub async fn get_product_option(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
+    token: &str,
     id: OptionId,
 ) -> Result<OptionView> {
     let found = catalogue::product_option(tx, ctx, id).await?;
-    published(tx, ctx, found.option.product_id).await?;
+    visible(tx, ctx, token, found.option.product_id).await?;
     Ok(OptionView::from(found))
 }
 

@@ -13,9 +13,10 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use common::Shop;
 use tezgah::api::store::{
-    self, CreateCart, ListPage, ListProducts, StartPayment, StartPaymentSession,
+    self, CreateCart, ListOptions, ListPage, ListProducts, ListVariants, StartPayment,
+    StartPaymentSession,
 };
-use tezgah::catalogue::{self, NewProduct};
+use tezgah::catalogue::{self, NewProduct, NewVariant};
 use tezgah::id::{CartId, CustomerId, PaymentCollectionId};
 use tezgah::page::MAX_LIMIT;
 use tezgah::payment;
@@ -23,7 +24,7 @@ use tezgah::ports::{
     Action, Actor, AuditEntry, AuditSink, Authorizer, Clock, Event, EventSink, Host, JobSpec, Jobs,
     Permit, Resource, Tx,
 };
-use tezgah::store as domain_store;
+use tezgah::store::{self as domain_store, NewSalesChannel};
 use uuid::Uuid;
 
 /// A fresh publishable key's token, linked to no channel — the state every
@@ -168,15 +169,17 @@ async fn a_variant_of_a_draft_is_not_here_either() -> tezgah::Result<()> {
     )
     .await?;
 
+    let token = any_token(&mut tx, &ctx).await;
+
     assert!(
-        store::get_variant(&mut tx, &ctx, variant.id)
+        store::get_variant(&mut tx, &ctx, &token, variant.id)
             .await
             .expect_err("its product is a draft")
             .is_not_found()
     );
 
     catalogue::publish_product(&mut tx, &ctx, made.id).await?;
-    let seen = store::get_variant(&mut tx, &ctx, variant.id).await?;
+    let seen = store::get_variant(&mut tx, &ctx, &token, variant.id).await?;
     assert_eq!(seen.id, variant.id);
 
     drop(tx);
@@ -559,7 +562,7 @@ async fn another_scope_sees_none_of_it() -> tezgah::Result<()> {
         .is_empty()
     );
     assert!(
-        store::get_variant(&mut elsewhere, &theirs, uuid_variant())
+        store::get_variant(&mut elsewhere, &theirs, &their_token, uuid_variant())
             .await
             .expect_err("nor is anything else")
             .is_not_found()
@@ -572,6 +575,189 @@ async fn another_scope_sees_none_of_it() -> tezgah::Result<()> {
 
 fn uuid_variant() -> tezgah::id::VariantId {
     tezgah::id::VariantId::from_uuid(Uuid::nil())
+}
+
+/// A published product on channel A, with one variant and one option, and a
+/// token bound only to channel B — the case #132 was filed over: a B2C key
+/// reading the trade catalogue one id at a time because only the listing was
+/// filtered.
+struct ChannelFixture {
+    a_only_product: catalogue::Product,
+    variant: catalogue::ProductVariant,
+    option: catalogue::ProductOption,
+    b_token: String,
+}
+
+async fn a_product_gated_to_one_channel(
+    tx: &mut Tx<'_>,
+    ctx: &tezgah::ports::Ctx<'_>,
+) -> tezgah::Result<ChannelFixture> {
+    let channel_a = domain_store::create_sales_channel(
+        tx,
+        ctx,
+        NewSalesChannel {
+            name: "Trade".into(),
+            description: None,
+            is_disabled: false,
+        },
+    )
+    .await?;
+    let channel_b = domain_store::create_sales_channel(
+        tx,
+        ctx,
+        NewSalesChannel {
+            name: "Retail".into(),
+            description: None,
+            is_disabled: false,
+        },
+    )
+    .await?;
+
+    let made = catalogue::create_product(tx, ctx, draft("wholesale-rug")).await?;
+    catalogue::publish_product(tx, ctx, made.id).await?;
+    catalogue::add_product_to_channel(tx, ctx, made.id, channel_a.id).await?;
+
+    let variant = catalogue::create_variant(
+        tx,
+        ctx,
+        made.id,
+        catalogue::NewVariant {
+            title: "One size".into(),
+            ..NewVariant::default()
+        },
+    )
+    .await?;
+
+    let option = catalogue::add_option(tx, ctx, made.id, "Colour", 0).await?;
+
+    let b_key = domain_store::create_publishable_key(tx, ctx, "b2c").await?;
+    domain_store::link_key_to_channel(tx, ctx, b_key.key.id, channel_b.id).await?;
+
+    Ok(ChannelFixture {
+        a_only_product: made,
+        variant,
+        option,
+        b_token: b_key.token,
+    })
+}
+
+#[tokio::test]
+async fn a_variant_of_another_channels_product_is_not_read_by_id() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let fixture = a_product_gated_to_one_channel(&mut tx, &ctx).await?;
+
+    let refused = store::get_variant(&mut tx, &ctx, &fixture.b_token, fixture.variant.id)
+        .await
+        .expect_err("channel B's token was never given this product");
+    assert!(refused.is_not_found());
+
+    drop(tx);
+    shop.close().await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn variants_of_another_channels_product_are_not_listed_by_product_id() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let fixture = a_product_gated_to_one_channel(&mut tx, &ctx).await?;
+
+    let refused = store::list_variants(
+        &mut tx,
+        &ctx,
+        &fixture.b_token,
+        ListVariants {
+            product_id: fixture.a_only_product.id,
+            after: None,
+            limit: None,
+        },
+    )
+    .await
+    .expect_err("the product itself is not on this token's channel");
+    assert!(refused.is_not_found());
+
+    drop(tx);
+    shop.close().await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn an_option_of_another_channels_product_is_not_read_by_id() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let fixture = a_product_gated_to_one_channel(&mut tx, &ctx).await?;
+
+    let refused = store::get_product_option(&mut tx, &ctx, &fixture.b_token, fixture.option.id)
+        .await
+        .expect_err("channel B's token was never given this product's options");
+    assert!(refused.is_not_found());
+
+    drop(tx);
+    shop.close().await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn options_of_another_channels_product_are_not_listed_by_product_id() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let fixture = a_product_gated_to_one_channel(&mut tx, &ctx).await?;
+
+    let refused = store::list_product_options(
+        &mut tx,
+        &ctx,
+        &fixture.b_token,
+        ListOptions {
+            product_id: fixture.a_only_product.id,
+        },
+    )
+    .await
+    .expect_err("the product itself is not on this token's channel");
+    assert!(refused.is_not_found());
+
+    drop(tx);
+    shop.close().await;
+    Ok(())
+}
+
+/// A product linked to no channel at all is the state every shop starts in
+/// (#109's backward-compatibility rule), and stays visible to every token,
+/// direct read included.
+#[tokio::test]
+async fn a_variant_of_an_unchanneled_product_is_read_by_any_token() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let made = catalogue::create_product(&mut tx, &ctx, draft("open-to-all")).await?;
+    catalogue::publish_product(&mut tx, &ctx, made.id).await?;
+    let variant = catalogue::create_variant(
+        &mut tx,
+        &ctx,
+        made.id,
+        catalogue::NewVariant {
+            title: "One size".into(),
+            ..NewVariant::default()
+        },
+    )
+    .await?;
+
+    let token = any_token(&mut tx, &ctx).await;
+    let seen = store::get_variant(&mut tx, &ctx, &token, variant.id).await?;
+    assert_eq!(seen.id, variant.id);
+
+    drop(tx);
+    shop.close().await;
+    Ok(())
 }
 
 #[test]
