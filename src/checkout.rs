@@ -781,7 +781,7 @@ impl Step for RedeemCredit {
             .await
             .map_err(Failure::Final)?;
         if intents.is_empty() {
-            return Ok(Outcome::new(carried.value()?, Value::Null));
+            return Ok(Outcome::skipped(carried.value()?));
         }
 
         let collection = payment::collection(tx, ctx, collection_id)
@@ -995,7 +995,7 @@ impl Step for AuthorizePayment {
         // captured — the shop had the money before the shopper arrived — so
         // there is no session to open and nothing to compensate.
         if owed.amount <= Decimal::ZERO {
-            return Ok(Outcome::new(carried.value()?, Value::Null));
+            return Ok(Outcome::skipped(carried.value()?));
         }
 
         let session = payment::create_session(

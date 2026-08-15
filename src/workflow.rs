@@ -76,27 +76,49 @@ pub const LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
 /// How long a [`work`] loop sleeps when it found nothing to do.
 pub const IDLE: std::time::Duration = std::time::Duration::from_millis(250);
 
-/// What a step kept: what to hand the next step, and what its own compensation
-/// will need.
+/// What a step finished with.
 #[derive(Debug, Clone)]
-pub struct Outcome {
-    pub output: Value,
-    pub compensate_input: Value,
+pub enum Outcome {
+    /// It did something: `output` is handed to the next step, and
+    /// `compensate_input` to this step's own [`Step::compensate`] if the run
+    /// later unwinds.
+    Ran {
+        output: Value,
+        compensate_input: Value,
+    },
+    /// It decided there was nothing to do — a reservation for a line that
+    /// does not consume stock, a charge for an amount credit already covered.
+    /// `output` still carries forward to the next step; there is nothing to
+    /// compensate, because nothing was written, and the run does not call
+    /// [`Step::compensate`] for it.
+    Skipped { output: Value },
 }
 
 impl Outcome {
     /// Nothing to pass on and nothing to undo.
     pub fn nothing() -> Self {
-        Outcome {
+        Outcome::Ran {
             output: Value::Null,
             compensate_input: Value::Null,
         }
     }
 
     pub fn new(output: Value, compensate_input: Value) -> Self {
-        Outcome {
+        Outcome::Ran {
             output,
             compensate_input,
+        }
+    }
+
+    /// The step ran and decided there was nothing to do. `output` still
+    /// carries forward to the next step.
+    pub fn skipped(output: Value) -> Self {
+        Outcome::Skipped { output }
+    }
+
+    fn output(&self) -> &Value {
+        match self {
+            Outcome::Ran { output, .. } | Outcome::Skipped { output } => output,
         }
     }
 }
@@ -799,15 +821,23 @@ async fn invoke(
 
         match step.invoke(&mut tx, ctx, input).await {
             Ok(outcome) => {
+                let (state, compensate_input) = match &outcome {
+                    Outcome::Ran {
+                        compensate_input, ..
+                    } => ("done", compensate_input.clone()),
+                    Outcome::Skipped { .. } => ("skipped", Value::Null),
+                };
+
                 sqlx::query(
                     "update workflow_step
-                     set state = 'done', output = $3, compensate_input = $4, lease_until = null
+                     set state = $3, output = $4, compensate_input = $5, lease_until = null
                      where run_id = $1 and ordering = $2",
                 )
                 .bind(id.as_uuid())
                 .bind(at)
-                .bind(&outcome.output)
-                .bind(&outcome.compensate_input)
+                .bind(state)
+                .bind(outcome.output())
+                .bind(&compensate_input)
                 .execute(&mut *tx)
                 .await
                 .map_err(|err| Stop::Refused(Failure::Final(Error::from(err))))?;
@@ -815,7 +845,7 @@ async fn invoke(
                 tx.commit()
                     .await
                     .map_err(|err| Stop::Refused(Failure::Final(Error::from(err))))?;
-                return Ok(outcome.output);
+                return Ok(outcome.output().clone());
             }
             Err(failure) => {
                 drop(tx);

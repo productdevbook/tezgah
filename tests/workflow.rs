@@ -127,6 +127,41 @@ impl Step for Probe {
     }
 }
 
+/// A step that decides it has nothing to do — the conditional case
+/// `Outcome::Skipped` exists for — and would fail the test if `compensate`
+/// were ever called on it.
+struct Skips {
+    name: &'static str,
+    log: Log,
+}
+
+#[async_trait]
+impl Step for Skips {
+    fn name(&self) -> &'static str {
+        self.name
+    }
+
+    async fn invoke(
+        &self,
+        _tx: &mut Tx<'_>,
+        _ctx: &Ctx<'_>,
+        input: &Value,
+    ) -> Result<Outcome, Failure> {
+        self.log.lock().push(self.name.to_string());
+        Ok(Outcome::skipped(input.clone()))
+    }
+
+    async fn compensate(
+        &self,
+        _tx: &mut Tx<'_>,
+        _ctx: &Ctx<'_>,
+        _kept: &Value,
+    ) -> tezgah::Result<()> {
+        self.log.lock().push(format!("undo {}", self.name));
+        Ok(())
+    }
+}
+
 /// Hands the next step whatever it was given, so a test can see what the
 /// engine carried.
 struct Echo;
@@ -607,6 +642,54 @@ async fn a_failed_step_stores_no_database_message() {
     assert!(
         told.report().contains(&inside),
         "report() stopped saying what happened"
+    );
+
+    shop.close().await;
+}
+
+/// A step that decided there was nothing to do is recorded as `skipped`,
+/// carries its input forward to the next step, and is not one the run walks
+/// back through when it unwinds later.
+#[tokio::test]
+async fn a_skipped_step_is_not_compensated() {
+    let shop = Shop::open().await;
+    let log = log();
+
+    let flow = Workflow::new("conditional")
+        .then(Skips {
+            name: "maybe_reserve",
+            log: log.clone(),
+        })
+        .then(Probe::failing("charge", &log));
+
+    let run = workflow::run(&shop.pool, &shop.ctx(), &flow, "skip-1", json!({}))
+        .await
+        .expect("the run to be driven");
+
+    assert_eq!(run.state, State::Reverted);
+
+    let undone: Vec<String> = seen(&log)
+        .into_iter()
+        .filter(|entry| entry.starts_with("undo"))
+        .collect();
+    assert_eq!(
+        undone,
+        Vec::<String>::new(),
+        "a skipped step wrote nothing, so unwinding it is not called"
+    );
+
+    let mut tx = shop.begin().await;
+    let steps = workflow::steps(&mut tx, &shop.ctx(), run.id)
+        .await
+        .expect("to read the steps back");
+    let skipped = steps
+        .iter()
+        .find(|s| s.name == "maybe_reserve")
+        .expect("the skipped step's row");
+    assert_eq!(skipped.state, "skipped");
+    assert_eq!(
+        skipped.attempts, 1,
+        "a step that decided it had nothing to do succeeds on its first try"
     );
 
     shop.close().await;

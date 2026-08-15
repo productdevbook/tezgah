@@ -38,6 +38,22 @@ query with no `ctx.permit(..)` above it and no reason in its `TOLERATED` list.
 If a code path does not need permission, say so there, where a reader can see
 it.
 
+"Public" there means reachable from outside the crate: `pub`, not
+`pub(crate)`. A host never calls a `pub(crate)` function directly, so asking
+it to hold a permit is asking twice — the crate-external entry point it sits
+behind already asked. Keep it `pub(crate)` on purpose, not `pub`, if the only
+reason it is visible past its module is another function in this crate.
+
+**A workflow step can say it had nothing to do.** `workflow_step.state` permits
+`'skipped'` for exactly this: `Outcome::skipped(output)` carries the step's
+input forward the way `Outcome::new` does, records `state = 'skipped'`
+instead of `'done'`, and the run does not call that step's `compensate` when
+it later unwinds — a skipped step wrote nothing, so there is nothing to undo.
+Reach for it only when a step's behaviour is genuinely conditional — spending
+credit a cart does not have, authorizing a charge for nothing once credit
+covered the total — not as a way to make a step's return type more
+interesting.
+
 **Audit rows, events and jobs are written in the caller's transaction.** Never
 after the commit. A change that rolls back takes them with it, and an event
 that was never delivered is still in the outbox to deliver.
@@ -52,6 +68,15 @@ table without both fails the schema test.
 
 **Amounts, quantities and state transitions belong to the database too.** Check
 constraints, not comments. Two writers always turn up.
+
+**A migration is append-only, so a bug in one cannot be edited away — but it
+can be corrected.** `tests/migration_dml.rs` reads a migration's own text, and
+a bad backfill sits there forever even after a later migration fixes the rows
+it left wrong. Its `TOLERATED` list distinguishes the two: an entry names the
+migration that corrected it, and the test checks that migration is still in
+the tree. A hole nobody has dealt with yet cannot cite one — that is what
+keeps the list from becoming a place fixed bugs go to be remembered as open
+ones.
 
 ## Tests
 

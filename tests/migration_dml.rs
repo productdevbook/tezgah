@@ -23,10 +23,21 @@ use std::fs;
 use std::path::PathBuf;
 
 /// Bare DML that is already in a migration and cannot be edited out of it,
-/// migrations being append-only. This list may only shrink.
-const TOLERATED: [(&str, &str); 2] = [
-    ("0017_workflow_parallel.sql", "workflow_step"),
-    ("0022_order_operator_status.sql", "order_return"),
+/// migrations being append-only. Each entry names the migration that
+/// corrected the rows the bare write left wrong — this list tracks finished
+/// work, not an open hole, and every migration it cites must still be in the
+/// tree. This list may only shrink.
+const TOLERATED: [(&str, &str, &str); 2] = [
+    (
+        "0017_workflow_parallel.sql",
+        "workflow_step",
+        "0047_workflow_group_ordering_backfill.sql",
+    ),
+    (
+        "0022_order_operator_status.sql",
+        "order_return",
+        "0024_order_status_backfill.sql",
+    ),
 ];
 
 /// A verb and what it was pointed at.
@@ -188,6 +199,18 @@ fn bare_dml(sql: &str) -> Vec<Bare> {
     found
 }
 
+/// TOLERATED entries whose corrective migration is not among `names` — a
+/// citation of a migration that does not exist in the tree.
+fn missing_corrections(tolerated: &[(&str, &str, &str)], names: &[&str]) -> Vec<String> {
+    tolerated
+        .iter()
+        .filter(|(_, _, corrected_by)| !names.contains(corrected_by))
+        .map(|(file, table, corrected_by)| {
+            format!("{file}: {table} cites {corrected_by}, which is not in migrations/")
+        })
+        .collect()
+}
+
 fn migrations() -> Vec<(String, String)> {
     let mut files: Vec<PathBuf> = fs::read_dir("migrations")
         .expect("migrations to be readable")
@@ -215,12 +238,19 @@ fn no_migration_writes_rows_without_announcing_a_scope() {
     let files = migrations();
     assert!(!files.is_empty(), "no migrations were scanned");
 
+    let names: Vec<&str> = files.iter().map(|(name, _)| name.as_str()).collect();
+    let missing_correction = missing_corrections(&TOLERATED, &names);
+    assert!(
+        missing_correction.is_empty(),
+        "a TOLERATED entry cites a corrective migration that is not in the tree: {missing_correction:?}"
+    );
+
     let mut offences = Vec::new();
     for (name, sql) in &files {
         for bare in bare_dml(sql) {
             if TOLERATED
                 .iter()
-                .any(|(file, table)| file == name && *table == bare.table)
+                .any(|(file, table, _)| file == name && *table == bare.table)
             {
                 continue;
             }
@@ -234,6 +264,33 @@ fn no_migration_writes_rows_without_announcing_a_scope() {
          match no rows and say nothing about it; loop `tezgah_scope` with \
          `set_config('app.scope', ..)` around them as 0024 does: {offences:?}"
     );
+}
+
+#[test]
+fn a_corrective_migration_that_is_missing_is_caught() {
+    let entries = [(
+        "0017_workflow_parallel.sql",
+        "workflow_step",
+        "0099_never_landed.sql",
+    )];
+    let names = ["0001_init.sql", "0017_workflow_parallel.sql"];
+
+    let missing = missing_corrections(&entries, &names);
+    assert_eq!(
+        missing,
+        vec![
+            "0017_workflow_parallel.sql: workflow_step cites 0099_never_landed.sql, \
+             which is not in migrations/"
+                .to_owned()
+        ]
+    );
+}
+
+#[test]
+fn the_real_tolerated_entries_all_cite_a_migration_in_the_tree() {
+    let files = migrations();
+    let names: Vec<&str> = files.iter().map(|(name, _)| name.as_str()).collect();
+    assert!(missing_corrections(&TOLERATED, &names).is_empty());
 }
 
 #[test]

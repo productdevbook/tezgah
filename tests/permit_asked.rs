@@ -23,12 +23,7 @@ use std::path::Path;
 
 /// Functions that run a query without a permit anywhere beneath them, each
 /// with the reason it is not a hole. Adding to this is not a fix.
-const TOLERATED: [(&str, &str); 3] = [
-    (
-        "payment::recompute",
-        "derives a collection's amounts from rows already written; `pub(crate)` \
-         so credit can call it, and every in-crate caller asked before reaching it",
-    ),
+const TOLERATED: [(&str, &str); 2] = [
     (
         "workflow::recover",
         "the runner putting back leases its own dead workers held; there is no \
@@ -126,7 +121,10 @@ fn functions(module: &str, source: &str) -> Vec<Function> {
             line_start -= 1;
         }
         let head: String = chars[line_start..at].iter().collect();
-        let public = head.trim_start().starts_with("pub");
+        let trimmed = head.trim_start();
+        // `pub(crate)`, `pub(super)`, `pub(in ...)` cannot be reached from outside
+        // this crate, so a host never calls them directly; only bare `pub` is.
+        let public = trimmed.starts_with("pub") && !trimmed.starts_with("pub(");
         let line = chars[..at].iter().filter(|c| **c == '\n').count() + 1;
 
         found.push(Function {
@@ -291,4 +289,21 @@ fn every_public_function_that_reaches_the_database_asked_first() {
         stale.is_empty(),
         "these ask now, or are gone; take them out of TOLERATED: {stale:?}"
     );
+}
+
+#[test]
+fn pub_crate_is_not_public() {
+    let source = "pub(crate) fn hidden() { sqlx::query(\"select 1\"); }\n\
+                  pub fn visible() { sqlx::query(\"select 1\"); }\n";
+    let found = functions("m", source);
+    let hidden = found
+        .iter()
+        .find(|f| f.name == "hidden")
+        .expect("hidden fn");
+    let visible = found
+        .iter()
+        .find(|f| f.name == "visible")
+        .expect("visible fn");
+    assert!(!hidden.public, "pub(crate) is not reachable by a host");
+    assert!(visible.public, "bare pub is reachable by a host");
 }
