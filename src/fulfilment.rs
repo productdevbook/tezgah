@@ -1204,15 +1204,18 @@ pub(crate) async fn deliver_digital(
         barcode: Option<String>,
     }
 
+    // The order's own `version`, not the highest version among its items: the
+    // two are kept in step by `carry_forward` today, but only `order.version`
+    // is what a capture and a grant are both answerable to (#146).
     let ids: Vec<Uuid> = line_item_ids.iter().map(|id| id.as_uuid()).collect();
     let rows = sqlx::query_as::<_, Row>(
         "select i.id as order_item_id, i.quantity, i.fulfilled_quantity,
                 l.title, l.variant_sku as sku, l.variant_barcode as barcode
          from order_item i
          join order_line_item l on l.scope = i.scope and l.id = i.order_line_item_id
+         join \"order\" o on o.scope = i.scope and o.id = i.order_id
          where i.scope = $1 and i.order_id = $2 and i.order_line_item_id = any($3)
-           and i.version = (select max(version) from order_item
-                             where scope = $1 and order_id = $2)",
+           and i.version = o.version",
     )
     .bind(ctx.scope.0)
     .bind(order.as_uuid())

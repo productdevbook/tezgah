@@ -186,6 +186,7 @@ ids! {
     CommissionRuleId => "commission rule",
     PayoutId => "payout",
     PayoutLineId => "payout line",
+    StockTransferId => "stock transfer",
 }
 
 #[cfg(test)]

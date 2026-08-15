@@ -14,7 +14,8 @@ use crate::error::{Error, Result};
 use crate::id::{
     BundleComponentId, CategoryId, CollectionId, InventoryItemId, InventoryLevelId, LineItemId,
     OptionId, OptionValueId, PriceId, PriceListId, PriceSetId, ProductId, ProductImageId,
-    ProductTagId, ProductTypeId, ReservationId, SalesChannelId, StockLocationId, VariantId,
+    ProductTagId, ProductTypeId, ReservationId, SalesChannelId, StockLocationId, StockTransferId,
+    VariantId,
 };
 use crate::inventory;
 use crate::money::{Currency, Money};
@@ -630,6 +631,33 @@ impl From<inventory::Reservation> for ReservationView {
             line_item_id: row.line_item_id,
             allows_backorder: row.allows_backorder,
             expires_at: row.expires_at,
+            created_at: row.created_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StockTransferView {
+    pub id: StockTransferId,
+    pub inventory_item_id: InventoryItemId,
+    pub from_location_id: StockLocationId,
+    pub to_location_id: StockLocationId,
+    pub quantity: i32,
+    pub status: String,
+    pub reason: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl From<inventory::StockTransfer> for StockTransferView {
+    fn from(row: inventory::StockTransfer) -> Self {
+        StockTransferView {
+            id: row.id,
+            inventory_item_id: row.inventory_item_id,
+            from_location_id: row.from_location_id,
+            to_location_id: row.to_location_id,
+            quantity: row.quantity,
+            status: row.status,
+            reason: row.reason,
             created_at: row.created_at,
         }
     }
@@ -2304,6 +2332,55 @@ pub async fn adjust_stock(
     Ok(InventoryLevelView::from(level))
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TransferStock {
+    pub from_location_id: StockLocationId,
+    pub to_location_id: StockLocationId,
+    pub quantity: i32,
+    pub reason: Option<String>,
+}
+
+pub async fn transfer_stock(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: InventoryItemId,
+    body: TransferStock,
+) -> Result<StockTransferView> {
+    let transfer = inventory::transfer_stock(
+        tx,
+        ctx,
+        id,
+        body.from_location_id,
+        body.to_location_id,
+        body.quantity,
+        body.reason.as_deref(),
+    )
+    .await?;
+    Ok(StockTransferView::from(transfer))
+}
+
+pub async fn get_stock_transfer(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: StockTransferId,
+) -> Result<StockTransferView> {
+    Ok(StockTransferView::from(
+        inventory::stock_transfer(tx, ctx, id).await?,
+    ))
+}
+
+pub async fn list_stock_transfers(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: InventoryItemId,
+    query: ListQuery,
+) -> Result<Page<StockTransferView>> {
+    Ok(map_page(
+        inventory::transfers_for_item(tx, ctx, id, query.paging()?).await?,
+    ))
+}
+
 // ---------------------------------------------------------------------------
 // Inventory items behind a variant
 // ---------------------------------------------------------------------------
@@ -3437,6 +3514,30 @@ pub(super) static ROUTES: &[Route] = &[
         action: Action::Write,
         domain: INVENTORY,
         summary: "Move the stock at one location by a delta",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Post,
+        path: "/admin/inventory-items/{id}/transfers",
+        action: Action::Write,
+        domain: INVENTORY,
+        summary: "Move stock from one location to another in one act",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Get,
+        path: "/admin/inventory-items/{id}/transfers",
+        action: Action::View,
+        domain: INVENTORY,
+        summary: "List an item's transfers between locations",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Get,
+        path: "/admin/stock-transfers/{id}",
+        action: Action::View,
+        domain: INVENTORY,
+        summary: "Fetch one transfer",
     },
     Route {
         surface: Surface::Admin,

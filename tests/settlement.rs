@@ -653,3 +653,102 @@ async fn a_mixed_order_fulfils_only_its_digital_half_on_capture() {
 
     shop.close().await;
 }
+
+/// #146: `digital::grant` reads `order.version` and, until this was fixed,
+/// `fulfilment::deliver_digital` read `max(version) from order_item` instead
+/// — two answers to "what is the order's current version" in one capture.
+///
+/// A phantom `order_item` at a version higher than the order's own stands in
+/// for the bug this guards against: an edit that wrote item rows at a new
+/// version without (yet, or ever, if it crashed) moving `order.version` to
+/// match. Before the fix, `deliver_digital` would have matched that phantom
+/// row — sharing its `order_line_item_id` with the real, current one — and
+/// left the order's actual current-version row untouched. Now both halves of
+/// the capture agree on the same version: the order's own.
+#[tokio::test]
+async fn the_current_version_is_the_order_s_own_even_when_order_item_disagrees() {
+    let (shop, seed) = a_seeded_shop().await;
+
+    let (order_id, paid) = an_order(
+        &shop,
+        money(dec!(50.00)),
+        vec![NewOrderLine {
+            selling_plan_id: None,
+            variant_id: Some(seed.digital_variant),
+            requires_shipping: false,
+            ..NewOrderLine::of("The book", 1, money(dec!(50.00)))
+        }],
+        None,
+    )
+    .await;
+
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let (real_item_id, line_item_id, real_version): (uuid::Uuid, uuid::Uuid, i32) = sqlx::query_as(
+        "select id, order_line_item_id, version from order_item
+             where scope = $1 and order_id = $2",
+    )
+    .bind(shop.here.0)
+    .bind(order_id.as_uuid())
+    .fetch_one(&mut *tx)
+    .await
+    .expect("the one real order item");
+
+    // A row at a version the order itself never reached: nothing but this
+    // test writes such a thing, and it stands in for the divergence #146
+    // describes.
+    sqlx::query(
+        "insert into order_item
+             (id, scope, order_id, order_line_item_id, version, currency_code, quantity)
+         values ($1, $2, $3, $4, $5, 'TRY', 1)",
+    )
+    .bind(uuid::Uuid::now_v7())
+    .bind(shop.here.0)
+    .bind(order_id.as_uuid())
+    .bind(line_item_id)
+    .bind(real_version + 1)
+    .execute(&mut *tx)
+    .await
+    .expect("the phantom higher-versioned row");
+
+    settlement::capture(&mut tx, &ctx, paid, money(dec!(50.00)), None)
+        .await
+        .expect("the capture to settle the real version");
+    tx.commit().await.expect("to commit");
+
+    assert_eq!(entitlements_of(&shop, order_id).await, 1);
+
+    let mut tx = shop.begin().await;
+    let real_fulfilled: i32 = sqlx::query_scalar(
+        "select fulfilled_quantity from order_item where scope = $1 and id = $2",
+    )
+    .bind(shop.here.0)
+    .bind(real_item_id)
+    .fetch_one(&mut *tx)
+    .await
+    .expect("the real, current-version row");
+    let phantom_fulfilled: i32 = sqlx::query_scalar(
+        "select fulfilled_quantity from order_item
+         where scope = $1 and order_id = $2 and version = $3",
+    )
+    .bind(shop.here.0)
+    .bind(order_id.as_uuid())
+    .bind(real_version + 1)
+    .fetch_one(&mut *tx)
+    .await
+    .expect("the phantom row");
+    tx.rollback().await.expect("to roll back");
+
+    assert_eq!(
+        real_fulfilled, 1,
+        "the order's own current version is what got fulfilled"
+    );
+    assert_eq!(
+        phantom_fulfilled, 0,
+        "a version the order never reached is not the one that shipped, \
+         however high its number"
+    );
+
+    shop.close().await;
+}

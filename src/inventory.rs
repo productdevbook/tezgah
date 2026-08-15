@@ -23,7 +23,7 @@ use sqlx::FromRow;
 use crate::error::{Error, Result};
 use crate::id::{
     FulfillmentId, InventoryItemId, InventoryLevelId, InventoryLotId, LineItemId, OrderId,
-    ReservationId, SalesChannelId, StockLocationId, VariantId,
+    ReservationId, SalesChannelId, StockLocationId, StockTransferId, VariantId,
 };
 use crate::page::{Cursor, Page, Paging};
 use crate::ports::{Action, AuditEntry, Ctx, Event, Permit, Resource, Tx};
@@ -37,6 +37,9 @@ const MAX_ITEMS_PER_VARIANT: i64 = 200;
 
 const RESERVATION_COLUMNS: &str = "id, inventory_item_id, location_id, quantity, line_item_id,
      allows_backorder, expires_at, created_at";
+
+const STOCK_TRANSFER_COLUMNS: &str = "id, inventory_item_id, from_location_id, to_location_id,
+     quantity, status, reason, created_at";
 
 /// Somewhere stock is held: a warehouse, a shop floor, a third party's shelf.
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
@@ -163,6 +166,23 @@ pub struct Reservation {
     pub line_item_id: Option<LineItemId>,
     pub allows_backorder: bool,
     pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// A move between two locations, done in one transaction: `stock_transfer` is
+/// what answers "where did it go" that a pair of `adjust_stock` calls could
+/// not. `status` is `completed` the moment [`transfer_stock`] returns — the
+/// move itself is atomic, so there is no observable moment the units belong
+/// to neither location — and `cancelled` is left for a future compensation.
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct StockTransfer {
+    pub id: StockTransferId,
+    pub inventory_item_id: InventoryItemId,
+    pub from_location_id: StockLocationId,
+    pub to_location_id: StockLocationId,
+    pub quantity: i32,
+    pub status: String,
+    pub reason: Option<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -1123,6 +1143,256 @@ pub async fn adjust_stock(
     }
 
     Ok(level)
+}
+
+/// Moves stock from one location to another as one act.
+///
+/// The decrement and the increment land in this one transaction, so a
+/// reconciler is never asked to find the other half of a move that half
+/// happened — the two adjustments a transfer used to be, with nothing to say
+/// they belonged together. The `stock_transfer` row this writes is that
+/// belonging: `from`, `to`, the item, the quantity, and the one movement an
+/// audit now shows instead of two adjustments (#147).
+///
+/// There is no third, in-transit level column. The move is one transaction,
+/// so at no committed instant are the units missing from both locations or
+/// counted at both — the row lock on the source's conditional update is what
+/// makes that true for two transfers reaching for the same last unit, the
+/// same way [`adjust_stock`] and [`reserve`] already rely on it. What the
+/// transfer row is for is answering *which* units moved and *where*, after
+/// the fact — `inventory_level` is left exactly as it was.
+///
+/// A lot-tracked item moves specific lots, picked in the item's own
+/// allocation order (FEFO or FIFO) by [`transfer_lots`]. `stock_transfer_lot`
+/// is the receiving location's copy of which lots arrived, the way
+/// `fulfillment_lot` is a parcel's.
+pub async fn transfer_stock(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    inventory_item_id: InventoryItemId,
+    from_location_id: StockLocationId,
+    to_location_id: StockLocationId,
+    quantity: i32,
+    reason: Option<&str>,
+) -> Result<StockTransfer> {
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Inventory {
+            id: Some(inventory_item_id.as_uuid()),
+        },
+    )?;
+
+    let quantity = positive(quantity, "a transferred quantity")?;
+    if from_location_id == to_location_id {
+        return Err(Error::invalid("a transfer needs two different locations"));
+    }
+
+    let (item_here, from_here, to_here): (bool, bool, bool) = sqlx::query_as(
+        "select exists (select 1 from inventory_item
+                        where scope = $1 and id = $2 and deleted_at is null),
+                exists (select 1 from stock_location where scope = $1 and id = $3),
+                exists (select 1 from stock_location where scope = $1 and id = $4)",
+    )
+    .bind(ctx.scope.0)
+    .bind(inventory_item_id.as_uuid())
+    .bind(from_location_id.as_uuid())
+    .bind(to_location_id.as_uuid())
+    .fetch_one(&mut **tx)
+    .await?;
+
+    if !item_here {
+        return Err(Error::not_found("inventory item"));
+    }
+    if !from_here || !to_here {
+        return Err(Error::not_found("stock location"));
+    }
+
+    let tracking = tracking(tx, ctx, inventory_item_id).await?;
+
+    // What is promised at the source may not leave on a truck: the condition
+    // is `available`, not `stocked`, so a reservation at the source location
+    // is not shipped out from under the sale it was made for.
+    let shipped = sqlx::query(
+        "update inventory_level
+         set stocked_quantity = stocked_quantity - $4
+         where scope = $1
+           and inventory_item_id = $2
+           and location_id = $3
+           and stocked_quantity - reserved_quantity >= $4",
+    )
+    .bind(ctx.scope.0)
+    .bind(inventory_item_id.as_uuid())
+    .bind(from_location_id.as_uuid())
+    .bind(quantity)
+    .execute(&mut **tx)
+    .await?;
+
+    if shipped.rows_affected() == 0 {
+        return Err(level_missing_or(
+            tx,
+            ctx,
+            inventory_item_id,
+            from_location_id,
+            Error::conflict("there is not that much unpromised stock to transfer"),
+        )
+        .await);
+    }
+
+    let lots = if tracking.mode.by_lot() {
+        transfer_lots(
+            tx,
+            ctx,
+            inventory_item_id,
+            from_location_id,
+            to_location_id,
+            quantity,
+            tracking.strategy,
+        )
+        .await?
+    } else {
+        Vec::new()
+    };
+
+    sqlx::query(
+        "insert into inventory_level (id, scope, inventory_item_id, location_id, stocked_quantity)
+         values ($1, $2, $3, $4, $5)
+         on conflict (scope, inventory_item_id, location_id)
+         do update set stocked_quantity = inventory_level.stocked_quantity + $5",
+    )
+    .bind(InventoryLevelId::new().as_uuid())
+    .bind(ctx.scope.0)
+    .bind(inventory_item_id.as_uuid())
+    .bind(to_location_id.as_uuid())
+    .bind(quantity)
+    .execute(&mut **tx)
+    .await?;
+
+    let id = StockTransferId::new();
+    let transfer = sqlx::query_as::<_, StockTransfer>(&format!(
+        "insert into stock_transfer
+             (id, scope, inventory_item_id, from_location_id, to_location_id, quantity, reason)
+         values ($1, $2, $3, $4, $5, $6, $7)
+         returning {STOCK_TRANSFER_COLUMNS}"
+    ))
+    .bind(id.as_uuid())
+    .bind(ctx.scope.0)
+    .bind(inventory_item_id.as_uuid())
+    .bind(from_location_id.as_uuid())
+    .bind(to_location_id.as_uuid())
+    .bind(quantity)
+    .bind(reason)
+    .fetch_one(&mut **tx)
+    .await?;
+
+    for claim in &lots {
+        sqlx::query(
+            "insert into stock_transfer_lot
+                 (id, scope, stock_transfer_id, inventory_lot_id, lot_code, expires_at, quantity)
+             values ($1, $2, $3, $4, $5, $6, $7)",
+        )
+        .bind(uuid::Uuid::now_v7())
+        .bind(ctx.scope.0)
+        .bind(id.as_uuid())
+        .bind(claim.inventory_lot_id)
+        .bind(&claim.lot_code)
+        .bind(claim.expires_at)
+        .bind(claim.quantity)
+        .execute(&mut **tx)
+        .await?;
+    }
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "stock_transfer",
+            entity_id: id.as_uuid(),
+            summary: serde_json::json!({
+                "inventory_item_id": inventory_item_id,
+                "from_location_id": from_location_id,
+                "to_location_id": to_location_id,
+                "quantity": quantity,
+            }),
+        },
+    )
+    .await?;
+
+    ctx.emit(
+        tx,
+        Event {
+            name: "stock.transferred",
+            entity_id: id.as_uuid(),
+            payload: serde_json::json!({
+                "inventory_item_id": inventory_item_id,
+                "from_location_id": from_location_id,
+                "to_location_id": to_location_id,
+                "quantity": quantity,
+            }),
+        },
+    )
+    .await?;
+
+    Ok(transfer)
+}
+
+pub async fn stock_transfer(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: StockTransferId,
+) -> Result<StockTransfer> {
+    let _: Permit = ctx.permit(
+        Action::View,
+        Resource::Inventory {
+            id: Some(id.as_uuid()),
+        },
+    )?;
+
+    sqlx::query_as::<_, StockTransfer>(&format!(
+        "select {STOCK_TRANSFER_COLUMNS} from stock_transfer where scope = $1 and id = $2"
+    ))
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("stock transfer"))
+}
+
+/// Every transfer of one item, newest cursor last.
+pub async fn transfers_for_item(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    inventory_item_id: InventoryItemId,
+    paging: Paging,
+) -> Result<Page<StockTransfer>> {
+    let _: Permit = ctx.permit(
+        Action::View,
+        Resource::Inventory {
+            id: Some(inventory_item_id.as_uuid()),
+        },
+    )?;
+
+    let rows = sqlx::query_as::<_, StockTransfer>(&format!(
+        "select {STOCK_TRANSFER_COLUMNS}
+         from stock_transfer
+         where scope = $1
+           and inventory_item_id = $2
+           and ($3::timestamptz is null or (created_at, id) > ($3, $4))
+         order by created_at, id
+         limit $5"
+    ))
+    .bind(ctx.scope.0)
+    .bind(inventory_item_id.as_uuid())
+    .bind(paging.after.map(|c| c.at))
+    .bind(paging.after.map(|c| c.id))
+    .bind(paging.probe())
+    .fetch_all(&mut **tx)
+    .await?;
+
+    Ok(Page::build(rows, paging, |row| Cursor {
+        at: row.created_at,
+        id: row.id.as_uuid(),
+    }))
 }
 
 /// Promises stock without moving it.
@@ -3108,6 +3378,154 @@ async fn ship_from_lots(
     }
 
     Ok(())
+}
+
+#[derive(Debug, Clone, FromRow)]
+struct TransferCandidate {
+    id: uuid::Uuid,
+    available_quantity: i32,
+    lot_code: String,
+    is_serial: bool,
+    expires_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+/// One lot's share of a transfer, at the destination: what
+/// [`transfer_stock`] writes into `stock_transfer_lot`.
+struct LotTransferClaim {
+    inventory_lot_id: uuid::Uuid,
+    lot_code: String,
+    expires_at: Option<chrono::DateTime<chrono::Utc>>,
+    quantity: i32,
+}
+
+/// Moves `quantity` of an item's lots from one location to another, in the
+/// item's own allocation order, and says which lots the destination now has.
+///
+/// A serial's code is unique across every location already, so a serial does
+/// not get shipped from one row and received into another — its one row is
+/// relocated. A batch lot decrements at the source and merges into whatever
+/// the destination already has under that code, the way [`receive_lot`] does
+/// for a delivery.
+async fn transfer_lots(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    inventory_item_id: InventoryItemId,
+    from_location_id: StockLocationId,
+    to_location_id: StockLocationId,
+    quantity: i32,
+    strategy: AllocationStrategy,
+) -> Result<Vec<LotTransferClaim>> {
+    let candidates = sqlx::query_as::<_, TransferCandidate>(&format!(
+        "select id, available_quantity, lot_code, is_serial, expires_at
+         from inventory_lot
+         where scope = $1
+           and inventory_item_id = $2
+           and location_id = $3
+           and available_quantity > 0
+         order by {}
+         limit $4",
+        strategy.order_by("")
+    ))
+    .bind(ctx.scope.0)
+    .bind(inventory_item_id.as_uuid())
+    .bind(from_location_id.as_uuid())
+    .bind(MAX_LOTS_PER_ALLOCATION)
+    .fetch_all(&mut **tx)
+    .await?;
+
+    let mut remaining = quantity;
+    let mut claims = Vec::new();
+
+    for candidate in candidates {
+        if remaining <= 0 {
+            break;
+        }
+        let take = remaining.min(candidate.available_quantity);
+        if take <= 0 {
+            continue;
+        }
+
+        if candidate.is_serial {
+            let moved = sqlx::query_scalar::<_, uuid::Uuid>(
+                "update inventory_lot
+                 set location_id = $4
+                 where scope = $1 and id = $2 and location_id = $3 and available_quantity >= $5
+                 returning id",
+            )
+            .bind(ctx.scope.0)
+            .bind(candidate.id)
+            .bind(from_location_id.as_uuid())
+            .bind(to_location_id.as_uuid())
+            .bind(take)
+            .fetch_optional(&mut **tx)
+            .await?;
+
+            let Some(lot_id) = moved else {
+                continue;
+            };
+
+            claims.push(LotTransferClaim {
+                inventory_lot_id: lot_id,
+                lot_code: candidate.lot_code,
+                expires_at: candidate.expires_at,
+                quantity: take,
+            });
+            remaining -= take;
+            continue;
+        }
+
+        let left = sqlx::query(
+            "update inventory_lot
+             set stocked_quantity = stocked_quantity - $3
+             where scope = $1 and id = $2 and available_quantity >= $3",
+        )
+        .bind(ctx.scope.0)
+        .bind(candidate.id)
+        .bind(take)
+        .execute(&mut **tx)
+        .await?;
+
+        if left.rows_affected() == 0 {
+            continue;
+        }
+
+        let arrived: uuid::Uuid = sqlx::query_scalar(
+            "insert into inventory_lot
+                 (id, scope, inventory_item_id, location_id, lot_code, is_serial, expires_at,
+                  stocked_quantity)
+             values ($1, $2, $3, $4, $5, false, $6, $7)
+             on conflict (scope, inventory_item_id, location_id, lot_code)
+             do update set stocked_quantity =
+                               inventory_lot.stocked_quantity + excluded.stocked_quantity,
+                           expires_at = coalesce(inventory_lot.expires_at, excluded.expires_at)
+             returning id",
+        )
+        .bind(InventoryLotId::new().as_uuid())
+        .bind(ctx.scope.0)
+        .bind(inventory_item_id.as_uuid())
+        .bind(to_location_id.as_uuid())
+        .bind(&candidate.lot_code)
+        .bind(candidate.expires_at)
+        .bind(take)
+        .fetch_one(&mut **tx)
+        .await?;
+
+        claims.push(LotTransferClaim {
+            inventory_lot_id: arrived,
+            lot_code: candidate.lot_code,
+            expires_at: candidate.expires_at,
+            quantity: take,
+        });
+        remaining -= take;
+    }
+
+    if remaining > 0 {
+        return Err(Error::conflict(
+            "there is not that much in any lot to transfer",
+        ));
+    }
+
+    Ok(claims)
 }
 
 /// A parcel cancelled before it left: the lots it named get their units back,

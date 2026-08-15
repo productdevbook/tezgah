@@ -14,6 +14,22 @@ use tezgah::inventory;
 use tezgah::page::Paging;
 use tezgah::ports::{Ctx, Scope, Tx};
 
+async fn second_location(shop: &Shop) -> StockLocationId {
+    let mut tx = shop.begin().await;
+    let location = inventory::create_stock_location(
+        &mut tx,
+        &shop.ctx(),
+        inventory::NewStockLocation {
+            name: format!("warehouse {}", uuid::Uuid::now_v7()),
+            address: None,
+        },
+    )
+    .await
+    .expect("a second location");
+    tx.commit().await.expect("to commit");
+    location.id
+}
+
 /// A location, an item, a level holding `stocked`, and a variant that consumes
 /// one of the item.
 async fn seed(shop: &Shop, stocked: i32) -> (InventoryItemId, StockLocationId, VariantId) {
@@ -1204,6 +1220,269 @@ async fn a_refused_write_says_which_of_the_three_it_was_and_the_transaction_live
         .expect("the transaction to still be usable");
     assert_eq!(available, 3);
     tx.commit().await.expect("to commit after six refusals");
+
+    shop.close().await;
+}
+
+// ---------------------------------------------------------------------------
+// Transferring stock between locations (#147)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn a_transfer_moves_both_levels_in_one_transaction() {
+    let shop = Shop::open().await;
+    let (item, from, _) = seed(&shop, 10).await;
+    let to = second_location(&shop).await;
+
+    let mut tx = shop.begin().await;
+    let transfer =
+        inventory::transfer_stock(&mut tx, &shop.ctx(), item, from, to, 4, Some("restock"))
+            .await
+            .expect("four to move");
+    tx.commit().await.expect("to commit");
+
+    assert_eq!(transfer.quantity, 4);
+    assert_eq!(transfer.from_location_id, from);
+    assert_eq!(transfer.to_location_id, to);
+    assert_eq!(transfer.status, "completed");
+
+    // Neither double-counted nor lost: the sum across both locations is
+    // exactly what it was before the move, and each side reads what the
+    // transfer says it should.
+    assert_eq!(stock(&shop, item, from).await, (6, 0, 6));
+    assert_eq!(stock(&shop, item, to).await, (4, 0, 4));
+    assert!(shop.host.audited("stock_transfer"));
+
+    shop.close().await;
+}
+
+#[tokio::test]
+async fn a_transfer_of_more_than_is_unpromised_changes_nothing() {
+    let shop = Shop::open().await;
+    let (item, from, _) = seed(&shop, 3).await;
+    let to = second_location(&shop).await;
+
+    let mut tx = shop.begin().await;
+    let err = inventory::transfer_stock(&mut tx, &shop.ctx(), item, from, to, 5, None)
+        .await
+        .expect_err("more than the shelf has");
+    tx.commit().await.expect("to commit");
+
+    assert!(err.is_conflict());
+    assert_eq!(stock(&shop, item, from).await, (3, 0, 3));
+
+    let mut tx = shop.begin().await;
+    let missing = inventory::level(&mut tx, &shop.ctx(), item, to).await;
+    tx.commit().await.expect("to commit");
+    assert!(
+        missing.is_err(),
+        "a refused transfer never touched the destination"
+    );
+
+    shop.close().await;
+}
+
+#[tokio::test]
+async fn a_transfer_leaves_reserved_stock_at_the_source() {
+    let shop = Shop::open().await;
+    let (item, from, _) = seed(&shop, 5).await;
+    let to = second_location(&shop).await;
+
+    let mut tx = shop.begin().await;
+    inventory::reserve(&mut tx, &shop.ctx(), item, from, 4, None, false, None)
+        .await
+        .expect("four held for a sale");
+    tx.commit().await.expect("to commit");
+
+    // Only one unit is unpromised; asking for two must fail rather than ship
+    // stock a sale is already counting on.
+    let mut tx = shop.begin().await;
+    let err = inventory::transfer_stock(&mut tx, &shop.ctx(), item, from, to, 2, None)
+        .await
+        .expect_err("more than what is unpromised");
+    tx.commit().await.expect("to commit");
+    assert!(err.is_conflict());
+    assert_eq!(stock(&shop, item, from).await, (5, 4, 1));
+
+    shop.close().await;
+}
+
+/// The claim this whole feature exists for: two transfers reaching for the
+/// same last unit at once, and exactly one of them wins.
+#[tokio::test]
+async fn two_transfers_race_for_the_last_unit() {
+    let shop = Shop::open().await;
+    let (item, from, _) = seed(&shop, 1).await;
+    let to = second_location(&shop).await;
+
+    let one = shop.begin().await;
+    let two = shop.begin().await;
+
+    async fn move_one(
+        mut tx: Tx<'static>,
+        ctx: Ctx<'_>,
+        item: InventoryItemId,
+        from: StockLocationId,
+        to: StockLocationId,
+    ) -> tezgah::Result<()> {
+        let outcome = inventory::transfer_stock(&mut tx, &ctx, item, from, to, 1, None).await;
+        match outcome {
+            Ok(_) => {
+                tx.commit().await.map_err(tezgah::Error::from)?;
+                Ok(())
+            }
+            Err(err) => {
+                tx.rollback().await.map_err(tezgah::Error::from)?;
+                Err(err)
+            }
+        }
+    }
+
+    let (first, second) = tokio::join!(
+        move_one(one, shop.ctx(), item, from, to),
+        move_one(two, shop.ctx(), item, from, to),
+    );
+
+    let winners = [&first, &second].into_iter().filter(|o| o.is_ok()).count();
+    let losers: Vec<_> = [&first, &second]
+        .into_iter()
+        .filter_map(|o| o.as_ref().err())
+        .collect();
+
+    assert_eq!(
+        winners, 1,
+        "exactly one transfer should have taken the unit"
+    );
+    assert_eq!(losers.len(), 1);
+    assert!(losers[0].is_conflict());
+    assert_eq!(stock(&shop, item, from).await, (0, 0, 0));
+    assert_eq!(stock(&shop, item, to).await, (1, 0, 1));
+
+    shop.close().await;
+}
+
+#[tokio::test]
+async fn a_lot_tracked_transfer_moves_specific_lots_and_the_destination_knows_which() {
+    let shop = Shop::open().await;
+    let (item, from, _) = lot_seed(
+        &shop,
+        inventory::AllocationStrategy::Fefo,
+        inventory::TrackingMode::Lot,
+    )
+    .await;
+    let to = second_location(&shop).await;
+
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    inventory::receive_lot(
+        &mut tx,
+        &ctx,
+        item,
+        from,
+        inventory::NewLot {
+            lot_code: "early".into(),
+            expires_at: Some(days(3)),
+            received_at: None,
+            quantity: 4,
+            supplier_reference: None,
+        },
+    )
+    .await
+    .expect("the early batch");
+    inventory::receive_lot(
+        &mut tx,
+        &ctx,
+        item,
+        from,
+        inventory::NewLot {
+            lot_code: "late".into(),
+            expires_at: Some(days(10)),
+            received_at: None,
+            quantity: 4,
+            supplier_reference: None,
+        },
+    )
+    .await
+    .expect("the late batch");
+    tx.commit().await.expect("to commit the lots");
+
+    // FEFO: the six units transferred come from the whole of "early" and two
+    // of "late".
+    let mut tx = shop.begin().await;
+    inventory::transfer_stock(&mut tx, &shop.ctx(), item, from, to, 6, None)
+        .await
+        .expect("six units across two lots");
+    tx.commit().await.expect("to commit");
+
+    assert_eq!(stock(&shop, item, from).await, (2, 0, 2));
+    assert_eq!(stock(&shop, item, to).await, (6, 0, 6));
+
+    let mut tx = shop.begin().await;
+    let arrived: Vec<(String, i32)> = sqlx::query_as(
+        "select lot_code, stocked_quantity from inventory_lot
+         where scope = $1 and inventory_item_id = $2 and location_id = $3
+         order by lot_code",
+    )
+    .bind(shop.here.0)
+    .bind(item.as_uuid())
+    .bind(to.as_uuid())
+    .fetch_all(&mut *tx)
+    .await
+    .expect("the lots that arrived");
+    tx.commit().await.expect("to commit");
+
+    assert_eq!(
+        arrived,
+        vec![("early".to_string(), 4), ("late".to_string(), 2)],
+        "the destination knows exactly which lots it received, and how much"
+    );
+
+    let mut tx = shop.begin().await;
+    let recorded: Vec<(String, i32)> = sqlx::query_as(
+        "select lot_code, quantity from stock_transfer_lot where scope = $1 order by lot_code",
+    )
+    .bind(shop.here.0)
+    .fetch_all(&mut *tx)
+    .await
+    .expect("the transfer's own record of which lots moved");
+    tx.commit().await.expect("to commit");
+    assert_eq!(
+        recorded,
+        vec![("early".to_string(), 4), ("late".to_string(), 2)]
+    );
+
+    shop.close().await;
+}
+
+#[tokio::test]
+async fn a_transfer_is_one_movement_not_two_adjustments() {
+    let shop = Shop::open().await;
+    let (item, from, _) = seed(&shop, 8).await;
+    let to = second_location(&shop).await;
+
+    let mut tx = shop.begin().await;
+    let transfer = inventory::transfer_stock(&mut tx, &shop.ctx(), item, from, to, 3, None)
+        .await
+        .expect("three to move");
+    tx.commit().await.expect("to commit");
+
+    // One row, not two `inventory_level` adjustments: the audit says which
+    // locations and how much moved, from a single write.
+    let audits = shop.host.audits.lock();
+    let transfer_audits = audits
+        .iter()
+        .filter(|(entity, id)| *entity == "stock_transfer" && *id == transfer.id.as_uuid())
+        .count();
+    let level_audits = audits
+        .iter()
+        .filter(|(entity, _)| *entity == "inventory_level")
+        .count();
+    assert_eq!(transfer_audits, 1);
+    assert_eq!(
+        level_audits, 0,
+        "the level itself is never audited by a transfer; the transfer row is the record"
+    );
+    drop(audits);
 
     shop.close().await;
 }
