@@ -17,6 +17,7 @@ pub mod order;
 pub mod order_basket;
 pub mod page;
 pub mod payment;
+pub mod payout;
 pub mod ports;
 pub mod pricing;
 pub mod promotion;

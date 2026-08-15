@@ -1102,6 +1102,103 @@
         "x-tezgah-permission": "write"
       }
     },
+    "/admin/commission-rules": {
+      "get": {
+        "operationId": "getAdminCommissionRules",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "This scope's commission rules",
+        "tags": [
+          "payout"
+        ],
+        "x-tezgah-permission": "view"
+      },
+      "post": {
+        "operationId": "postAdminCommissionRules",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Set the commission rate for a category, or the scope's default",
+        "tags": [
+          "payout"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/commission-rules/{id}": {
+      "delete": {
+        "operationId": "deleteAdminCommissionRulesById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Remove a commission rule",
+        "tags": [
+          "payout"
+        ],
+        "x-tezgah-permission": "delete"
+      }
+    },
     "/admin/currencies": {
       "get": {
         "operationId": "getAdminCurrencies",
@@ -5834,6 +5931,45 @@
         "x-tezgah-permission": "write"
       }
     },
+    "/admin/orders/{id}/payout-lines": {
+      "get": {
+        "operationId": "getAdminOrdersByIdPayoutLines",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "What one order earned this scope and what it cost in commission",
+        "tags": [
+          "payout"
+        ],
+        "x-tezgah-permission": "view"
+      }
+    },
     "/admin/orders/{id}/returns": {
       "get": {
         "operationId": "getAdminOrdersByIdReturns",
@@ -6462,6 +6598,64 @@
         "summary": "Give back money that was taken",
         "tags": [
           "payment"
+        ],
+        "x-tezgah-permission": "settle"
+      }
+    },
+    "/admin/payouts": {
+      "get": {
+        "operationId": "getAdminPayouts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "This scope's own history of money the host has said left the shop",
+        "tags": [
+          "payout"
+        ],
+        "x-tezgah-permission": "view"
+      },
+      "post": {
+        "operationId": "postAdminPayouts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Record that the host has already paid this scope's balance",
+        "tags": [
+          "payout"
         ],
         "x-tezgah-permission": "settle"
       }
@@ -16013,6 +16207,9 @@
     },
     {
       "name": "payment"
+    },
+    {
+      "name": "payout"
     },
     {
       "name": "pricing"

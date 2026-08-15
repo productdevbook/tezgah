@@ -27,6 +27,7 @@ pub mod digital;
 pub mod inventory_lot;
 pub mod openapi;
 pub mod order_basket;
+pub mod payout;
 pub mod store;
 pub mod subscription;
 pub mod tax_identity;
@@ -144,6 +145,7 @@ pub fn routes() -> Vec<Route> {
             + digital::ROUTES.len()
             + inventory_lot::ROUTES.len()
             + order_basket::ROUTES.len()
+            + payout::ROUTES.len()
             + subscription::ROUTES.len()
             + tax_identity::ROUTES.len(),
     );
@@ -157,6 +159,7 @@ pub fn routes() -> Vec<Route> {
     all.extend_from_slice(digital::ROUTES);
     all.extend_from_slice(inventory_lot::ROUTES);
     all.extend_from_slice(order_basket::ROUTES);
+    all.extend_from_slice(payout::ROUTES);
     all.extend_from_slice(subscription::ROUTES);
     all.extend_from_slice(tax_identity::ROUTES);
     all

@@ -278,6 +278,7 @@ fn a_domain_reaches_only_for_the_kernel_and_what_is_declared_shared() {
                 "order",
                 "order_basket",
                 "payment",
+                "payout",
                 "pricing",
                 "credit",
                 "digital",
@@ -350,12 +351,20 @@ fn a_domain_reaches_only_for_the_kernel_and_what_is_declared_shared() {
             &["credit", "inventory", "order", "payment", "pricing", "tax"][..],
         ),
         ("providers", &["payment"][..]),
+        // A seller-scope's earnings and the marketplace's commission are read
+        // off an order's own lines and categories, so it reaches order. The
+        // arrow only goes this way: an order does not know it has a payout
+        // ledger, the way it does not know which contract sold it.
+        ("payout", &["order"][..]),
         // The top of the graph: everything that must happen because money
         // arrived, so it reaches for the domains that decide what that is.
         // `fulfilment` is here rather than `digital` reaching for it: a
         // digital line's `order_item` counters are `fulfilment`'s to write,
         // the way a parcel's are, and settlement is the one place already
         // holding both `digital`'s answer and the order it belongs to.
+        // What a captured or refunded amount is worth to the seller and to
+        // the marketplace is exactly the same fact, so `payout` sits beside
+        // `credit` and `digital` here rather than being called from `order`.
         // Nothing reaches back — see `no_module_depends_on_settlement` below.
         (
             "settlement",
@@ -365,6 +374,7 @@ fn a_domain_reaches_only_for_the_kernel_and_what_is_declared_shared() {
                 "fulfilment",
                 "order",
                 "payment",
+                "payout",
                 "subscription",
             ][..],
         ),

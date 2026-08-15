@@ -145,6 +145,14 @@ pub enum Resource {
         customer: Option<Uuid>,
     },
     Pricing,
+    /// A seller-scope's payout ledger — who earned what, what the marketplace
+    /// took as commission, and what the host has said left the shop. Not
+    /// [`Resource::Order`]: reading what an order is worth and reading what a
+    /// seller is owed for it are different powers, and a host granting a
+    /// support agent the first should not thereby grant the second.
+    Payout {
+        id: Option<Uuid>,
+    },
     /// Shop-wide settings: its name, its default currency, how tax is shown.
     Store,
     /// A currency, a region or a sales channel — what a shop sells in and

@@ -5,10 +5,12 @@
 //! same transaction, does everything a captured payment obligates the shop
 //! to: print a gift card that was bought rather than earned, grant a digital
 //! entitlement and mark its line fulfilled, start a subscription's first
-//! period. [`refund`] is the
+//! period, and split what was captured into a seller's share and the
+//! marketplace's commission on `payout_line`. [`refund`] is the
 //! mirror, with one deliberate asymmetry: a refund revokes what capturing
 //! granted, but it does not un-print a card. A captured-then-refunded card is
-//! left alone.
+//! left alone. What a refund does unwind is the payout ledger, seller's share
+//! and commission both, in the same transaction as the refund itself.
 //!
 //! This is the top of the graph on purpose. `payment::capture_only` and
 //! `payment::refund_only` do not know about gift cards, entitlements or
@@ -29,6 +31,7 @@ use crate::id::{
 use crate::money::Money;
 use crate::order;
 use crate::payment;
+use crate::payout;
 use crate::ports::{Action, Ctx, Permit, Resource, Tx};
 use crate::subscription;
 
@@ -91,6 +94,8 @@ pub async fn capture(
         fulfilment::deliver_digital(tx, ctx, transaction.order_id, &lines).await?;
 
         start_first_period(tx, ctx, transaction.order_id).await?;
+
+        payout::record_earning(tx, ctx, transaction.order_id, amount, capture.id.as_uuid()).await?;
     }
 
     Ok(capture)
@@ -125,6 +130,8 @@ pub async fn refund(
 
     if let Some(transaction) = written {
         digital::revoke(tx, ctx, transaction.order_id, Some("refunded")).await?;
+
+        payout::record_reversal(tx, ctx, transaction.order_id, amount, refund.id.as_uuid()).await?;
     }
 
     Ok(refund)

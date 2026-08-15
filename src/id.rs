@@ -183,6 +183,9 @@ ids! {
     OrderTransactionId => "order transaction",
     WorkflowRunId => "workflow run",
     BundleComponentId => "bundle component",
+    CommissionRuleId => "commission rule",
+    PayoutId => "payout",
+    PayoutLineId => "payout line",
 }
 
 #[cfg(test)]
