@@ -2288,6 +2288,11 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
         admin_order::order_totals(&mut tx, &ctx, OrderId::new(), None)
     );
     denied!(
+        Method::Get,
+        "/admin/orders/{id}/shipping-options",
+        admin_order::order_shipping_options(&mut tx, &ctx, OrderId::new(), "TR")
+    );
+    denied!(
         Method::Post,
         "/admin/orders/{id}/transactions",
         admin_order::record_transaction(
