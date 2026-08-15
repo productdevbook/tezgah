@@ -688,7 +688,8 @@ async fn visible(
     id: ProductId,
 ) -> Result<catalogue::Product> {
     let channels = visible_channels(tx, ctx, token).await?;
-    on_channel(tx, ctx, published(tx, ctx, id).await?, &channels).await
+    let row = published(tx, ctx, id).await?;
+    on_channel(tx, ctx, row, &channels).await
 }
 
 /// A product not linked to any of these channels — and linked to at least one
