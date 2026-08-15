@@ -1070,8 +1070,10 @@ impl Step for AuthorizePayment {
 
                 Ok(Outcome::new(carried.value()?, kept(&undo)))
             }
-            // Nothing is canceled and nothing is kept to compensate with: the
-            // hold is still live and the shopper is expected back.
+            // Neither finished nor declined: the hold is still live and the
+            // shopper is expected back. The run stops here rather than
+            // reporting the checkout done, and does not unwind either —
+            // nothing has failed.
             Authorized::RequiresMore(_) if requires_more => {
                 order::set_status(tx, ctx, order_id, OrderStatus::RequiresAction)
                     .await
@@ -1079,7 +1081,7 @@ impl Step for AuthorizePayment {
 
                 carried.requires_more = true;
 
-                Ok(Outcome::new(carried.value()?, Value::Null))
+                Ok(Outcome::waiting(carried.value()?))
             }
             Authorized::RequiresMore(_) | Authorized::Failed(_) => Err(Failure::Final(
                 Error::provider("payment", "the provider would not hold the money"),

@@ -1645,6 +1645,7 @@ fn run_state(state: workflow::State) -> &'static str {
     match state {
         workflow::State::Running => "running",
         workflow::State::Compensating => "compensating",
+        workflow::State::Waiting => "waiting",
         workflow::State::Done => "done",
         workflow::State::Reverted => "reverted",
         workflow::State::Failed => "failed",
@@ -1763,6 +1764,7 @@ fn parse_run_state(text: &str) -> Result<workflow::State> {
     Ok(match text {
         "running" => workflow::State::Running,
         "compensating" => workflow::State::Compensating,
+        "waiting" => workflow::State::Waiting,
         "done" => workflow::State::Done,
         "reverted" => workflow::State::Reverted,
         "failed" => workflow::State::Failed,

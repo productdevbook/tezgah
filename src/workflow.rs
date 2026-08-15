@@ -92,6 +92,14 @@ pub enum Outcome {
     /// compensate, because nothing was written, and the run does not call
     /// [`Step::compensate`] for it.
     Skipped { output: Value },
+    /// It ran, and is neither finished nor refused — a hold that needs the
+    /// shopper to do something before it becomes either. The run stops here
+    /// rather than reporting `Done`: the next step is not invoked, and the
+    /// run does not unwind, because nothing has failed. What resolves a
+    /// waiting step into one or the other is outside this crate today — a
+    /// webhook a host wires up itself — and driving the run again while it
+    /// is still waiting is a no-op rather than an error.
+    Waiting { output: Value },
 }
 
 impl Outcome {
@@ -116,9 +124,18 @@ impl Outcome {
         Outcome::Skipped { output }
     }
 
+    /// The step ran and is waiting on something outside the run — a shopper
+    /// completing a second factor, typically. Nothing here is compensated;
+    /// there is nothing yet to say whether it finished or was refused.
+    pub fn waiting(output: Value) -> Self {
+        Outcome::Waiting { output }
+    }
+
     fn output(&self) -> &Value {
         match self {
-            Outcome::Ran { output, .. } | Outcome::Skipped { output } => output,
+            Outcome::Ran { output, .. }
+            | Outcome::Skipped { output }
+            | Outcome::Waiting { output } => output,
         }
     }
 }
@@ -286,6 +303,9 @@ impl Workflow {
 pub enum State {
     Running,
     Compensating,
+    /// A step answered [`Outcome::waiting`]: neither finished nor refused.
+    /// Driving the run again while it is still open just reports this back.
+    Waiting,
     /// Every step invoked.
     Done,
     /// A step failed and every earlier step was undone.
@@ -299,6 +319,7 @@ impl State {
         match self {
             State::Running => "running",
             State::Compensating => "compensating",
+            State::Waiting => "waiting",
             State::Done => "done",
             State::Reverted => "reverted",
             State::Failed => "failed",
@@ -309,6 +330,7 @@ impl State {
         Ok(match text {
             "running" => State::Running,
             "compensating" => State::Compensating,
+            "waiting" => State::Waiting,
             "done" => State::Done,
             "reverted" => State::Reverted,
             "failed" => State::Failed,
@@ -610,6 +632,17 @@ async fn drive(
         for (k, row) in rows.iter().enumerate() {
             if row.state == "done" {
                 outputs[k] = row.output.clone().unwrap_or(Value::Null);
+            } else if row.state == "waiting" {
+                // Nothing outside this run has said what it turned into yet:
+                // report the wait back rather than invoking a step that
+                // already ran.
+                return Ok(Run {
+                    id,
+                    state: State::Waiting,
+                    output: Value::Null,
+                    failure: None,
+                    transaction_key: head.transaction_key,
+                });
             } else {
                 waiting.push(k);
             }
@@ -636,9 +669,11 @@ async fn drive(
 
             let mut failed: Option<(&'static str, Failure)> = None;
             let mut lost = false;
+            let mut paused = false;
             for (&k, result) in waiting.iter().zip(all(running).await) {
                 match result {
-                    Ok(output) => outputs[k] = output,
+                    Ok(StepResult::Output(output)) => outputs[k] = output,
+                    Ok(StepResult::Waiting) => paused = true,
                     Err(Stop::Lost) => lost = true,
                     Err(Stop::Refused(failure)) => {
                         if failed.is_none() {
@@ -657,6 +692,17 @@ async fn drive(
             if let Some((name, failure)) = failed {
                 let why = format!("{name}: {}", failure.error());
                 return unwind(pool, ctx, workflow, id, worker, head.transaction_key, why).await;
+            }
+
+            if paused {
+                set_state(pool, ctx, id, State::Waiting, None).await?;
+                return Ok(Run {
+                    id,
+                    state: State::Waiting,
+                    output: Value::Null,
+                    failure: None,
+                    transaction_key: head.transaction_key,
+                });
             }
         }
 
@@ -775,6 +821,13 @@ async fn step_row(pool: &PgPool, ctx: &Ctx<'_>, id: WorkflowRunId, at: i32) -> R
         .ok_or_else(|| Error::bug("a workflow lost a step it wrote"))
 }
 
+/// What one invoked step handed back, once it settled on a row.
+enum StepResult {
+    Output(Value),
+    /// The step answered [`Outcome::waiting`]; the run stops after this slot.
+    Waiting,
+}
+
 /// Runs one step, retrying while it says to and the ceiling allows.
 async fn invoke(
     pool: &PgPool,
@@ -783,7 +836,7 @@ async fn invoke(
     step: &dyn Step,
     input: &Value,
     row: &StepRow,
-) -> std::result::Result<Value, Stop> {
+) -> std::result::Result<StepResult, Stop> {
     let Claim { id, at, worker } = held;
     if row.attempts >= row.max_attempts {
         return Err(Stop::Refused(Failure::Final(Error::conflict(
@@ -826,6 +879,9 @@ async fn invoke(
                         compensate_input, ..
                     } => ("done", compensate_input.clone()),
                     Outcome::Skipped { .. } => ("skipped", Value::Null),
+                    // Nothing is kept to compensate with yet: the step has
+                    // not finished, so there is nothing of its own to undo.
+                    Outcome::Waiting { .. } => ("waiting", Value::Null),
                 };
 
                 sqlx::query(
@@ -845,7 +901,11 @@ async fn invoke(
                 tx.commit()
                     .await
                     .map_err(|err| Stop::Refused(Failure::Final(Error::from(err))))?;
-                return Ok(outcome.output().clone());
+
+                return Ok(match outcome {
+                    Outcome::Waiting { .. } => StepResult::Waiting,
+                    _ => StepResult::Output(outcome.output().clone()),
+                });
             }
             Err(failure) => {
                 drop(tx);

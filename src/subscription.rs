@@ -1698,7 +1698,9 @@ impl Step for CalculateTax {
             .await
             .map_err(Failure::Final)?
         else {
-            return Ok(Outcome::new(carried.value()?, Value::Null));
+            // No address to tax against: there is nothing to calculate, and
+            // nothing was written.
+            return Ok(Outcome::skipped(carried.value()?));
         };
 
         let mut taxable = Vec::with_capacity(carried.lines.len());
@@ -2104,8 +2106,10 @@ impl Step for ChargeStoredMethod {
             .map_err(Failure::Final)?;
         let owed = collection.due_total().map_err(Failure::Final)?;
 
+        // Nobody's stored instrument is charged for nothing: an earlier step
+        // already covered the total, and there is no session to open.
         if owed.amount <= Decimal::ZERO {
-            return Ok(Outcome::new(carried.value()?, Value::Null));
+            return Ok(Outcome::skipped(carried.value()?));
         }
 
         let session = payment::create_session(
