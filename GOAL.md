@@ -220,6 +220,25 @@ writes an order, and the provider is not in your database.
 ### 15. Proof
 
 - [ ] a scope cannot see another's rows — a generated test per table
+- [x] a customer cannot reach another customer's row on the storefront —
+      `tests/api_store_cross_tenant.rs` seeds two shoppers, each with a cart,
+      an order, an address, a payment collection, a subscription and a
+      downloadable entitlement, and calls every `Surface::Store` route that
+      names one of those by id twice: as the owner (must succeed) and as the
+      other shopper (must refuse). 33 routes are exercised this way; 11 with
+      no id to probe (`SELF_ONLY`) and 22 catalogue/config reads with no
+      customer dimension (`PUBLIC`) are named rather than called, and 4 —
+      `carts/{id}/complete` and the token-gated transfer and download routes
+      — are `TOLERATED` for a stated reason, the transfer and download ones
+      still exercised for "the wrong token refuses". Every real failure this
+      run was the fixture's, not the crate's: a fabricated id where a real
+      foreign key was expected aborted the transaction outright rather than
+      answering an error worth asserting on, and the completeness check
+      caught three routes never called at all. Nothing here found a new #82,
+      #132 or #135 — this is the matrix that would have, and now stands
+      watch for the next one. This is the customer axis; the channel axis
+      (#132, #135) is `api_store.rs`'s and the scope axis is the bullet
+      above.
 - [ ] every state machine's illegal moves rejected, tested exhaustively
 - [ ] money invariants hold under random operation sequences
 - [ ] a checkout interrupted at each step leaves no stock reserved, no money
