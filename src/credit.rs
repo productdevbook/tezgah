@@ -1619,8 +1619,6 @@ fn who(actor: &Actor) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn a_code_hashes_the_same_however_it_was_typed() {
         assert_eq!(
