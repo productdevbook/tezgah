@@ -35,6 +35,11 @@ So audit mechanically, in this order:
    Compare table by table, not by reading the intent.
 6. Every claim of concurrency safety — is it a conditional update, or a
    select-then-update wearing a comment?
+7. Every expression mixing two totals — is one scoped to a part and the other to
+   the whole? They are equal whenever there is one part, which is why the tests
+   pass. Two money bugs have hidden here.
+8. Every pair of functions that ought to be symmetric — does one write an audit
+   row, an event, a compensation, that the other does not?
 
 **Rules for what you report.** Every finding carries file:line and a concrete
 production scenario: what a shop does, and what goes wrong. No speculation. If

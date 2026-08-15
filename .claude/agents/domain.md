@@ -33,6 +33,15 @@ What you keep true:
 - **A partial unique index needs its predicate repeated in `on conflict`,** or
   Postgres refuses the statement entirely.
 - No `unwrap`, `expect` or `panic` under `src/`. Tests may.
+- **Never mix a part's number with the whole's in one expression.** A capture's
+  slice against the order's total, a line's subtotal against an order-wide fee.
+  They are the same number whenever there is exactly one part, so every test
+  that captures or ships in full passes and production does not. This has been
+  found twice, both times in money.
+- **One fact, one source.** Two ways to read the current order version, two
+  write paths into one ledger, four private digests disagreeing about case —
+  each agreed until it did not. If something can be derived two ways, pick one
+  and have the other read it.
 
 **The most expensive lesson in this repository:** five features passed their own
 tests and shipped unreachable, because nothing called them. `tests/reachable.rs`

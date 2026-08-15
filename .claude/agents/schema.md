@@ -34,6 +34,19 @@ What you keep true:
   `tests/migration_dml.rs` enforces it; its tolerated list may only shrink.
 - Add a constraint `not valid`, then validate, when it must run against data
   that already exists.
+- **Measure which tables a column actually names before you key it.**
+  `reservation_item.line_item_id` named a cart line early in a reservation's
+  life and an order line later; a single foreign key could not say that, which
+  is why it had none for sixty migrations. A naive key there would have broken
+  checkout. Trace every writer first, then decide the shape — an exclusive arc,
+  two columns, or a move.
+- **A deferred constraint is an issue, not a comment.** "This cannot be a
+  foreign key yet" sat in 0007 for sixty migrations while expired carts held
+  stock forever behind it. If you cannot add it now, file the issue and cite it.
+- **Never leave a constraint out because the seeder cannot satisfy it.** This
+  has happened twice. Teach the seeder in `tests/isolation.rs` — it has already
+  learned two columns naming one parent, and a check that relates two columns —
+  then put the rule back in a corrective migration.
 
 `tests/schema.rs` and `tests/isolation.rs` read the catalogue rather than a list
 somebody maintains, so a table added tomorrow is covered the day it is added.

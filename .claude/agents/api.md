@@ -35,6 +35,10 @@ What you keep true:
   Editing an order and refunding one are not one power.
 - **Every list route takes `Paging`,** or carries a named `MAX_*` with a reason.
   `tests/no_unbounded_list.rs` enforces it.
+- **An upsert's conflict key must carry the ownership its update writes.**
+  `save_account_holder` keyed on `(scope, provider, external_id)` and wrote
+  `customer_id`, so whoever next quoted the same external id took over somebody
+  else's saved payment account. It was caught the day a route made it reachable.
 - **Secrets never come back out.** A gift-card code, a download token, an API
   key: stored as a hash, returned at most once at the moment it is minted, and
   never in a list response or an error.

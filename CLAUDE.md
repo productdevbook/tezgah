@@ -78,6 +78,51 @@ the tree. A hole nobody has dealt with yet cannot cite one — that is what
 keeps the list from becoming a place fixed bugs go to be remembered as open
 ones.
 
+## Mistakes this codebase has made more than once
+
+Every one of these was found by running the code or counting its callers, never
+by reading it and finding it wrong. They are written down because each has
+recurred, and because each is invisible in review.
+
+**A number scoped to a part, used against the whole.** A capture's slice and the
+order's total in one expression; a fixed fee clamped against one line when it is
+defined against the order. Identical whenever there is exactly one part, wrong
+the moment there are two — so every test that captures in full passes. When an
+expression mixes two totals, ask which one each came from.
+
+**Written, tested, and reachable from nothing.** Five features shipped this way:
+correct modules with no route, no caller, and no way for a shop to touch them.
+`tests/reachable.rs` catches it now. A domain function without a route is not
+finished, and neither is a table only tests write to.
+
+**A constraint left out because a fixture could not satisfy it.** Twice. The
+constraint is usually right and the fixture is usually wrong — teach
+`tests/isolation.rs`'s seeder, then put the rule back in a corrective migration.
+A rule enforced only in Rust holds until the second writer turns up, and this is
+a ledger.
+
+**A row copied by naming its columns.** The cart merge silently dropped three
+fields that way, each added later by somebody who updated every writer and never
+found the one place that copies. Copy the row — `insert … select`, naming only
+what genuinely changes.
+
+**One fact with two answers.** The current order version read two ways in one
+transaction; the payout ledger with two write paths; four private digests that
+disagreed about case. Nothing keeps them in step, so they agree until they do
+not. Pick the source and have the other read it.
+
+**A comment promising to come back.** `reservation_item.line_item_id` carried
+"this cannot be a foreign key yet" for sixty migrations, and expired carts held
+stock forever behind it. A deferred constraint is an issue, not a comment.
+
+**A partial unique index whose predicate is not repeated in `on conflict`.**
+Postgres refuses the whole statement, and it has broken checkout twice.
+
+**Documentation asserting the opposite of the code.** The README told readers
+four features were deliberately absent that had already landed; the roadmap
+blamed closed issues for gaps they closed. Verify a claim about behaviour
+against the behaviour, not against the issue that once described it.
+
 ## Tests
 
 CI runs them with `cargo nextest run --profile ci`, one process per test, with
