@@ -219,6 +219,7 @@ struct Shopper {
     id: CustomerId,
     cart_id: CartId,
     order_id: OrderId,
+    order_line_id: tezgah::id::LineItemId,
     address_id: AddressId,
     collection_id: PaymentCollectionId,
     subscription_id: SubscriptionId,
@@ -355,6 +356,7 @@ async fn a_shopper(
         id,
         cart_id: cart.id,
         order_id: placed.id,
+        order_line_id: tezgah::id::LineItemId::from_uuid(order_line_id),
         address_id: address.id,
         collection_id: collection.id,
         subscription_id: contract.id,
@@ -1001,36 +1003,32 @@ async fn every_owned_store_route_refuses_the_other_shoppers_resource() -> tezgah
         Method::Post,
         "/store/returns",
         is_denied,
-        mine: async {
-            match store::request_return(
-                &mut tx,
-                &ctx_a,
-                RequestReturn {
-                    order_id: a.order_id,
-                    lines: vec![ReturnLineInput {
-                        order_line_item_id: tezgah::id::LineItemId::from_uuid(uuid::Uuid::now_v7()),
-                        quantity: 1,
-                        return_reason_id: None,
-                        note: None,
-                    }],
-                }
-            )
-            .await
-            {
-                Ok(_) => Ok(()),
-                // Own_order already ran; the line does not resolve, and that
-                // is what this route is on trial for.
-                Err(error) if error.is_not_found() || error.code() == "invalid" => Ok(()),
-                Err(error) => Err(error),
+        // A real line, not a fabricated id: a return writes rows with a
+        // genuine foreign key to it, and a made-up id would abort the whole
+        // transaction on a constraint violation rather than answer with a
+        // catchable error — the wrong way to prove `own_order` ran first.
+        // B's call never reaches that far, since it is refused before the
+        // line is ever touched.
+        mine: store::request_return(
+            &mut tx,
+            &ctx_a,
+            RequestReturn {
+                order_id: a.order_id,
+                lines: vec![ReturnLineInput {
+                    order_line_item_id: a.order_line_id,
+                    quantity: 1,
+                    return_reason_id: None,
+                    note: None,
+                }],
             }
-        },
+        ),
         theirs: store::request_return(
             &mut tx,
             &ctx_b,
             RequestReturn {
                 order_id: a.order_id,
                 lines: vec![ReturnLineInput {
-                    order_line_item_id: tezgah::id::LineItemId::from_uuid(uuid::Uuid::now_v7()),
+                    order_line_item_id: a.order_line_id,
                     quantity: 1,
                     return_reason_id: None,
                     note: None,
