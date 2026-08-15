@@ -1045,22 +1045,40 @@ async fn a_variant(
     .await
     .expect("a variant");
 
-    if let Some(requires_shipping) = ships {
-        let item = inventory::create_inventory_item(
-            tx,
-            ctx,
-            inventory::NewInventoryItem {
-                sku: Some(format!("{handle}-stock")),
-                title: None,
-                requires_shipping,
-            },
-        )
-        .await
-        .expect("an inventory item");
-
-        inventory::attach_inventory_item(tx, ctx, variant.id, item.id, 1)
+    match ships {
+        Some(requires_shipping) => {
+            let item = inventory::create_inventory_item(
+                tx,
+                ctx,
+                inventory::NewInventoryItem {
+                    sku: Some(format!("{handle}-stock")),
+                    title: None,
+                    requires_shipping,
+                },
+            )
             .await
-            .expect("the variant to consume the item");
+            .expect("an inventory item");
+
+            inventory::attach_inventory_item(tx, ctx, variant.id, item.id, 1)
+                .await
+                .expect("the variant to consume the item");
+        }
+        // Not tracked is not the same fact as digital: say so on the
+        // catalogue itself rather than leaving it to an absent inventory
+        // link, which now defaults to physical.
+        None => {
+            catalogue::update_variant(
+                tx,
+                ctx,
+                variant.id,
+                catalogue::VariantPatch {
+                    requires_shipping: Some(false),
+                    ..catalogue::VariantPatch::default()
+                },
+            )
+            .await
+            .expect("to mark the variant non-physical");
+        }
     }
 
     variant.id
