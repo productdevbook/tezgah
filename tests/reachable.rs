@@ -77,11 +77,6 @@ const TOLERATED: [(&str, &str); 45] = [
         "a sweep a host runs on a schedule; there is no request to hang it off",
     ),
     (
-        "credit::refund_to_credit",
-        "store credit has no route and no in-crate caller; shipped unwired, see \
-         #108",
-    ),
-    (
         "customer::by_email",
         "a lookup by e-mail with no caller and no route; a host's sign-in is the \
          only plausible caller",
@@ -226,16 +221,6 @@ const TOLERATED: [(&str, &str); 45] = [
         "stripe::signature_header",
         "verifying a provider's webhook signature, which the host does before it \
          hands the body over",
-    ),
-    (
-        "store::sales_channel",
-        "sales channels are read nowhere and reach no route; shipped unwired, see \
-         #109",
-    ),
-    (
-        "store::publishable_key",
-        "sales channels are read nowhere and reach no route; shipped unwired, see \
-         #109",
     ),
     (
         "tax::rates_for",

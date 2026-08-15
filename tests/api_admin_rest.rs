@@ -10,7 +10,7 @@ mod common;
 
 use common::{Doorman, Shop};
 use tezgah::api::admin_rest as admin;
-use tezgah::id::PromotionId;
+use tezgah::id::{PromotionId, PublishableKeyId, SalesChannelId};
 use tezgah::ports::{Actor, Ctx, Scope, Tx};
 use uuid::Uuid;
 
@@ -547,6 +547,63 @@ async fn a_host_that_refuses_is_obeyed_by_every_new_reader() {
         allowed.is_empty(),
         "these answered somebody the host refuses everything to: {allowed:?}"
     );
+
+    drop(tx);
+    shop.close().await;
+}
+
+/// The list, create and delete routes had no way for a detail screen to fetch
+/// one row by id. Both now do, and an id nobody has still answers `not_found`
+/// after asking, matching every other route that reads one thing.
+#[tokio::test]
+async fn a_sales_channel_and_a_publishable_key_are_readable_by_id() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let channel = admin::create_sales_channel(
+        &mut tx,
+        &ctx,
+        admin::CreateSalesChannel {
+            name: "Web".into(),
+            description: None,
+            is_disabled: false,
+        },
+    )
+    .await
+    .expect("a sales channel");
+
+    let read = admin::get_sales_channel(&mut tx, &ctx, channel.id)
+        .await
+        .expect("to read it back");
+    assert_eq!(read.name, "Web");
+
+    let missing =
+        admin::get_sales_channel(&mut tx, &ctx, SalesChannelId::from_uuid(Uuid::now_v7()))
+            .await
+            .expect_err("no such channel");
+    assert!(missing.is_not_found());
+
+    let issued = admin::create_publishable_key(
+        &mut tx,
+        &ctx,
+        admin::CreatePublishableKey {
+            title: "Storefront".into(),
+        },
+    )
+    .await
+    .expect("a publishable key");
+
+    let read = admin::get_publishable_key(&mut tx, &ctx, issued.key.id)
+        .await
+        .expect("to read it back");
+    assert_eq!(read.title, "Storefront");
+
+    let missing =
+        admin::get_publishable_key(&mut tx, &ctx, PublishableKeyId::from_uuid(Uuid::now_v7()))
+            .await
+            .expect_err("no such key");
+    assert!(missing.is_not_found());
 
     drop(tx);
     shop.close().await;

@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
+use crate::credit;
 use crate::error::{Error, Result};
 use crate::fulfilment;
 use crate::id::{
@@ -30,6 +31,7 @@ use crate::payment;
 use crate::ports::{Action, Ctx, Permit, Resource, Tx};
 use crate::settlement;
 
+use super::credit::StoreCreditView;
 use super::{Method, Route, Surface};
 
 // ---------------------------------------------------------------------------
@@ -2617,6 +2619,29 @@ pub async fn refund_payment(
     Ok(refund.into())
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RefundToCredit {
+    pub amount: MoneyIn,
+    pub reason: Option<String>,
+}
+
+/// Gives an order's money to the customer's balance instead of back to the
+/// card. `credit::refund_to_credit` asks `Action::Settle` on the credit it is
+/// about to create, not on the order — moving money onto a balance is a
+/// different power from moving it onto the order itself.
+pub async fn refund_order_to_credit(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderId,
+    input: RefundToCredit,
+) -> Result<StoreCreditView> {
+    let amount = input.amount.money()?;
+    Ok(StoreCreditView::from(
+        credit::refund_to_credit(tx, ctx, id, amount, input.reason).await?,
+    ))
+}
+
 pub async fn payment_providers(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<Vec<ProviderView>> {
     let rows = payment::providers(tx, ctx).await?;
     Ok(rows
@@ -4065,6 +4090,13 @@ pub(super) static ROUTES: &[Route] = &[
         Settle,
         "payment",
         "Give back money that was taken"
+    ),
+    route!(
+        Post,
+        "/admin/orders/{id}/refund-to-credit",
+        Settle,
+        "credit",
+        "Refund an order onto the customer's balance instead of the card"
     ),
     route!(
         Get,

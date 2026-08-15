@@ -14,6 +14,7 @@ use rust_decimal_macros::dec;
 use serde_json::json;
 use tezgah::api::admin_order::{
     self, CapturePayment, CreateOrder, ListOrders, Listing, MoneyIn, NewLineIn, RefundPayment,
+    RefundToCredit,
 };
 use tezgah::id::{CaptureId, OrderId, PaymentCollectionId, PaymentId};
 use tezgah::money::{Currency, Money};
@@ -727,6 +728,63 @@ async fn the_cancel_route_voids_the_authorisation_and_takes_a_second_click() -> 
     );
 
     admin_order::cancel_order(&mut tx, &ctx, placed.id).await?;
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
+}
+
+/// The route `credit::refund_to_credit` never had: money leaves the order and
+/// lands on the customer's balance rather than going back to a card, and a
+/// clerk who may not move money is refused the same way capture and refund
+/// already are.
+#[tokio::test]
+async fn refund_to_credit_moves_the_order_not_the_card() -> Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+    seed_currency(&mut tx, shop.here).await;
+
+    let customer = common::a_customer(&mut tx, &ctx).await;
+    let mut placed_input = an_order(dec!(100.00));
+    placed_input.customer_id = Some(customer);
+    let placed = admin_order::create_order(&mut tx, &ctx, placed_input).await?;
+
+    let clerk = Clerk;
+    let clerk_ctx = shop.ctx_as(Actor::Staff { id: Uuid::now_v7() }, &clerk as &dyn Host);
+    let refused = admin_order::refund_order_to_credit(
+        &mut tx,
+        &clerk_ctx,
+        placed.id,
+        RefundToCredit {
+            amount: try_(dec!(40.00)),
+            reason: None,
+        },
+    )
+    .await
+    .expect_err("a clerk may not move money onto a balance either");
+    assert!(refused.is_denied());
+
+    let account = admin_order::refund_order_to_credit(
+        &mut tx,
+        &ctx,
+        placed.id,
+        RefundToCredit {
+            amount: try_(dec!(40.00)),
+            reason: Some("returned by hand".into()),
+        },
+    )
+    .await
+    .expect("a refund to credit");
+    assert_eq!(account.customer_id, customer);
+    assert_eq!(account.balance, dec!(40.00));
+
+    let refunds: i64 = sqlx::query_scalar("select count(*) from refund where scope = $1")
+        .bind(shop.here.0)
+        .fetch_one(&mut *tx)
+        .await
+        .expect("the refund table");
+    assert_eq!(refunds, 0, "no provider was asked for this money");
 
     tx.rollback().await.expect("to roll back");
     shop.close().await;

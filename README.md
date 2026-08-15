@@ -151,6 +151,14 @@ rate turned into another. Each is a real feature for somebody and neither is
 needed to sell a thing. They are absent because they were considered, not
 because they were forgotten.
 
+Also absent, and for the same reason a host provides an admin UI rather than
+tezgah shipping one: translating the interface a shopper reads and formatting
+a number for their locale, and reporting — a dashboard over what already sits
+in Postgres. Both belong to whatever a host is built in, not to the engine
+underneath it. A product's own content is different: `catalogue`'s
+`product_translation` carries a title, a description and a handle per locale,
+because that text is the shop's data, not the surrounding chrome.
+
 ## Design provenance
 
 The data model is informed by Medusa's published design, read at v2.18.0 under

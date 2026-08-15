@@ -537,6 +537,72 @@ async fn a_refund_can_stay_in_the_shop() {
     shop.close().await;
 }
 
+/// The same call twice is one shopper clicking twice, not two refunds. The
+/// order ledger's unique index on `(order_id, reference, reference_id)` is
+/// what catches it — no new mechanism, the one `record_transaction` already
+/// carries.
+#[tokio::test]
+async fn refunding_the_same_order_to_credit_twice_mints_one_balance() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+
+    let mut tx = shop.begin().await;
+    let order = an_order(&mut tx, &ctx, dec!(400)).await;
+
+    let account = credit::refund_to_credit(&mut tx, &ctx, order, money(dec!(400)), None)
+        .await
+        .expect("a refund to credit");
+    assert_eq!(account.balance, dec!(400));
+
+    let again = credit::refund_to_credit(&mut tx, &ctx, order, money(dec!(400)), None)
+        .await
+        .expect_err("the same order refunded twice");
+    assert_eq!(again.code(), "conflict");
+
+    let balance = credit::store_credit_by_id(&mut tx, &ctx, account.id)
+        .await
+        .expect("the balance");
+    assert_eq!(
+        balance.balance,
+        dec!(400),
+        "a repeat call must not mint a second balance"
+    );
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+/// `refund_to_credit` takes an order, not a customer: whose balance it moves
+/// is read off the order it found, so there is no argument a caller could
+/// pass to land the money on somebody else's account.
+#[tokio::test]
+async fn a_refund_to_credit_lands_on_no_ones_balance_but_the_orders_own_customer() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+
+    let mut tx = shop.begin().await;
+    let mine = an_order(&mut tx, &ctx, dec!(400)).await;
+    let theirs = an_order(&mut tx, &ctx, dec!(400)).await;
+
+    let account = credit::refund_to_credit(&mut tx, &ctx, mine, money(dec!(400)), None)
+        .await
+        .expect("a refund to credit");
+
+    let their_order: order::Order = order::get(&mut tx, &ctx, theirs)
+        .await
+        .expect("the other order");
+    let their_customer = their_order.customer_id.expect("a customer");
+    assert_ne!(account.customer_id, their_customer);
+
+    let untouched = credit::store_credit(&mut tx, &ctx, their_customer, lira())
+        .await
+        .expect_err("that customer never had a balance opened");
+    assert!(untouched.is_not_found());
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
 #[tokio::test]
 async fn a_balance_cannot_be_spent_past_nothing() {
     let shop = Shop::open().await;

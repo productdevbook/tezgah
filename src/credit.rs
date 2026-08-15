@@ -1022,7 +1022,21 @@ pub async fn refund_to_credit(
         )));
     }
 
-    let (account, movement) = add_credit(
+    // Keyed on the order rather than the movement, and written before the
+    // credit itself: this is what makes a second call to refund the same
+    // order fail on `order_transaction`'s unique index and roll the whole
+    // transaction back, instead of quietly minting a second balance.
+    crate::order::record_transaction(
+        tx,
+        ctx,
+        order_id,
+        Money::new(-amount.amount, amount.currency),
+        "refund",
+        order_id.as_uuid(),
+    )
+    .await?;
+
+    let (account, _) = add_credit(
         tx,
         ctx,
         customer_id,
@@ -1033,19 +1047,6 @@ pub async fn refund_to_credit(
             payment_collection_id: None,
             reason,
         },
-    )
-    .await?;
-
-    // The ledger row rather than the account: a customer refunded twice out of
-    // one order is two movements, and naming the account would make the second
-    // meet the unique index and vanish.
-    crate::order::record_transaction(
-        tx,
-        ctx,
-        order_id,
-        Money::new(-amount.amount, amount.currency),
-        "refund",
-        movement.as_uuid(),
     )
     .await?;
 

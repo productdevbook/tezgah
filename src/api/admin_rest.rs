@@ -1379,6 +1379,16 @@ pub async fn list_sales_channels(
     ))
 }
 
+pub async fn get_sales_channel(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: SalesChannelId,
+) -> Result<SalesChannelView> {
+    Ok(SalesChannelView::from(
+        store::sales_channel(tx, ctx, id).await?,
+    ))
+}
+
 pub async fn create_sales_channel(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -1470,6 +1480,16 @@ pub async fn list_publishable_keys(
     Ok(map(
         store::publishable_keys(tx, ctx, query.paging()?).await?,
         PublishableKeyView::from,
+    ))
+}
+
+pub async fn get_publishable_key(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: PublishableKeyId,
+) -> Result<PublishableKeyView> {
+    Ok(PublishableKeyView::from(
+        store::publishable_key(tx, ctx, id).await?,
     ))
 }
 
@@ -2277,6 +2297,14 @@ pub(super) static ROUTES: &[Route] = &[
     },
     Route {
         surface: Surface::Admin,
+        method: Method::Get,
+        path: "/admin/sales-channels/{id}",
+        action: Action::View,
+        domain: "store",
+        summary: "Fetch one sales channel",
+    },
+    Route {
+        surface: Surface::Admin,
         method: Method::Patch,
         path: "/admin/sales-channels/{id}",
         action: Action::Write,
@@ -2306,6 +2334,14 @@ pub(super) static ROUTES: &[Route] = &[
         action: Action::Write,
         domain: "store",
         summary: "Issue a storefront key, whose token is returned once",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Get,
+        path: "/admin/publishable-api-keys/{id}",
+        action: Action::View,
+        domain: "store",
+        summary: "Fetch one storefront key",
     },
     Route {
         surface: Surface::Admin,
