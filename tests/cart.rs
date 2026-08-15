@@ -654,6 +654,90 @@ async fn a_cart_that_ran_out_of_time_is_swept_away() -> tezgah::Result<()> {
 }
 
 #[tokio::test]
+async fn a_swept_cart_gives_back_what_it_reserved() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+
+    let location = inventory::create_stock_location(
+        &mut tx,
+        &ctx,
+        inventory::NewStockLocation {
+            name: format!("warehouse {}", uuid::Uuid::now_v7()),
+            address: None,
+        },
+    )
+    .await?;
+    let item = inventory::create_inventory_item(
+        &mut tx,
+        &ctx,
+        inventory::NewInventoryItem {
+            sku: Some(format!("sku-{}", uuid::Uuid::now_v7())),
+            title: Some("a mug".into()),
+            requires_shipping: true,
+        },
+    )
+    .await?;
+    inventory::set_stock(&mut tx, &ctx, item.id, location.id, 5, 0).await?;
+
+    let variant = a_variant(&mut tx, &ctx, "mug").await?;
+    inventory::attach_inventory_item(&mut tx, &ctx, variant, item.id, 1).await?;
+
+    let now = chrono::Utc::now();
+    let cart = cart::create(
+        &mut tx,
+        &ctx,
+        NewCart {
+            expires_at: Some(now - chrono::Duration::hours(1)),
+            ..NewCart::guest(lira()?)
+        },
+    )
+    .await?;
+    let line = cart::add_line(
+        &mut tx,
+        &ctx,
+        cart.id,
+        AddLine {
+            variant_id: variant,
+            quantity: 2,
+            unit_price: money(dec!(19.99))?,
+            is_tax_inclusive: false,
+            selling_plan_id: None,
+        },
+    )
+    .await?;
+
+    // Checkout would reserve the line's stock; simulated here so the hold
+    // exists for `expire` to give back — reproducing exactly what a cart
+    // abandoned mid-checkout leaves behind.
+    inventory::reserve(
+        &mut tx,
+        &ctx,
+        item.id,
+        location.id,
+        2,
+        Some(line.id),
+        false,
+        None,
+    )
+    .await?;
+
+    let level = inventory::level(&mut tx, &ctx, item.id, location.id).await?;
+    assert_eq!((level.reserved_quantity, level.available_quantity), (2, 3));
+
+    let gone = cart::expire(&mut tx, &ctx, now).await?;
+    assert_eq!(gone, vec![cart.id]);
+
+    let level = inventory::level(&mut tx, &ctx, item.id, location.id).await?;
+    assert_eq!((level.reserved_quantity, level.available_quantity), (0, 5));
+    assert!(shop.host.emitted("stock.released"));
+
+    tx.rollback().await.ok();
+    shop.close().await;
+    Ok(())
+}
+
+#[tokio::test]
 async fn another_scope_cannot_reach_the_cart() -> tezgah::Result<()> {
     let shop = Shop::open().await;
 

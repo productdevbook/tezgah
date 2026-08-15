@@ -334,6 +334,173 @@ async fn a_migration_backfills_workflow_steps_0017_left_null() {
     shop.close().await;
 }
 
+/// `reservation_item.line_item_id` (0007) carried no key at all: the comment
+/// said it could not, until 0009 gave it something to reference. 0009 landed
+/// and the key never followed, so a reservation whose cart went away kept
+/// holding stock forever. 0075 is the corrective sweep, matched here against
+/// a table put back in the shape 0007 left it — a bare, keyless column — with
+/// exactly that kind of row already sitting in it.
+#[tokio::test]
+async fn a_corrective_migration_releases_reservations_already_orphaned() {
+    let shop = Shop::open().await;
+
+    let item = uuid::Uuid::now_v7();
+    let location = uuid::Uuid::now_v7();
+    let cart = uuid::Uuid::now_v7();
+    let line = uuid::Uuid::now_v7();
+    let live_reservation = uuid::Uuid::now_v7();
+    let orphan_reservation = uuid::Uuid::now_v7();
+
+    let mut mine = shop.begin().await;
+    sqlx::query("insert into inventory_item (id, scope, sku) values ($1, $2, 'sku-1')")
+        .bind(item)
+        .bind(shop.here.0)
+        .execute(&mut *mine)
+        .await
+        .expect("an item");
+    sqlx::query("insert into stock_location (id, scope, name) values ($1, $2, 'a warehouse')")
+        .bind(location)
+        .bind(shop.here.0)
+        .execute(&mut *mine)
+        .await
+        .expect("a location");
+    sqlx::query(
+        "insert into inventory_level
+             (id, scope, inventory_item_id, location_id, stocked_quantity, reserved_quantity)
+         values ($1, $2, $3, $4, 10, 5)",
+    )
+    .bind(uuid::Uuid::now_v7())
+    .bind(shop.here.0)
+    .bind(item)
+    .bind(location)
+    .execute(&mut *mine)
+    .await
+    .expect("a level, already carrying the orphan's reserved units");
+    sqlx::query(r#"insert into cart (id, scope, currency_code) values ($1, $2, 'TRY')"#)
+        .bind(cart)
+        .bind(shop.here.0)
+        .execute(&mut *mine)
+        .await
+        .expect("a cart");
+    sqlx::query(
+        "insert into cart_line_item
+             (id, scope, cart_id, product_title, quantity, unit_price, currency_code)
+         values ($1, $2, $3, 'a thing', 1, 10, 'TRY')",
+    )
+    .bind(line)
+    .bind(shop.here.0)
+    .bind(cart)
+    .execute(&mut *mine)
+    .await
+    .expect("a live cart line");
+    mine.commit().await.expect("to commit");
+
+    let owner = shop.migrator().await;
+
+    // Put the table back exactly as 0007 left it, with 0075 and 0076's work
+    // undone: one bare, keyless column, naming whatever it names or nothing
+    // at all. No row exists yet, so there is nothing to carry across.
+    owner
+        .execute(
+            "alter table reservation_item drop constraint reservation_item_cart_line_item_id_fkey;
+             alter table reservation_item drop constraint reservation_item_order_line_item_id_fkey;
+             alter table reservation_item drop constraint reservation_item_line_item_exclusive;
+             alter table reservation_item add column line_item_id uuid;
+             alter table reservation_item drop column cart_line_item_id;
+             alter table reservation_item drop column order_line_item_id;",
+        )
+        .await
+        .expect("to put the table back as 0007 left it");
+
+    // One reservation still naming a live cart line, and one naming nothing
+    // that exists at all — the second is exactly what an expired cart with
+    // no key behind `line_item_id` left dangling. Written through the app
+    // role, in its own scope, the same as everything else `reservation_item`
+    // ever holds — the owner pool has no `app.scope` set and forced RLS would
+    // refuse the insert outright.
+    let mut mine = shop.begin().await;
+    sqlx::query(
+        "insert into reservation_item
+             (id, scope, inventory_item_id, location_id, quantity, line_item_id)
+         values ($1, $2, $3, $4, 2, $5)",
+    )
+    .bind(live_reservation)
+    .bind(shop.here.0)
+    .bind(item)
+    .bind(location)
+    .bind(line)
+    .execute(&mut *mine)
+    .await
+    .expect("a live reservation");
+    sqlx::query(
+        "insert into reservation_item
+             (id, scope, inventory_item_id, location_id, quantity, line_item_id)
+         values ($1, $2, $3, $4, 3, $5)",
+    )
+    .bind(orphan_reservation)
+    .bind(shop.here.0)
+    .bind(item)
+    .bind(location)
+    .bind(uuid::Uuid::now_v7())
+    .execute(&mut *mine)
+    .await
+    .expect("an orphaned reservation");
+    mine.commit().await.expect("to commit");
+
+    owner
+        .execute(include_str!(
+            "../migrations/0075_reservation_line_item_scope.sql"
+        ))
+        .await
+        .expect("0075 to apply to a database that already has reservations in it");
+
+    let mut mine = shop.begin().await;
+    let still_there: bool = sqlx::query_scalar(
+        "select exists (select 1 from reservation_item where scope = $1 and id = $2)",
+    )
+    .bind(shop.here.0)
+    .bind(live_reservation)
+    .fetch_one(&mut *mine)
+    .await
+    .expect("to check the live reservation");
+    let orphan_gone: bool = sqlx::query_scalar(
+        "select not exists (select 1 from reservation_item where scope = $1 and id = $2)",
+    )
+    .bind(shop.here.0)
+    .bind(orphan_reservation)
+    .fetch_one(&mut *mine)
+    .await
+    .expect("to check the orphan");
+    let reserved: i32 = sqlx::query_scalar(
+        "select reserved_quantity from inventory_level
+         where scope = $1 and inventory_item_id = $2 and location_id = $3",
+    )
+    .bind(shop.here.0)
+    .bind(item)
+    .bind(location)
+    .fetch_one(&mut *mine)
+    .await
+    .expect("the level");
+    mine.commit().await.expect("to commit");
+
+    assert!(
+        still_there,
+        "0075 must not touch a reservation that still names a live line"
+    );
+    assert!(
+        orphan_gone,
+        "0075 must clear a reservation naming nothing that exists"
+    );
+    assert_eq!(
+        reserved, 2,
+        "the orphan's 3 units come off `reserved_quantity`, leaving only the live \
+         reservation's 2"
+    );
+
+    owner.close().await;
+    shop.close().await;
+}
+
 /// 0046 replaces `metadata->>'subscription'` with a real column. A database
 /// that ran the old convention has orders carrying only the JSON key, and the
 /// backfill has to move a well-formed, same-scope one across while leaving a

@@ -1294,6 +1294,11 @@ pub async fn totals(tx: &mut Tx<'_>, ctx: &Ctx<'_>, cart_id: CartId) -> Result<C
 /// Clears out the carts nobody came back to. Completed carts are never touched:
 /// one of those is an order's history. At most [`MAX_BATCH`] a call: a sweep
 /// that came back full has more to take, so call it again until it does not.
+///
+/// Every hold an expiring cart's lines took is released before the cart goes
+/// — `reservation_item.cart_line_item_id` is `restrict`, so a cart with an
+/// unreleased hold cannot be deleted at all rather than deleted with the hold
+/// left dangling.
 pub async fn expire(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -1301,25 +1306,31 @@ pub async fn expire(
 ) -> Result<Vec<CartId>> {
     let _: Permit = ctx.permit(Action::Delete, Resource::Customer { id: None })?;
 
-    let gone: Vec<CartId> = sqlx::query_scalar(
-        "delete from cart
+    let candidates: Vec<CartId> = sqlx::query_scalar(
+        "select id from cart
          where scope = $1
-           and id in (
-             select id from cart
-             where scope = $1
-               and completed_at is null
-               and expires_at is not null
-               and expires_at <= $2
-             order by expires_at, id
-             limit $3
-           )
-         returning id",
+           and completed_at is null
+           and expires_at is not null
+           and expires_at <= $2
+         order by expires_at, id
+         limit $3",
     )
     .bind(ctx.scope.0)
     .bind(now)
     .bind(MAX_BATCH)
     .fetch_all(&mut **tx)
     .await?;
+
+    for id in &candidates {
+        crate::inventory::release_cart(tx, ctx, *id).await?;
+    }
+
+    let gone: Vec<CartId> =
+        sqlx::query_scalar("delete from cart where scope = $1 and id = any($2) returning id")
+            .bind(ctx.scope.0)
+            .bind(candidates.iter().map(CartId::as_uuid).collect::<Vec<_>>())
+            .fetch_all(&mut **tx)
+            .await?;
 
     for id in &gone {
         ctx.emit(

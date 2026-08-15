@@ -35,7 +35,8 @@ const LEVEL_COLUMNS: &str = "id, inventory_item_id, location_id, stocked_quantit
 /// part of it is needed to reserve stock — so a ceiling rather than a page.
 const MAX_ITEMS_PER_VARIANT: i64 = 200;
 
-const RESERVATION_COLUMNS: &str = "id, inventory_item_id, location_id, quantity, line_item_id,
+const RESERVATION_COLUMNS: &str = "id, inventory_item_id, location_id, quantity,
+     coalesce(cart_line_item_id, order_line_item_id) as line_item_id,
      allows_backorder, expires_at, created_at";
 
 const STOCK_TRANSFER_COLUMNS: &str = "id, inventory_item_id, from_location_id, to_location_id,
@@ -1401,6 +1402,9 @@ pub async fn transfers_for_item(
 /// serialises two callers reaching for the same last unit and the second sees
 /// what the first wrote. Reading the level first and updating after would let
 /// both pass a test that was true for neither by the time it was acted on.
+///
+/// `line_item_id` names a cart line — a reservation is always taken before
+/// checkout writes the order that [`rebind_reservations`] later moves it onto.
 #[allow(clippy::too_many_arguments)]
 pub async fn reserve(
     tx: &mut Tx<'_>,
@@ -1452,7 +1456,7 @@ pub async fn reserve(
     let id = ReservationId::new();
     let reservation = sqlx::query_as::<_, Reservation>(&format!(
         "insert into reservation_item
-             (id, scope, inventory_item_id, location_id, quantity, line_item_id,
+             (id, scope, inventory_item_id, location_id, quantity, cart_line_item_id,
               allows_backorder, expires_at)
          values ($1, $2, $3, $4, $5, $6, $7, $8)
          returning {RESERVATION_COLUMNS}"
@@ -1634,7 +1638,7 @@ async fn line_reservations(
 ) -> Result<Vec<Reservation>> {
     Ok(sqlx::query_as::<_, Reservation>(&format!(
         "select {RESERVATION_COLUMNS} from reservation_item
-         where scope = $1 and line_item_id = $2
+         where scope = $1 and (cart_line_item_id = $2 or order_line_item_id = $2)
          order by created_at, id"
     ))
     .bind(ctx.scope.0)
@@ -1657,8 +1661,8 @@ pub async fn rebind_reservations(
     let _: Permit = ctx.permit(Action::Write, Resource::Inventory { id: None })?;
 
     let moved = sqlx::query(
-        "update reservation_item set line_item_id = $3
-         where scope = $1 and line_item_id = $2",
+        "update reservation_item set order_line_item_id = $3, cart_line_item_id = null
+         where scope = $1 and cart_line_item_id = $2",
     )
     .bind(ctx.scope.0)
     .bind(from.as_uuid())
@@ -1667,6 +1671,30 @@ pub async fn rebind_reservations(
     .await?;
 
     Ok(moved.rows_affected())
+}
+
+/// Gives back every hold every line of a cart has. What `cart::expire` calls
+/// before it deletes an abandoned cart, so the reservation goes with an
+/// audit row and a `stock.released` event rather than with nothing at all.
+pub async fn release_cart(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    cart_id: crate::id::CartId,
+) -> Result<u64> {
+    let _: Permit = ctx.permit(Action::Write, Resource::Inventory { id: None })?;
+
+    let lines: Vec<uuid::Uuid> =
+        sqlx::query_scalar("select id from cart_line_item where scope = $1 and cart_id = $2")
+            .bind(ctx.scope.0)
+            .bind(cart_id.as_uuid())
+            .fetch_all(&mut **tx)
+            .await?;
+
+    let mut released = 0;
+    for line in lines {
+        released += release_line(tx, ctx, LineItemId::from_uuid(line)).await?;
+    }
+    Ok(released)
 }
 
 /// Gives back every hold a line has. Nothing left the shelf, so `stocked`
@@ -1952,7 +1980,7 @@ pub async fn unfulfil_units(
          where scope = $1 and id = (
              select id from reservation_item
              where scope = $1
-               and line_item_id = $2
+               and order_line_item_id = $2
                and inventory_item_id = $3
                and location_id = $4
              order by created_at, id
@@ -1970,7 +1998,7 @@ pub async fn unfulfil_units(
     if grown.rows_affected() == 0 {
         sqlx::query(
             "insert into reservation_item
-                 (id, scope, inventory_item_id, location_id, quantity, line_item_id)
+                 (id, scope, inventory_item_id, location_id, quantity, order_line_item_id)
              values ($1, $2, $3, $4, $5, $6)",
         )
         .bind(ReservationId::new().as_uuid())
@@ -2019,7 +2047,7 @@ async fn take_held(
          where scope = $1 and id = (
              select id from reservation_item
              where scope = $1
-               and line_item_id = $2
+               and order_line_item_id = $2
                and inventory_item_id = $3
                and location_id = $4
                and quantity = $5
@@ -2044,7 +2072,7 @@ async fn take_held(
          where scope = $1 and id = (
              select id from reservation_item
              where scope = $1
-               and line_item_id = $2
+               and order_line_item_id = $2
                and inventory_item_id = $3
                and location_id = $4
                and quantity > $5
@@ -2125,7 +2153,7 @@ pub async fn reservations_for_line_item(
     let rows = sqlx::query_as::<_, Reservation>(&format!(
         "select {RESERVATION_COLUMNS}
          from reservation_item
-         where scope = $1 and line_item_id = $2
+         where scope = $1 and (cart_line_item_id = $2 or order_line_item_id = $2)
            and ($3::timestamptz is null or (created_at, id) > ($3, $4))
          order by created_at, id
          limit $5"
@@ -2926,6 +2954,8 @@ pub async fn orders_for_lot(
 
 /// Promises one named lot rather than whichever the strategy would pick: the
 /// third thing a real warehouse asks for, after FEFO and FIFO.
+///
+/// `line_item_id`, like [`reserve`]'s, names a cart line.
 pub async fn reserve_from_lot(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -2989,7 +3019,7 @@ pub async fn reserve_from_lot(
     let id = ReservationId::new();
     let reservation = sqlx::query_as::<_, Reservation>(&format!(
         "insert into reservation_item
-             (id, scope, inventory_item_id, location_id, quantity, line_item_id,
+             (id, scope, inventory_item_id, location_id, quantity, cart_line_item_id,
               allows_backorder, expires_at)
          values ($1, $2, $3, $4, $5, $6, false, $7)
          returning {RESERVATION_COLUMNS}"
@@ -3250,7 +3280,7 @@ async fn ship_from_lots(
          join reservation_item ri on ri.scope = rl.scope and ri.id = rl.reservation_item_id
          join inventory_lot l on l.scope = rl.scope and l.id = rl.inventory_lot_id
          where rl.scope = $1
-           and ri.line_item_id = $2
+           and ri.order_line_item_id = $2
            and ri.inventory_item_id = $3
            and ri.location_id = $4
          order by {}

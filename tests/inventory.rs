@@ -1493,3 +1493,88 @@ async fn a_transfer_is_one_movement_not_two_adjustments() {
 
     shop.close().await;
 }
+
+/// `reservation_item.cart_line_item_id` and `.order_line_item_id` (0076) are
+/// composite and scoped, so a reservation naming a line item that does not
+/// exist is refused by the constraint itself rather than written and left to
+/// be discovered later.
+#[tokio::test]
+async fn a_reservation_cannot_name_a_line_item_that_does_not_exist() {
+    let shop = Shop::open().await;
+    let (item, location, _) = seed(&shop, 5).await;
+
+    let mut tx = shop.begin().await;
+    let refused = sqlx::query(
+        "insert into reservation_item
+             (id, scope, inventory_item_id, location_id, quantity, cart_line_item_id)
+         values ($1, $2, $3, $4, 1, $5)",
+    )
+    .bind(uuid::Uuid::now_v7())
+    .bind(shop.here.0)
+    .bind(item.as_uuid())
+    .bind(location.as_uuid())
+    .bind(uuid::Uuid::now_v7())
+    .execute(&mut *tx)
+    .await;
+    tx.rollback().await.ok();
+
+    assert!(
+        refused.is_err(),
+        "a reservation named a cart line that does not exist"
+    );
+
+    shop.close().await;
+}
+
+/// Postgres checks a foreign key with row security bypassed, so before 0076 a
+/// reservation could name another tenant's cart line and nothing in the
+/// schema would refuse it. The composite, scoped key does.
+#[tokio::test]
+async fn a_reservation_cannot_reach_another_scopes_line_item() {
+    let shop = Shop::open().await;
+    let (item, location, _) = seed(&shop, 5).await;
+
+    let their_cart = uuid::Uuid::now_v7();
+    let their_line = uuid::Uuid::now_v7();
+    let mut elsewhere = shop.begin_as(shop.elsewhere).await;
+    sqlx::query(r#"insert into cart (id, scope, currency_code) values ($1, $2, 'TRY')"#)
+        .bind(their_cart)
+        .bind(shop.elsewhere.0)
+        .execute(&mut *elsewhere)
+        .await
+        .expect("a cart in the other shop");
+    sqlx::query(
+        "insert into cart_line_item
+             (id, scope, cart_id, product_title, quantity, unit_price, currency_code)
+         values ($1, $2, $3, 'a thing', 1, 10, 'TRY')",
+    )
+    .bind(their_line)
+    .bind(shop.elsewhere.0)
+    .bind(their_cart)
+    .execute(&mut *elsewhere)
+    .await
+    .expect("a line item in the other shop");
+    elsewhere.commit().await.expect("to commit");
+
+    let mut mine = shop.begin().await;
+    let refused = sqlx::query(
+        "insert into reservation_item
+             (id, scope, inventory_item_id, location_id, quantity, cart_line_item_id)
+         values ($1, $2, $3, $4, 1, $5)",
+    )
+    .bind(uuid::Uuid::now_v7())
+    .bind(shop.here.0)
+    .bind(item.as_uuid())
+    .bind(location.as_uuid())
+    .bind(their_line)
+    .execute(&mut *mine)
+    .await;
+    mine.rollback().await.ok();
+
+    assert!(
+        refused.is_err(),
+        "a reservation in one scope referenced a line item in another"
+    );
+
+    shop.close().await;
+}
