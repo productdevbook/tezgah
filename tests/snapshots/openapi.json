@@ -5570,6 +5570,45 @@
         "x-tezgah-permission": "write"
       }
     },
+    "/admin/orders/{id}/payment-collection": {
+      "post": {
+        "operationId": "postAdminOrdersByIdPaymentCollection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Put a payment collection under a placed order",
+        "tags": [
+          "order"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
     "/admin/orders/{id}/returns": {
       "get": {
         "operationId": "getAdminOrdersByIdReturns",
