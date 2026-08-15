@@ -40,12 +40,12 @@ use tezgah::id::{
     AddressId, AgreementVersionId, CampaignId, CartCreditId, CartId, CategoryId, CollectionId,
     CommissionRuleId, CustomerGroupId, CustomerId, DigitalContentId, FulfillmentId,
     FulfillmentSetId, GiftCardId, InventoryItemId, InventoryLotId, LineItemId, OptionId,
-    OrderBasketId, OrderChangeId, OrderEntitlementId, OrderId, OrderInvoiceId, PaymentCollectionId,
-    PaymentId, PriceId, PriceListId, PriceSetId, ProductId, ProductImageId, ProductTagId,
-    ProductTypeId, PromotionId, PublishableKeyId, RegionId, ReservationId, ReturnId,
-    SalesChannelId, SellingPlanGroupId, SellingPlanId, ServiceZoneId, ShippingOptionId,
-    ShippingProfileId, StockLocationId, StockTransferId, StoreCreditId, SubscriptionId, TaxRateId,
-    TaxRegionId, VariantId, WorkflowRunId,
+    OrderBasketId, OrderChangeId, OrderEntitlementId, OrderId, PaymentCollectionId, PaymentId,
+    PriceId, PriceListId, PriceSetId, ProductId, ProductImageId, ProductTagId, ProductTypeId,
+    PromotionId, PublishableKeyId, RegionId, ReservationId, ReturnId, SalesChannelId,
+    SellingPlanGroupId, SellingPlanId, ServiceZoneId, ShippingOptionId, ShippingProfileId,
+    StockLocationId, StockTransferId, StoreCreditId, SubscriptionId, TaxRateId, TaxRegionId,
+    VariantId, WorkflowRunId,
 };
 use tezgah::ports::{Action, Actor};
 
