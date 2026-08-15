@@ -1468,21 +1468,23 @@ async fn a_transfer_is_one_movement_not_two_adjustments() {
 
     // One row, not two `inventory_level` adjustments: the audit says which
     // locations and how much moved, from a single write.
-    let audits = shop.host.audits.lock();
-    let transfer_audits = audits
-        .iter()
-        .filter(|(entity, id)| *entity == "stock_transfer" && *id == transfer.id.as_uuid())
-        .count();
-    let level_audits = audits
-        .iter()
-        .filter(|(entity, _)| *entity == "inventory_level")
-        .count();
+    let (transfer_audits, level_audits) = {
+        let audits = shop.host.audits.lock();
+        let transfer_audits = audits
+            .iter()
+            .filter(|(entity, id)| *entity == "stock_transfer" && *id == transfer.id.as_uuid())
+            .count();
+        let level_audits = audits
+            .iter()
+            .filter(|(entity, _)| *entity == "inventory_level")
+            .count();
+        (transfer_audits, level_audits)
+    };
     assert_eq!(transfer_audits, 1);
     assert_eq!(
         level_audits, 0,
         "the level itself is never audited by a transfer; the transfer row is the record"
     );
-    drop(audits);
 
     shop.close().await;
 }
