@@ -1328,7 +1328,7 @@ pub async fn expire(
     let gone: Vec<CartId> =
         sqlx::query_scalar("delete from cart where scope = $1 and id = any($2) returning id")
             .bind(ctx.scope.0)
-            .bind(candidates.iter().map(CartId::as_uuid).collect::<Vec<_>>())
+            .bind(candidates.iter().map(|id| id.as_uuid()).collect::<Vec<_>>())
             .fetch_all(&mut **tx)
             .await?;
 
