@@ -293,7 +293,7 @@ const TOLERATED: [(&str, &str); 48] = [
 ];
 
 /// Tables no code in `src/` writes to, each with the reason.
-const TOLERATED_TABLES: [(&str, &str); 5] = [
+const TOLERATED_TABLES: [(&str, &str); 6] = [
     (
         "tezgah_table",
         "the register a migration writes through `tezgah_register`, read by \
@@ -308,6 +308,11 @@ const TOLERATED_TABLES: [(&str, &str); 5] = [
         "tezgah_scoped_fk_table",
         "which tables carry a scoped foreign key, written by the migrations \
          that scoped them",
+    ),
+    (
+        "tezgah_cross_scope_fk",
+        "which single-column keys are named, deliberate exceptions to same-scope \
+         keys, written by `tezgah_cross_scope_fk` the procedure, not the library",
     ),
     (
         "tezgah_evidence_table",
