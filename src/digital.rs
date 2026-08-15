@@ -29,7 +29,6 @@
 
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use sqlx::FromRow;
 use subtle::ConstantTimeEq;
 use uuid::Uuid;
@@ -622,7 +621,7 @@ pub async fn issue_token(
     .bind(id.as_uuid())
     .bind(ctx.scope.0)
     .bind(entitlement_id.as_uuid())
-    .bind(fingerprint(&token))
+    .bind(crate::store::digest(&token))
     .bind(expires_at)
     .execute(&mut **tx)
     .await?;
@@ -662,7 +661,7 @@ pub async fn redeem(
     token: &str,
     access: Access,
 ) -> Result<Download> {
-    let hashed = fingerprint(token);
+    let hashed = crate::store::digest(token);
 
     let found = sqlx::query_as::<_, TokenRow>(
         "select t.id, t.order_entitlement_id, t.token_hash, t.expires_at, t.revoked_at,
@@ -740,11 +739,16 @@ pub async fn redeem(
 
     write_access(tx, ctx, entitlement.id, Some(found.id), "served", &access).await?;
 
+    // Named for what this redemption did, not for the entitlement's whole
+    // state: a right that quietly runs out of time between visits emits
+    // nothing here, because nobody called redeem to notice it. Catching that
+    // needs something watching the clock — see #105 — and "exhausted" would
+    // have claimed a coverage this does not have.
     if entitlement.remaining() == Some(0) {
         ctx.emit(
             tx,
             Event {
-                name: "entitlement.exhausted",
+                name: "entitlement.downloads_exhausted",
                 entity_id: entitlement.id.as_uuid(),
                 payload: serde_json::json!({
                     "order": entitlement.order_id,
@@ -838,13 +842,4 @@ async fn fresh_token(tx: &mut Tx<'_>) -> Result<String> {
     )
     .fetch_one(&mut **tx)
     .await?)
-}
-
-/// A fourth private copy of the same three lines, and deliberately so: the
-/// three in `order`, `credit` and `store` are private, and a shared one would
-/// be an arrow between domains that own nothing in common but a hash.
-fn fingerprint(token: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(token.as_bytes());
-    hex::encode(hasher.finalize())
 }

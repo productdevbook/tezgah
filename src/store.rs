@@ -1154,8 +1154,23 @@ async fn fresh_token(tx: &mut Tx<'_>) -> Result<String> {
     .await?)
 }
 
-fn digest(token: &str) -> String {
+/// Hashes a token exactly as given. Right for anything machine-generated —
+/// a session key, a webhook credential, 256 random bits — where case is part
+/// of the value rather than an accident of how it was typed.
+///
+/// `store` holds this and [`normalized_digest`] because every domain is
+/// already allowed to reach into it for the currency exponent; a domain that
+/// needs a digest picks one rather than growing a fifth private copy.
+pub(crate) fn digest(token: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(token.as_bytes());
     hex::encode(hasher.finalize())
+}
+
+/// Hashes a code the way a person reads it back, not the way it was stored —
+/// trimmed and upper-cased first. Right for a gift-card code read over the
+/// phone; wrong for anything [`digest`] is right for, because folding case
+/// there would match codes that are not the same bytes.
+pub(crate) fn normalized_digest(code: &str) -> String {
+    digest(&code.trim().to_uppercase())
 }

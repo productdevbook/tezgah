@@ -36,7 +36,6 @@
 
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use sqlx::FromRow;
 use subtle::ConstantTimeEq;
 use uuid::Uuid;
@@ -258,7 +257,7 @@ pub async fn issue(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewGiftCard) -> Result<I
     ))
     .bind(id.as_uuid())
     .bind(ctx.scope.0)
-    .bind(digest(&code))
+    .bind(crate::store::normalized_digest(&code))
     .bind(new.balance.amount)
     .bind(new.balance.currency.as_str())
     .bind(new.issued_order_id.map(OrderId::as_uuid))
@@ -492,7 +491,7 @@ pub async fn gift_card_by_code(tx: &mut Tx<'_>, ctx: &Ctx<'_>, code: &str) -> Re
         code_hash: String,
     }
 
-    let hashed = digest(code);
+    let hashed = crate::store::normalized_digest(code);
 
     let found = sqlx::query_as::<_, Found>(
         "select code_hash from gift_card where scope = $1 and code_hash = $2",
@@ -1610,12 +1609,6 @@ async fn fresh_code(tx: &mut Tx<'_>) -> Result<String> {
     .await?)
 }
 
-fn digest(code: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(code.trim().to_uppercase().as_bytes());
-    hex::encode(hasher.finalize())
-}
-
 fn who(actor: &Actor) -> Option<String> {
     match actor {
         Actor::Staff { id } | Actor::Customer { id } => Some(id.to_string()),
@@ -1630,11 +1623,17 @@ mod tests {
 
     #[test]
     fn a_code_hashes_the_same_however_it_was_typed() {
-        assert_eq!(digest(" abc123 "), digest("ABC123"));
+        assert_eq!(
+            crate::store::normalized_digest(" abc123 "),
+            crate::store::normalized_digest("ABC123")
+        );
     }
 
     #[test]
     fn two_codes_do_not_hash_alike() {
-        assert_ne!(digest("abc123"), digest("abc124"));
+        assert_ne!(
+            crate::store::normalized_digest("abc123"),
+            crate::store::normalized_digest("abc124")
+        );
     }
 }

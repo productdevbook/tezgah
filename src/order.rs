@@ -37,7 +37,6 @@
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use sqlx::FromRow;
 use subtle::ConstantTimeEq;
 use uuid::Uuid;
@@ -3285,7 +3284,7 @@ pub async fn publish_agreement(
     .bind(new.kind.as_str())
     .bind(new.locale.trim())
     .bind(&new.body)
-    .bind(digest(&new.body))
+    .bind(crate::store::digest(&new.body))
     .bind(new.effective_from.unwrap_or_else(|| ctx.now()))
     .bind(new.metadata)
     .fetch_one(&mut **tx)
@@ -4538,7 +4537,7 @@ pub async fn request_transfer(
     .bind(order_id.as_uuid())
     .bind(order.customer_id.map(CustomerId::as_uuid))
     .bind(&to_email)
-    .bind(digest(&token))
+    .bind(crate::store::digest(&token))
     .bind(expires_at)
     .bind(actor_name(ctx))
     .bind(ctx.now())
@@ -4735,7 +4734,10 @@ async fn open_transfer(
 
         // Constant time: a comparison that stops at the first wrong byte tells
         // whoever is guessing how much of the token they have right.
-        let matches: bool = digest(token).as_bytes().ct_eq(hash.as_bytes()).into();
+        let matches: bool = crate::store::digest(token)
+            .as_bytes()
+            .ct_eq(hash.as_bytes())
+            .into();
         if !matches {
             return Err(Error::denied());
         }
@@ -4790,12 +4792,6 @@ async fn fresh_token(tx: &mut Tx<'_>) -> Result<String> {
     )
     .fetch_one(&mut **tx)
     .await?)
-}
-
-fn digest(token: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(token.as_bytes());
-    hex::encode(hasher.finalize())
 }
 
 // ---------------------------------------------------------------------------

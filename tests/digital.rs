@@ -278,7 +278,7 @@ async fn a_download_past_the_limit_is_refused() {
         .expect("the one download");
     assert_eq!(taken.content_key, "books/single.epub");
     assert_eq!(taken.remaining, Some(0));
-    assert!(shop.host.emitted("entitlement.exhausted"));
+    assert!(shop.host.emitted("entitlement.downloads_exhausted"));
 
     let refused = digital::redeem(&mut tx, &ctx, &link.token, Access::default())
         .await
