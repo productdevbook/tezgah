@@ -2453,7 +2453,7 @@ pub async fn product_tags(
     )?;
 
     let rows = sqlx::query_as::<_, ProductTag>(
-        "select t.id, t.value, t.created_at
+        "select t.id, t.value, t.external_id, t.created_at
          from product_tag_link l
          join product_tag t on t.id = l.tag_id and t.scope = l.scope
          where l.scope = $1 and l.product_id = $2 and t.deleted_at is null
@@ -2845,7 +2845,7 @@ pub async fn product_categories(
 
     let rows = sqlx::query_as::<_, ProductCategory>(
         "select c.id, c.parent_id, c.mpath, c.name, c.handle, c.description, c.rank, c.is_active, \
-         c.is_internal, c.metadata, c.created_at, c.updated_at
+         c.is_internal, c.external_id, c.metadata, c.created_at, c.updated_at
          from product_category_link l
          join product_category c on c.id = l.category_id and c.scope = l.scope
          where l.scope = $1 and l.product_id = $2 and c.deleted_at is null

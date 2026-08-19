@@ -260,8 +260,9 @@ async fn a_variant_shows_its_own_images_from_the_storefront() -> tezgah::Result<
     let blue_ids: Vec<_> = seen_blue.images.iter().map(|image| image.id).collect();
     assert_eq!(
         blue_ids,
-        vec![shared.id],
-        "a variant nothing was attached to falls back to the product's own images"
+        vec![shared.id, red_only.id],
+        "a variant nothing was attached to falls back to the product's whole gallery, \
+         attached-elsewhere images included"
     );
 
     let listed = store::list_variants(
@@ -283,7 +284,7 @@ async fn a_variant_shows_its_own_images_from_the_storefront() -> tezgah::Result<
     assert_eq!(by_id.get(&red.id), Some(&1));
     assert_eq!(
         by_id.get(&blue.id),
-        Some(&1),
+        Some(&2),
         "the list falls back the same way get_variant does"
     );
 
