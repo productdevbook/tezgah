@@ -8,8 +8,9 @@
 //! Three questions, none of which needs Postgres — the source and the
 //! migrations answer all three, so these run outside the database test group:
 //!
-//! 1. every free `pub fn` outside `src/api/` has a caller somewhere else in
-//!    the crate;
+//! 1. every free `pub fn` declared in `src/`, outside `src/api/`, has a
+//!    caller — somewhere else in the crate, or in `examples/`, the one place
+//!    outside the crate this repository checks in a host's own code;
 //! 2. every table a migration creates has a writer — in `src/`, resolved
 //!    through a `format!`'s own placeholder where the table name is not a
 //!    literal string there, or in a trigger a migration installs;
@@ -19,8 +20,11 @@
 //! What this does not prove: that a caller is on a path a request can reach,
 //! or that a route is wired up by the host, or that the value written is
 //! written in the right column. Names are matched textually — a caller is a
-//! `module::name(` elsewhere, or a bare `name(` in a file that imported it —
-//! so two functions sharing a name share their callers.
+//! `module::name(` elsewhere, a bare `name(` in a file that imported it, or
+//! `alias::name(` in a file that imported the module itself under a local
+//! alias (`use path::module as alias;`, the shape `examples/shop`'s own
+//! kasapay wrapper uses to call the mapping this repository's example
+//! reaches for) — so two functions sharing a name share their callers.
 //!
 //! Check 2 resolves a `format!`-built table name three ways: a private
 //! function's own parameter, read from every literal argument its callers in
@@ -99,7 +103,7 @@ use std::path::{Path, PathBuf};
 
 /// Public functions nothing in the crate calls, each with the reason.
 /// Adding to this is not a fix.
-const TOLERATED: [(&str, &str); 41] = [
+const TOLERATED: [(&str, &str); 34] = [
     (
         "batch::import_workflow",
         "the import workflow a host runs through the runner when a file is large \
@@ -225,34 +229,6 @@ const TOLERATED: [(&str, &str); 41] = [
         "pricing::link_shipping_option",
         "links a shipping option to a price set; the option's own create writes \
          the link today",
-    ),
-    (
-        "kasapay::to_kasapay_money",
-        "#53's design note stages this as its own PR — proving the Money \
-         conversion round-trips before anything downstream depends on it, so \
-         nothing does yet",
-    ),
-    (
-        "kasapay::from_kasapay_money",
-        "the inverse of kasapay::to_kasapay_money, same reason",
-    ),
-    (
-        "kasapay::capture",
-        "kept ready for #53's PaymentProvider wrapper; kasapay#149 and \
-         kasapay#150 — the two gaps that kept src/providers/stripe.rs and \
-         iyzico.rs around — are both closed, and those two files are gone, \
-         but nothing yet builds the wrapper that would call this",
-    ),
-    ("kasapay::cancel", "same as kasapay::capture"),
-    ("kasapay::refund", "same as kasapay::capture"),
-    ("kasapay::lookup", "same as kasapay::capture"),
-    (
-        "kasapay::map_status",
-        "tezgah#205 made this pub so a host's own authorize does not write \
-         a second copy of the six-way Status match; its only in-crate call \
-         is to_authorization, in the same file, which this check does not \
-         count as a caller — the callers this was exported for are outside \
-         src/, in a host's own PaymentProvider",
     ),
     (
         "tax::rates_for",
@@ -442,6 +418,23 @@ fn sources() -> Vec<(PathBuf, String)> {
     out
 }
 
+/// `examples/`: not part of the crate, and never a source of `pub fn`
+/// declarations this check counts — a host's own example growing a `pub fn`
+/// is not this crate's public surface. It does count as a caller, the same
+/// as any other file outside the one that declares the function: a function
+/// this repository ships no route or in-crate caller for but does ship a
+/// worked example calling is reachable by exactly the evidence #205 asked
+/// for, not by a route this check cannot see.
+fn examples_sources() -> Vec<(PathBuf, String)> {
+    let mut out = Vec::new();
+    let dir = root().join("examples");
+    if dir.is_dir() {
+        files(&dir, "rs", &mut out);
+    }
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    out
+}
+
 /// The module a file is: `src/tax.rs` is `tax`, `src/providers/mod.rs` is
 /// `providers`, which is how the rest of the crate names them.
 fn module(path: &Path) -> String {
@@ -491,8 +484,12 @@ fn free_public_functions(source: &str) -> Vec<(String, usize)> {
     out
 }
 
-/// Whether `haystack` calls `name`: qualified as `module::name(`, or bare
-/// where the file imported the name.
+/// Whether `haystack` calls `name`: qualified as `module::name(`, bare where
+/// the file imported the name, or qualified through a local alias of the
+/// whole module (`use path::module as alias;` then `alias::name(`) —
+/// `examples/shop/provider.rs`'s own `use tezgah::providers::kasapay as
+/// mapping;` is exactly this shape, and `module::name` never appears
+/// literally there even though every one of `kasapay`'s functions is called.
 fn calls(haystack: &str, module: &str, name: &str) -> bool {
     let qualified = format!("{module}::{name}");
     let mut at = 0;
@@ -504,6 +501,24 @@ fn calls(haystack: &str, module: &str, name: &str) -> bool {
             return true;
         }
         at = after;
+    }
+
+    for statement in haystack.split(';') {
+        let statement = statement.trim();
+        let Some(rest) = statement.strip_prefix("use ") else {
+            continue;
+        };
+        let Some((path, alias)) = rest.rsplit_once(" as ") else {
+            continue;
+        };
+        let last_segment = path.rsplit("::").next().unwrap_or(path).trim();
+        if last_segment != module {
+            continue;
+        }
+        let via_alias = format!("{}::{name}(", alias.trim());
+        if haystack.contains(&via_alias) {
+            return true;
+        }
     }
 
     let imported = haystack
@@ -542,6 +557,8 @@ fn calls(haystack: &str, module: &str, name: &str) -> bool {
 #[test]
 fn every_public_function_has_a_caller() {
     let sources = sources();
+    let callers: Vec<(PathBuf, String)> =
+        sources.iter().cloned().chain(examples_sources()).collect();
 
     let mut unreachable = Vec::new();
     let mut used = BTreeSet::new();
@@ -552,7 +569,7 @@ fn every_public_function_has_a_caller() {
         }
         let module = module(path);
         for (name, line) in free_public_functions(source) {
-            let called = sources
+            let called = callers
                 .iter()
                 .any(|(other, text)| other != path && calls(text, &module, &name));
             if called {

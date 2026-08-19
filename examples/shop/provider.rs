@@ -31,9 +31,9 @@ use std::sync::Arc;
 // against the plain `async-trait` crate tezgah depends on directly.
 use async_trait::async_trait;
 use tezgah::payment::{
-    Authorization, AuthorizationStatus, AuthorizeRequest, CancelRequest, CaptureRequest,
-    CaptureResult, LookupProvider, PaymentProvider, RefundRequest, RefundResult, SessionRequest,
-    SessionResponse, SessionStatus, WebhookEvent,
+    Authorization, AuthorizeRequest, CancelRequest, CaptureRequest, CaptureResult, LookupProvider,
+    PaymentProvider, RefundRequest, RefundResult, SessionRequest, SessionResponse, SessionStatus,
+    WebhookEvent,
 };
 use tezgah::providers::kasapay as mapping;
 
