@@ -99,7 +99,7 @@ use std::path::{Path, PathBuf};
 
 /// Public functions nothing in the crate calls, each with the reason.
 /// Adding to this is not a fix.
-const TOLERATED: [(&str, &str); 48] = [
+const TOLERATED: [(&str, &str); 47] = [
     (
         "batch::import_workflow",
         "the import workflow a host runs through the runner when a file is large \
@@ -181,10 +181,6 @@ const TOLERATED: [(&str, &str); 48] = [
         "order::invoice",
         "invoices and credit notes have no route and no in-crate caller; shipped \
          unwired, see #111",
-    ),
-    (
-        "payment::register_provider",
-        "a host registering the providers it has assembled, once at start-up",
     ),
     (
         "payment::provider_by_code",
