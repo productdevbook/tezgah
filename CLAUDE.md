@@ -78,6 +78,24 @@ the tree. A hole nobody has dealt with yet cannot cite one — that is what
 keeps the list from becoming a place fixed bugs go to be remembered as open
 ones.
 
+**A migration that indexes a table already carrying rows takes its lock for
+the duration, and sqlx can avoid that.** #172 measured it: sqlx 0.8 honours a
+literal `-- no-transaction` first line by running that migration outside a
+transaction, which is what `create index concurrently` requires — Postgres
+refuses it inside one. So a new migration that adds an index to a table that
+existed before it opens with `-- no-transaction` and builds the index
+`concurrently`, and — because that leaves the migration non-atomic — drops an
+invalid index of the same name before creating it, so a failed attempt leaves
+a retry clean rather than an operator's problem. A migration creating the
+table in the same file needs none of this — a table with no rows costs
+nothing to lock. `tests/migration_lock.rs` mechanically checks the first two
+(the header and `concurrently` both have to be there); the defensive drop is
+the same discipline `tezgah_fk` already asks of `not valid` constraints and is
+reviewed by eye, not by the test. Its `TOLERATED` list is the 23 (migration,
+table) pairs that indexed an existing table before the rule existed, across
+19 migrations, and may only shrink — never grow for a migration written after
+#172 landed.
+
 ## Mistakes this codebase has made more than once
 
 Every one of these was found by running the code or counting its callers, never
