@@ -3447,7 +3447,7 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
     denied!(
         Method::Get,
         "/store/return-reasons",
-        store::list_return_reasons(&mut tx, &ctx, store::ListPage::default())
+        store::list_return_reasons(&mut tx, &ctx, store::ListReturnReasons::default())
     );
     denied!(
         Method::Get,

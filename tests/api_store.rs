@@ -14,8 +14,8 @@ use chrono::{DateTime, Utc};
 use common::Shop;
 use rust_decimal_macros::dec;
 use tezgah::api::store::{
-    self, AddLineItem, CreateCart, ListOptions, ListPage, ListPaymentProviders, ListProducts,
-    ListVariants, StartPayment, StartPaymentSession,
+    self, AddLineItem, CreateCart, ListCategories, ListOptions, ListPage, ListPaymentProviders,
+    ListProducts, ListReturnReasons, ListVariants, StartPayment, StartPaymentSession,
 };
 use tezgah::cart;
 use tezgah::catalogue::{
@@ -325,6 +325,62 @@ async fn a_storefront_category_is_read_in_its_requested_locale() -> tezgah::Resu
     Ok(())
 }
 
+/// #192: a Turkish category listing with English names was the same bug #188
+/// fixed for `list_products`, one layer up, sitting next to the category's own
+/// page in any storefront.
+#[tokio::test]
+async fn list_product_categories_reads_the_requested_locale_too() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let rugs = catalogue::create_category(
+        &mut tx,
+        &ctx,
+        NewCategory {
+            name: "Rugs".into(),
+            handle: "rugs".into(),
+            is_active: Some(true),
+            is_internal: Some(false),
+            ..NewCategory::default()
+        },
+    )
+    .await?;
+
+    catalogue::put_category_translation(
+        &mut tx,
+        &ctx,
+        rugs.id,
+        CategoryTranslation {
+            category_id: rugs.id,
+            locale: "tr".into(),
+            name: "Halılar".into(),
+            description: None,
+        },
+    )
+    .await?;
+
+    let listed = store::list_product_categories(
+        &mut tx,
+        &ctx,
+        ListCategories {
+            locale: Some("tr".into()),
+            ..ListCategories::default()
+        },
+    )
+    .await?;
+    assert_eq!(listed.items.len(), 1);
+    assert_eq!(listed.items[0].name, "Halılar");
+
+    let untranslated =
+        store::list_product_categories(&mut tx, &ctx, ListCategories::default()).await?;
+    assert_eq!(untranslated.items[0].name, "Rugs");
+
+    drop(tx);
+    shop.close().await;
+    Ok(())
+}
+
 /// #188/#173: a return reason reads its locale as a query parameter on its
 /// own route now too.
 #[tokio::test]
@@ -364,6 +420,59 @@ async fn a_storefront_return_reason_is_read_in_its_requested_locale() -> tezgah:
 
     let untranslated = store::get_return_reason(&mut tx, &ctx, id, None).await?;
     assert_eq!(untranslated.label, "Wrong size");
+
+    drop(tx);
+    shop.close().await;
+    Ok(())
+}
+
+/// #192: the same one-list-route-behind-its-own-page bug as
+/// `list_product_categories`, found by checking every other list route with a
+/// locale on its single-row sibling.
+#[tokio::test]
+async fn list_return_reasons_reads_the_requested_locale_too() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let id = Uuid::now_v7();
+    sqlx::query("insert into return_reason (id, scope, value, label) values ($1, $2, $3, $4)")
+        .bind(id)
+        .bind(shop.here.0)
+        .bind(id.simple().to_string())
+        .bind("Wrong size")
+        .execute(&mut *tx)
+        .await
+        .expect("a return reason");
+
+    order::put_return_reason_translation(
+        &mut tx,
+        &ctx,
+        id,
+        order::ReturnReasonTranslation {
+            return_reason_id: id,
+            locale: "tr".into(),
+            label: "Yanlış beden".into(),
+            description: None,
+        },
+    )
+    .await?;
+
+    let listed = store::list_return_reasons(
+        &mut tx,
+        &ctx,
+        ListReturnReasons {
+            locale: Some("tr".into()),
+            ..ListReturnReasons::default()
+        },
+    )
+    .await?;
+    assert_eq!(listed.items.len(), 1);
+    assert_eq!(listed.items[0].label, "Yanlış beden");
+
+    let untranslated =
+        store::list_return_reasons(&mut tx, &ctx, ListReturnReasons::default()).await?;
+    assert_eq!(untranslated.items[0].label, "Wrong size");
 
     drop(tx);
     shop.close().await;

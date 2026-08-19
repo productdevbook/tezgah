@@ -1135,12 +1135,25 @@ pub struct ListCategories {
     pub parent_id: Option<CategoryId>,
     pub after: Option<String>,
     pub limit: Option<u32>,
+    /// The shopper's language; a category with no translation for it answers
+    /// with its own columns rather than refusing.
+    pub locale: Option<String>,
 }
 
 /// A category a shopper may browse: active, and not one of the ones the back
 /// office keeps for itself.
 fn browsable(row: &catalogue::ProductCategory) -> bool {
     row.is_active && !row.is_internal
+}
+
+/// Overlays a translation onto a category view, in place. A translation's own
+/// field left null falls back to the row's, matching
+/// [`catalogue::localised_category`].
+fn translate_category(view: &mut CategoryView, translation: catalogue::CategoryTranslation) {
+    view.name = translation.name;
+    if let Some(description) = translation.description {
+        view.description = description;
+    }
 }
 
 pub async fn list_product_categories(
@@ -1156,6 +1169,14 @@ pub async fn list_product_categories(
     )
     .await?;
 
+    let mut translations = match query.locale.as_deref() {
+        Some(wanted) => {
+            let ids: Vec<CategoryId> = page.items.iter().map(|row| row.id).collect();
+            catalogue::localised_categories(tx, ctx, &ids, wanted).await?
+        }
+        None => std::collections::HashMap::new(),
+    };
+
     // Filtered after the page is cut, so a page may come back short. The cursor
     // still points at the last row read, so nothing is skipped or repeated.
     Ok(Page {
@@ -1163,7 +1184,14 @@ pub async fn list_product_categories(
             .items
             .into_iter()
             .filter(browsable)
-            .map(CategoryView::from)
+            .map(|row| {
+                let id = row.id;
+                let mut view = CategoryView::from(row);
+                if let Some(translation) = translations.remove(&id) {
+                    translate_category(&mut view, translation);
+                }
+                view
+            })
             .collect(),
         next: page.next,
     })
@@ -2405,14 +2433,57 @@ pub async fn request_return(
     Ok(ReturnView::from(made))
 }
 
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ListReturnReasons {
+    pub after: Option<String>,
+    pub limit: Option<u32>,
+    /// The shopper's language; a reason with no translation for it answers
+    /// with its own columns rather than refusing.
+    pub locale: Option<String>,
+}
+
+/// Overlays a translation onto a return reason view, in place. A translation's
+/// own field left null falls back to the row's, matching
+/// [`order::localised_return_reason`].
+fn translate_return_reason(
+    view: &mut ReturnReasonView,
+    translation: order::ReturnReasonTranslation,
+) {
+    view.label = translation.label;
+    if let Some(description) = translation.description {
+        view.description = Some(description);
+    }
+}
+
 pub async fn list_return_reasons(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
-    query: ListPage,
+    query: ListReturnReasons,
 ) -> Result<Page<ReturnReasonView>> {
     let page = order::return_reasons(tx, ctx, paging(query.after.as_deref(), query.limit)?).await?;
+
+    let mut translations = match query.locale.as_deref() {
+        Some(wanted) => {
+            let ids: Vec<Uuid> = page.items.iter().map(|row| row.id).collect();
+            order::localised_return_reasons(tx, ctx, &ids, wanted).await?
+        }
+        None => std::collections::HashMap::new(),
+    };
+
     Ok(Page {
-        items: page.items.into_iter().map(ReturnReasonView::from).collect(),
+        items: page
+            .items
+            .into_iter()
+            .map(|row| {
+                let id = row.id;
+                let mut view = ReturnReasonView::from(row);
+                if let Some(translation) = translations.remove(&id) {
+                    translate_return_reason(&mut view, translation);
+                }
+                view
+            })
+            .collect(),
         next: page.next,
     })
 }
@@ -2646,7 +2717,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/product-categories",
         action: Action::View,
         domain: "catalogue",
-        summary: "List the categories a shopper may browse",
+        summary: "List the categories a shopper may browse, optionally in a locale",
     },
     Route {
         surface: Surface::Store,
@@ -2966,7 +3037,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/return-reasons",
         action: Action::View,
         domain: "order",
-        summary: "List the reasons a return may be given",
+        summary: "List the reasons a return may be given, optionally in a locale",
     },
     Route {
         surface: Surface::Store,

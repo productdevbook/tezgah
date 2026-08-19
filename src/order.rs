@@ -3516,6 +3516,52 @@ pub async fn localised_return_reason(
     })
 }
 
+/// The same fallback [`localised_return_reason`] reads, for every id in
+/// `return_reason_ids` at once — a page of reasons a storefront just listed
+/// reads their labels in one query rather than one per row.
+pub async fn localised_return_reasons(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    return_reason_ids: &[Uuid],
+    wanted: &str,
+) -> Result<std::collections::HashMap<Uuid, ReturnReasonTranslation>> {
+    let _: Permit = ctx.permit(
+        Action::View,
+        Resource::Order {
+            id: Uuid::nil(),
+            customer: None,
+        },
+    )?;
+
+    let mut by_reason = std::collections::HashMap::new();
+    if return_reason_ids.is_empty() {
+        return Ok(by_reason);
+    }
+
+    let locale = locale(wanted)?;
+    let language = locale.split('-').next().unwrap_or(&locale).to_owned();
+
+    let rows: Vec<ReturnReasonTranslation> = sqlx::query_as(
+        "select distinct on (return_reason_id)
+                return_reason_id, locale, label, description
+         from return_reason_translation
+         where scope = $1 and return_reason_id = any($2) and locale in ($3, $4)
+         order by return_reason_id, case when locale = $3 then 0 else 1 end",
+    )
+    .bind(ctx.scope.0)
+    .bind(return_reason_ids)
+    .bind(&locale)
+    .bind(&language)
+    .fetch_all(&mut **tx)
+    .await?;
+
+    for row in rows {
+        by_reason.insert(row.return_reason_id, row);
+    }
+
+    Ok(by_reason)
+}
+
 pub async fn returns(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,

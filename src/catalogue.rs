@@ -3597,6 +3597,47 @@ pub async fn localised_category(
     })
 }
 
+/// The same fallback [`localised_category`] reads, for every id in
+/// `category_ids` at once — a page of categories a storefront just listed
+/// reads their names in one query rather than one per row.
+pub async fn localised_categories(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    category_ids: &[CategoryId],
+    wanted: &str,
+) -> Result<std::collections::HashMap<CategoryId, CategoryTranslation>> {
+    let _: Permit = ctx.permit(Action::View, Resource::Product { id: None })?;
+
+    let mut by_category = std::collections::HashMap::new();
+    if category_ids.is_empty() {
+        return Ok(by_category);
+    }
+
+    let locale = locale(wanted)?;
+    let language = locale.split('-').next().unwrap_or(&locale).to_owned();
+    let ids: Vec<Uuid> = category_ids.iter().map(|id| id.as_uuid()).collect();
+
+    let rows: Vec<CategoryTranslation> = sqlx::query_as(
+        "select distinct on (category_id)
+                category_id, locale, name, description
+         from product_category_translation
+         where scope = $1 and category_id = any($2) and locale in ($3, $4)
+         order by category_id, case when locale = $3 then 0 else 1 end",
+    )
+    .bind(ctx.scope.0)
+    .bind(&ids)
+    .bind(&locale)
+    .bind(&language)
+    .fetch_all(&mut **tx)
+    .await?;
+
+    for row in rows {
+        by_category.insert(row.category_id, row);
+    }
+
+    Ok(by_category)
+}
+
 // ---------------------------------------------------------------------------
 // The two shapes shared by the small tables
 // ---------------------------------------------------------------------------
