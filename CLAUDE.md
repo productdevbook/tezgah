@@ -125,6 +125,13 @@ exist. Eighty-nine routes did this. Ids here are uuidv7 and carry a timestamp,
 so an oracle over them leaks when a shop trades, not just whether. Ask before
 you answer, on the branch where there is nothing to answer about.
 
+**A migration's text read as if it were the schema.** Migrations are
+append-only, so a `create table` block keeps saying `references product (id)`
+long after a later migration converted that key through `tezgah_fk`. Grepping
+the corpus produced a list of 44 "unswept" keys; measuring the built schema
+found none. If the question is what the database looks like, apply the
+migrations and ask the catalogue.
+
 **Documentation asserting the opposite of the code.** The README told readers
 four features were deliberately absent that had already landed; the roadmap
 blamed closed issues for gaps they closed. Verify a claim about behaviour
