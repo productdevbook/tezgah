@@ -225,6 +225,12 @@ pub trait ReachingStep: Send + Sync {
     /// In a transaction, committed before `call` runs. Writes what must be on
     /// record before the world is asked anything, and returns what `call`
     /// needs plus an idempotency key.
+    ///
+    /// `prepared.data` is also what the runner writes as this step's own
+    /// `compensate_input` the moment this transaction commits — before there
+    /// is any answer, because a crash between here and `record` leaves a row
+    /// `called` that still has to be undone. `prepare` should therefore write
+    /// down everything `compensate` needs, not only what `call` does.
     async fn prepare(
         &self,
         tx: &mut Tx<'_>,
@@ -232,14 +238,38 @@ pub trait ReachingStep: Send + Sync {
         input: &Value,
     ) -> std::result::Result<Prepared, Failure>;
 
-    /// No transaction, no connection held. The runner may retry this with the
-    /// same `Prepared` only when the call itself never reached the provider;
-    /// once the row is `called`, the next driver asks rather than calls.
+    /// No transaction, no connection held. Called once, the first time this
+    /// row's `prepare` has just committed in this same pass.
     async fn call(
         &self,
         ctx: &Ctx<'_>,
         prepared: &Prepared,
     ) -> std::result::Result<Answer, Failure>;
+
+    /// Called instead of `call` when the runner finds this step's row already
+    /// `called`: `prepare` committed — this pass or an earlier one, this
+    /// worker or another — and nothing recorded what `call` answered. Must
+    /// settle what actually happened rather than assume nothing did.
+    ///
+    /// The default replays `call` with the same `Prepared`, which is correct
+    /// exactly when the provider guarantees that a second call carrying the
+    /// same idempotency key returns the original result instead of opening a
+    /// second one (kasapay#122: true for Stripe, Mollie, PayPal and iyzico
+    /// in-store). A provider that can instead be asked what happened
+    /// (`Capabilities::lookup_by_order` — iyzico classic, PayTR) must
+    /// override this to ask first. The three answers are not
+    /// interchangeable: nothing found is safe to replay, an answer is the
+    /// answer, and the question going unanswered is neither — treating it as
+    /// "nothing happened" is how a shopper is charged twice, so an override
+    /// that cannot get an answer must return `Err`, never fall through to a
+    /// replay.
+    async fn resume(
+        &self,
+        ctx: &Ctx<'_>,
+        prepared: &Prepared,
+    ) -> std::result::Result<Answer, Failure> {
+        self.call(ctx, prepared).await
+    }
 
     /// In a new transaction. Writes the answer and produces the same
     /// `Outcome` a single-phase step would have.
@@ -251,9 +281,10 @@ pub trait ReachingStep: Send + Sync {
         answer: Answer,
     ) -> std::result::Result<Outcome, Failure>;
 
-    /// Undo what `prepare` and `record` wrote, given what `record` kept. Must
-    /// be written against `prepare`'s output as much as `record`'s: a row
-    /// that never got past `prepare` still needs closing out.
+    /// Undo what `prepare` and `record` wrote, given what was kept. Must be
+    /// written against `prepare`'s output as much as `record`'s — see
+    /// `prepare`'s note on `compensate_input` — because a row that never got
+    /// past `prepare` still needs closing out.
     async fn compensate(&self, _tx: &mut Tx<'_>, _ctx: &Ctx<'_>, _kept: &Value) -> Result<()> {
         Ok(())
     }
@@ -618,6 +649,10 @@ struct StepRow {
     max_attempts: i32,
     output: Option<Value>,
     compensate_input: Option<Value>,
+    /// What a [`ReachingStep::prepare`] committed, for `call`/`resume` to
+    /// pick back up. `None` for a `Step`, and for a `ReachingStep` row that
+    /// has not reached `prepare` yet.
+    prepared: Option<Value>,
 }
 
 struct Head {
@@ -642,6 +677,11 @@ enum Stop {
     /// gone. Nothing to unwind here — whoever holds it decides.
     Lost,
     Refused(Failure),
+    /// A [`ReachingStep`]'s `call`/`resume` did not settle this pass — the
+    /// provider could not be reached, or was asked and did not answer — and
+    /// attempts remain. Nothing failed and nothing here is compensated: the
+    /// row stays `called`, and a later pass tries again.
+    NotYet,
 }
 
 /// How many of a run's due steps this driver took, and how many somebody else
@@ -656,12 +696,16 @@ struct Lease {
 /// predicate no longer holds, so exactly one comes away with the steps.
 async fn lease_run(pool: &PgPool, ctx: &Ctx<'_>, id: WorkflowRunId, worker: &str) -> Result<Lease> {
     let mut tx = scoped(pool, ctx).await?;
+    // `called` claims the same way `pending` does: a step split by #158 needs
+    // its lease held (or reclaimed) exactly like any other in-flight state,
+    // or a second `run()` call on the same key could `resume` it at the same
+    // time as this one drives it.
     let (leased, held_elsewhere): (i64, i64) = sqlx::query_as(
         "with leased as (
              update workflow_step
              set lease_until = $2, locked_by = $3
              where run_id = $1
-               and state in ('pending', 'compensating', 'failed')
+               and state in ('pending', 'compensating', 'failed', 'called')
                and run_after <= now()
                and (lease_until is null or lease_until < now())
              returning 1 as one
@@ -669,7 +713,7 @@ async fn lease_run(pool: &PgPool, ctx: &Ctx<'_>, id: WorkflowRunId, worker: &str
          select (select count(*) from leased),
                 (select count(*) from workflow_step
                  where run_id = $1
-                   and state in ('pending', 'invoking', 'compensating')
+                   and state in ('pending', 'invoking', 'compensating', 'called')
                    and lease_until >= now()
                    and locked_by is distinct from $3)",
     )
@@ -762,6 +806,7 @@ async fn drive(
 
             let mut failed: Option<(&'static str, Failure)> = None;
             let mut lost = false;
+            let mut stalled = false;
             let mut paused = false;
             for (&k, result) in waiting.iter().zip(all(running).await) {
                 match result {
@@ -771,6 +816,7 @@ async fn drive(
                         paused = true;
                     }
                     Err(Stop::Lost) => lost = true,
+                    Err(Stop::NotYet) => stalled = true,
                     Err(Stop::Refused(failure)) => {
                         if failed.is_none() {
                             failed = Some((slot.steps[k].name(), failure));
@@ -788,6 +834,12 @@ async fn drive(
             if let Some((name, failure)) = failed {
                 let why = format!("{name}: {}", failure.error());
                 return unwind(pool, ctx, workflow, id, worker, head.transaction_key, why).await;
+            }
+
+            if stalled {
+                return Err(Error::conflict(
+                    "a step is waiting on an answer from outside; try again shortly",
+                ));
             }
 
             if paused {
@@ -888,7 +940,7 @@ async fn step_rows(
 ) -> Result<Vec<StepRow>> {
     let mut tx = scoped(pool, ctx).await?;
     let rows: Vec<StepRow> = sqlx::query_as(
-        "select state, attempts, max_attempts, output, compensate_input
+        "select state, attempts, max_attempts, output, compensate_input, prepared
          from workflow_step
          where run_id = $1 and ordering >= $2 and ordering < $3
          order by ordering",
@@ -942,16 +994,22 @@ async fn invoke(
     input: &Value,
     row: &StepRow,
 ) -> std::result::Result<StepResult, Stop> {
-    let Claim { id, at, worker } = held;
+    match step {
+        StepKind::Direct(step) => invoke_direct(pool, ctx, held, step, input, row).await,
+        StepKind::Reaching(step) => invoke_reaching(pool, ctx, held, step, input, row).await,
+    }
+}
 
-    // No workflow adds a `reaching_step` slot yet — the runner's resume-by-
-    // asking path for a `called` row (#158) is not built. Refuse cleanly
-    // rather than driving it as a `Step`.
-    let StepKind::Direct(step) = step else {
-        return Err(Stop::Refused(Failure::Final(Error::bug(
-            "a ReachingStep slot has no driver yet",
-        ))));
-    };
+/// Runs one `Step`, retrying while it says to and the ceiling allows.
+async fn invoke_direct(
+    pool: &PgPool,
+    ctx: &Ctx<'_>,
+    held: Claim<'_>,
+    step: &Arc<dyn Step>,
+    input: &Value,
+    row: &StepRow,
+) -> std::result::Result<StepResult, Stop> {
+    let Claim { id, at, worker } = held;
 
     if row.attempts >= row.max_attempts {
         return Err(Stop::Refused(Failure::Final(Error::conflict(
@@ -1057,6 +1115,319 @@ async fn invoke(
     }
 }
 
+/// Runs one [`ReachingStep`] in its three phases. A row already `called`
+/// when this is reached (`row.state == "called"`) means `prepare` committed
+/// on an earlier pass and `call` was never recorded — `resume` is what asks
+/// what happened, `prepare` and `call` are not run again.
+async fn invoke_reaching(
+    pool: &PgPool,
+    ctx: &Ctx<'_>,
+    held: Claim<'_>,
+    step: &Arc<dyn ReachingStep>,
+    input: &Value,
+    row: &StepRow,
+) -> std::result::Result<StepResult, Stop> {
+    let Claim { id, at, worker } = held;
+
+    if row.attempts >= row.max_attempts {
+        return Err(Stop::Refused(Failure::Final(Error::conflict(
+            "this step has already used every attempt it had",
+        ))));
+    }
+
+    let resuming = row.state == "called";
+
+    let (prepared, attempts_now) = if resuming {
+        let envelope = row.prepared.clone().ok_or_else(|| {
+            Stop::Refused(Failure::Final(Error::bug(
+                "a called step lost what prepare wrote down",
+            )))
+        })?;
+        (parse_prepared(&envelope)?, row.attempts)
+    } else {
+        prepare_phase(
+            pool,
+            ctx,
+            id,
+            at,
+            worker,
+            step.as_ref(),
+            input,
+            row.max_attempts,
+        )
+        .await?
+    };
+
+    let answer = if resuming {
+        step.resume(ctx, &prepared).await
+    } else {
+        step.call(ctx, &prepared).await
+    };
+
+    let answer = match answer {
+        Ok(answer) => answer,
+        Err(failure) => {
+            // Neither `call` nor `resume` held a transaction, so nothing
+            // durable changes here beyond the attempt itself: the row stays
+            // `called`, and either this pass tries again shortly or, once
+            // attempts are gone, unwind compensates it — never a blind retry
+            // of the call the runner cannot see the result of.
+            let attempts_now = match stall(pool, ctx, id, at, worker, resuming).await {
+                Ok(Some(attempts)) => attempts,
+                Ok(None) => return Err(Stop::Lost),
+                Err(err) => return Err(Stop::Refused(Failure::Final(err))),
+            };
+            // `Final` is never retried, exactly like a `Step`'s: a step
+            // author who has decided a failure will not change on its own —
+            // a definite decline learned via `resume` — must not wait out
+            // the attempt ceiling first.
+            if !failure.retryable() || attempts_now >= row.max_attempts {
+                return Err(Stop::Refused(failure));
+            }
+            return Err(Stop::NotYet);
+        }
+    };
+
+    record_phase(
+        pool,
+        ctx,
+        id,
+        at,
+        step.as_ref(),
+        &prepared,
+        answer,
+        attempts_now,
+        row.max_attempts,
+    )
+    .await
+}
+
+fn envelope(prepared: &Prepared) -> Value {
+    serde_json::json!({
+        "idempotency_key": prepared.idempotency_key,
+        "data": prepared.data,
+    })
+}
+
+fn parse_prepared(value: &Value) -> std::result::Result<Prepared, Stop> {
+    let idempotency_key = value
+        .get("idempotency_key")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            Stop::Refused(Failure::Final(Error::bug(
+                "a called step's idempotency key will not parse",
+            )))
+        })?
+        .to_string();
+    let data = value.get("data").cloned().unwrap_or(Value::Null);
+    Ok(Prepared {
+        idempotency_key,
+        data,
+    })
+}
+
+/// Claims the row, runs `prepare`, and commits it — alongside `called` and
+/// what `compensate` will need — before returning. Retries in process while
+/// `prepare` itself (database-only, no network) says to, exactly as a `Step`
+/// does; only `call`/`resume`, which cannot be retried blindly, waits for a
+/// later pass instead.
+async fn prepare_phase(
+    pool: &PgPool,
+    ctx: &Ctx<'_>,
+    id: WorkflowRunId,
+    at: i32,
+    worker: &str,
+    step: &dyn ReachingStep,
+    input: &Value,
+    max_attempts: i32,
+) -> std::result::Result<(Prepared, i32), Stop> {
+    loop {
+        let leased = Utc::now() + LEASE;
+        let mut tx = scoped(pool, ctx)
+            .await
+            .map_err(|err| Stop::Refused(Failure::Final(err)))?;
+
+        let taken: Option<i32> = sqlx::query_scalar(
+            "update workflow_step
+             set attempts = attempts + 1, lease_until = $4
+             where run_id = $1 and ordering = $2
+               and state in ('pending', 'failed')
+               and attempts < max_attempts
+               and locked_by = $3
+             returning attempts",
+        )
+        .bind(id.as_uuid())
+        .bind(at)
+        .bind(worker)
+        .bind(leased)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|err| Stop::Refused(Failure::Final(Error::from(err))))?;
+
+        let Some(attempts) = taken else {
+            return Err(Stop::Lost);
+        };
+
+        match step.prepare(&mut tx, ctx, input).await {
+            Ok(prepared) => {
+                sqlx::query(
+                    "update workflow_step
+                     set state = 'called', prepared = $3, compensate_input = $4
+                     where run_id = $1 and ordering = $2",
+                )
+                .bind(id.as_uuid())
+                .bind(at)
+                .bind(envelope(&prepared))
+                .bind(&prepared.data)
+                .execute(&mut *tx)
+                .await
+                .map_err(|err| Stop::Refused(Failure::Final(Error::from(err))))?;
+
+                tx.commit()
+                    .await
+                    .map_err(|err| Stop::Refused(Failure::Final(Error::from(err))))?;
+
+                return Ok((prepared, attempts));
+            }
+            Err(failure) => {
+                drop(tx);
+
+                if failure.retryable() && attempts < max_attempts {
+                    backoff(attempts).await;
+                    continue;
+                }
+
+                let message = match &failure {
+                    Failure::Retry(err) | Failure::Final(err) => err.to_string(),
+                };
+
+                let mut tx = scoped(pool, ctx)
+                    .await
+                    .map_err(|err| Stop::Refused(Failure::Final(err)))?;
+                let _ = sqlx::query(
+                    "update workflow_step
+                     set state = 'failed', failure = $3, lease_until = null
+                     where run_id = $1 and ordering = $2 and locked_by = $4",
+                )
+                .bind(id.as_uuid())
+                .bind(at)
+                .bind(&message)
+                .bind(worker)
+                .execute(&mut *tx)
+                .await;
+                let _ = tx.commit().await;
+
+                return Err(Stop::Refused(failure));
+            }
+        }
+    }
+}
+
+/// Releases the lease on a `call`/`resume` that did not settle this pass,
+/// bumping `attempts` only when resuming — a fresh `call` already had its
+/// attempt counted by `prepare`'s own commit. `None` means this worker no
+/// longer holds the row: somebody else's business now.
+async fn stall(
+    pool: &PgPool,
+    ctx: &Ctx<'_>,
+    id: WorkflowRunId,
+    at: i32,
+    worker: &str,
+    bump: bool,
+) -> Result<Option<i32>> {
+    let mut tx = scoped(pool, ctx).await?;
+    let attempts: Option<i32> = sqlx::query_scalar(
+        "update workflow_step
+         set lease_until = null, locked_by = null,
+             attempts = attempts + case when $4 then 1 else 0 end
+         where run_id = $1 and ordering = $2 and locked_by = $3
+         returning attempts",
+    )
+    .bind(id.as_uuid())
+    .bind(at)
+    .bind(worker)
+    .bind(bump)
+    .fetch_optional(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(attempts)
+}
+
+/// Writes what `record` produced, in its own transaction — guarded by
+/// `state = 'called'` because `call`/`resume` held no lease-refreshing
+/// transaction of their own: if this row was resolved by somebody else in
+/// the meantime, this write is a no-op rather than a second answer.
+async fn record_phase(
+    pool: &PgPool,
+    ctx: &Ctx<'_>,
+    id: WorkflowRunId,
+    at: i32,
+    step: &dyn ReachingStep,
+    prepared: &Prepared,
+    answer: Answer,
+    attempts_now: i32,
+    max_attempts: i32,
+) -> std::result::Result<StepResult, Stop> {
+    let mut tx = scoped(pool, ctx)
+        .await
+        .map_err(|err| Stop::Refused(Failure::Final(err)))?;
+
+    match step.record(&mut tx, ctx, prepared, answer).await {
+        Ok(outcome) => {
+            let (state, compensate_input) = match &outcome {
+                Outcome::Ran {
+                    compensate_input, ..
+                } => ("done", compensate_input.clone()),
+                Outcome::Skipped { .. } => ("skipped", Value::Null),
+                // As with a `Step`: nothing is kept to compensate with, the
+                // shopper is expected back and the same run driven again.
+                Outcome::Waiting { .. } => ("waiting", Value::Null),
+            };
+
+            let updated: Option<i32> = sqlx::query_scalar(
+                "update workflow_step
+                 set state = $3, output = $4, compensate_input = $5, lease_until = null,
+                     locked_by = null
+                 where run_id = $1 and ordering = $2 and state = 'called'
+                 returning 1",
+            )
+            .bind(id.as_uuid())
+            .bind(at)
+            .bind(state)
+            .bind(outcome.output())
+            .bind(&compensate_input)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(|err| Stop::Refused(Failure::Final(Error::from(err))))?;
+
+            if updated.is_none() {
+                drop(tx);
+                return Err(Stop::Lost);
+            }
+
+            tx.commit()
+                .await
+                .map_err(|err| Stop::Refused(Failure::Final(Error::from(err))))?;
+
+            Ok(match outcome {
+                Outcome::Waiting { .. } => StepResult::Waiting(outcome.output().clone()),
+                _ => StepResult::Output(outcome.output().clone()),
+            })
+        }
+        Err(failure) => {
+            // Rolled back: the row is exactly as it was, still `called`, so
+            // the next pass resumes rather than repeats `prepare`. `Final` —
+            // a decline `record` recognised while writing the answer down —
+            // is never retried, exactly like a `Step`'s.
+            drop(tx);
+            if !failure.retryable() || attempts_now >= max_attempts {
+                return Err(Stop::Refused(failure));
+            }
+            Err(Stop::NotYet)
+        }
+    }
+}
+
 async fn backoff(attempt: i32) {
     let millis = 100u64.saturating_mul(1 << attempt.clamp(0, 6) as u64);
     tokio::time::sleep(std::time::Duration::from_millis(millis)).await;
@@ -1082,7 +1453,12 @@ async fn unwind(
         for one in slot.steps.iter().rev() {
             at -= 1;
             let row = step_row(pool, ctx, id, at).await?;
-            if row.state != "done" {
+            // `called` is a `ReachingStep` row whose `prepare` committed and
+            // never got the chance to `record` an answer — a durable side
+            // effect all the same, and `compensate_input` holds what
+            // `prepare` wrote precisely so this is reachable. `done` is
+            // everything else that ran to completion.
+            if row.state != "done" && row.state != "called" {
                 continue;
             }
 

@@ -505,6 +505,42 @@ pub trait PaymentProvider: Send + Sync {
     /// Refusing is the security boundary: an event whose signature does not
     /// check out must never reach [`record_webhook`].
     fn parse_webhook(&self, headers: &[(String, String)], body: &[u8]) -> Result<WebhookEvent>;
+
+    /// `Some` only from a provider that also implements [`LookupProvider`].
+    ///
+    /// Discovery rather than a method every implementor must answer: a
+    /// provider that can be asked what happened to a call whose response
+    /// never arrived overrides this to hand back itself; every other
+    /// provider is `None` by doing nothing at all. `#158`'s three-phase step
+    /// asks this before deciding whether a `called` row is resumed by
+    /// asking or by replaying the call.
+    fn as_lookup(&self) -> Option<&dyn LookupProvider> {
+        None
+    }
+}
+
+/// A provider that can be asked what became of a call whose answer never
+/// arrived — kasapay's `lookup_by_order`
+/// ([productdevbook/kasapay#122](https://github.com/productdevbook/kasapay/issues/122)).
+///
+/// Keyed by the reference tezgah itself generated and sent — [`PaymentSessionId`],
+/// already sent as `SessionRequest.session_id`/`AuthorizeRequest.session_id` —
+/// never by anything the provider assigned: a call that got no HTTP response
+/// was never told the provider's own id.
+///
+/// Not every provider can be asked; a provider that cannot leaves
+/// [`PaymentProvider::as_lookup`] at its default and the correct recovery is
+/// a different one — replaying the call with the same idempotency key, which
+/// is safe exactly when the provider guarantees it, not when tezgah hopes so.
+///
+/// The three answers are kept apart on purpose: `Ok(None)` is nothing taken,
+/// so sending the call again is safe; `Ok(Some(_))` is what became of it;
+/// `Err(_)` is the question itself going unanswered, which is **not** the
+/// same as `Ok(None)` — a caller that treats the two alike is how a shopper
+/// is charged twice.
+#[async_trait]
+pub trait LookupProvider: PaymentProvider {
+    async fn lookup(&self, session_id: PaymentSessionId) -> Result<Option<Authorization>>;
 }
 
 /// A provider that can charge an instrument it already holds, with nobody in a
@@ -1519,6 +1555,41 @@ pub async fn cancel(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: PaymentId) -> Result<Pay
     .await?;
 
     Ok(canceled)
+}
+
+/// Closes a session nothing was ever authorised against.
+///
+/// Distinct from [`cancel`], which releases an authorisation a [`Payment`]
+/// row already exists for: this is for a session `#158`'s three-phase
+/// `prepare` opened and committed — evidence a call was about to be made —
+/// when the call was never made, or was made and its answer never recorded.
+/// A no-op, not an error, on a session already resolved one way or another:
+/// compensation calls this without knowing which case it is in, and it must
+/// be safe to call more than once.
+pub async fn close_session(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: PaymentSessionId) -> Result<()> {
+    let _: Permit = ctx.permit(Action::Write, payment_resource(id.as_uuid(), None))?;
+
+    let session = read_session(tx, ctx, id, true).await?;
+    if !session.status().is_open() {
+        return Ok(());
+    }
+
+    set_session_status(tx, ctx, id, SessionStatus::Canceled, None, None).await?;
+    recompute(tx, ctx, session.payment_collection_id).await?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "payment_session",
+            entity_id: id.as_uuid(),
+            summary: serde_json::json!({ "closed": true }),
+        },
+    )
+    .await?;
+
+    Ok(())
 }
 
 pub async fn payment(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: PaymentId) -> Result<Payment> {

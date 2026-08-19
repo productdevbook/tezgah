@@ -7,6 +7,7 @@
 
 mod common;
 
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering as Memory};
 use std::time::Duration;
@@ -838,36 +839,137 @@ async fn reaching_step_phases_run_in_order_and_prepare_commits_before_call() {
     shop.close().await;
 }
 
-/// `ReachingStep` has landed but nothing drives it yet: a workflow built with
-/// [`Workflow::reaching_step`] is refused cleanly rather than run as a `Step`,
-/// and the row it left behind never reaches `done`.
+/// A fake [`ReachingStep`] driven by the real runner rather than by hand.
+/// `run_id` is filled in by the test right after [`workflow::start`], before
+/// [`workflow::run`] on the same key actually drives it — the run has to
+/// exist for the test to know its id, and `call` needs the id to check what
+/// `prepare` committed from a connection of its own.
+struct DrivenReaching {
+    log: Log,
+    run_id: Arc<Mutex<Option<tezgah::id::WorkflowRunId>>>,
+    pool: sqlx::PgPool,
+}
+
+impl DrivenReaching {
+    fn id(&self) -> tezgah::id::WorkflowRunId {
+        self.run_id
+            .lock()
+            .as_ref()
+            .copied()
+            .expect("the test to have filled in the run id before driving")
+    }
+}
+
+#[async_trait]
+impl ReachingStep for DrivenReaching {
+    fn name(&self) -> &'static str {
+        "driven-reaching"
+    }
+
+    async fn prepare(
+        &self,
+        tx: &mut Tx<'_>,
+        _ctx: &Ctx<'_>,
+        _input: &Value,
+    ) -> Result<Prepared, Failure> {
+        self.log.lock().push("prepare".to_string());
+        sqlx::query("update workflow_run set output = $2 where id = $1")
+            .bind(self.id().as_uuid())
+            .bind(json!("prepared"))
+            .execute(&mut **tx)
+            .await
+            .map_err(|err| Failure::Final(tezgah::Error::from(err)))?;
+        Ok(Prepared {
+            idempotency_key: "driven-key".to_string(),
+            data: Value::Null,
+        })
+    }
+
+    async fn call(&self, ctx: &Ctx<'_>, _prepared: &Prepared) -> Result<Answer, Failure> {
+        self.log.lock().push("call".to_string());
+        // A fresh connection, rolled back rather than reusing `prepare`'s
+        // transaction — seeing the row here proves `prepare` committed and
+        // nothing still holds it open while the provider is asked.
+        let mut probe = self
+            .pool
+            .begin()
+            .await
+            .map_err(|err| Failure::Final(tezgah::Error::from(err)))?;
+        sqlx::query("select set_config('app.scope', $1, true)")
+            .bind(ctx.scope.0.to_string())
+            .execute(&mut *probe)
+            .await
+            .map_err(|err| Failure::Final(tezgah::Error::from(err)))?;
+        let visible: Option<Value> =
+            sqlx::query_scalar("select output from workflow_run where id = $1")
+                .bind(self.id().as_uuid())
+                .fetch_one(&mut *probe)
+                .await
+                .map_err(|err| Failure::Final(tezgah::Error::from(err)))?;
+        let _ = probe.rollback().await;
+        assert_eq!(
+            visible,
+            Some(json!("prepared")),
+            "call must see prepare's own commit, not an open transaction"
+        );
+        Ok(Answer(json!("called")))
+    }
+
+    async fn record(
+        &self,
+        _tx: &mut Tx<'_>,
+        _ctx: &Ctx<'_>,
+        _prepared: &Prepared,
+        answer: Answer,
+    ) -> Result<Outcome, Failure> {
+        self.log.lock().push("record".to_string());
+        Ok(Outcome::new(answer.0, Value::Null))
+    }
+}
+
+/// #158 step 3/4: the runner now drives a [`ReachingStep`] for real —
+/// `prepare`, `call` and `record` run in that order through
+/// [`workflow::run`], and `call` proves it holds no transaction by reading
+/// `prepare`'s commit from a connection of its own.
 #[tokio::test]
-async fn a_reaching_step_slot_is_refused_rather_than_driven_as_a_step() {
+async fn a_reaching_step_is_driven_through_all_three_phases() {
     let shop = Shop::open().await;
     let log = log();
+    let run_id = Arc::new(Mutex::new(None));
 
-    let fake = FakeReaching {
+    let flow = Workflow::new("reaching-driven").reaching_step(DrivenReaching {
         log: log.clone(),
-        run_id: tezgah::id::WorkflowRunId::from_uuid(uuid::Uuid::now_v7()),
+        run_id: run_id.clone(),
         pool: shop.pool.clone(),
-    };
-    let flow = Workflow::new("reaching-unused").reaching_step(fake);
+    });
+
+    let id = workflow::start(
+        &shop.pool,
+        &shop.ctx(),
+        &flow,
+        "reaching-driven-1",
+        json!({}),
+    )
+    .await
+    .expect("the run row to exist before it is driven");
+
+    // `run_id` is a second handle onto the same cell `DrivenReaching` reads,
+    // so this reaches the instance the runner will actually drive.
+    *run_id.lock() = Some(id);
 
     let run = workflow::run(
         &shop.pool,
         &shop.ctx(),
         &flow,
-        "reaching-unused-1",
+        "reaching-driven-1",
         json!({}),
     )
     .await
-    .expect("the run to be driven, and to report a failure rather than panic");
+    .expect("the run to be driven");
 
-    assert_eq!(run.state, State::Reverted);
-    assert!(
-        seen(&log).is_empty(),
-        "nothing on the fake ReachingStep should have been called"
-    );
+    assert_eq!(run.state, State::Done, "{:?}", run.failure);
+    assert_eq!(seen(&log), ["prepare", "call", "record"]);
+    assert_eq!(run.output, json!("called"));
 
     shop.close().await;
 }
@@ -994,6 +1096,326 @@ async fn a_lease_expired_called_step_is_claimable_and_still_reads_called() {
     assert!(
         seen(&log).is_empty(),
         "the driver must not have invoked the step as if it were pending"
+    );
+
+    shop.close().await;
+}
+
+/// Writes a `called` row by hand — what a crash between `call` and `record`
+/// leaves behind — with a `prepared` envelope the runner can read back, the
+/// same shape [`workflow::run`]'s own `prepare` phase writes.
+async fn seed_called(shop: &Shop, run_id: tezgah::id::WorkflowRunId, idempotency_key: &str) {
+    let mut tx = shop.begin().await;
+    sqlx::query(
+        "update workflow_step
+         set state = 'called', attempts = 0,
+             prepared = $2, compensate_input = 'null'::jsonb
+         where run_id = $1 and ordering = 0",
+    )
+    .bind(run_id.as_uuid())
+    .bind(json!({ "idempotency_key": idempotency_key, "data": Value::Null }))
+    .execute(&mut *tx)
+    .await
+    .expect("to seed the called row");
+    tx.commit().await.expect("to commit");
+}
+
+/// A fake [`ReachingStep`] whose `resume` is distinct from `call`, so a test
+/// can tell which one the runner reached for a row that starts `called`.
+struct AskOnResume {
+    log: Log,
+}
+
+#[async_trait]
+impl ReachingStep for AskOnResume {
+    fn name(&self) -> &'static str {
+        "ask-on-resume"
+    }
+
+    async fn prepare(
+        &self,
+        _tx: &mut Tx<'_>,
+        _ctx: &Ctx<'_>,
+        _input: &Value,
+    ) -> Result<Prepared, Failure> {
+        self.log.lock().push("prepare".to_string());
+        Ok(Prepared {
+            idempotency_key: "ask-key".to_string(),
+            data: Value::Null,
+        })
+    }
+
+    async fn call(&self, _ctx: &Ctx<'_>, _prepared: &Prepared) -> Result<Answer, Failure> {
+        self.log.lock().push("call".to_string());
+        Ok(Answer(json!("called-fresh")))
+    }
+
+    async fn resume(&self, _ctx: &Ctx<'_>, _prepared: &Prepared) -> Result<Answer, Failure> {
+        self.log.lock().push("resume".to_string());
+        Ok(Answer(json!("asked")))
+    }
+
+    async fn record(
+        &self,
+        _tx: &mut Tx<'_>,
+        _ctx: &Ctx<'_>,
+        _prepared: &Prepared,
+        answer: Answer,
+    ) -> Result<Outcome, Failure> {
+        self.log.lock().push("record".to_string());
+        Ok(Outcome::new(answer.0, Value::Null))
+    }
+}
+
+/// #158: a row a crash left `called` is resumed by asking what happened, not
+/// by calling `prepare`/`call` again — the driver that finds a `called` row
+/// never runs either.
+#[tokio::test]
+async fn a_called_row_is_resumed_by_asking_not_calling_again() {
+    let shop = Shop::open().await;
+    let log = log();
+
+    let flow = Workflow::new("resumed-by-asking").reaching_step(AskOnResume { log: log.clone() });
+    let id = workflow::start(
+        &shop.pool,
+        &shop.ctx(),
+        &flow,
+        "resumed-by-asking-1",
+        json!({}),
+    )
+    .await
+    .expect("the run row to exist");
+
+    seed_called(&shop, id, "ask-key").await;
+
+    let run = workflow::run(
+        &shop.pool,
+        &shop.ctx(),
+        &flow,
+        "resumed-by-asking-1",
+        json!({}),
+    )
+    .await
+    .expect("the run to be driven");
+
+    assert_eq!(run.state, State::Done, "{:?}", run.failure);
+    assert_eq!(
+        seen(&log),
+        ["resume", "record"],
+        "a called row must be resumed, not prepared or called again"
+    );
+    assert_eq!(run.output, json!("asked"));
+
+    shop.close().await;
+}
+
+/// A fake [`ReachingStep`] whose `resume` can never answer — standing in for
+/// a `lookup` that came back `Err`, which #158's kasapay note says is not
+/// the same as `Ok(None)`.
+struct UnanswerableResume {
+    log: Log,
+}
+
+#[async_trait]
+impl ReachingStep for UnanswerableResume {
+    fn name(&self) -> &'static str {
+        "unanswerable-resume"
+    }
+
+    fn max_attempts(&self) -> i32 {
+        1
+    }
+
+    async fn prepare(
+        &self,
+        _tx: &mut Tx<'_>,
+        _ctx: &Ctx<'_>,
+        _input: &Value,
+    ) -> Result<Prepared, Failure> {
+        self.log.lock().push("prepare".to_string());
+        Ok(Prepared {
+            idempotency_key: "unanswerable-key".to_string(),
+            data: Value::Null,
+        })
+    }
+
+    async fn call(&self, _ctx: &Ctx<'_>, _prepared: &Prepared) -> Result<Answer, Failure> {
+        self.log.lock().push("call".to_string());
+        Ok(Answer(json!("called")))
+    }
+
+    async fn resume(&self, _ctx: &Ctx<'_>, _prepared: &Prepared) -> Result<Answer, Failure> {
+        self.log.lock().push("resume".to_string());
+        Err(Failure::Retry(tezgah::Error::provider(
+            "fake",
+            "the question went unanswered",
+        )))
+    }
+
+    async fn record(
+        &self,
+        _tx: &mut Tx<'_>,
+        _ctx: &Ctx<'_>,
+        _prepared: &Prepared,
+        answer: Answer,
+    ) -> Result<Outcome, Failure> {
+        self.log.lock().push("record".to_string());
+        Ok(Outcome::new(answer.0, Value::Null))
+    }
+
+    async fn compensate(
+        &self,
+        _tx: &mut Tx<'_>,
+        _ctx: &Ctx<'_>,
+        _kept: &Value,
+    ) -> tezgah::Result<()> {
+        self.log.lock().push("undo".to_string());
+        Ok(())
+    }
+}
+
+/// #158 / kasapay#122: `resume` going unanswered leaves the row `called` and
+/// unwinds the run through compensation — it is never read as "nothing was
+/// taken", which is what a second authorisation would come from.
+#[tokio::test]
+async fn an_unanswered_resume_is_never_read_as_nothing_happened() {
+    let shop = Shop::open().await;
+    let log = log();
+
+    let flow =
+        Workflow::new("unanswered-resume").reaching_step(UnanswerableResume { log: log.clone() });
+    let id = workflow::start(
+        &shop.pool,
+        &shop.ctx(),
+        &flow,
+        "unanswered-resume-1",
+        json!({}),
+    )
+    .await
+    .expect("the run row to exist");
+
+    seed_called(&shop, id, "unanswerable-key").await;
+
+    let run = workflow::run(
+        &shop.pool,
+        &shop.ctx(),
+        &flow,
+        "unanswered-resume-1",
+        json!({}),
+    )
+    .await
+    .expect("the run to be driven, and to report a failure rather than panic");
+
+    assert_eq!(run.state, State::Reverted, "{:?}", run.failure);
+    assert_eq!(
+        seen(&log),
+        ["resume", "undo"],
+        "an unanswered resume must never reach record — that would be \
+         treating the question going unanswered as nothing having happened"
+    );
+
+    shop.close().await;
+}
+
+/// A fake [`ReachingStep`] that never overrides `resume`, so a `called` row
+/// is resumed by replaying `call` — the default, correct only when the
+/// provider itself guarantees the same idempotency key never authorises
+/// twice. `authorized` is that guarantee, modelled: it only grows the first
+/// time a key is seen, exactly as a real provider's ledger would.
+struct ReplayedByDefault {
+    log: Log,
+    authorized: Arc<Mutex<HashSet<String>>>,
+}
+
+#[async_trait]
+impl ReachingStep for ReplayedByDefault {
+    fn name(&self) -> &'static str {
+        "replayed-by-default"
+    }
+
+    async fn prepare(
+        &self,
+        _tx: &mut Tx<'_>,
+        _ctx: &Ctx<'_>,
+        _input: &Value,
+    ) -> Result<Prepared, Failure> {
+        self.log.lock().push("prepare".to_string());
+        Ok(Prepared {
+            idempotency_key: "replay-key".to_string(),
+            data: Value::Null,
+        })
+    }
+
+    async fn call(&self, _ctx: &Ctx<'_>, prepared: &Prepared) -> Result<Answer, Failure> {
+        self.log.lock().push("call".to_string());
+        self.authorized
+            .lock()
+            .insert(prepared.idempotency_key.clone());
+        Ok(Answer(json!("authorized")))
+    }
+
+    async fn record(
+        &self,
+        _tx: &mut Tx<'_>,
+        _ctx: &Ctx<'_>,
+        _prepared: &Prepared,
+        answer: Answer,
+    ) -> Result<Outcome, Failure> {
+        self.log.lock().push("record".to_string());
+        Ok(Outcome::new(answer.0, Value::Null))
+    }
+}
+
+/// kasapay#122: a provider with no `lookup_by_order` is resumed by replaying
+/// the same idempotency key — safe because the provider guarantees a second
+/// call with it returns the original rather than opening a second one. This
+/// is that guarantee holding: the row starts `called` as if `call` had
+/// already reached the provider once, and replaying it does not grow the
+/// provider's own ledger a second time.
+#[tokio::test]
+async fn replaying_the_default_resume_produces_one_authorisation() {
+    let shop = Shop::open().await;
+    let log = log();
+    let authorized = Arc::new(Mutex::new(HashSet::new()));
+    // What the provider already holds from the call whose answer was lost.
+    authorized.lock().insert("replay-key".to_string());
+
+    let flow = Workflow::new("replayed-resume").reaching_step(ReplayedByDefault {
+        log: log.clone(),
+        authorized: authorized.clone(),
+    });
+    let id = workflow::start(
+        &shop.pool,
+        &shop.ctx(),
+        &flow,
+        "replayed-resume-1",
+        json!({}),
+    )
+    .await
+    .expect("the run row to exist");
+
+    seed_called(&shop, id, "replay-key").await;
+
+    let run = workflow::run(
+        &shop.pool,
+        &shop.ctx(),
+        &flow,
+        "replayed-resume-1",
+        json!({}),
+    )
+    .await
+    .expect("the run to be driven");
+
+    assert_eq!(run.state, State::Done, "{:?}", run.failure);
+    assert_eq!(
+        seen(&log),
+        ["call", "record"],
+        "the default resume replays call, not prepare"
+    );
+    assert_eq!(
+        authorized.lock().len(),
+        1,
+        "replaying the same idempotency key must not authorise twice"
     );
 
     shop.close().await;

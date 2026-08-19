@@ -43,6 +43,10 @@ enum Answer {
     Authorize,
     Decline,
     SecondFactor,
+    /// `authorize` always fails, the way a provider that cannot be reached
+    /// does — for reaching a `ReachingStep`'s `call`/`resume` failure path
+    /// without ever producing an answer to record.
+    NetworkDown,
 }
 
 struct Bank {
@@ -77,10 +81,15 @@ impl PaymentProvider for Bank {
     async fn authorize(&self, req: AuthorizeRequest) -> Result<Authorization> {
         *self.authorized.lock() += 1;
 
+        if *self.answer.lock() == Answer::NetworkDown {
+            return Err(Error::provider("bank", "could not be reached"));
+        }
+
         let status = match *self.answer.lock() {
             Answer::Authorize => AuthorizationStatus::Authorized,
             Answer::Decline => AuthorizationStatus::Error,
             Answer::SecondFactor => AuthorizationStatus::RequiresMore,
+            Answer::NetworkDown => unreachable!("handled above"),
         };
 
         Ok(Authorization {
@@ -643,6 +652,72 @@ async fn a_declined_card_leaves_nothing_behind() -> Result<()> {
     assert_eq!(placed.run.state, State::Reverted);
 
     nothing_left_behind(&shop, here.cart_id).await;
+    shop.close().await;
+    Ok(())
+}
+
+/// #158 §4: `prepare` opens the session and commits on its own, before the
+/// provider is ever asked. When the provider cannot be reached at all — every
+/// `call`/`resume` failing — the run never finishes, but the session
+/// `prepare` opened must not be left open once attempts run out and the run
+/// gives up: `compensate` is fed from `prepare`, not only from `record`.
+///
+/// `AuthorizePayment` does not override `max_attempts`, so three calls with
+/// the same idempotency key — what a client retrying a failed request looks
+/// like — is what it takes to exhaust it: the first two find the row
+/// `called` from the one before and resume it, asking the provider again
+/// because `Bank` answers no `LookupProvider`; the third gives up.
+#[tokio::test]
+async fn a_session_the_provider_never_answered_is_closed_once_attempts_are_gone() -> Result<()> {
+    let shop = Shop::open().await;
+    let here = ready(&shop, 10, 2).await;
+    let bank = Bank::saying(Answer::NetworkDown);
+    let checkout = Checkout::new(
+        Arc::clone(&bank) as Arc<dyn PaymentProvider>,
+        here.location_id,
+    );
+
+    let first = checkout
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
+        .await;
+    assert!(
+        first.is_err(),
+        "the first attempt should report the run is not finished yet"
+    );
+    let second = checkout
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
+        .await;
+    assert!(second.is_err(), "the second attempt should be the same");
+
+    let placed = checkout
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
+        .await?;
+    assert_eq!(
+        placed.run.state,
+        State::Reverted,
+        "{:?}",
+        placed.run.failure
+    );
+    assert_eq!(
+        *bank.authorized.lock(),
+        3,
+        "the provider should have been asked once per attempt"
+    );
+
+    nothing_left_behind(&shop, here.cart_id).await;
+
+    let open_sessions = count(
+        &shop.pool,
+        shop.here,
+        "select count(*) from payment_session
+         where scope = $1 and status in ('pending', 'requires_more')",
+    )
+    .await;
+    assert_eq!(
+        open_sessions, 0,
+        "the session prepare opened outlived the run that opened it"
+    );
+
     shop.close().await;
     Ok(())
 }

@@ -67,11 +67,12 @@ use crate::order::{
     OrderStatus, TaxSnapshot,
 };
 use crate::payment::{
-    self, AuthorizationStatus, AuthorizeRequest, Authorized, NewCollection, NewSession,
-    PaymentProvider, SessionRequest,
+    self, Authorization, AuthorizationStatus, AuthorizeRequest, Authorized, Installment,
+    LookupProvider, NewCollection, NewSession, PaymentProvider, SessionRequest, SessionResponse,
+    SessionStatus, SurchargeBearer,
 };
 use crate::ports::{Action, AuditEntry, Ctx, Event, Permit, Resource, Tx, scoped};
-use crate::workflow::{self, Failure, Outcome, Step, Workflow};
+use crate::workflow::{self, Answer, Failure, Outcome, Prepared, ReachingStep, Step, Workflow};
 use crate::{cart, catalogue, credit, inventory, promotion, subscription};
 
 /// What the run is holding as it goes, and what a compensation is handed back.
@@ -178,7 +179,7 @@ impl Checkout {
                 provider_code: self.provider.code().to_string(),
             })
             .then(RedeemCredit)
-            .then(AuthorizePayment {
+            .reaching_step(AuthorizePayment {
                 provider: Arc::clone(&self.provider),
             })
             .then(CompleteCart)
@@ -1207,34 +1208,156 @@ async fn record_credit_line(
 // 6. Ask the provider to hold the money
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-struct HeldMoney {
-    payment_id: Option<PaymentId>,
-    order_id: Option<OrderId>,
+/// What `prepare` commits and `call`/`resume` need, and — because the runner
+/// writes this same value as the step's own `compensate_input` the instant
+/// `prepare`'s transaction commits, before there is any answer — what
+/// `compensate` undoes (#158 §4). `record` writes the same shape back with
+/// `payment_id` filled in once there is one, and `compensate` reads either
+/// without needing to know which.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "plan", rename_all = "snake_case")]
+enum AuthorizePlan {
+    /// A basket leg pays through the basket's own collection once every leg
+    /// has landed its order, and the total may already be covered by the
+    /// instruments that ran before this step — either way nothing is asked
+    /// of a provider and there is nothing to undo. `carried` is handed to
+    /// the next step unchanged.
+    Skip { carried: Value },
+    /// A session is open. The provider is either about to be asked, or has
+    /// been and the answer is still missing — `payment_id` is `Some` only
+    /// once `record` has written one down.
+    Open {
+        carried: Value,
+        session_id: PaymentSessionId,
+        collection_id: PaymentCollectionId,
+        order_id: OrderId,
+        amount: Money,
+        #[serde(default)]
+        payment_id: Option<PaymentId>,
+    },
+}
+
+/// What `call`/`resume` answered, for `record` to write down. `session` is
+/// `None` when the answer came from a lookup that reported the
+/// authorisation directly rather than from a fresh `create_session`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AuthorizeAnswer {
+    session: Option<SessionAnswer>,
+    status: String,
+    amount: Option<Money>,
+    data: Value,
+    redirect: Option<String>,
+    message: Option<String>,
+    installment: Option<InstallmentAnswer>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SessionAnswer {
+    data: Value,
+    status: SessionStatus,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct InstallmentAnswer {
+    count: i32,
+    surcharge: Money,
+    bearer: SurchargeBearer,
+    campaign: Option<String>,
+}
+
+impl AuthorizeAnswer {
+    fn of(session: Option<SessionResponse>, auth: Authorization) -> Self {
+        AuthorizeAnswer {
+            session: session.map(|s| SessionAnswer {
+                data: s.data,
+                status: s.status,
+            }),
+            status: match auth.status {
+                AuthorizationStatus::Authorized => "authorized",
+                AuthorizationStatus::RequiresMore => "requires_more",
+                AuthorizationStatus::Error => "error",
+            }
+            .to_string(),
+            amount: auth.amount,
+            data: auth.data,
+            redirect: auth.redirect,
+            message: auth.message,
+            installment: auth.installment.map(|plan| InstallmentAnswer {
+                count: plan.count,
+                surcharge: plan.surcharge,
+                bearer: plan.bearer,
+                campaign: plan.campaign,
+            }),
+        }
+    }
+
+    fn authorization(&self) -> std::result::Result<Authorization, Failure> {
+        let status = match self.status.as_str() {
+            "authorized" => AuthorizationStatus::Authorized,
+            "requires_more" => AuthorizationStatus::RequiresMore,
+            "error" => AuthorizationStatus::Error,
+            _ => {
+                return Err(Failure::Final(Error::bug(
+                    "an authorize answer lost its status",
+                )));
+            }
+        };
+        Ok(Authorization {
+            status,
+            amount: self.amount,
+            data: self.data.clone(),
+            redirect: self.redirect.clone(),
+            message: self.message.clone(),
+            installment: self.installment.clone().map(|plan| Installment {
+                count: plan.count,
+                surcharge: plan.surcharge,
+                bearer: plan.bearer,
+                campaign: plan.campaign,
+            }),
+        })
+    }
 }
 
 struct AuthorizePayment {
     provider: Arc<dyn PaymentProvider>,
 }
 
+impl AuthorizePayment {
+    fn plan_of(prepared: &Prepared) -> std::result::Result<AuthorizePlan, Failure> {
+        serde_json::from_value(prepared.data.clone())
+            .map_err(|_| Failure::Final(Error::bug("an authorize step lost its plan")))
+    }
+}
+
+/// #158: a checkout step that reaches a provider is a [`ReachingStep`], not a
+/// [`Step`] — `prepare` commits before anything outside is asked, `call`/
+/// `resume` hold no transaction while they ask, and `record` writes the
+/// answer in a transaction of its own. `create_session` and `authorize` are
+/// one external interaction, not two steps: both happen in `call`.
 #[async_trait]
-impl Step for AuthorizePayment {
+impl ReachingStep for AuthorizePayment {
     fn name(&self) -> &'static str {
         "authorize_payment"
     }
 
-    async fn invoke(
+    async fn prepare(
         &self,
         tx: &mut Tx<'_>,
         ctx: &Ctx<'_>,
         input: &Value,
-    ) -> std::result::Result<Outcome, Failure> {
-        let mut carried = Carried::of(input)?;
+    ) -> std::result::Result<Prepared, Failure> {
+        let carried = Carried::of(input)?;
 
         // A basket leg pays through the basket's own collection, once every
         // leg has landed its order — not through anything this leg holds.
         if carried.basket_id.is_some() {
-            return Ok(Outcome::skipped(carried.value()?));
+            let plan = AuthorizePlan::Skip {
+                carried: carried.value()?,
+            };
+            return Ok(Prepared {
+                idempotency_key: String::new(),
+                data: kept(&plan),
+            });
         }
 
         let collection_id = carried
@@ -1256,7 +1379,13 @@ impl Step for AuthorizePayment {
         // captured — the shop had the money before the shopper arrived — so
         // there is no session to open and nothing to compensate.
         if owed.amount <= Decimal::ZERO {
-            return Ok(Outcome::skipped(carried.value()?));
+            let plan = AuthorizePlan::Skip {
+                carried: carried.value()?,
+            };
+            return Ok(Prepared {
+                idempotency_key: String::new(),
+                data: kept(&plan),
+            });
         }
 
         let session = payment::create_session(
@@ -1273,40 +1402,138 @@ impl Step for AuthorizePayment {
         .await
         .map_err(Failure::Final)?;
 
+        let plan = AuthorizePlan::Open {
+            carried: carried.value()?,
+            session_id: session.id,
+            collection_id,
+            order_id,
+            amount: owed,
+            payment_id: None,
+        };
+
+        Ok(Prepared {
+            idempotency_key: session.id.to_string(),
+            data: kept(&plan),
+        })
+    }
+
+    async fn call(
+        &self,
+        _ctx: &Ctx<'_>,
+        prepared: &Prepared,
+    ) -> std::result::Result<Answer, Failure> {
+        let plan = Self::plan_of(prepared)?;
+        let AuthorizePlan::Open {
+            session_id,
+            collection_id,
+            order_id,
+            amount,
+            ..
+        } = plan
+        else {
+            return Ok(Answer(Value::Null));
+        };
+
         let opened = self
             .provider
             .create_session(SessionRequest {
-                session_id: session.id,
+                session_id,
                 collection_id,
-                amount: owed,
+                amount,
                 context: serde_json::json!({ "order_id": order_id }),
                 account_holder: None,
             })
             .await
             .map_err(Failure::Retry)?;
 
-        let session = payment::record_session(tx, ctx, session.id, opened)
-            .await
-            .map_err(Failure::Final)?;
-
-        let answer = self
+        let auth = self
             .provider
             .authorize(AuthorizeRequest {
-                session_id: session.id,
-                amount: owed,
-                data: session.data.clone(),
+                session_id,
+                amount,
+                data: opened.data.clone(),
                 context: serde_json::json!({ "order_id": order_id }),
-                installment_count: session.installment_count,
+                installment_count: None,
             })
             .await
             .map_err(Failure::Retry)?;
 
-        let requires_more = answer.status == AuthorizationStatus::RequiresMore;
-        let authorized = payment::authorize(tx, ctx, session.id, answer)
+        Ok(Answer(kept(&AuthorizeAnswer::of(Some(opened), auth))))
+    }
+
+    async fn resume(
+        &self,
+        ctx: &Ctx<'_>,
+        prepared: &Prepared,
+    ) -> std::result::Result<Answer, Failure> {
+        let plan = Self::plan_of(prepared)?;
+        let AuthorizePlan::Open { session_id, .. } = plan else {
+            return self.call(ctx, prepared).await;
+        };
+
+        // kasapay#122: a provider that can be asked what became of a call is
+        // asked, never replayed; one that cannot is replayed with the same
+        // idempotency key, which the provider itself — not this crate —
+        // guarantees returns the original authorisation.
+        match self.provider.as_lookup() {
+            Some(lookup) => match lookup.lookup(session_id).await {
+                Ok(Some(auth)) => Ok(Answer(kept(&AuthorizeAnswer::of(None, auth)))),
+                Ok(None) => self.call(ctx, prepared).await,
+                // The question went unanswered. Not the same as `Ok(None)`:
+                // treating it as one is how a shopper is charged twice.
+                Err(err) => Err(Failure::Retry(err)),
+            },
+            None => self.call(ctx, prepared).await,
+        }
+    }
+
+    async fn record(
+        &self,
+        tx: &mut Tx<'_>,
+        ctx: &Ctx<'_>,
+        prepared: &Prepared,
+        answer: Answer,
+    ) -> std::result::Result<Outcome, Failure> {
+        let plan = Self::plan_of(prepared)?;
+        let (carried, session_id, order_id, amount) = match plan {
+            AuthorizePlan::Skip { carried } => {
+                let carried = Carried::of(&carried)?;
+                return Ok(Outcome::skipped(carried.value()?));
+            }
+            AuthorizePlan::Open {
+                carried,
+                session_id,
+                order_id,
+                amount,
+                ..
+            } => (carried, session_id, order_id, amount),
+        };
+        let mut carried = Carried::of(&carried)?;
+
+        let ans: AuthorizeAnswer = serde_json::from_value(answer.0)
+            .map_err(|_| Failure::Final(Error::bug("an authorize answer would not parse")))?;
+
+        if let Some(session_ans) = &ans.session {
+            payment::record_session(
+                tx,
+                ctx,
+                session_id,
+                SessionResponse {
+                    data: session_ans.data.clone(),
+                    status: session_ans.status,
+                },
+            )
+            .await
+            .map_err(Failure::Final)?;
+        }
+
+        let auth = ans.authorization()?;
+        let requires_more = auth.status == AuthorizationStatus::RequiresMore;
+        let authorized = payment::authorize(tx, ctx, session_id, auth)
             .await
             .map_err(Failure::Final)?;
 
-        carried.payment_session_id = Some(session.id);
+        carried.payment_session_id = Some(session_id);
 
         match authorized {
             Authorized::Payment(paid) => {
@@ -1315,16 +1542,20 @@ impl Step for AuthorizePayment {
                     ctx,
                     paid.payment_collection_id,
                     paid.id,
-                    Money::new(paid.amount, owed.currency),
+                    Money::new(paid.amount, amount.currency),
                 )
                 .await
                 .map_err(Failure::Final)?;
 
                 carried.payment_id = Some(paid.id);
 
-                let undo = HeldMoney {
+                let undo = AuthorizePlan::Open {
+                    carried: Value::Null,
+                    session_id,
+                    collection_id: paid.payment_collection_id,
+                    order_id,
+                    amount,
                     payment_id: Some(paid.id),
-                    order_id: Some(order_id),
                 };
 
                 Ok(Outcome::new(carried.value()?, kept(&undo)))
@@ -1348,9 +1579,26 @@ impl Step for AuthorizePayment {
         }
     }
 
-    async fn compensate(&self, tx: &mut Tx<'_>, ctx: &Ctx<'_>, keep: &Value) -> Result<()> {
-        let undo: HeldMoney = recall(keep);
-        let Some(payment_id) = undo.payment_id else {
+    async fn compensate(&self, tx: &mut Tx<'_>, ctx: &Ctx<'_>, kept: &Value) -> Result<()> {
+        let plan: AuthorizePlan =
+            serde_json::from_value(kept.clone()).unwrap_or(AuthorizePlan::Skip {
+                carried: Value::Null,
+            });
+        let AuthorizePlan::Open {
+            session_id,
+            order_id,
+            payment_id,
+            ..
+        } = plan
+        else {
+            return Ok(());
+        };
+
+        // The session `prepare` opened first, whether or not it ever became
+        // a payment — closing an already-resolved session is a no-op.
+        payment::close_session(tx, ctx, session_id).await?;
+
+        let Some(payment_id) = payment_id else {
             return Ok(());
         };
 
@@ -1359,18 +1607,16 @@ impl Step for AuthorizePayment {
         // The ledger row this step wrote goes with it. An order's children are
         // `on delete restrict`, so leaving it here stops the earlier step from
         // undoing itself and the run fails rather than unwinding.
-        if let Some(order_id) = undo.order_id {
-            sqlx::query(
-                "delete from order_transaction
-                 where scope = $1 and order_id = $2 and reference = 'payment'
-                   and reference_id = $3",
-            )
-            .bind(ctx.scope.0)
-            .bind(order_id.as_uuid())
-            .bind(payment_id.as_uuid())
-            .execute(&mut **tx)
-            .await?;
-        }
+        sqlx::query(
+            "delete from order_transaction
+             where scope = $1 and order_id = $2 and reference = 'payment'
+               and reference_id = $3",
+        )
+        .bind(ctx.scope.0)
+        .bind(order_id.as_uuid())
+        .bind(payment_id.as_uuid())
+        .execute(&mut **tx)
+        .await?;
 
         Ok(())
     }
