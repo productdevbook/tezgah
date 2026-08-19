@@ -120,6 +120,15 @@ the API is a change to a file somebody reviews.
 Handlers are plain functions taking a pool or a transaction and a `Ctx`. There
 is no framework here: bring axum, or actix, or whatever you already run.
 
+**[`server/`](server)** is one such host, shipped in this repository for
+whoever wants to self-host tezgah rather than embed it in something larger: a
+binary reading `PORT` and `DATABASE_URL` from its environment, running
+migrations at startup, and binding a read-only admin surface behind a bearer
+token plus the shopping flow the client panel needs. Its own README carries
+the route table and every environment variable. `examples/shop` stays the
+smallest way to see the library called directly, with no server around it at
+all.
+
 ## What it asks of you
 
 tezgah decides nothing it does not have to. It asks, and believes the answer:

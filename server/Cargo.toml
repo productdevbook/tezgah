@@ -1,0 +1,38 @@
+[package]
+name = "tezgah-server"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.88"
+license = "MIT"
+description = "A self-hostable HTTP server over the tezgah commerce library."
+publish = false
+
+[[bin]]
+name = "tezgah-server"
+path = "src/main.rs"
+
+[dependencies]
+tezgah = { path = ".." }
+async-trait = "0.1"
+axum = "0.8"
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+kasapay-core = "0.0.5"
+serde_json = "1"
+sqlx = { version = "0.8", default-features = false, features = [
+    "postgres",
+    "runtime-tokio",
+    "tls-rustls",
+    "chrono",
+    "uuid",
+    "json",
+] }
+subtle = { version = "2", default-features = false }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "time"] }
+uuid = { version = "1", features = ["serde", "v7"] }
+
+[lints.rust]
+missing_debug_implementations = "warn"
+
+[lints.clippy]
+unwrap_used = "warn"
+panic = "warn"

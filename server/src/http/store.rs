@@ -1,92 +1,52 @@
-//! The six routes bound out of tezgah's 483. See `main.rs`'s doc comment for
-//! the rest of the table and why these six are the smallest set that carries
-//! a shopper from the catalogue to a placed order.
+//! The storefront: catalogue, cart, and — when `state.checkout` is `Some` —
+//! checkout.
 //!
-//! Every handler follows the same shape: open a transaction, announce this
-//! shop's scope on it — `crate::ports::scoped` does this already, but it is
-//! `pub(crate)`, so, like `seed.rs`, this writes the two lines by hand —
-//! build a [`Ctx`], call the one `tezgah::api::store` function that already
-//! carries the request's permission check and its view type, and commit.
-//!
-//! The three catalogue-and-cart-opening routes read the caller's own
-//! `x-publishable-key` header — `store::list_products`, `get_product` and
-//! `create_cart` all take a token, because it is what decides which sales
-//! channel's products a storefront may see. The three cart-by-id routes
-//! take none: a cart is already scoped by its own id, the same way
-//! `tezgah::api::store`'s own functions are — this file reads no header
-//! `tezgah::api::store` does not itself ask for.
-
-use std::sync::Arc;
+//! Six routes when a stock location is configured, five without — a browser
+//! walking catalogue to order needs exactly this shape: `examples/shop`
+//! walks the same five calls (plus checkout) directly, without a router at
+//! all, to show what these look like as plain library calls. The three
+//! catalogue-and-cart-opening routes read the caller's own
+//! `x-publishable-key` header — it decides which sales channel's products a
+//! storefront may see. The two cart-by-id routes ahead of checkout take
+//! none: a cart is already scoped by its own id.
 
 use axum::extract::{Path, State};
-use axum::http::{HeaderMap, StatusCode};
-use axum::response::{IntoResponse, Response};
+use axum::http::HeaderMap;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use sqlx::PgPool;
 use tezgah::api::store::{self, AddLineItem, CreateCart};
-use tezgah::checkout::Checkout;
 use tezgah::id::CartId;
-use tezgah::ports::{Actor, Ctx, Host, Scope, Tx};
+use tezgah::ports::{Actor, Ctx, Host};
 use uuid::Uuid;
 
-use crate::host::ExampleHost;
+use super::{ApiError, AppState, begin};
 
-#[derive(Clone, Debug)]
-pub struct AppState {
-    pub pool: PgPool,
-    pub host: Arc<ExampleHost>,
-    pub checkout: Arc<Checkout>,
-    pub scope: Scope,
-}
+/// `checkout_configured` decides whether `POST /store/carts/{id}/complete`
+/// is mounted at all — see this module's own doc comment for why an
+/// unconfigured checkout is left unbound rather than bound and answering
+/// with an error on every call.
+pub fn router(checkout_configured: bool) -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
+    let mut bound = vec![
+        ("GET", "/store/products"),
+        ("GET", "/store/products/{handle}"),
+        ("POST", "/store/carts"),
+        ("GET", "/store/carts/{id}"),
+        ("POST", "/store/carts/{id}/line-items"),
+    ];
 
-pub fn router(state: AppState) -> Router {
-    Router::new()
+    let mut router = Router::new()
         .route("/store/products", get(list_products))
         .route("/store/products/{handle}", get(get_product))
         .route("/store/carts", post(create_cart))
         .route("/store/carts/{id}", get(get_cart))
-        .route("/store/carts/{id}/line-items", post(add_line_item))
-        .route("/store/carts/{id}/complete", post(complete_cart))
-        .with_state(state)
-}
+        .route("/store/carts/{id}/line-items", post(add_line_item));
 
-#[derive(Debug)]
-struct ApiError(tezgah::Error);
-
-impl From<tezgah::Error> for ApiError {
-    fn from(err: tezgah::Error) -> Self {
-        ApiError(err)
+    if checkout_configured {
+        router = router.route("/store/carts/{id}/complete", post(complete_cart));
+        bound.push(("POST", "/store/carts/{id}/complete"));
     }
-}
 
-impl From<sqlx::Error> for ApiError {
-    fn from(err: sqlx::Error) -> Self {
-        ApiError(tezgah::Error::from(err))
-    }
-}
-
-impl IntoResponse for ApiError {
-    fn into_response(self) -> Response {
-        // `Error::code` is the stable string this maps on; `Error::report`
-        // — which can name a table or a constraint — never leaves this
-        // process, per its own doc.
-        let status = match self.0.code() {
-            "invalid" => StatusCode::BAD_REQUEST,
-            "not_found" => StatusCode::NOT_FOUND,
-            "denied" => StatusCode::FORBIDDEN,
-            "conflict" | "out_of_stock" => StatusCode::CONFLICT,
-            "provider" => StatusCode::BAD_GATEWAY,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        };
-        if self.0.is_internal() {
-            eprintln!("internal error: {}", self.0.report());
-        }
-        let body = Json(serde_json::json!({
-            "error": { "code": self.0.code(), "message": self.0.to_string() },
-        }));
-        (status, body).into_response()
-    }
+    (router, bound)
 }
 
 fn ctx_for(state: &AppState, actor: Actor) -> Ctx<'_> {
@@ -105,15 +65,6 @@ fn publishable_key(headers: &HeaderMap) -> Result<&str, ApiError> {
                 "send the shop's storefront token as the x-publishable-key header",
             ))
         })
-}
-
-async fn begin(pool: &PgPool, scope: Scope) -> Result<Tx<'static>, ApiError> {
-    let mut tx = pool.begin().await?;
-    sqlx::query("select set_config('app.scope', $1, true)")
-        .bind(scope.0.to_string())
-        .execute(&mut *tx)
-        .await?;
-    Ok(tx)
 }
 
 async fn list_products(
@@ -181,12 +132,17 @@ async fn complete_cart(
     State(state): State<AppState>,
     Path(id): Path<CartId>,
 ) -> Result<Json<store::CompletedView>, ApiError> {
+    let Some(checkout) = state.checkout.as_ref() else {
+        return Err(ApiError(tezgah::Error::invalid(
+            "checkout is not configured on this server — set TEZGAH_STOCK_LOCATION_ID",
+        )));
+    };
     let mut tx = begin(&state.pool, state.scope).await?;
     let ctx = ctx_for(&state, Actor::Guest { cart: id.as_uuid() });
     // `complete_cart` opens its own transactions off `state.pool` for the
     // checkout workflow itself — `tx` here is only the one the ownership
     // check runs in, the same split its own doc comment describes.
-    let completed = store::complete_cart(&mut tx, &ctx, id, &state.checkout, &state.pool).await?;
+    let completed = store::complete_cart(&mut tx, &ctx, id, checkout, &state.pool).await?;
     tx.commit().await?;
     Ok(Json(completed))
 }
