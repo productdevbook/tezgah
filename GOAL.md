@@ -50,6 +50,18 @@ needing a live provider fixture to construct an argument. A second matrix does
 the same for ownership: a storefront route must refuse another shopper's row and
 serve its own.
 
+Two things that were true of every one of those operations until now: nothing
+served them, and nothing drew them. [`examples/shop`](examples/shop) is a shop
+that runs — axum over the route table, all five ports implemented including a
+job worker that actually runs what it enqueues, and a `PaymentProvider` built
+over `dyn kasapay_core::Provider`, which is the first thing outside that
+module's own tests to lean on the mapping. It binds 6 of the 483 operations,
+enough to walk browse → cart → checkout → order, and says so. [`client/`](client)
+is an admin panel over the same surface, with screens for products, orders and
+inventory — 228 of the 483 operations behind a screen, and every section that
+has none saying how many it is not drawing. Neither is in the crate: depending
+on tezgah pulls in no axum and no React.
+
 What is left is written as issues rather than as boxes here. #53 — the payment
 providers moving onto kasapay — closed both gaps it was filed waiting on:
 kasapay#149 opened `Currency` from nine variants to 119, and kasapay#150 gave
@@ -196,8 +208,13 @@ writes an order, and the provider is not in your database.
 - [x] store API: catalogue, cart, checkout, orders, customer, returns
 - [x] admin API: everything else
 - [ ] OpenAPI generated from the code, snapshotted, client types generated —
-      generated and snapshotted (`tests/openapi.rs`); client-type generation
-      unverified this session
+      generated and snapshotted (`tests/openapi.rs`). Client-type generation
+      is now verified, by doing it, and does not work: the document declares
+      483 operations and **zero schemas** — no request bodies, no response
+      bodies, no `components/schemas` — so a generated client types every
+      payload as `unknown`. [`client/`](client) keeps the generated paths for
+      what they are worth and transcribes the payloads from `src/api/*.rs` by
+      hand. productdevbook/tezgah#202.
 - [x] every route declares its permission, and a matrix test proves it —
       `tests/api_permissions.rs` calls 355 of the 446 routes in `routes()`
       against a host that denies everything and asserts `denied`; 91 are
@@ -245,10 +262,24 @@ writes an order, and the provider is not in your database.
       above.
 - [ ] every state machine's illegal moves rejected, tested exhaustively
 - [ ] money invariants hold under random operation sequences
-- [ ] a checkout interrupted at each step leaves no stock reserved, no money
-      captured, no half-order
+- [x] a checkout interrupted at each step leaves no stock reserved, no money
+      captured, no half-order — all eight steps of `Checkout::workflow()`, each
+      with a test that fails it and asserts nothing is left behind. Two were
+      missing and the box above this one said otherwise: `create_subscriptions`
+      was only tested in the reverse direction, and `redeem_credit` — the step
+      that spends a gift card or store credit — was not tested in either, so
+      no test had ever spent a balance and checked it came back. Both are
+      covered now, and the balance is asserted equal to what it was, not
+      merely greater than zero.
 - [ ] a webhook delivered twice, out of order, and late, is handled once
-- [ ] no listing endpoint can return an unbounded number of rows
+- [x] no listing endpoint can return an unbounded number of rows — `Paging`'s
+      `limit` field is private and `Paging::limit()` is
+      `unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT)` with `MAX_LIMIT` at 200,
+      so `limit=1000000` and no limit at all both end at 200. Every one of the
+      67 paged queries binds `paging.probe()`, which is that number plus one.
+      `tests/no_unbounded_list.rs` reads `src/` and fails when a public
+      function hands back a `Vec` that is neither paged nor capped by a named
+      constant; its `TOLERATED` list is empty.
 
 ## Deliberately not built
 
