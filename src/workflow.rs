@@ -730,6 +730,24 @@ async fn lease_run(pool: &PgPool, ctx: &Ctx<'_>, id: WorkflowRunId, worker: &str
     })
 }
 
+/// Gives back every row of this run still held by `worker` — for a pass that
+/// stops before reaching every step `lease_run` claimed for it at the start,
+/// so a step nobody has touched yet does not sit on a live lease for another
+/// `LEASE` looking like it is still being worked.
+async fn release(pool: &PgPool, ctx: &Ctx<'_>, id: WorkflowRunId, worker: &str) -> Result<()> {
+    let mut tx = scoped(pool, ctx).await?;
+    sqlx::query(
+        "update workflow_step set lease_until = null, locked_by = null
+         where run_id = $1 and locked_by = $2",
+    )
+    .bind(id.as_uuid())
+    .bind(worker)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(())
+}
+
 /// Invokes what has not run, then unwinds if something refuses to.
 async fn drive(
     pool: &PgPool,
@@ -837,6 +855,14 @@ async fn drive(
             }
 
             if stalled {
+                // `lease_run` claims every due step of the run up front, not
+                // only the ones this pass will actually reach — a step after
+                // the one that stalled here was leased and never invoked.
+                // Left alone it would sit on a live lease for up to `LEASE`,
+                // and an immediate retry would find it "held elsewhere" and
+                // refuse for a reason that has nothing to do with the step
+                // that is actually stuck.
+                release(pool, ctx, id, worker).await?;
                 return Err(Error::conflict(
                     "a step is waiting on an answer from outside; try again shortly",
                 ));
