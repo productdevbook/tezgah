@@ -1718,15 +1718,9 @@ pub async fn release_cart(
     release_lines(tx, ctx, &line_ids).await
 }
 
-/// Gives back every hold a line has. Nothing left the shelf, so `stocked`
-/// does not move. One line's worth of [`release_lines`].
-pub async fn release_line(tx: &mut Tx<'_>, ctx: &Ctx<'_>, line_item_id: LineItemId) -> Result<u64> {
-    release_lines(tx, ctx, std::slice::from_ref(&line_item_id)).await
-}
-
 /// Gives back every hold a batch of lines has, in one pass over the
 /// reservations and lot claims rather than a per-line, per-reservation fan-out
-/// of queries. `release_line` is this called with a single line.
+/// of queries. A single line is `release_lines(tx, ctx, &[line_item_id])`.
 ///
 /// The audit row and `stock.released` event stay one per reservation — that
 /// pairing is what #150/#153/#154 added so a release could be traced back to
@@ -1886,7 +1880,7 @@ pub async fn rescale_line(
         return Ok(());
     }
     if to == 0 {
-        release_line(tx, ctx, line_item_id).await?;
+        release_lines(tx, ctx, std::slice::from_ref(&line_item_id)).await?;
         return Ok(());
     }
 

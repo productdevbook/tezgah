@@ -892,6 +892,11 @@ async fn cancelling_a_many_line_order_gives_back_every_reservation_once() -> tez
     let held = inventory::level(&mut tx, &ctx, item, location).await?;
     assert_eq!(held.reserved_quantity, LINES as i32);
 
+    // Reserving each line's stock already wrote its own `reservation_item`
+    // audit row; only the cancellation's own rows are what this counts.
+    shop.host.audits.lock().clear();
+    shop.host.events.lock().clear();
+
     let canceled = order::cancel(&mut tx, &ctx, placed).await?;
     assert_eq!(canceled.status()?, OrderStatus::Canceled);
 
@@ -940,6 +945,10 @@ async fn two_concurrent_cancellations_of_one_order_agree_on_a_winner() -> tezgah
     let (item, location, placed) =
         a_held_order_with_lines(&mut setup, &ctx, shop.here, 10, 3, 1).await;
     setup.commit().await.expect("the order to stay");
+
+    // Reserving the line's stock already wrote its own `reservation_item`
+    // audit row; only the cancellation's own row is what this counts.
+    shop.host.audits.lock().clear();
 
     let gate = Arc::new(tokio::sync::Barrier::new(2));
     let there = gate.clone();

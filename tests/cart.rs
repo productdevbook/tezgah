@@ -815,6 +815,11 @@ async fn a_swept_cart_folds_two_holds_on_one_item_into_one_release() -> tezgah::
     let held = inventory::level(&mut tx, &ctx, item.id, location.id).await?;
     assert_eq!((held.reserved_quantity, held.available_quantity), (5, 5));
 
+    // Reserving the two lines above already wrote a `reservation_item` audit
+    // row each; only the release's own rows are what this counts.
+    shop.host.audits.lock().clear();
+    shop.host.events.lock().clear();
+
     let gone = cart::expire(&mut tx, &ctx, now).await?;
     assert_eq!(gone, vec![cart.id]);
 
