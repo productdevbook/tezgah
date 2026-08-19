@@ -42,6 +42,7 @@ use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
 use crate::cart::{CartTotals, TotalsLine, TotalsShipping, compute};
+use crate::catalogue::{locale, nullable, required};
 use crate::error::{Error, Result};
 use crate::id::{
     AddressId, AgreementVersionId, CaptureId, ClaimId, CustomerId, ExchangeId, LineItemId,
@@ -3212,6 +3213,30 @@ pub struct ReturnReason {
 const RETURN_REASON_COLUMNS: &str =
     "id, parent_return_reason_id, value, label, description, created_at";
 
+/// Translations are bounded by one reason, not paged, the same as
+/// `catalogue`'s `MAX_ATTACHED`.
+const MAX_REASON_TRANSLATIONS: i64 = 200;
+
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct ReturnReasonTranslation {
+    pub return_reason_id: Uuid,
+    pub locale: String,
+    pub label: String,
+    pub description: Option<String>,
+}
+
+/// The list a customer picks from when sending something back, in one
+/// language: the exact locale if it is there, then the bare language, then
+/// the reason's own columns.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalisedReturnReason {
+    pub return_reason_id: Uuid,
+    pub locale: Option<String>,
+    pub label: String,
+    pub description: Option<String>,
+    pub is_fallback: bool,
+}
+
 pub async fn return_reasons(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -3262,6 +3287,195 @@ pub async fn return_reason(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: Uuid) -> Result<R
     .fetch_optional(&mut **tx)
     .await?
     .ok_or_else(|| Error::not_found("return reason"))
+}
+
+async fn exists_return_reason(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: Uuid) -> Result<()> {
+    let found: Option<Uuid> =
+        sqlx::query_scalar("select id from return_reason where scope = $1 and id = $2")
+            .bind(ctx.scope.0)
+            .bind(id)
+            .fetch_optional(&mut **tx)
+            .await?;
+
+    found
+        .map(|_| ())
+        .ok_or_else(|| Error::not_found("return reason"))
+}
+
+/// Writes one locale's label and description for a return reason, replacing
+/// whatever was there for it.
+pub async fn put_return_reason_translation(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    return_reason_id: Uuid,
+    translation: ReturnReasonTranslation,
+) -> Result<ReturnReasonTranslation> {
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Order {
+            id: Uuid::nil(),
+            customer: None,
+        },
+    )?;
+
+    let locale = locale(&translation.locale)?;
+    let label = required("label", &translation.label)?;
+    exists_return_reason(tx, ctx, return_reason_id).await?;
+
+    let row = sqlx::query_as::<_, ReturnReasonTranslation>(
+        "insert into return_reason_translation (id, scope, return_reason_id, locale, label, description)
+         values ($1, $2, $3, $4, $5, $6)
+         on conflict (scope, return_reason_id, locale) do update
+             set label = excluded.label,
+                 description = excluded.description
+         returning return_reason_id, locale, label, description",
+    )
+    .bind(Uuid::now_v7())
+    .bind(ctx.scope.0)
+    .bind(return_reason_id)
+    .bind(&locale)
+    .bind(&label)
+    .bind(nullable(translation.description))
+    .fetch_one(&mut **tx)
+    .await?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "return_reason_translation",
+            entity_id: return_reason_id,
+            summary: serde_json::json!({ "locale": locale }),
+        },
+    )
+    .await?;
+
+    Ok(row)
+}
+
+pub async fn return_reason_translations(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    return_reason_id: Uuid,
+) -> Result<Vec<ReturnReasonTranslation>> {
+    let _: Permit = ctx.permit(
+        Action::View,
+        Resource::Order {
+            id: Uuid::nil(),
+            customer: None,
+        },
+    )?;
+
+    let rows = sqlx::query_as::<_, ReturnReasonTranslation>(
+        "select return_reason_id, locale, label, description
+         from return_reason_translation
+         where scope = $1 and return_reason_id = $2
+         order by locale
+         limit $3",
+    )
+    .bind(ctx.scope.0)
+    .bind(return_reason_id)
+    .bind(MAX_REASON_TRANSLATIONS)
+    .fetch_all(&mut **tx)
+    .await?;
+
+    Ok(rows)
+}
+
+pub async fn remove_return_reason_translation(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    return_reason_id: Uuid,
+    wanted: &str,
+) -> Result<()> {
+    let _: Permit = ctx.permit(
+        Action::Delete,
+        Resource::Order {
+            id: Uuid::nil(),
+            customer: None,
+        },
+    )?;
+
+    let locale = locale(wanted)?;
+    let gone = sqlx::query(
+        "delete from return_reason_translation
+         where scope = $1 and return_reason_id = $2 and locale = $3",
+    )
+    .bind(ctx.scope.0)
+    .bind(return_reason_id)
+    .bind(&locale)
+    .execute(&mut **tx)
+    .await?
+    .rows_affected();
+
+    if gone == 0 {
+        return Err(Error::not_found("translation"));
+    }
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Delete,
+            entity: "return_reason_translation",
+            entity_id: return_reason_id,
+            summary: serde_json::json!({ "locale": locale }),
+        },
+    )
+    .await
+}
+
+/// A return reason read in one language: the exact locale if it is there,
+/// then the bare language of it, then the reason's own columns.
+pub async fn localised_return_reason(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    return_reason_id: Uuid,
+    wanted: &str,
+) -> Result<LocalisedReturnReason> {
+    let _: Permit = ctx.permit(
+        Action::View,
+        Resource::Order {
+            id: Uuid::nil(),
+            customer: None,
+        },
+    )?;
+
+    let locale = locale(wanted)?;
+    let language = locale.split('-').next().unwrap_or(&locale).to_owned();
+    let found_reason = return_reason(tx, ctx, return_reason_id).await?;
+
+    let found = sqlx::query_as::<_, ReturnReasonTranslation>(
+        "select return_reason_id, locale, label, description
+         from return_reason_translation
+         where scope = $1 and return_reason_id = $2 and locale in ($3, $4)
+         order by case when locale = $3 then 0 else 1 end
+         limit 1",
+    )
+    .bind(ctx.scope.0)
+    .bind(return_reason_id)
+    .bind(&locale)
+    .bind(&language)
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    Ok(match found {
+        Some(row) => LocalisedReturnReason {
+            return_reason_id,
+            locale: Some(row.locale),
+            label: row.label,
+            description: row.description.or(found_reason.description),
+            is_fallback: false,
+        },
+        None => LocalisedReturnReason {
+            return_reason_id,
+            locale: None,
+            label: found_reason.label,
+            description: found_reason.description,
+            is_fallback: true,
+        },
+    })
 }
 
 pub async fn returns(

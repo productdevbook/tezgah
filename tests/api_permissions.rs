@@ -1316,6 +1316,35 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
         admin_catalogue::remove_translation(&mut tx, &ctx, ProductId::new(), "tr")
     );
     denied!(
+        Method::Get,
+        "/admin/product-categories/{id}/translations",
+        admin_catalogue::list_category_translations(&mut tx, &ctx, CategoryId::new())
+    );
+    denied!(
+        Method::Post,
+        "/admin/product-categories/{id}/translations",
+        admin_catalogue::put_category_translation(
+            &mut tx,
+            &ctx,
+            CategoryId::new(),
+            admin_catalogue::PutCategoryTranslation {
+                locale: "tr".to_string(),
+                name: "Başlık".to_string(),
+                description: None,
+            }
+        )
+    );
+    denied!(
+        Method::Get,
+        "/admin/product-categories/{id}/translations/{locale}",
+        admin_catalogue::localised_category(&mut tx, &ctx, CategoryId::new(), "tr")
+    );
+    denied!(
+        Method::Delete,
+        "/admin/product-categories/{id}/translations/{locale}",
+        admin_catalogue::remove_category_translation(&mut tx, &ctx, CategoryId::new(), "tr")
+    );
+    denied!(
         Method::Post,
         "/admin/price-sets",
         admin_catalogue::create_price_set(&mut tx, &ctx)
@@ -2086,6 +2115,35 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
     );
     denied!(
         Method::Get,
+        "/admin/return-reasons/{id}/translations",
+        admin_order::list_return_reason_translations(&mut tx, &ctx, uuid::Uuid::now_v7())
+    );
+    denied!(
+        Method::Post,
+        "/admin/return-reasons/{id}/translations",
+        admin_order::put_return_reason_translation(
+            &mut tx,
+            &ctx,
+            uuid::Uuid::now_v7(),
+            admin_order::PutReturnReasonTranslation {
+                locale: "tr".to_string(),
+                label: "İade".to_string(),
+                description: None,
+            }
+        )
+    );
+    denied!(
+        Method::Get,
+        "/admin/return-reasons/{id}/translations/{locale}",
+        admin_order::localised_return_reason(&mut tx, &ctx, uuid::Uuid::now_v7(), "tr")
+    );
+    denied!(
+        Method::Delete,
+        "/admin/return-reasons/{id}/translations/{locale}",
+        admin_order::remove_return_reason_translation(&mut tx, &ctx, uuid::Uuid::now_v7(), "tr")
+    );
+    denied!(
+        Method::Get,
         "/admin/orders/{id}/fulfillments/{fulfillment_id}",
         admin_order::get_fulfillment(&mut tx, &ctx, OrderId::new(), FulfillmentId::new())
     );
@@ -2214,6 +2272,39 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
                 operator: "eq".into(),
                 value: serde_json::json!(null),
             }
+        )
+    );
+    denied!(
+        Method::Get,
+        "/admin/shipping-options/{id}/translations",
+        admin_order::list_shipping_option_translations(&mut tx, &ctx, ShippingOptionId::new())
+    );
+    denied!(
+        Method::Post,
+        "/admin/shipping-options/{id}/translations",
+        admin_order::put_shipping_option_translation(
+            &mut tx,
+            &ctx,
+            ShippingOptionId::new(),
+            admin_order::PutShippingOptionTranslation {
+                locale: "tr".to_string(),
+                name: "Standart teslimat".to_string(),
+            }
+        )
+    );
+    denied!(
+        Method::Get,
+        "/admin/shipping-options/{id}/translations/{locale}",
+        admin_order::localised_shipping_option(&mut tx, &ctx, ShippingOptionId::new(), "tr")
+    );
+    denied!(
+        Method::Delete,
+        "/admin/shipping-options/{id}/translations/{locale}",
+        admin_order::remove_shipping_option_translation(
+            &mut tx,
+            &ctx,
+            ShippingOptionId::new(),
+            "tr"
         )
     );
     denied!(
@@ -2940,6 +3031,11 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
     );
     denied!(
         Method::Get,
+        "/store/product-categories/{id}/translations/{locale}",
+        store::get_product_category_localised(&mut tx, &ctx, CategoryId::new(), "tr")
+    );
+    denied!(
+        Method::Get,
         "/store/collections",
         store::list_collections(&mut tx, &ctx, store::ListPage::default())
     );
@@ -3117,6 +3213,11 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
         )
     );
     denied!(
+        Method::Get,
+        "/store/shipping-options/{id}/translations/{locale}",
+        store::get_shipping_option_translation(&mut tx, &ctx, ShippingOptionId::new(), "tr")
+    );
+    denied!(
         Method::Post,
         "/store/customers",
         store::create_customer(
@@ -3248,6 +3349,11 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
         Method::Get,
         "/store/return-reasons/{id}",
         store::get_return_reason(&mut tx, &ctx, uuid::Uuid::now_v7())
+    );
+    denied!(
+        Method::Get,
+        "/store/return-reasons/{id}/translations/{locale}",
+        store::get_return_reason_translation(&mut tx, &ctx, uuid::Uuid::now_v7(), "tr")
     );
     denied!(
         Method::Post,

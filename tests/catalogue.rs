@@ -5,11 +5,12 @@ mod common;
 
 use common::Shop;
 use tezgah::catalogue::{
-    self, Combination, NewCategory, NewProduct, NewVariant, ProductFilter, ProductStatus,
-    ProductTranslation, VariantPlan,
+    self, CategoryTranslation, Combination, NewCategory, NewProduct, NewVariant, ProductFilter,
+    ProductStatus, ProductTranslation, VariantPlan,
 };
 use tezgah::id::{CategoryId, ProductId};
 use tezgah::page::Paging;
+use uuid::Uuid;
 
 fn draft(handle: &str, title: &str) -> NewProduct {
     NewProduct {
@@ -599,6 +600,177 @@ async fn a_locale_with_nothing_written_for_it_falls_back() {
             .expect("a reading")
             .is_fallback
     );
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+/// The storefront's own case: a shop browsing in Turkish still shows an
+/// English category name until somebody writes the Turkish one, and falls
+/// back again once it is removed.
+#[tokio::test]
+async fn a_category_name_is_localised_and_falls_back() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let rugs = catalogue::create_category(
+        &mut tx,
+        &ctx,
+        NewCategory {
+            name: "Rugs".into(),
+            handle: "rugs".into(),
+            ..NewCategory::default()
+        },
+    )
+    .await
+    .expect("a category");
+
+    let fallen_back = catalogue::localised_category(&mut tx, &ctx, rugs.id, "tr")
+        .await
+        .expect("a reading");
+    assert!(fallen_back.is_fallback);
+    assert_eq!(fallen_back.name, "Rugs");
+
+    catalogue::put_category_translation(
+        &mut tx,
+        &ctx,
+        rugs.id,
+        CategoryTranslation {
+            category_id: rugs.id,
+            locale: "tr".into(),
+            name: "Halılar".into(),
+            description: None,
+        },
+    )
+    .await
+    .expect("a translation");
+
+    let read = catalogue::localised_category(&mut tx, &ctx, rugs.id, "tr")
+        .await
+        .expect("a reading");
+    assert!(!read.is_fallback);
+    assert_eq!(read.name, "Halılar");
+
+    // A region falls back to its bare language before it falls back to the row.
+    let region = catalogue::localised_category(&mut tx, &ctx, rugs.id, "tr-TR")
+        .await
+        .expect("a reading");
+    assert!(!region.is_fallback);
+    assert_eq!(region.name, "Halılar");
+
+    assert_eq!(
+        catalogue::category_translations(&mut tx, &ctx, rugs.id)
+            .await
+            .expect("its translations")
+            .len(),
+        1
+    );
+
+    catalogue::remove_category_translation(&mut tx, &ctx, rugs.id, "tr")
+        .await
+        .expect("to remove it");
+    assert!(
+        catalogue::localised_category(&mut tx, &ctx, rugs.id, "tr")
+            .await
+            .expect("a reading")
+            .is_fallback
+    );
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+/// Nothing but another tenant's category id, so `tezgah_fk`'s composite key
+/// is what refuses this — not an application check that happens to run first.
+#[tokio::test]
+async fn a_category_translation_cannot_point_at_another_scopes_category() {
+    let shop = Shop::open().await;
+
+    let mut theirs_tx = shop.begin_as(shop.elsewhere).await;
+    let theirs = catalogue::create_category(
+        &mut theirs_tx,
+        &shop.theirs(),
+        NewCategory {
+            name: "Their rugs".into(),
+            handle: "their-rugs".into(),
+            ..NewCategory::default()
+        },
+    )
+    .await
+    .expect("a category in the other scope");
+    theirs_tx.commit().await.expect("to commit");
+
+    let mut mine = shop.begin().await;
+    let refused = sqlx::query(
+        "insert into product_category_translation (id, scope, category_id, locale, name)
+         values ($1, $2, $3, 'tr', 'Halılar')",
+    )
+    .bind(Uuid::now_v7())
+    .bind(shop.here.0)
+    .bind(theirs.id.as_uuid())
+    .execute(&mut *mine)
+    .await;
+    mine.rollback().await.expect("to give the connection back");
+
+    assert!(
+        refused.is_err(),
+        "a translation in one scope pointed at another scope's category"
+    );
+
+    shop.close().await;
+}
+
+/// A category is soft-deleted in the domain, so this proves the cascade at
+/// the row `product_category` itself would have to be gone for: the
+/// constraint, not the application's delete path, which never actually
+/// removes the row.
+#[tokio::test]
+async fn a_deleted_category_takes_its_translations_with_it() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let rugs = catalogue::create_category(
+        &mut tx,
+        &ctx,
+        NewCategory {
+            name: "Rugs".into(),
+            handle: "rugs".into(),
+            ..NewCategory::default()
+        },
+    )
+    .await
+    .expect("a category");
+
+    catalogue::put_category_translation(
+        &mut tx,
+        &ctx,
+        rugs.id,
+        CategoryTranslation {
+            category_id: rugs.id,
+            locale: "tr".into(),
+            name: "Halılar".into(),
+            description: None,
+        },
+    )
+    .await
+    .expect("a translation");
+
+    sqlx::query("delete from product_category where id = $1")
+        .bind(rugs.id.as_uuid())
+        .execute(&mut *tx)
+        .await
+        .expect("to hard-delete the category");
+
+    let left: i64 = sqlx::query_scalar(
+        "select count(*) from product_category_translation where category_id = $1",
+    )
+    .bind(rugs.id.as_uuid())
+    .fetch_one(&mut *tx)
+    .await
+    .expect("to count");
+    assert_eq!(left, 0, "the translation outlived the category it named");
 
     tx.rollback().await.expect("to roll back");
     shop.close().await;

@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
+use crate::catalogue::{locale, required};
 use crate::error::{Error, Result};
 use crate::id::{
     FulfillmentId, FulfillmentSetId, GeoZoneId, InventoryItemId, LineItemId, OrderId, OrderItemId,
@@ -36,6 +37,9 @@ const MAX_SHIPPING_OPTIONS: i64 = 500;
 const MAX_OPTION_RULES: i64 = 2_000;
 /// Labels are read inside a fulfilment's detail, not browsed on their own.
 const MAX_LABELS: i64 = 200;
+/// Translations are bounded by one option, not paged, the same as
+/// `catalogue`'s `MAX_ATTACHED`.
+const MAX_TRANSLATIONS: i64 = 200;
 
 fn config(id: Option<Uuid>) -> Resource {
     Resource::Shipping { id }
@@ -174,6 +178,23 @@ pub struct NewShippingOption {
     pub shipping_profile_id: Option<ShippingProfileId>,
     pub provider_id: Option<Uuid>,
     pub data: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct ShippingOptionTranslation {
+    pub shipping_option_id: ShippingOptionId,
+    pub locale: String,
+    pub name: String,
+}
+
+/// What checkout offers to read at the till, in the language the rest of the
+/// page is in — or the shop's own, said out loud rather than hidden.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalisedShippingOption {
+    pub shipping_option_id: ShippingOptionId,
+    pub locale: Option<String>,
+    pub name: String,
+    pub is_fallback: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -903,6 +924,170 @@ pub async fn shipping_option(
     .fetch_optional(&mut **tx)
     .await?
     .ok_or_else(|| Error::not_found("shipping option"))
+}
+
+async fn exists_shipping_option(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ShippingOptionId,
+) -> Result<()> {
+    let found: Option<Uuid> =
+        sqlx::query_scalar("select id from shipping_option where scope = $1 and id = $2")
+            .bind(ctx.scope.0)
+            .bind(id.as_uuid())
+            .fetch_optional(&mut **tx)
+            .await?;
+
+    found
+        .map(|_| ())
+        .ok_or_else(|| Error::not_found("shipping option"))
+}
+
+/// Writes one locale's name for a shipping option, replacing whatever was
+/// there for it.
+pub async fn put_shipping_option_translation(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    shipping_option_id: ShippingOptionId,
+    translation: ShippingOptionTranslation,
+) -> Result<ShippingOptionTranslation> {
+    let _: Permit = ctx.permit(Action::Write, config(Some(shipping_option_id.as_uuid())))?;
+
+    let locale = locale(&translation.locale)?;
+    let name = required("name", &translation.name)?;
+    exists_shipping_option(tx, ctx, shipping_option_id).await?;
+
+    let row = sqlx::query_as::<_, ShippingOptionTranslation>(
+        "insert into shipping_option_translation (id, scope, shipping_option_id, locale, name)
+         values ($1, $2, $3, $4, $5)
+         on conflict (scope, shipping_option_id, locale) do update set name = excluded.name
+         returning shipping_option_id, locale, name",
+    )
+    .bind(Uuid::now_v7())
+    .bind(ctx.scope.0)
+    .bind(shipping_option_id.as_uuid())
+    .bind(&locale)
+    .bind(&name)
+    .fetch_one(&mut **tx)
+    .await?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "shipping_option_translation",
+            entity_id: shipping_option_id.as_uuid(),
+            summary: serde_json::json!({ "locale": locale }),
+        },
+    )
+    .await?;
+
+    Ok(row)
+}
+
+pub async fn shipping_option_translations(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    shipping_option_id: ShippingOptionId,
+) -> Result<Vec<ShippingOptionTranslation>> {
+    let _: Permit = ctx.permit(Action::View, config(Some(shipping_option_id.as_uuid())))?;
+
+    let rows = sqlx::query_as::<_, ShippingOptionTranslation>(
+        "select shipping_option_id, locale, name
+         from shipping_option_translation
+         where scope = $1 and shipping_option_id = $2
+         order by locale
+         limit $3",
+    )
+    .bind(ctx.scope.0)
+    .bind(shipping_option_id.as_uuid())
+    .bind(MAX_TRANSLATIONS)
+    .fetch_all(&mut **tx)
+    .await?;
+
+    Ok(rows)
+}
+
+pub async fn remove_shipping_option_translation(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    shipping_option_id: ShippingOptionId,
+    wanted: &str,
+) -> Result<()> {
+    let _: Permit = ctx.permit(Action::Delete, config(Some(shipping_option_id.as_uuid())))?;
+
+    let locale = locale(wanted)?;
+    let gone = sqlx::query(
+        "delete from shipping_option_translation
+         where scope = $1 and shipping_option_id = $2 and locale = $3",
+    )
+    .bind(ctx.scope.0)
+    .bind(shipping_option_id.as_uuid())
+    .bind(&locale)
+    .execute(&mut **tx)
+    .await?
+    .rows_affected();
+
+    if gone == 0 {
+        return Err(Error::not_found("translation"));
+    }
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Delete,
+            entity: "shipping_option_translation",
+            entity_id: shipping_option_id.as_uuid(),
+            summary: serde_json::json!({ "locale": locale }),
+        },
+    )
+    .await
+}
+
+/// A shipping option's name in one language: the exact locale if it is there,
+/// then the bare language of it, then the option's own name.
+pub async fn localised_shipping_option(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    shipping_option_id: ShippingOptionId,
+    wanted: &str,
+) -> Result<LocalisedShippingOption> {
+    let _: Permit = ctx.permit(Action::View, config(Some(shipping_option_id.as_uuid())))?;
+
+    let locale = locale(wanted)?;
+    let language = locale.split('-').next().unwrap_or(&locale).to_owned();
+    let found_option = shipping_option(tx, ctx, shipping_option_id).await?;
+
+    let found = sqlx::query_as::<_, ShippingOptionTranslation>(
+        "select shipping_option_id, locale, name
+         from shipping_option_translation
+         where scope = $1 and shipping_option_id = $2 and locale in ($3, $4)
+         order by case when locale = $3 then 0 else 1 end
+         limit 1",
+    )
+    .bind(ctx.scope.0)
+    .bind(shipping_option_id.as_uuid())
+    .bind(&locale)
+    .bind(&language)
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    Ok(match found {
+        Some(row) => LocalisedShippingOption {
+            shipping_option_id,
+            locale: Some(row.locale),
+            name: row.name,
+            is_fallback: false,
+        },
+        None => LocalisedShippingOption {
+            shipping_option_id,
+            locale: None,
+            name: found_option.name,
+            is_fallback: true,
+        },
+    })
 }
 
 pub async fn options_for(

@@ -1056,6 +1056,7 @@ async fn a_cancelled_order_gives_the_promotion_use_back() -> tezgah::Result<()> 
             is_automatic: false,
             usage_limit: None,
             customer_usage_limit: None,
+            metadata: None,
         },
     )
     .await?;
@@ -2223,5 +2224,151 @@ async fn the_counter_carries_on_above_the_numbers_a_shop_already_has() {
         "the counter started again under numbers the shop already has"
     );
 
+    shop.close().await;
+}
+
+/// There is no domain writer for `return_reason` — the admin API inserts it
+/// directly — so a test needing one does the same.
+async fn a_return_reason(tx: &mut Tx<'_>, scope: Scope, label: &str) -> Uuid {
+    let id = Uuid::now_v7();
+    sqlx::query("insert into return_reason (id, scope, value, label) values ($1, $2, $3, $4)")
+        .bind(id)
+        .bind(scope.0)
+        .bind(id.simple().to_string())
+        .bind(label)
+        .execute(&mut **tx)
+        .await
+        .expect("a return reason");
+    id
+}
+
+/// The list a customer picks from when sending something back, in one
+/// language: falls back to the shop's own label until a translation exists.
+#[tokio::test]
+async fn a_return_reasons_label_is_localised_and_falls_back() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let reason = a_return_reason(&mut tx, shop.here, "Wrong size").await;
+
+    let fallen_back = order::localised_return_reason(&mut tx, &ctx, reason, "tr")
+        .await
+        .expect("a reading");
+    assert!(fallen_back.is_fallback);
+    assert_eq!(fallen_back.label, "Wrong size");
+
+    order::put_return_reason_translation(
+        &mut tx,
+        &ctx,
+        reason,
+        order::ReturnReasonTranslation {
+            return_reason_id: reason,
+            locale: "tr".into(),
+            label: "Yanlış beden".into(),
+            description: None,
+        },
+    )
+    .await
+    .expect("a translation");
+
+    let read = order::localised_return_reason(&mut tx, &ctx, reason, "tr")
+        .await
+        .expect("a reading");
+    assert!(!read.is_fallback);
+    assert_eq!(read.label, "Yanlış beden");
+
+    assert_eq!(
+        order::return_reason_translations(&mut tx, &ctx, reason)
+            .await
+            .expect("its translations")
+            .len(),
+        1
+    );
+
+    order::remove_return_reason_translation(&mut tx, &ctx, reason, "tr")
+        .await
+        .expect("to remove it");
+    assert!(
+        order::localised_return_reason(&mut tx, &ctx, reason, "tr")
+            .await
+            .expect("a reading")
+            .is_fallback
+    );
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+/// Nothing but another tenant's reason id, so `tezgah_fk`'s composite key is
+/// what refuses this.
+#[tokio::test]
+async fn a_return_reason_translation_cannot_point_at_another_scopes_reason() {
+    let shop = Shop::open().await;
+
+    let mut theirs_tx = shop.begin_as(shop.elsewhere).await;
+    let theirs = a_return_reason(&mut theirs_tx, shop.elsewhere, "Their reason").await;
+    theirs_tx.commit().await.expect("to commit");
+
+    let mut mine = shop.begin().await;
+    let refused = sqlx::query(
+        "insert into return_reason_translation (id, scope, return_reason_id, locale, label)
+         values ($1, $2, $3, 'tr', 'Yanlış beden')",
+    )
+    .bind(Uuid::now_v7())
+    .bind(shop.here.0)
+    .bind(theirs)
+    .execute(&mut *mine)
+    .await;
+    mine.rollback().await.expect("to give the connection back");
+
+    assert!(
+        refused.is_err(),
+        "a translation in one scope pointed at another scope's return reason"
+    );
+
+    shop.close().await;
+}
+
+/// `return_reason` has no soft delete, so this exercises the constraint
+/// against a real hard delete rather than one the application never does.
+#[tokio::test]
+async fn a_deleted_return_reason_takes_its_translations_with_it() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let reason = a_return_reason(&mut tx, shop.here, "Wrong size").await;
+
+    order::put_return_reason_translation(
+        &mut tx,
+        &ctx,
+        reason,
+        order::ReturnReasonTranslation {
+            return_reason_id: reason,
+            locale: "tr".into(),
+            label: "Yanlış beden".into(),
+            description: None,
+        },
+    )
+    .await
+    .expect("a translation");
+
+    sqlx::query("delete from return_reason where id = $1")
+        .bind(reason)
+        .execute(&mut *tx)
+        .await
+        .expect("to delete the reason");
+
+    let left: i64 = sqlx::query_scalar(
+        "select count(*) from return_reason_translation where return_reason_id = $1",
+    )
+    .bind(reason)
+    .fetch_one(&mut *tx)
+    .await
+    .expect("to count");
+    assert_eq!(left, 0, "the translation outlived the reason it named");
+
+    tx.rollback().await.expect("to roll back");
     shop.close().await;
 }

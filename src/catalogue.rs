@@ -293,6 +293,26 @@ pub struct Localised {
     pub is_fallback: bool,
 }
 
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct CategoryTranslation {
+    pub category_id: CategoryId,
+    pub locale: String,
+    pub name: String,
+    pub description: Option<String>,
+}
+
+/// A category read in one language, whatever was actually found. The
+/// storefront's browse-in-Turkish-see-English-names case: a shop with one
+/// untranslated category still has to show it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalisedCategory {
+    pub category_id: CategoryId,
+    pub locale: Option<String>,
+    pub name: String,
+    pub description: String,
+    pub is_fallback: bool,
+}
+
 // ---------------------------------------------------------------------------
 // Inputs
 // ---------------------------------------------------------------------------
@@ -466,7 +486,7 @@ pub struct VariantPlan {
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-fn required(field: &'static str, value: &str) -> Result<String> {
+pub(crate) fn required(field: &'static str, value: &str) -> Result<String> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
         return Err(Error::invalid(format!("a {field} is needed")));
@@ -484,7 +504,7 @@ fn handle(value: &str) -> Result<String> {
 
 /// Empty means cleared, so a caller can unset a nullable column with the same
 /// field it sets one with.
-fn nullable(value: Option<String>) -> Option<String> {
+pub(crate) fn nullable(value: Option<String>) -> Option<String> {
     value.and_then(|text| {
         let trimmed = text.trim();
         if trimmed.is_empty() {
@@ -495,8 +515,11 @@ fn nullable(value: Option<String>) -> Option<String> {
     })
 }
 
-/// The same shape the database's own check constraint admits.
-fn locale(value: &str) -> Result<String> {
+/// The same shape the database's own check constraint admits. Shared past
+/// this module because `product_translation`, `product_category_translation`,
+/// `shipping_option_translation` and `return_reason_translation` all carry the
+/// identical constraint — one pattern, checked one way.
+pub(crate) fn locale(value: &str) -> Result<String> {
     let trimmed = value.trim();
     let mut parts = trimmed.split('-');
     let language = parts.next().unwrap_or_default();
@@ -2849,6 +2872,168 @@ pub async fn localised(
             subtitle: product.subtitle,
             description: product.description,
             handle: product.handle,
+            is_fallback: true,
+        },
+    })
+}
+
+async fn exists_category(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: CategoryId) -> Result<()> {
+    let found: Option<Uuid> = sqlx::query_scalar(
+        "select id from product_category where scope = $1 and id = $2 and deleted_at is null",
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    found
+        .map(|_| ())
+        .ok_or_else(|| Error::not_found("category"))
+}
+
+/// Writes one locale's name and description for a category, replacing
+/// whatever was there for it.
+pub async fn put_category_translation(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    category_id: CategoryId,
+    translation: CategoryTranslation,
+) -> Result<CategoryTranslation> {
+    let _: Permit = ctx.permit(Action::Write, Resource::Product { id: None })?;
+
+    let locale = locale(&translation.locale)?;
+    let name = required("name", &translation.name)?;
+    exists_category(tx, ctx, category_id).await?;
+
+    let row = sqlx::query_as::<_, CategoryTranslation>(
+        "insert into product_category_translation (id, scope, category_id, locale, name, description)
+         values ($1, $2, $3, $4, $5, $6)
+         on conflict (scope, category_id, locale) do update
+             set name = excluded.name,
+                 description = excluded.description
+         returning category_id, locale, name, description",
+    )
+    .bind(Uuid::now_v7())
+    .bind(ctx.scope.0)
+    .bind(category_id.as_uuid())
+    .bind(&locale)
+    .bind(&name)
+    .bind(nullable(translation.description))
+    .fetch_one(&mut **tx)
+    .await?;
+
+    note(
+        tx,
+        ctx,
+        Action::Write,
+        "product_category_translation",
+        category_id.as_uuid(),
+        serde_json::json!({ "locale": locale }),
+    )
+    .await?;
+
+    Ok(row)
+}
+
+pub async fn category_translations(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    category_id: CategoryId,
+) -> Result<Vec<CategoryTranslation>> {
+    let _: Permit = ctx.permit(Action::View, Resource::Product { id: None })?;
+
+    let rows = sqlx::query_as::<_, CategoryTranslation>(
+        "select category_id, locale, name, description
+         from product_category_translation
+         where scope = $1 and category_id = $2
+         order by locale
+         limit $3",
+    )
+    .bind(ctx.scope.0)
+    .bind(category_id.as_uuid())
+    .bind(MAX_ATTACHED)
+    .fetch_all(&mut **tx)
+    .await?;
+
+    Ok(rows)
+}
+
+pub async fn remove_category_translation(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    category_id: CategoryId,
+    wanted: &str,
+) -> Result<()> {
+    let _: Permit = ctx.permit(Action::Delete, Resource::Product { id: None })?;
+
+    let locale = locale(wanted)?;
+    let gone = sqlx::query(
+        "delete from product_category_translation
+         where scope = $1 and category_id = $2 and locale = $3",
+    )
+    .bind(ctx.scope.0)
+    .bind(category_id.as_uuid())
+    .bind(&locale)
+    .execute(&mut **tx)
+    .await?
+    .rows_affected();
+
+    if gone == 0 {
+        return Err(Error::not_found("translation"));
+    }
+
+    note(
+        tx,
+        ctx,
+        Action::Delete,
+        "product_category_translation",
+        category_id.as_uuid(),
+        serde_json::json!({ "locale": locale }),
+    )
+    .await
+}
+
+/// A category read in one language: the exact locale if it is there, then the
+/// bare language of it, then the category's own columns.
+pub async fn localised_category(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    category_id: CategoryId,
+    wanted: &str,
+) -> Result<LocalisedCategory> {
+    let _: Permit = ctx.permit(Action::View, Resource::Product { id: None })?;
+
+    let locale = locale(wanted)?;
+    let language = locale.split('-').next().unwrap_or(&locale).to_owned();
+    let found_category = category(tx, ctx, category_id).await?;
+
+    let found = sqlx::query_as::<_, CategoryTranslation>(
+        "select category_id, locale, name, description
+         from product_category_translation
+         where scope = $1 and category_id = $2 and locale in ($3, $4)
+         order by case when locale = $3 then 0 else 1 end
+         limit 1",
+    )
+    .bind(ctx.scope.0)
+    .bind(category_id.as_uuid())
+    .bind(&locale)
+    .bind(&language)
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    Ok(match found {
+        Some(row) => LocalisedCategory {
+            category_id,
+            locale: Some(row.locale),
+            name: row.name,
+            description: row.description.unwrap_or(found_category.description),
+            is_fallback: false,
+        },
+        None => LocalisedCategory {
+            category_id,
+            locale: None,
+            name: found_category.name,
+            description: found_category.description,
             is_fallback: true,
         },
     })

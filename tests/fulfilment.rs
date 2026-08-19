@@ -10,7 +10,7 @@ use rust_decimal_macros::dec;
 use tezgah::fulfilment::{
     self, DeliveryAddress, FulfillmentProvider, NewFulfillment, NewFulfillmentItem,
     NewFulfillmentSet, NewGeoZone, NewLabel, NewServiceZone, NewShippingOption, PriceKind, SetKind,
-    Shipment, ShipmentRequest, Shippable, ZoneKind,
+    Shipment, ShipmentRequest, Shippable, ShippingOptionTranslation, ZoneKind,
 };
 use tezgah::id::{OrderId, OrderItemId, StockLocationId};
 use tezgah::money::{Currency, Money};
@@ -353,6 +353,177 @@ async fn one_shops_shipping_options_are_invisible_to_another() {
     assert!(offered.is_empty(), "another shop's options were offered");
 
     theirs.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+/// "Standard delivery" at checkout, in whichever language the rest of the
+/// page is not — falling back to the shop's own name until it is written.
+#[tokio::test]
+async fn a_shipping_options_name_is_localised_and_falls_back() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let zone = ankara_only(&mut tx, &ctx).await;
+    let option = fulfilment::create_shipping_option(
+        &mut tx,
+        &ctx,
+        NewShippingOption {
+            name: "Standard delivery".into(),
+            price_type: PriceKind::Flat,
+            service_zone_id: zone,
+            shipping_profile_id: None,
+            provider_id: None,
+            data: None,
+        },
+    )
+    .await
+    .expect("an option");
+
+    let fallen_back = fulfilment::localised_shipping_option(&mut tx, &ctx, option.id, "tr")
+        .await
+        .expect("a reading");
+    assert!(fallen_back.is_fallback);
+    assert_eq!(fallen_back.name, "Standard delivery");
+
+    fulfilment::put_shipping_option_translation(
+        &mut tx,
+        &ctx,
+        option.id,
+        ShippingOptionTranslation {
+            shipping_option_id: option.id,
+            locale: "tr".into(),
+            name: "Standart teslimat".into(),
+        },
+    )
+    .await
+    .expect("a translation");
+
+    let read = fulfilment::localised_shipping_option(&mut tx, &ctx, option.id, "tr")
+        .await
+        .expect("a reading");
+    assert!(!read.is_fallback);
+    assert_eq!(read.name, "Standart teslimat");
+
+    assert_eq!(
+        fulfilment::shipping_option_translations(&mut tx, &ctx, option.id)
+            .await
+            .expect("its translations")
+            .len(),
+        1
+    );
+
+    fulfilment::remove_shipping_option_translation(&mut tx, &ctx, option.id, "tr")
+        .await
+        .expect("to remove it");
+    assert!(
+        fulfilment::localised_shipping_option(&mut tx, &ctx, option.id, "tr")
+            .await
+            .expect("a reading")
+            .is_fallback
+    );
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+/// Nothing but another tenant's option id, so `tezgah_fk`'s composite key is
+/// what refuses this.
+#[tokio::test]
+async fn a_shipping_option_translation_cannot_point_at_another_scopes_option() {
+    let shop = Shop::open().await;
+
+    let mut theirs_tx = shop.begin_as(shop.elsewhere).await;
+    let their_zone = ankara_only(&mut theirs_tx, &shop.theirs()).await;
+    let theirs = fulfilment::create_shipping_option(
+        &mut theirs_tx,
+        &shop.theirs(),
+        NewShippingOption {
+            name: "Their delivery".into(),
+            price_type: PriceKind::Flat,
+            service_zone_id: their_zone,
+            shipping_profile_id: None,
+            provider_id: None,
+            data: None,
+        },
+    )
+    .await
+    .expect("an option in the other scope");
+    theirs_tx.commit().await.expect("to commit");
+
+    let mut mine = shop.begin().await;
+    let refused = sqlx::query(
+        "insert into shipping_option_translation (id, scope, shipping_option_id, locale, name)
+         values ($1, $2, $3, 'tr', 'Standart teslimat')",
+    )
+    .bind(Uuid::now_v7())
+    .bind(shop.here.0)
+    .bind(theirs.id.as_uuid())
+    .execute(&mut *mine)
+    .await;
+    mine.rollback().await.expect("to give the connection back");
+
+    assert!(
+        refused.is_err(),
+        "a translation in one scope pointed at another scope's shipping option"
+    );
+
+    shop.close().await;
+}
+
+/// `shipping_option` has no soft delete, so this exercises the constraint
+/// against a real hard delete rather than one the application never does.
+#[tokio::test]
+async fn a_deleted_shipping_option_takes_its_translations_with_it() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let zone = ankara_only(&mut tx, &ctx).await;
+    let option = fulfilment::create_shipping_option(
+        &mut tx,
+        &ctx,
+        NewShippingOption {
+            name: "Standard delivery".into(),
+            price_type: PriceKind::Flat,
+            service_zone_id: zone,
+            shipping_profile_id: None,
+            provider_id: None,
+            data: None,
+        },
+    )
+    .await
+    .expect("an option");
+
+    fulfilment::put_shipping_option_translation(
+        &mut tx,
+        &ctx,
+        option.id,
+        ShippingOptionTranslation {
+            shipping_option_id: option.id,
+            locale: "tr".into(),
+            name: "Standart teslimat".into(),
+        },
+    )
+    .await
+    .expect("a translation");
+
+    sqlx::query("delete from shipping_option where id = $1")
+        .bind(option.id.as_uuid())
+        .execute(&mut *tx)
+        .await
+        .expect("to delete the option");
+
+    let left: i64 = sqlx::query_scalar(
+        "select count(*) from shipping_option_translation where shipping_option_id = $1",
+    )
+    .bind(option.id.as_uuid())
+    .fetch_one(&mut *tx)
+    .await
+    .expect("to count");
+    assert_eq!(left, 0, "the translation outlived the option it named");
+
+    tx.rollback().await.expect("to roll back");
     shop.close().await;
 }
 

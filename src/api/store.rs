@@ -1068,6 +1068,45 @@ pub async fn get_product_category(
     Ok(CategoryView::from(row))
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalisedCategoryView {
+    pub category_id: CategoryId,
+    pub locale: Option<String>,
+    pub name: String,
+    pub description: String,
+    pub is_fallback: bool,
+}
+
+impl From<catalogue::LocalisedCategory> for LocalisedCategoryView {
+    fn from(row: catalogue::LocalisedCategory) -> Self {
+        LocalisedCategoryView {
+            category_id: row.category_id,
+            locale: row.locale,
+            name: row.name,
+            description: row.description,
+            is_fallback: row.is_fallback,
+        }
+    }
+}
+
+/// A category's name and description in the locale a shopper asked for,
+/// falling back to the shop's own language rather than refusing — the
+/// storefront still has to show the category even half-translated.
+pub async fn get_product_category_localised(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: CategoryId,
+    locale: &str,
+) -> Result<LocalisedCategoryView> {
+    let row = catalogue::category(tx, ctx, id).await?;
+    if !browsable(&row) {
+        return Err(Error::not_found("category"));
+    }
+    Ok(LocalisedCategoryView::from(
+        catalogue::localised_category(tx, ctx, id, locale).await?,
+    ))
+}
+
 pub async fn list_collections(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -1834,6 +1873,38 @@ pub async fn calculate_shipping_option(
         .ok_or_else(|| Error::not_found("shipping option price"))
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalisedShippingOptionView {
+    pub shipping_option_id: ShippingOptionId,
+    pub locale: Option<String>,
+    pub name: String,
+    pub is_fallback: bool,
+}
+
+impl From<fulfilment::LocalisedShippingOption> for LocalisedShippingOptionView {
+    fn from(row: fulfilment::LocalisedShippingOption) -> Self {
+        LocalisedShippingOptionView {
+            shipping_option_id: row.shipping_option_id,
+            locale: row.locale,
+            name: row.name,
+            is_fallback: row.is_fallback,
+        }
+    }
+}
+
+/// "Standard delivery" in whichever language the rest of checkout is in,
+/// falling back to the shop's own rather than refusing.
+pub async fn get_shipping_option_translation(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ShippingOptionId,
+    locale: &str,
+) -> Result<LocalisedShippingOptionView> {
+    Ok(LocalisedShippingOptionView::from(
+        fulfilment::localised_shipping_option(tx, ctx, id, locale).await?,
+    ))
+}
+
 // ---------------------------------------------------------------------------
 // Customers
 // ---------------------------------------------------------------------------
@@ -2269,6 +2340,40 @@ pub async fn get_return_reason(
     ))
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalisedReturnReasonView {
+    pub return_reason_id: Uuid,
+    pub locale: Option<String>,
+    pub label: String,
+    pub description: Option<String>,
+    pub is_fallback: bool,
+}
+
+impl From<order::LocalisedReturnReason> for LocalisedReturnReasonView {
+    fn from(row: order::LocalisedReturnReason) -> Self {
+        LocalisedReturnReasonView {
+            return_reason_id: row.return_reason_id,
+            locale: row.locale,
+            label: row.label,
+            description: row.description,
+            is_fallback: row.is_fallback,
+        }
+    }
+}
+
+/// The reason a customer picks from when sending something back, in the
+/// language they are shopping in.
+pub async fn get_return_reason_translation(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: Uuid,
+    locale: &str,
+) -> Result<LocalisedReturnReasonView> {
+    Ok(LocalisedReturnReasonView::from(
+        order::localised_return_reason(tx, ctx, id, locale).await?,
+    ))
+}
+
 // ---------------------------------------------------------------------------
 // Payment
 // ---------------------------------------------------------------------------
@@ -2466,6 +2571,14 @@ pub(super) static ROUTES: &[Route] = &[
     Route {
         surface: Surface::Store,
         method: Method::Get,
+        path: "/store/product-categories/{id}/translations/{locale}",
+        action: Action::View,
+        domain: "catalogue",
+        summary: "Read a browsable category in one locale, falling back to the shop's own",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Get,
         path: "/store/collections",
         action: Action::View,
         domain: "catalogue",
@@ -2649,6 +2762,14 @@ pub(super) static ROUTES: &[Route] = &[
     },
     Route {
         surface: Surface::Store,
+        method: Method::Get,
+        path: "/store/shipping-options/{id}/translations/{locale}",
+        action: Action::View,
+        domain: "fulfilment",
+        summary: "Read a shipping option's name in one locale, falling back to the shop's own",
+    },
+    Route {
+        surface: Surface::Store,
         method: Method::Post,
         path: "/store/customers",
         action: Action::Write,
@@ -2782,6 +2903,14 @@ pub(super) static ROUTES: &[Route] = &[
         action: Action::View,
         domain: "order",
         summary: "Fetch one return reason",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Get,
+        path: "/store/return-reasons/{id}/translations/{locale}",
+        action: Action::View,
+        domain: "order",
+        summary: "Read a return reason in one locale, falling back to the shop's own",
     },
     Route {
         surface: Surface::Store,

@@ -1575,6 +1575,107 @@ pub async fn localised(
 }
 
 // ---------------------------------------------------------------------------
+// Category translations
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CategoryTranslationView {
+    pub category_id: CategoryId,
+    pub locale: String,
+    pub name: String,
+    pub description: Option<String>,
+}
+
+impl From<catalogue::CategoryTranslation> for CategoryTranslationView {
+    fn from(row: catalogue::CategoryTranslation) -> Self {
+        CategoryTranslationView {
+            category_id: row.category_id,
+            locale: row.locale,
+            name: row.name,
+            description: row.description,
+        }
+    }
+}
+
+pub async fn list_category_translations(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    category_id: CategoryId,
+) -> Result<Vec<CategoryTranslationView>> {
+    let rows = catalogue::category_translations(tx, ctx, category_id).await?;
+    Ok(rows
+        .into_iter()
+        .map(CategoryTranslationView::from)
+        .collect())
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PutCategoryTranslation {
+    pub locale: String,
+    pub name: String,
+    pub description: Option<String>,
+}
+
+pub async fn put_category_translation(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    category_id: CategoryId,
+    body: PutCategoryTranslation,
+) -> Result<CategoryTranslationView> {
+    let translation = catalogue::CategoryTranslation {
+        category_id,
+        locale: body.locale,
+        name: body.name,
+        description: body.description,
+    };
+    Ok(CategoryTranslationView::from(
+        catalogue::put_category_translation(tx, ctx, category_id, translation).await?,
+    ))
+}
+
+pub async fn remove_category_translation(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    category_id: CategoryId,
+    locale: &str,
+) -> Result<()> {
+    catalogue::remove_category_translation(tx, ctx, category_id, locale).await
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalisedCategoryView {
+    pub category_id: CategoryId,
+    pub locale: Option<String>,
+    pub name: String,
+    pub description: String,
+    pub is_fallback: bool,
+}
+
+impl From<catalogue::LocalisedCategory> for LocalisedCategoryView {
+    fn from(row: catalogue::LocalisedCategory) -> Self {
+        LocalisedCategoryView {
+            category_id: row.category_id,
+            locale: row.locale,
+            name: row.name,
+            description: row.description,
+            is_fallback: row.is_fallback,
+        }
+    }
+}
+
+pub async fn localised_category(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    category_id: CategoryId,
+    locale: &str,
+) -> Result<LocalisedCategoryView> {
+    Ok(LocalisedCategoryView::from(
+        catalogue::localised_category(tx, ctx, category_id, locale).await?,
+    ))
+}
+
+// ---------------------------------------------------------------------------
 // Price sets and prices
 // ---------------------------------------------------------------------------
 
@@ -3197,6 +3298,38 @@ pub(super) static ROUTES: &[Route] = &[
         action: Action::Delete,
         domain: CATALOGUE,
         summary: "Drop a product's translation for one locale",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Get,
+        path: "/admin/product-categories/{id}/translations",
+        action: Action::View,
+        domain: CATALOGUE,
+        summary: "List a category's translations",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Post,
+        path: "/admin/product-categories/{id}/translations",
+        action: Action::Write,
+        domain: CATALOGUE,
+        summary: "Write a category's translation into one locale",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Get,
+        path: "/admin/product-categories/{id}/translations/{locale}",
+        action: Action::View,
+        domain: CATALOGUE,
+        summary: "Read a category in one locale, saying where it fell back",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Delete,
+        path: "/admin/product-categories/{id}/translations/{locale}",
+        action: Action::Delete,
+        domain: CATALOGUE,
+        summary: "Drop a category's translation for one locale",
     },
     Route {
         surface: Surface::Admin,

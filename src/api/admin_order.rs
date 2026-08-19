@@ -2841,6 +2841,103 @@ pub async fn create_return_reason(
     .await?)
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReturnReasonTranslationView {
+    pub return_reason_id: Uuid,
+    pub locale: String,
+    pub label: String,
+    pub description: Option<String>,
+}
+
+impl From<order::ReturnReasonTranslation> for ReturnReasonTranslationView {
+    fn from(row: order::ReturnReasonTranslation) -> Self {
+        ReturnReasonTranslationView {
+            return_reason_id: row.return_reason_id,
+            locale: row.locale,
+            label: row.label,
+            description: row.description,
+        }
+    }
+}
+
+pub async fn list_return_reason_translations(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    return_reason_id: Uuid,
+) -> Result<Vec<ReturnReasonTranslationView>> {
+    let rows = order::return_reason_translations(tx, ctx, return_reason_id).await?;
+    Ok(rows
+        .into_iter()
+        .map(ReturnReasonTranslationView::from)
+        .collect())
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PutReturnReasonTranslation {
+    pub locale: String,
+    pub label: String,
+    pub description: Option<String>,
+}
+
+pub async fn put_return_reason_translation(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    return_reason_id: Uuid,
+    body: PutReturnReasonTranslation,
+) -> Result<ReturnReasonTranslationView> {
+    let translation = order::ReturnReasonTranslation {
+        return_reason_id,
+        locale: body.locale,
+        label: body.label,
+        description: body.description,
+    };
+    Ok(ReturnReasonTranslationView::from(
+        order::put_return_reason_translation(tx, ctx, return_reason_id, translation).await?,
+    ))
+}
+
+pub async fn remove_return_reason_translation(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    return_reason_id: Uuid,
+    locale: &str,
+) -> Result<()> {
+    order::remove_return_reason_translation(tx, ctx, return_reason_id, locale).await
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalisedReturnReasonView {
+    pub return_reason_id: Uuid,
+    pub locale: Option<String>,
+    pub label: String,
+    pub description: Option<String>,
+    pub is_fallback: bool,
+}
+
+impl From<order::LocalisedReturnReason> for LocalisedReturnReasonView {
+    fn from(row: order::LocalisedReturnReason) -> Self {
+        LocalisedReturnReasonView {
+            return_reason_id: row.return_reason_id,
+            locale: row.locale,
+            label: row.label,
+            description: row.description,
+            is_fallback: row.is_fallback,
+        }
+    }
+}
+
+pub async fn localised_return_reason(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    return_reason_id: Uuid,
+    locale: &str,
+) -> Result<LocalisedReturnReasonView> {
+    Ok(LocalisedReturnReasonView::from(
+        order::localised_return_reason(tx, ctx, return_reason_id, locale).await?,
+    ))
+}
+
 // ---------------------------------------------------------------------------
 // Fulfilment
 // ---------------------------------------------------------------------------
@@ -3388,6 +3485,97 @@ pub async fn update_shipping_option(
     Ok(fulfilment::update_shipping_option(tx, ctx, id, patch)
         .await?
         .into())
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShippingOptionTranslationView {
+    pub shipping_option_id: ShippingOptionId,
+    pub locale: String,
+    pub name: String,
+}
+
+impl From<fulfilment::ShippingOptionTranslation> for ShippingOptionTranslationView {
+    fn from(row: fulfilment::ShippingOptionTranslation) -> Self {
+        ShippingOptionTranslationView {
+            shipping_option_id: row.shipping_option_id,
+            locale: row.locale,
+            name: row.name,
+        }
+    }
+}
+
+pub async fn list_shipping_option_translations(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ShippingOptionId,
+) -> Result<Vec<ShippingOptionTranslationView>> {
+    let rows = fulfilment::shipping_option_translations(tx, ctx, id).await?;
+    Ok(rows
+        .into_iter()
+        .map(ShippingOptionTranslationView::from)
+        .collect())
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PutShippingOptionTranslation {
+    pub locale: String,
+    pub name: String,
+}
+
+pub async fn put_shipping_option_translation(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ShippingOptionId,
+    body: PutShippingOptionTranslation,
+) -> Result<ShippingOptionTranslationView> {
+    let translation = fulfilment::ShippingOptionTranslation {
+        shipping_option_id: id,
+        locale: body.locale,
+        name: body.name,
+    };
+    Ok(ShippingOptionTranslationView::from(
+        fulfilment::put_shipping_option_translation(tx, ctx, id, translation).await?,
+    ))
+}
+
+pub async fn remove_shipping_option_translation(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ShippingOptionId,
+    locale: &str,
+) -> Result<()> {
+    fulfilment::remove_shipping_option_translation(tx, ctx, id, locale).await
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalisedShippingOptionView {
+    pub shipping_option_id: ShippingOptionId,
+    pub locale: Option<String>,
+    pub name: String,
+    pub is_fallback: bool,
+}
+
+impl From<fulfilment::LocalisedShippingOption> for LocalisedShippingOptionView {
+    fn from(row: fulfilment::LocalisedShippingOption) -> Self {
+        LocalisedShippingOptionView {
+            shipping_option_id: row.shipping_option_id,
+            locale: row.locale,
+            name: row.name,
+            is_fallback: row.is_fallback,
+        }
+    }
+}
+
+pub async fn localised_shipping_option(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ShippingOptionId,
+    locale: &str,
+) -> Result<LocalisedShippingOptionView> {
+    Ok(LocalisedShippingOptionView::from(
+        fulfilment::localised_shipping_option(tx, ctx, id, locale).await?,
+    ))
 }
 
 impl From<fulfilment::ShippingProfile> for ShippingProfileView {
@@ -4164,6 +4352,34 @@ pub(super) static ROUTES: &[Route] = &[
         "order",
         "Add a return reason"
     ),
+    route!(
+        Get,
+        "/admin/return-reasons/{id}/translations",
+        View,
+        "order",
+        "List a return reason's translations"
+    ),
+    route!(
+        Post,
+        "/admin/return-reasons/{id}/translations",
+        Write,
+        "order",
+        "Write a return reason's translation into one locale"
+    ),
+    route!(
+        Get,
+        "/admin/return-reasons/{id}/translations/{locale}",
+        View,
+        "order",
+        "Read a return reason in one locale, saying where it fell back"
+    ),
+    route!(
+        Delete,
+        "/admin/return-reasons/{id}/translations/{locale}",
+        Delete,
+        "order",
+        "Drop a return reason's translation for one locale"
+    ),
     // Fulfilments
     route!(
         Get,
@@ -4284,6 +4500,34 @@ pub(super) static ROUTES: &[Route] = &[
         Write,
         "fulfilment",
         "Add a rule to a shipping option"
+    ),
+    route!(
+        Get,
+        "/admin/shipping-options/{id}/translations",
+        View,
+        "fulfilment",
+        "List a shipping option's translations"
+    ),
+    route!(
+        Post,
+        "/admin/shipping-options/{id}/translations",
+        Write,
+        "fulfilment",
+        "Write a shipping option's translation into one locale"
+    ),
+    route!(
+        Get,
+        "/admin/shipping-options/{id}/translations/{locale}",
+        View,
+        "fulfilment",
+        "Read a shipping option in one locale, saying where it fell back"
+    ),
+    route!(
+        Delete,
+        "/admin/shipping-options/{id}/translations/{locale}",
+        Delete,
+        "fulfilment",
+        "Drop a shipping option's translation for one locale"
     ),
     route!(
         Get,
