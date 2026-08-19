@@ -806,6 +806,45 @@
         "x-tezgah-permission": "view"
       }
     },
+    "/admin/claims/{id}/lines": {
+      "get": {
+        "operationId": "getAdminClaimsByIdLines",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "What was claimed, faulty or replacement, with any photos",
+        "tags": [
+          "order"
+        ],
+        "x-tezgah-permission": "view"
+      }
+    },
     "/admin/claims/{id}/outbound/items": {
       "post": {
         "operationId": "postAdminClaimsByIdOutboundItems",
@@ -5330,6 +5369,45 @@
         "x-tezgah-permission": "write"
       }
     },
+    "/admin/orders/{id}/billing-address": {
+      "patch": {
+        "operationId": "patchAdminOrdersByIdBillingAddress",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Correct the order's billing address",
+        "tags": [
+          "order"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
     "/admin/orders/{id}/cancel": {
       "post": {
         "operationId": "postAdminOrdersByIdCancel",
@@ -5441,6 +5519,45 @@
           }
         ],
         "summary": "Complete an order",
+        "tags": [
+          "order"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/orders/{id}/email": {
+      "patch": {
+        "operationId": "patchAdminOrdersByIdEmail",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Correct the order's e-mail address",
         "tags": [
           "order"
         ],
@@ -6347,6 +6464,45 @@
         "x-tezgah-permission": "view"
       }
     },
+    "/admin/orders/{id}/shipping-address": {
+      "patch": {
+        "operationId": "patchAdminOrdersByIdShippingAddress",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Correct the address a parcel is going to",
+        "tags": [
+          "order"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
     "/admin/orders/{id}/shipping-methods": {
       "get": {
         "operationId": "getAdminOrdersByIdShippingMethods",
@@ -6821,6 +6977,112 @@
           "payment"
         ],
         "x-tezgah-permission": "view"
+      },
+      "post": {
+        "operationId": "postAdminPaymentsPaymentProviders",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Register a payment provider",
+        "tags": [
+          "payment"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/payments/payment-providers/{id}/disable": {
+      "post": {
+        "operationId": "postAdminPaymentsPaymentProvidersByIdDisable",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Stop offering a payment provider without disturbing its payments",
+        "tags": [
+          "payment"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/payments/payment-providers/{id}/enable": {
+      "post": {
+        "operationId": "postAdminPaymentsPaymentProvidersByIdEnable",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Resume offering a disabled payment provider",
+        "tags": [
+          "payment"
+        ],
+        "x-tezgah-permission": "write"
       }
     },
     "/admin/payments/{id}": {
@@ -15967,6 +16229,45 @@
           "payment"
         ],
         "x-tezgah-permission": "write"
+      }
+    },
+    "/store/customers/me/account-holders/{id}": {
+      "delete": {
+        "operationId": "deleteStoreCustomersMeAccountHoldersById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "publishableKey": []
+          }
+        ],
+        "summary": "Remove a card reference of one's own",
+        "tags": [
+          "payment"
+        ],
+        "x-tezgah-permission": "delete"
       }
     },
     "/store/customers/me/addresses": {
