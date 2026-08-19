@@ -1696,6 +1696,20 @@ impl From<store::Store> for StoreView {
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct CreateStore {
+    pub name: String,
+    pub default_currency_code: String,
+    #[serde(default)]
+    pub supported_currency_codes: Vec<String>,
+    #[serde(default)]
+    pub supported_locales: Vec<String>,
+    pub default_region_id: Option<RegionId>,
+    pub default_sales_channel_id: Option<SalesChannelId>,
+    pub metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct UpdateStore {
     pub name: Option<String>,
     pub default_currency_code: Option<String>,
@@ -1720,6 +1734,23 @@ fn currency_list(codes: Option<Vec<String>>) -> Result<Option<Vec<Currency>>> {
 
 pub async fn get_store(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<StoreView> {
     Ok(StoreView::from(store::store(tx, ctx).await?))
+}
+
+pub async fn create_store(tx: &mut Tx<'_>, ctx: &Ctx<'_>, body: CreateStore) -> Result<StoreView> {
+    let new = store::NewStore {
+        name: body.name,
+        default_currency_code: Currency::parse(&body.default_currency_code)?,
+        supported_currency_codes: body
+            .supported_currency_codes
+            .iter()
+            .map(|code| Currency::parse(code))
+            .collect::<Result<Vec<_>>>()?,
+        supported_locales: body.supported_locales,
+        default_region_id: body.default_region_id,
+        default_sales_channel_id: body.default_sales_channel_id,
+        metadata: body.metadata,
+    };
+    Ok(StoreView::from(store::create_store(tx, ctx, new).await?))
 }
 
 pub async fn update_store(tx: &mut Tx<'_>, ctx: &Ctx<'_>, body: UpdateStore) -> Result<StoreView> {
@@ -2518,6 +2549,14 @@ pub(super) static ROUTES: &[Route] = &[
     Route {
         surface: Surface::Admin,
         method: Method::Post,
+        path: "/admin/stores",
+        action: Action::Write,
+        domain: "store",
+        summary: "Create the shop's own settings",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Patch,
         path: "/admin/stores",
         action: Action::Write,
         domain: "store",

@@ -886,6 +886,23 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
     denied!(
         Method::Post,
         "/admin/stores",
+        admin_rest::create_store(
+            &mut tx,
+            &ctx,
+            admin_rest::CreateStore {
+                name: String::new(),
+                default_currency_code: "USD".to_string(),
+                supported_currency_codes: Vec::new(),
+                supported_locales: Vec::new(),
+                default_region_id: None,
+                default_sales_channel_id: None,
+                metadata: None,
+            }
+        )
+    );
+    denied!(
+        Method::Patch,
+        "/admin/stores",
         admin_rest::update_store(&mut tx, &ctx, admin_rest::UpdateStore::default())
     );
     denied!(
@@ -3057,7 +3074,7 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
     denied!(
         Method::Get,
         "/store/products/{handle}",
-        store::get_product(&mut tx, &ctx, "test-token", "example-handle")
+        store::get_product(&mut tx, &ctx, "test-token", "example-handle", None)
     );
     denied!(
         Method::Get,
@@ -3123,12 +3140,7 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
     denied!(
         Method::Get,
         "/store/product-categories/{id}",
-        store::get_product_category(&mut tx, &ctx, CategoryId::new())
-    );
-    denied!(
-        Method::Get,
-        "/store/product-categories/{id}/translations/{locale}",
-        store::get_product_category_localised(&mut tx, &ctx, CategoryId::new(), "tr")
+        store::get_product_category(&mut tx, &ctx, CategoryId::new(), None)
     );
     denied!(
         Method::Get,
@@ -3293,6 +3305,7 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
                 province_code: None,
                 city: None,
                 postal_code: None,
+                locale: None,
             }
         )
     );
@@ -3307,11 +3320,6 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
                 cart_id: CartId::new()
             }
         )
-    );
-    denied!(
-        Method::Get,
-        "/store/shipping-options/{id}/translations/{locale}",
-        store::get_shipping_option_translation(&mut tx, &ctx, ShippingOptionId::new(), "tr")
     );
     denied!(
         Method::Post,
@@ -3444,12 +3452,7 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
     denied!(
         Method::Get,
         "/store/return-reasons/{id}",
-        store::get_return_reason(&mut tx, &ctx, uuid::Uuid::now_v7())
-    );
-    denied!(
-        Method::Get,
-        "/store/return-reasons/{id}/translations/{locale}",
-        store::get_return_reason_translation(&mut tx, &ctx, uuid::Uuid::now_v7(), "tr")
+        store::get_return_reason(&mut tx, &ctx, uuid::Uuid::now_v7(), None)
     );
     denied!(
         Method::Post,

@@ -12,10 +12,10 @@ use tezgah::id::{PublishableKeyId, SalesChannelId};
 use tezgah::money::Currency;
 use tezgah::page::Paging;
 use tezgah::ports::{
-    Action, Actor, AuditEntry, AuditSink, Authorizer, Clock, Event, EventSink, JobSpec, Jobs,
+    Action, Actor, AuditEntry, AuditSink, Authorizer, Clock, Ctx, Event, EventSink, JobSpec, Jobs,
     Permit, Resource, Tx,
 };
-use tezgah::store::{self, NewSalesChannel, SalesChannel, SalesChannelPatch, StorePatch};
+use tezgah::store::{self, NewSalesChannel, NewStore, SalesChannel, SalesChannelPatch, StorePatch};
 
 async fn a_channel(shop: &Shop, tx: &mut Tx<'_>, name: &str) -> SalesChannel {
     store::create_sales_channel(
@@ -31,19 +31,111 @@ async fn a_channel(shop: &Shop, tx: &mut Tx<'_>, name: &str) -> SalesChannel {
     .expect("a channel")
 }
 
-/// The `store` row itself has no writer anywhere in the crate — a host
-/// creates one as part of its own onboarding. `update_store` only updates.
-async fn a_store_row(tx: &mut Tx<'_>, scope: uuid::Uuid) {
-    sqlx::query(
-        "insert into store (id, scope, name, default_currency_code, supported_currency_codes)
-         values ($1, $2, 'Test shop', 'TRY', array['TRY'])
-         on conflict do nothing",
+/// A shop's own settings row, the way a host's onboarding creates one.
+async fn a_store_row(tx: &mut Tx<'_>, ctx: &Ctx<'_>) {
+    store::create_store(
+        tx,
+        ctx,
+        NewStore {
+            name: "Test shop".into(),
+            default_currency_code: Currency::parse("TRY").expect("a currency"),
+            supported_currency_codes: Vec::new(),
+            supported_locales: Vec::new(),
+            default_region_id: None,
+            default_sales_channel_id: None,
+            metadata: None,
+        },
     )
-    .bind(uuid::Uuid::now_v7())
-    .bind(scope)
-    .execute(&mut **tx)
     .await
     .expect("a store row");
+}
+
+/// #190: `store` had no writer at all — `update store set ...` matched no
+/// row and answered `Ok` while changing nothing. `create_store` gives the
+/// table its first row, and `update_store` now has one to change.
+#[tokio::test]
+async fn a_store_row_is_created_and_update_store_actually_changes_it() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let created = store::create_store(
+        &mut tx,
+        &ctx,
+        NewStore {
+            name: "Original name".into(),
+            default_currency_code: Currency::parse("TRY").expect("a currency"),
+            supported_currency_codes: Vec::new(),
+            supported_locales: Vec::new(),
+            default_region_id: None,
+            default_sales_channel_id: None,
+            metadata: None,
+        },
+    )
+    .await
+    .expect("a shop's first settings row");
+    assert_eq!(created.name, "Original name");
+    assert_eq!(created.default_currency_code, "TRY");
+    assert_eq!(created.supported_currency_codes, vec!["TRY".to_string()]);
+
+    let updated = store::update_store(
+        &mut tx,
+        &ctx,
+        StorePatch {
+            name: Some("Renamed shop".into()),
+            ..StorePatch::default()
+        },
+    )
+    .await
+    .expect("updating the row that now exists");
+    assert_eq!(
+        updated.name, "Renamed shop",
+        "update_store changed the row it just read, not nothing"
+    );
+
+    let read_back = store::store(&mut tx, &ctx)
+        .await
+        .expect("the row persisted");
+    assert_eq!(read_back.name, "Renamed shop");
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+/// #190: `store_scope_key` says one row per scope; `create_store` inserts
+/// with `on conflict (scope) do nothing`, so a second call for the same scope
+/// finds nothing to return and answers a conflict rather than quietly
+/// keeping the first shop's settings.
+#[tokio::test]
+async fn a_second_store_row_for_the_same_scope_is_refused() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    a_store_row(&mut tx, &ctx).await;
+
+    let second = store::create_store(
+        &mut tx,
+        &ctx,
+        NewStore {
+            name: "A second shop".into(),
+            default_currency_code: Currency::parse("USD").expect("a currency"),
+            supported_currency_codes: Vec::new(),
+            supported_locales: Vec::new(),
+            default_region_id: None,
+            default_sales_channel_id: None,
+            metadata: None,
+        },
+    )
+    .await
+    .expect_err("a scope only ever gets one store row");
+    assert!(second.is_conflict());
+
+    let still_there = store::store(&mut tx, &ctx).await.expect("the first row");
+    assert_eq!(still_there.default_currency_code, "TRY");
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
 }
 
 #[tokio::test]
@@ -501,7 +593,7 @@ async fn the_default_sales_channel_cannot_be_deleted() {
     let ctx = shop.ctx();
     let mut tx = shop.begin().await;
 
-    a_store_row(&mut tx, shop.here.0).await;
+    a_store_row(&mut tx, &ctx).await;
     let channel = a_channel(&shop, &mut tx, "Web").await;
 
     store::update_store(

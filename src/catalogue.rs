@@ -3394,6 +3394,47 @@ pub async fn localised(
     })
 }
 
+/// The same fallback [`localised`] reads, for every id in `product_ids` at
+/// once — a page of products a storefront just listed reads its titles in
+/// one query rather than one per row.
+pub async fn product_translations(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    product_ids: &[ProductId],
+    wanted: &str,
+) -> Result<std::collections::HashMap<ProductId, ProductTranslation>> {
+    let _: Permit = ctx.permit(Action::View, Resource::Product { id: None })?;
+
+    let mut by_product = std::collections::HashMap::new();
+    if product_ids.is_empty() {
+        return Ok(by_product);
+    }
+
+    let locale = locale(wanted)?;
+    let language = locale.split('-').next().unwrap_or(&locale).to_owned();
+    let ids: Vec<Uuid> = product_ids.iter().map(|id| id.as_uuid()).collect();
+
+    let rows: Vec<ProductTranslation> = sqlx::query_as(
+        "select distinct on (product_id)
+                product_id, locale, title, subtitle, description, handle
+         from product_translation
+         where scope = $1 and product_id = any($2) and locale in ($3, $4)
+         order by product_id, case when locale = $3 then 0 else 1 end",
+    )
+    .bind(ctx.scope.0)
+    .bind(&ids)
+    .bind(&locale)
+    .bind(&language)
+    .fetch_all(&mut **tx)
+    .await?;
+
+    for row in rows {
+        by_product.insert(row.product_id, row);
+    }
+
+    Ok(by_product)
+}
+
 async fn exists_category(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: CategoryId) -> Result<()> {
     let found: Option<Uuid> = sqlx::query_scalar(
         "select id from product_category where scope = $1 and id = $2 and deleted_at is null",

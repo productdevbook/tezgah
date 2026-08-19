@@ -49,7 +49,7 @@ async fn a_draft_is_visible_here_and_nowhere_else() {
         .expect("a token")
         .token;
 
-    let refused = storefront::get_product(&mut tx, &ctx, &token, "kilim").await;
+    let refused = storefront::get_product(&mut tx, &ctx, &token, "kilim", None).await;
     assert!(
         refused.is_err_and(|err| err.is_not_found()),
         "the storefront does not admit a draft exists"

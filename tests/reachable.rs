@@ -22,22 +22,26 @@
 //! `module::name(` elsewhere, or a bare `name(` in a file that imported it —
 //! so two functions sharing a name share their callers.
 //!
-//! Check 2 resolves a `format!`-built table name exactly two ways: a private
+//! Check 2 resolves a `format!`-built table name three ways: a private
 //! function's own parameter, read from every literal argument its callers in
 //! the same file pass (`table` in `catalogue::link` and `catalogue::unlink`);
-//! or a tuple element bound from a same-file method whose body is nothing but
+//! a tuple element bound from a same-file method whose body is nothing but
 //! a `match` returning literal tuples (`adjustment_table`/`tax_table`, bound
-//! from `LineMoney::tables` in `order::insert_line_money`). Both are shapes
+//! from `LineMoney::tables` in `order::insert_line_money`); or a tuple element
+//! bound from a `for` loop over an array of literal tuples written inline
+//! (`table` in `tax::set_cart_tax_lines`, writing `cart_line_item_tax_line`
+//! and `cart_shipping_method_tax_line`). All three are shapes
 //! `tests/format_sql.rs` already proved closed over literals, for the
 //! opposite reason — that check is proving a caller cannot smuggle a value
 //! in; this one is proving what the table name always resolves to. A table
-//! name built any other way — a loop variable over an array of names
-//! already bound elsewhere, the shape `order::erase` uses for the same two
-//! tables — resolves to nothing here, which costs no coverage: the
-//! tuple-destructure case above already wrote those two tables down. Until
-//! issue #187 this check also counted a table's name in quotes anywhere in
-//! `src/` as proof of a writer, which let `Error::not_found("currency")`
-//! pass for a table nothing wrote a row into; that form is gone, and the
+//! name built any other way — a loop variable with nothing to destructure,
+//! the shape `order::erase` uses to delete `order_status_history` alongside
+//! others — resolves to nothing here, which costs no coverage there either:
+//! the tuple-destructure case above already wrote those tables down through
+//! `LineMoney::tables`. Until issue #187 this check also counted a table's
+//! name in quotes anywhere in `src/` as proof of a writer, which let
+//! `Error::not_found("currency")` pass for a table nothing wrote a row into;
+//! that form is gone, and the
 //! quoted forms it keeps are `insert into "T"`/`update "T"`/`delete from
 //! "T"` — the shape a reserved word like `"order"` is genuinely written in,
 //! not a name appearing anywhere for any reason. And check 2 reads
@@ -46,6 +50,18 @@
 //! `tezgah_order_status_moves`, installed in migration 0020 — counts, where
 //! reading `src/` alone would have missed it, the same blind spot #118
 //! documented for check 3 below.
+//!
+//! Check 2 also asks a narrower question of the same evidence: not just
+//! whether a table has a writer, but whether anything can put a *first* row
+//! in it — an `insert`, never an `update` or a `delete` alone. `store` was
+//! the gap #190 found: `update store set ...` is a real writer by the wider
+//! question, so the table read as healthy, but nothing ever inserted into
+//! it, so the update always matched zero rows. The two questions share their
+//! reading of `src/` and `migrations/` and differ only in which prefix they
+//! count — `table_is_written` all three, `table_can_hold_a_row` `insert`
+//! alone — so a table can now fail either one, with its own message: no
+//! writer at all, tolerated in `TOLERATED_TABLES`, or a writer that can
+//! never create the row it updates, which nothing may tolerate.
 //!
 //! Check 3 is weaker than checks 1 and 2, and it is worth being exact about
 //! how. It does not distinguish where a literal sits — a value in a `match`
@@ -736,6 +752,40 @@ fn matching_close_paren(chars: &[char], open: usize) -> Option<usize> {
     None
 }
 
+/// Same as [`matching_close_paren`], for `[` and `]`.
+fn matching_close_bracket(chars: &[char], open: usize) -> Option<usize> {
+    let mut depth = 0i32;
+    let mut i = open;
+    let mut in_str = false;
+    let mut escape = false;
+    while i < chars.len() {
+        let c = chars[i];
+        if in_str {
+            if escape {
+                escape = false;
+            } else if c == '\\' {
+                escape = true;
+            } else if c == '"' {
+                in_str = false;
+            }
+        } else {
+            match c {
+                '"' => in_str = true,
+                '[' => depth += 1,
+                ']' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(i);
+                    }
+                }
+                _ => {}
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
 /// The first `"..."` string literal at the start of `chars` (leading
 /// whitespace allowed), unescaped quoting aside — its raw text between the
 /// quotes.
@@ -988,13 +1038,20 @@ fn src_functions(source: &str) -> Vec<SrcFunction> {
     found
 }
 
-/// The `{name}` immediately after "insert into ", "update " or "delete
-/// from " in a `format!`'s leading SQL literal — the table position, not a
-/// placeholder occurring anywhere else in the string.
-fn dynamic_table_placeholder(literal: &str) -> Option<String> {
-    const PREFIXES: [&str; 3] = ["insert into ", "update ", "delete from "];
+/// Every `insert into`/`update`/`delete from` a table's writer is found
+/// through. [`table_is_written`] reads for `prefixes` in full — a table has
+/// *a* writer if any of the three touches it. [`table_can_hold_a_row`] reads
+/// for `INSERT_ONLY` — the narrower question of whether anything can ever put
+/// a row in it, which `update`/`delete` alone can never answer.
+const WRITE_PREFIXES: [&str; 3] = ["insert into ", "update ", "delete from "];
+const INSERT_ONLY: [&str; 1] = ["insert into "];
+
+/// The `{name}` immediately after one of `prefixes` in a `format!`'s leading
+/// SQL literal — the table position, not a placeholder occurring anywhere
+/// else in the string.
+fn dynamic_table_placeholder(literal: &str, prefixes: &[&str]) -> Option<String> {
     let trimmed = literal.trim_start();
-    for prefix in PREFIXES {
+    for prefix in prefixes {
         let Some(rest) = trimmed.strip_prefix(prefix) else {
             continue;
         };
@@ -1010,8 +1067,8 @@ fn dynamic_table_placeholder(literal: &str) -> Option<String> {
 }
 
 /// Every dynamic table placeholder [`dynamic_table_placeholder`] finds
-/// inside a `format!(..)` call anywhere in `body`.
-fn dynamic_table_names_in_format_calls(body: &str) -> Vec<String> {
+/// inside a `format!(..)` call anywhere in `body`, for `prefixes`.
+fn dynamic_table_names_in_format_calls(body: &str, prefixes: &[&str]) -> Vec<String> {
     let chars: Vec<char> = body.chars().collect();
     let marker: Vec<char> = "format!(".chars().collect();
     let mut out = Vec::new();
@@ -1025,7 +1082,7 @@ fn dynamic_table_names_in_format_calls(body: &str) -> Vec<String> {
         if let Some(close) = matching_close_paren(&chars, open) {
             let inner = &chars[open + 1..close];
             if let Some(literal) = leading_string_literal(inner)
-                && let Some(name) = dynamic_table_placeholder(&literal)
+                && let Some(name) = dynamic_table_placeholder(&literal, prefixes)
             {
                 out.push(name);
             }
@@ -1092,13 +1149,80 @@ fn literal_tuple_arms(body: &str, position: usize) -> Option<Vec<String>> {
     if arms.is_empty() { None } else { Some(arms) }
 }
 
+/// Where `name` is bound to a position by a `for (a, b, ..) in [ (..), (..)
+/// ]` in `body` — every arm's literal value there, the same answer
+/// [`literal_tuple_arms`] gives a `match`, for an array of tuples written
+/// inline instead of returned from a method — `table`, in
+/// `tax::set_cart_tax_lines`'s own loop, resolving to
+/// `cart_line_item_tax_line` and `cart_shipping_method_tax_line`. `None`
+/// unless every element found is a string literal there, the same
+/// closed-world rule `literal_tuple_arms` holds to.
+fn for_loop_tuple_arms(body: &str, name: &str) -> Option<Vec<String>> {
+    let mut at = 0;
+    while let Some(found) = body[at..].find("for (") {
+        let start = at + found + "for (".len();
+        let close = start + body[start..].find(')')?;
+        let names: Vec<&str> = body[start..close].split(',').map(str::trim).collect();
+        let after = close + 1;
+        let Some(position) = names.iter().position(|n| *n == name) else {
+            at = after;
+            continue;
+        };
+
+        let rest = body[after..].trim_start();
+        let Some(rest) = rest.strip_prefix("in") else {
+            at = after;
+            continue;
+        };
+        let rest = rest.trim_start();
+        if !rest.starts_with('[') {
+            at = after;
+            continue;
+        }
+
+        let chars: Vec<char> = rest.chars().collect();
+        let Some(close_bracket) = matching_close_bracket(&chars, 0) else {
+            at = after;
+            continue;
+        };
+        let inner: String = chars[1..close_bracket].iter().collect();
+
+        let mut values = Vec::new();
+        let mut ok = true;
+        for element in split_top_level(&inner) {
+            let element = element.trim();
+            let Some(unwrapped) = element.strip_prefix('(').and_then(|e| e.strip_suffix(')'))
+            else {
+                ok = false;
+                break;
+            };
+            let Some(value) = split_top_level(unwrapped).into_iter().nth(position) else {
+                ok = false;
+                break;
+            };
+            if !is_string_literal(&value) {
+                ok = false;
+                break;
+            }
+            values.push(strip_quotes(&value));
+        }
+        if ok && !values.is_empty() {
+            return Some(values);
+        }
+        at = after;
+    }
+    None
+}
+
 /// The literal table names `name` can be at runtime, inside `function`'s own
-/// body — resolved two ways: `function`'s own parameter, read from every
+/// body — resolved three ways: `function`'s own parameter, read from every
 /// literal argument its callers in `source` pass (`table` in
-/// `catalogue::link`/`catalogue::unlink`); or a tuple element bound from a
+/// `catalogue::link`/`catalogue::unlink`); a tuple element bound from a
 /// same-file method whose body is nothing but a `match` returning literal
-/// tuples (`LineMoney::tables`, bound in `order::insert_line_money`). See
-/// the module doc for what this does and does not cover.
+/// tuples (`LineMoney::tables`, bound in `order::insert_line_money`); or a
+/// tuple element bound from a `for` loop over an array of literal tuples
+/// written inline (`table` in `tax::set_cart_tax_lines`). See the module doc for
+/// what this does and does not cover.
 fn resolve_table_placeholder(
     source: &str,
     functions: &[SrcFunction],
@@ -1125,21 +1249,28 @@ fn resolve_table_placeholder(
         return values;
     }
 
+    if let Some(values) = for_loop_tuple_arms(&function.body, name) {
+        return values;
+    }
+
     Vec::new()
 }
 
-/// Every table a `format!`-built `insert into`/`update`/`delete from`
+/// Every table a `format!`-built statement matching one of `prefixes`
 /// writes, resolved through [`resolve_table_placeholder`] rather than
 /// searched for as a literal string — the gap issue #187 named:
 /// `tests/format_sql.rs` already proved these table names are always
 /// literals its callers pass, but a table name inside a `format!` is never a
 /// literal *string* in `src/` for a plain search to find.
-fn tables_written_via_dynamic_sql(sources: &[(PathBuf, String)]) -> BTreeSet<String> {
+fn tables_written_via_dynamic_sql(
+    sources: &[(PathBuf, String)],
+    prefixes: &[&str],
+) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     for (_, source) in sources {
         let functions = src_functions(source);
         for function in &functions {
-            for name in dynamic_table_names_in_format_calls(&function.body) {
+            for name in dynamic_table_names_in_format_calls(&function.body, prefixes) {
                 out.extend(resolve_table_placeholder(
                     source, &functions, function, &name,
                 ));
@@ -1171,14 +1302,14 @@ fn trigger_bodies(migrations: &str) -> Vec<String> {
     out
 }
 
-/// Every table a trigger's own body writes with `insert into`, `update` or
-/// `delete from` — `order_status_history`, moved by
-/// `tezgah_order_status_moves` in migration 0020, is exactly this: a writer
-/// that lives in SQL and was invisible to a check reading only `src/`.
-fn tables_written_by_triggers(migrations: &str) -> BTreeSet<String> {
+/// Every table a trigger's own body writes with one of `tokens` —
+/// `order_status_history`, moved by `tezgah_order_status_moves` in migration
+/// 0020, is exactly this: a writer that lives in SQL and was invisible to a
+/// check reading only `src/`.
+fn tables_written_by_triggers(migrations: &str, tokens: &[&str]) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     for body in trigger_bodies(migrations) {
-        for token in ["insert into ", "update ", "delete from "] {
+        for token in tokens {
             out.extend(words_after(&body, token));
         }
     }
@@ -1210,6 +1341,29 @@ fn table_is_written(
         || triggered.contains(table)
 }
 
+/// Whether `table` can ever hold a row: a literal `insert into`, quoted or
+/// not, or `table` resolved through a `format!` or a trigger body that is
+/// itself an insert. `update`/`delete` do not count here — a table only ever
+/// reached by those has a writer by [`table_is_written`]'s reading and still
+/// cannot hold a row, which is the gap #190 named: `store` had `update store
+/// set ...` and nothing else, so the update matched no row and answered `Ok`
+/// while the table stayed empty forever.
+fn table_can_hold_a_row(
+    table: &str,
+    source: &str,
+    inserted_dynamically: &BTreeSet<String>,
+    inserted_by_triggers: &BTreeSet<String>,
+) -> bool {
+    [
+        format!("insert into {table}"),
+        format!("insert into \"{table}\""),
+    ]
+    .iter()
+    .any(|form| source.contains(form.as_str()))
+        || inserted_dynamically.contains(table)
+        || inserted_by_triggers.contains(table)
+}
+
 #[test]
 fn every_table_has_a_writer() {
     let migrations = migrations();
@@ -1229,14 +1383,21 @@ fn every_table_has_a_writer() {
         tables.len()
     );
 
-    let dynamic = tables_written_via_dynamic_sql(&sources_list);
-    let triggered = tables_written_by_triggers(&migrations);
+    let dynamic = tables_written_via_dynamic_sql(&sources_list, &WRITE_PREFIXES);
+    let triggered = tables_written_by_triggers(&migrations, &WRITE_PREFIXES);
+    let inserted_dynamically = tables_written_via_dynamic_sql(&sources_list, &INSERT_ONLY);
+    let inserted_by_triggers = tables_written_by_triggers(&migrations, &INSERT_ONLY);
 
     let mut unwritten = Vec::new();
+    let mut update_only = Vec::new();
     let mut used = BTreeSet::new();
 
     for table in &tables {
+        if table_can_hold_a_row(table, &source, &inserted_dynamically, &inserted_by_triggers) {
+            continue;
+        }
         if table_is_written(table, &source, &dynamic, &triggered) {
+            update_only.push(table.clone());
             continue;
         }
         match TOLERATED_TABLES.iter().find(|(known, _)| known == table) {
@@ -1253,6 +1414,15 @@ fn every_table_has_a_writer() {
          Write to them, drop them, or name them in TOLERATED_TABLES with the \
          reason.",
         unwritten.join("\n  ")
+    );
+
+    assert!(
+        update_only.is_empty(),
+        "these tables are only ever updated or deleted from, never inserted \
+         into, so they can never hold a row even though they have a \
+         writer:\n  {}\n\
+         Give them a creator — #190 was `store`, updated but never created.",
+        update_only.join("\n  ")
     );
 
     let stale: Vec<&str> = TOLERATED_TABLES
@@ -1291,6 +1461,25 @@ mod table_writer_fixtures {
         );
     }
 
+    /// #190: `store` read as healthy under the old, single-question check —
+    /// `update store set ...` is genuine evidence of *a* writer, and nothing
+    /// else asked whether that writer could ever put a row there. A table
+    /// with only `update` (or only `delete`) has to fail the narrower
+    /// question even while it passes the wider one.
+    #[test]
+    fn a_table_written_only_by_update_cannot_hold_a_row() {
+        let source = "update store set name = $1 where scope = $2";
+        assert!(
+            table_is_written("store", source, &BTreeSet::new(), &BTreeSet::new()),
+            "an update is still a writer, by the wider question"
+        );
+        assert!(
+            !table_can_hold_a_row("store", source, &BTreeSet::new(), &BTreeSet::new()),
+            "an update alone can never put the first row in a table that has \
+             none, so the narrower question has to say no"
+        );
+    }
+
     #[test]
     fn a_reserved_word_table_is_found_quoted() {
         let source = r#"sqlx::query("insert into "order" (id) values ($1)")"#;
@@ -1318,7 +1507,7 @@ mod table_writer_fixtures {
             }
         "#;
         let sources = vec![(PathBuf::from("fixture.rs"), source.to_string())];
-        let dynamic = tables_written_via_dynamic_sql(&sources);
+        let dynamic = tables_written_via_dynamic_sql(&sources, &WRITE_PREFIXES);
         assert!(
             dynamic.contains("widget_link"),
             "a format!-built `insert into {{table}}` must resolve through the \
@@ -1355,7 +1544,7 @@ mod table_writer_fixtures {
             }
         "#;
         let sources = vec![(PathBuf::from("fixture.rs"), source.to_string())];
-        let dynamic = tables_written_via_dynamic_sql(&sources);
+        let dynamic = tables_written_via_dynamic_sql(&sources, &WRITE_PREFIXES);
         assert!(
             dynamic.contains("line_adjustment")
                 && dynamic.contains("shipping_adjustment")
@@ -1363,6 +1552,35 @@ mod table_writer_fixtures {
                 && dynamic.contains("shipping_tax"),
             "a tuple element bound from a same-file method's literal match \
              arms must resolve to every arm's value: {dynamic:?}"
+        );
+    }
+
+    #[test]
+    fn a_format_built_insert_is_resolved_through_a_for_loop_over_literal_tuples() {
+        let source = r#"
+            async fn write_lines(tx: &mut Tx<'_>, items: &[Line], shipping: &[Line]) -> Result<()> {
+                for (rows, table, column, parent) in [
+                    (items, "widget_line_tax", "widget_line_id", "widget_line"),
+                    (shipping, "widget_ship_tax", "widget_ship_id", "widget_ship"),
+                ] {
+                    for row in rows {
+                        sqlx::query(&format!(
+                            "insert into {table} (id, {column}) select $1, p.id from {parent} p"
+                        ))
+                        .execute(tx)
+                        .await?;
+                    }
+                }
+                Ok(())
+            }
+        "#;
+        let sources = vec![(PathBuf::from("fixture.rs"), source.to_string())];
+        let dynamic = tables_written_via_dynamic_sql(&sources, &WRITE_PREFIXES);
+        assert!(
+            dynamic.contains("widget_line_tax") && dynamic.contains("widget_ship_tax"),
+            "a tuple element bound from a `for` loop over an array of literal \
+             tuples written inline must resolve to every element's value: \
+             {dynamic:?}"
         );
     }
 
@@ -1377,7 +1595,7 @@ mod table_writer_fixtures {
             end
             $$;
         "#;
-        let triggered = tables_written_by_triggers(migrations);
+        let triggered = tables_written_by_triggers(migrations, &WRITE_PREFIXES);
         assert!(
             triggered.contains("thing_history"),
             "a table only a trigger writes must be found by reading a \
@@ -1397,7 +1615,7 @@ mod table_writer_fixtures {
             end
             $$;
         "#;
-        let triggered = tables_written_by_triggers(migrations);
+        let triggered = tables_written_by_triggers(migrations, &WRITE_PREFIXES);
         assert!(
             triggered.is_empty(),
             "a seed insert outside any trigger, and a function that is not \

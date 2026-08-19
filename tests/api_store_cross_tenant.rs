@@ -402,10 +402,6 @@ static PUBLIC: &[(Method, &str)] = &[
     (Method::Get, "/store/product-types/{id}"),
     (Method::Get, "/store/product-categories"),
     (Method::Get, "/store/product-categories/{id}"),
-    (
-        Method::Get,
-        "/store/product-categories/{id}/translations/{locale}",
-    ),
     (Method::Get, "/store/collections"),
     (Method::Get, "/store/collections/{id}"),
     (Method::Get, "/store/regions"),
@@ -415,14 +411,6 @@ static PUBLIC: &[(Method, &str)] = &[
     (Method::Get, "/store/locales"),
     (Method::Get, "/store/return-reasons"),
     (Method::Get, "/store/return-reasons/{id}"),
-    (
-        Method::Get,
-        "/store/return-reasons/{id}/translations/{locale}",
-    ),
-    (
-        Method::Get,
-        "/store/shipping-options/{id}/translations/{locale}",
-    ),
     (Method::Get, "/store/payment-providers"),
 ];
 
@@ -833,6 +821,7 @@ async fn every_owned_store_route_refuses_the_other_shoppers_resource() -> tezgah
                 province_code: None,
                 city: None,
                 postal_code: None,
+                locale: None,
             }
         ),
         theirs: store::list_shipping_options(
@@ -844,6 +833,7 @@ async fn every_owned_store_route_refuses_the_other_shoppers_resource() -> tezgah
                 province_code: None,
                 city: None,
                 postal_code: None,
+                locale: None,
             }
         )
     );

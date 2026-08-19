@@ -884,6 +884,24 @@ pub struct ListProducts {
     pub category_id: Option<CategoryId>,
     pub type_id: Option<ProductTypeId>,
     pub tag_id: Option<ProductTagId>,
+    /// The shopper's language; a product with no translation for it answers
+    /// with its own columns rather than refusing.
+    pub locale: Option<String>,
+}
+
+/// Overlays a translation onto a product view, in place. A translation's own
+/// field left null falls back to the row's, matching [`catalogue::localised`].
+fn translate(view: &mut ProductView, translation: catalogue::ProductTranslation) {
+    view.title = translation.title;
+    if let Some(subtitle) = translation.subtitle {
+        view.subtitle = Some(subtitle);
+    }
+    if let Some(description) = translation.description {
+        view.description = Some(description);
+    }
+    if let Some(handle) = translation.handle {
+        view.handle = handle;
+    }
 }
 
 /// Published products only, and never anything else, whatever is asked for.
@@ -912,8 +930,27 @@ pub async fn list_products(
     )
     .await?;
 
+    let mut translations = match query.locale.as_deref() {
+        Some(wanted) => {
+            let ids: Vec<ProductId> = page.items.iter().map(|row| row.id).collect();
+            catalogue::product_translations(tx, ctx, &ids, wanted).await?
+        }
+        None => std::collections::HashMap::new(),
+    };
+
     Ok(Page {
-        items: page.items.into_iter().map(ProductView::from).collect(),
+        items: page
+            .items
+            .into_iter()
+            .map(|row| {
+                let id = row.id;
+                let mut view = ProductView::from(row);
+                if let Some(translation) = translations.remove(&id) {
+                    translate(&mut view, translation);
+                }
+                view
+            })
+            .collect(),
         next: page.next,
     })
 }
@@ -923,12 +960,21 @@ pub async fn get_product(
     ctx: &Ctx<'_>,
     token: &str,
     handle: &str,
+    locale: Option<&str>,
 ) -> Result<ProductView> {
     let channels = visible_channels(tx, ctx, token).await?;
     let row = shown(catalogue::product_by_handle(tx, ctx, handle).await?)?;
-    Ok(ProductView::from(
-        on_channel(tx, ctx, row, &channels).await?,
-    ))
+    let row = on_channel(tx, ctx, row, &channels).await?;
+    let id = row.id;
+    let mut view = ProductView::from(row);
+    if let Some(wanted) = locale {
+        let localised = catalogue::localised(tx, ctx, id, wanted).await?;
+        view.title = localised.title;
+        view.subtitle = localised.subtitle;
+        view.description = localised.description;
+        view.handle = localised.handle;
+    }
+    Ok(view)
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1123,55 +1169,26 @@ pub async fn list_product_categories(
     })
 }
 
+/// A category in the shop's own language, or — with `locale` — a shopper's,
+/// falling back to the shop's own rather than refusing: the storefront still
+/// has to show the category even half-translated.
 pub async fn get_product_category(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
     id: CategoryId,
+    locale: Option<&str>,
 ) -> Result<CategoryView> {
     let row = catalogue::category(tx, ctx, id).await?;
     if !browsable(&row) {
         return Err(Error::not_found("category"));
     }
-    Ok(CategoryView::from(row))
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LocalisedCategoryView {
-    pub category_id: CategoryId,
-    pub locale: Option<String>,
-    pub name: String,
-    pub description: String,
-    pub is_fallback: bool,
-}
-
-impl From<catalogue::LocalisedCategory> for LocalisedCategoryView {
-    fn from(row: catalogue::LocalisedCategory) -> Self {
-        LocalisedCategoryView {
-            category_id: row.category_id,
-            locale: row.locale,
-            name: row.name,
-            description: row.description,
-            is_fallback: row.is_fallback,
-        }
+    let mut view = CategoryView::from(row);
+    if let Some(wanted) = locale {
+        let localised = catalogue::localised_category(tx, ctx, id, wanted).await?;
+        view.name = localised.name;
+        view.description = localised.description;
     }
-}
-
-/// A category's name and description in the locale a shopper asked for,
-/// falling back to the shop's own language rather than refusing — the
-/// storefront still has to show the category even half-translated.
-pub async fn get_product_category_localised(
-    tx: &mut Tx<'_>,
-    ctx: &Ctx<'_>,
-    id: CategoryId,
-    locale: &str,
-) -> Result<LocalisedCategoryView> {
-    let row = catalogue::category(tx, ctx, id).await?;
-    if !browsable(&row) {
-        return Err(Error::not_found("category"));
-    }
-    Ok(LocalisedCategoryView::from(
-        catalogue::localised_category(tx, ctx, id, locale).await?,
-    ))
+    Ok(view)
 }
 
 pub async fn list_collections(
@@ -1889,6 +1906,9 @@ pub struct ListShippingOptions {
     pub province_code: Option<String>,
     pub city: Option<String>,
     pub postal_code: Option<String>,
+    /// The shopper's language; an option with no translation for it answers
+    /// with its own name rather than refusing.
+    pub locale: Option<String>,
 }
 
 pub async fn list_shipping_options(
@@ -1932,9 +1952,17 @@ pub async fn list_shipping_options(
     let mut out = Vec::with_capacity(found.len());
     for option in found {
         let amount = option_price(tx, ctx, option.id, &at).await?;
+        let name = match query.locale.as_deref() {
+            Some(wanted) => {
+                fulfilment::localised_shipping_option(tx, ctx, option.id, wanted)
+                    .await?
+                    .name
+            }
+            None => option.name,
+        };
         out.push(ShippingOptionView {
             id: option.id,
-            name: option.name,
+            name,
             price_type: option.price_type,
             amount: amount.map(MoneyView::from),
         });
@@ -1962,38 +1990,6 @@ pub async fn calculate_shipping_option(
         .await?
         .map(MoneyView::from)
         .ok_or_else(|| Error::not_found("shipping option price"))
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LocalisedShippingOptionView {
-    pub shipping_option_id: ShippingOptionId,
-    pub locale: Option<String>,
-    pub name: String,
-    pub is_fallback: bool,
-}
-
-impl From<fulfilment::LocalisedShippingOption> for LocalisedShippingOptionView {
-    fn from(row: fulfilment::LocalisedShippingOption) -> Self {
-        LocalisedShippingOptionView {
-            shipping_option_id: row.shipping_option_id,
-            locale: row.locale,
-            name: row.name,
-            is_fallback: row.is_fallback,
-        }
-    }
-}
-
-/// "Standard delivery" in whichever language the rest of checkout is in,
-/// falling back to the shop's own rather than refusing.
-pub async fn get_shipping_option_translation(
-    tx: &mut Tx<'_>,
-    ctx: &Ctx<'_>,
-    id: ShippingOptionId,
-    locale: &str,
-) -> Result<LocalisedShippingOptionView> {
-    Ok(LocalisedShippingOptionView::from(
-        fulfilment::localised_shipping_option(tx, ctx, id, locale).await?,
-    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -2421,48 +2417,22 @@ pub async fn list_return_reasons(
     })
 }
 
+/// The reason a customer picks from when sending something back, in the
+/// shop's own language, or — with `locale` — the one they are shopping in,
+/// falling back to the shop's own rather than refusing.
 pub async fn get_return_reason(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
     id: Uuid,
+    locale: Option<&str>,
 ) -> Result<ReturnReasonView> {
-    Ok(ReturnReasonView::from(
-        order::return_reason(tx, ctx, id).await?,
-    ))
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LocalisedReturnReasonView {
-    pub return_reason_id: Uuid,
-    pub locale: Option<String>,
-    pub label: String,
-    pub description: Option<String>,
-    pub is_fallback: bool,
-}
-
-impl From<order::LocalisedReturnReason> for LocalisedReturnReasonView {
-    fn from(row: order::LocalisedReturnReason) -> Self {
-        LocalisedReturnReasonView {
-            return_reason_id: row.return_reason_id,
-            locale: row.locale,
-            label: row.label,
-            description: row.description,
-            is_fallback: row.is_fallback,
-        }
+    let mut view = ReturnReasonView::from(order::return_reason(tx, ctx, id).await?);
+    if let Some(wanted) = locale {
+        let localised = order::localised_return_reason(tx, ctx, id, wanted).await?;
+        view.label = localised.label;
+        view.description = localised.description;
     }
-}
-
-/// The reason a customer picks from when sending something back, in the
-/// language they are shopping in.
-pub async fn get_return_reason_translation(
-    tx: &mut Tx<'_>,
-    ctx: &Ctx<'_>,
-    id: Uuid,
-    locale: &str,
-) -> Result<LocalisedReturnReasonView> {
-    Ok(LocalisedReturnReasonView::from(
-        order::localised_return_reason(tx, ctx, id, locale).await?,
-    ))
+    Ok(view)
 }
 
 // ---------------------------------------------------------------------------
@@ -2596,7 +2566,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/products",
         action: Action::View,
         domain: "catalogue",
-        summary: "List published products",
+        summary: "List published products, optionally in a locale",
     },
     Route {
         surface: Surface::Store,
@@ -2604,7 +2574,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/products/{handle}",
         action: Action::View,
         domain: "catalogue",
-        summary: "Fetch one published product by its handle",
+        summary: "Fetch one published product by its handle, optionally in a locale",
     },
     Route {
         surface: Surface::Store,
@@ -2684,15 +2654,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/product-categories/{id}",
         action: Action::View,
         domain: "catalogue",
-        summary: "Fetch one browsable category",
-    },
-    Route {
-        surface: Surface::Store,
-        method: Method::Get,
-        path: "/store/product-categories/{id}/translations/{locale}",
-        action: Action::View,
-        domain: "catalogue",
-        summary: "Read a browsable category in one locale, falling back to the shop's own",
+        summary: "Fetch one browsable category, optionally in a locale",
     },
     Route {
         surface: Surface::Store,
@@ -2868,7 +2830,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/shipping-options",
         action: Action::View,
         domain: "fulfilment",
-        summary: "List what can deliver this cart to an address",
+        summary: "List what can deliver this cart to an address, optionally in a locale",
     },
     Route {
         surface: Surface::Store,
@@ -2877,14 +2839,6 @@ pub(super) static ROUTES: &[Route] = &[
         action: Action::Write,
         domain: "fulfilment",
         summary: "Price one shipping option for a cart",
-    },
-    Route {
-        surface: Surface::Store,
-        method: Method::Get,
-        path: "/store/shipping-options/{id}/translations/{locale}",
-        action: Action::View,
-        domain: "fulfilment",
-        summary: "Read a shipping option's name in one locale, falling back to the shop's own",
     },
     Route {
         surface: Surface::Store,
@@ -3020,15 +2974,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/return-reasons/{id}",
         action: Action::View,
         domain: "order",
-        summary: "Fetch one return reason",
-    },
-    Route {
-        surface: Surface::Store,
-        method: Method::Get,
-        path: "/store/return-reasons/{id}/translations/{locale}",
-        action: Action::View,
-        domain: "order",
-        summary: "Read a return reason in one locale, falling back to the shop's own",
+        summary: "Fetch one return reason, optionally in a locale",
     },
     Route {
         surface: Surface::Store,

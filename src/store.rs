@@ -140,6 +140,22 @@ pub struct Store {
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
+/// What a host hands in to create its shop's own settings row — the first
+/// write into `store`, since nothing else creates one. `default_currency_code`
+/// is folded into `supported_currency_codes` whether or not it is named
+/// there, since a shop that does not support its own default currency is not
+/// a shop [`update_store`] could ever satisfy.
+#[derive(Debug, Clone)]
+pub struct NewStore {
+    pub name: String,
+    pub default_currency_code: Currency,
+    pub supported_currency_codes: Vec<Currency>,
+    pub supported_locales: Vec<String>,
+    pub default_region_id: Option<RegionId>,
+    pub default_sales_channel_id: Option<SalesChannelId>,
+    pub metadata: Option<serde_json::Value>,
+}
+
 /// A field left `None` is left alone. Nothing here can be unset back to null;
 /// a default region is changed rather than removed.
 #[derive(Debug, Clone, Default)]
@@ -177,11 +193,11 @@ pub async fn store(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<Store> {
 }
 
 /// The shop's own configured fallbacks, or neither when it has not written a
-/// `store` row at all — every shop today, since nothing requires one before
-/// it opens its first cart. [`store`] is right to answer `not_found` when a
-/// caller asks for the row directly; a caller resolving a default reads
-/// through here instead, where "unconfigured" and "configured with nothing
-/// set" are the same answer.
+/// `store` row at all — a host is not required to call [`create_store`]
+/// before a shop opens its first cart. [`store`] is right to answer
+/// `not_found` when a caller asks for the row directly; a caller resolving a
+/// default reads through here instead, where "unconfigured" and "configured
+/// with nothing set" are the same answer.
 pub(crate) async fn defaults(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -197,6 +213,73 @@ pub(crate) async fn defaults(
         .await?
         .unwrap_or((None, None)),
     )
+}
+
+/// The only writer of `store`: one row per scope, held by `store_scope_key`,
+/// so a second call for the same scope is a [`Error::conflict`] rather than a
+/// second shop.
+pub async fn create_store(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewStore) -> Result<Store> {
+    let _: Permit = ctx.permit(Action::Write, Resource::Store)?;
+
+    let name = new.name.trim().to_owned();
+    if name.is_empty() {
+        return Err(Error::invalid("a shop needs a name"));
+    }
+    if new.supported_locales.len() > MAX_LOCALES as usize {
+        return Err(Error::invalid("that is more locales than a shop may have"));
+    }
+
+    let mut currencies: Vec<String> = vec![new.default_currency_code.as_str().to_owned()];
+    for code in &new.supported_currency_codes {
+        let code = code.as_str().to_owned();
+        if !currencies.contains(&code) {
+            currencies.push(code);
+        }
+    }
+    if currencies.len() > MAX_SUPPORTED_CURRENCIES as usize {
+        return Err(Error::invalid(
+            "that is more currencies than a shop may have",
+        ));
+    }
+
+    let id = StoreId::new();
+    let store = sqlx::query_as::<_, Store>(
+        "insert into store
+             (id, scope, name, default_currency_code, supported_currency_codes,
+              supported_locales, default_region_id, default_sales_channel_id, metadata)
+         values ($1, $2, $3, $4, $5::text[]::char(3)[], $6, $7, $8, $9)
+         on conflict (scope) do nothing
+         returning id, name, default_currency_code::text as default_currency_code,
+                   supported_currency_codes::text[] as supported_currency_codes,
+                   supported_locales, default_region_id, default_sales_channel_id,
+                   metadata, created_at, updated_at",
+    )
+    .bind(id.as_uuid())
+    .bind(ctx.scope.0)
+    .bind(&name)
+    .bind(new.default_currency_code.as_str())
+    .bind(&currencies)
+    .bind(&new.supported_locales)
+    .bind(new.default_region_id.map(|id| id.as_uuid()))
+    .bind(new.default_sales_channel_id.map(|id| id.as_uuid()))
+    .bind(new.metadata.as_ref())
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::conflict("this shop already has its settings"))?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "store",
+            entity_id: id.as_uuid(),
+            summary: serde_json::json!({ "name": store.name }),
+        },
+    )
+    .await?;
+
+    Ok(store)
 }
 
 pub async fn update_store(tx: &mut Tx<'_>, ctx: &Ctx<'_>, patch: StorePatch) -> Result<Store> {

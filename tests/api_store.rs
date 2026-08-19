@@ -18,9 +18,13 @@ use tezgah::api::store::{
     ListVariants, StartPayment, StartPaymentSession,
 };
 use tezgah::cart;
-use tezgah::catalogue::{self, NewProduct, NewVariant};
+use tezgah::catalogue::{
+    self, CategoryTranslation, NewCategory, NewProduct, NewVariant, ProductTranslation,
+};
+use tezgah::fulfilment;
 use tezgah::id::{CartId, CustomerId, PaymentCollectionId};
 use tezgah::money::{Currency, Money};
+use tezgah::order;
 use tezgah::page::MAX_LIMIT;
 use tezgah::payment;
 use tezgah::ports::{
@@ -28,7 +32,7 @@ use tezgah::ports::{
     Permit, Resource, Tx,
 };
 use tezgah::pricing::{self, NewPrice};
-use tezgah::store::{self as domain_store, NewSalesChannel};
+use tezgah::store::{self as domain_store, NewSalesChannel, NewStore};
 use tezgah::subscription;
 use uuid::Uuid;
 
@@ -41,18 +45,21 @@ async fn any_token(tx: &mut Tx<'_>, ctx: &tezgah::ports::Ctx<'_>) -> String {
         .token
 }
 
-/// The `store` row itself has no writer anywhere in the crate — creating one
-/// is a host's onboarding concern, not tezgah's, the same way a currency's
-/// details were before #180. `update_store` only ever updates it.
-async fn a_store_row(tx: &mut Tx<'_>, scope: uuid::Uuid) {
-    sqlx::query(
-        "insert into store (id, scope, name, default_currency_code, supported_currency_codes)
-         values ($1, $2, 'Test shop', 'TRY', array['TRY'])
-         on conflict do nothing",
+/// A shop's own settings row, the way a host's onboarding creates one.
+async fn a_store_row(tx: &mut Tx<'_>, ctx: &tezgah::ports::Ctx<'_>) {
+    domain_store::create_store(
+        tx,
+        ctx,
+        NewStore {
+            name: "Test shop".into(),
+            default_currency_code: Currency::parse("TRY").expect("a currency"),
+            supported_currency_codes: Vec::new(),
+            supported_locales: Vec::new(),
+            default_region_id: None,
+            default_sales_channel_id: None,
+            metadata: None,
+        },
     )
-    .bind(uuid::Uuid::now_v7())
-    .bind(scope)
-    .execute(&mut **tx)
     .await
     .expect("a store row");
 }
@@ -147,7 +154,7 @@ async fn a_draft_is_not_here_and_a_published_one_is() -> tezgah::Result<()> {
     let made = catalogue::create_product(&mut tx, &ctx, draft("kilim")).await?;
     let token = any_token(&mut tx, &ctx).await;
 
-    let hidden = store::get_product(&mut tx, &ctx, &token, "kilim")
+    let hidden = store::get_product(&mut tx, &ctx, &token, "kilim", None)
         .await
         .expect_err("a draft is not on the storefront");
     assert!(
@@ -161,11 +168,311 @@ async fn a_draft_is_not_here_and_a_published_one_is() -> tezgah::Result<()> {
 
     catalogue::publish_product(&mut tx, &ctx, made.id).await?;
 
-    let shown = store::get_product(&mut tx, &ctx, &token, "kilim").await?;
+    let shown = store::get_product(&mut tx, &ctx, &token, "kilim", None).await?;
     assert_eq!(shown.handle, "kilim");
 
     let listed = store::list_products(&mut tx, &ctx, &token, ListProducts::default()).await?;
     assert_eq!(listed.len(), 1);
+
+    drop(tx);
+    shop.close().await;
+    Ok(())
+}
+
+/// #188: `catalogue::localised` was reachable from the admin surface only, so
+/// a Turkish storefront showed an English title until a host built its own
+/// second call. `locale` is a parameter on the one route now, not a second
+/// one, and a miss falls back to the shop's own title rather than refusing.
+#[tokio::test]
+async fn a_storefront_product_is_read_in_its_requested_locale_and_falls_back() -> tezgah::Result<()>
+{
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let made = catalogue::create_product(&mut tx, &ctx, draft("kilim")).await?;
+    catalogue::publish_product(&mut tx, &ctx, made.id).await?;
+    let token = any_token(&mut tx, &ctx).await;
+
+    let fallen_back = store::get_product(&mut tx, &ctx, &token, "kilim", Some("tr")).await?;
+    assert_eq!(
+        fallen_back.title, "A kilim",
+        "no Turkish translation yet, so the shop's own title answers"
+    );
+
+    catalogue::put_translation(
+        &mut tx,
+        &ctx,
+        made.id,
+        ProductTranslation {
+            product_id: made.id,
+            locale: "tr".into(),
+            title: "Bir kilim".into(),
+            subtitle: None,
+            description: None,
+            handle: None,
+        },
+    )
+    .await?;
+
+    let translated = store::get_product(&mut tx, &ctx, &token, "kilim", Some("tr")).await?;
+    assert_eq!(translated.title, "Bir kilim");
+
+    let untranslated = store::get_product(&mut tx, &ctx, &token, "kilim", None).await?;
+    assert_eq!(
+        untranslated.title, "A kilim",
+        "no locale asked for, so the shop's own title answers, translation or not"
+    );
+
+    drop(tx);
+    shop.close().await;
+    Ok(())
+}
+
+/// #188: a Turkish category listing with English product titles was the same
+/// bug one page up from the product itself.
+#[tokio::test]
+async fn list_products_reads_the_requested_locale_too() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let made = catalogue::create_product(&mut tx, &ctx, draft("kilim")).await?;
+    catalogue::publish_product(&mut tx, &ctx, made.id).await?;
+    let token = any_token(&mut tx, &ctx).await;
+
+    catalogue::put_translation(
+        &mut tx,
+        &ctx,
+        made.id,
+        ProductTranslation {
+            product_id: made.id,
+            locale: "tr".into(),
+            title: "Bir kilim".into(),
+            subtitle: None,
+            description: None,
+            handle: None,
+        },
+    )
+    .await?;
+
+    let listed = store::list_products(
+        &mut tx,
+        &ctx,
+        &token,
+        ListProducts {
+            locale: Some("tr".into()),
+            ..ListProducts::default()
+        },
+    )
+    .await?;
+    assert_eq!(listed.items.len(), 1);
+    assert_eq!(listed.items[0].title, "Bir kilim");
+
+    let untranslated = store::list_products(&mut tx, &ctx, &token, ListProducts::default()).await?;
+    assert_eq!(untranslated.items[0].title, "A kilim");
+
+    drop(tx);
+    shop.close().await;
+    Ok(())
+}
+
+/// #188/#173: a browsable category read its locale as a query parameter on
+/// its own route now, not a second `…/translations/{locale}` one.
+#[tokio::test]
+async fn a_storefront_category_is_read_in_its_requested_locale() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let rugs = catalogue::create_category(
+        &mut tx,
+        &ctx,
+        NewCategory {
+            name: "Rugs".into(),
+            handle: "rugs".into(),
+            is_active: Some(true),
+            is_internal: Some(false),
+            ..NewCategory::default()
+        },
+    )
+    .await?;
+
+    let fallen_back = store::get_product_category(&mut tx, &ctx, rugs.id, Some("tr")).await?;
+    assert_eq!(fallen_back.name, "Rugs");
+
+    catalogue::put_category_translation(
+        &mut tx,
+        &ctx,
+        rugs.id,
+        CategoryTranslation {
+            category_id: rugs.id,
+            locale: "tr".into(),
+            name: "Halılar".into(),
+            description: None,
+        },
+    )
+    .await?;
+
+    let translated = store::get_product_category(&mut tx, &ctx, rugs.id, Some("tr")).await?;
+    assert_eq!(translated.name, "Halılar");
+
+    let untranslated = store::get_product_category(&mut tx, &ctx, rugs.id, None).await?;
+    assert_eq!(untranslated.name, "Rugs");
+
+    drop(tx);
+    shop.close().await;
+    Ok(())
+}
+
+/// #188/#173: a return reason reads its locale as a query parameter on its
+/// own route now too.
+#[tokio::test]
+async fn a_storefront_return_reason_is_read_in_its_requested_locale() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let id = Uuid::now_v7();
+    sqlx::query("insert into return_reason (id, scope, value, label) values ($1, $2, $3, $4)")
+        .bind(id)
+        .bind(shop.here.0)
+        .bind(id.simple().to_string())
+        .bind("Wrong size")
+        .execute(&mut *tx)
+        .await
+        .expect("a return reason");
+
+    let fallen_back = store::get_return_reason(&mut tx, &ctx, id, Some("tr")).await?;
+    assert_eq!(fallen_back.label, "Wrong size");
+
+    order::put_return_reason_translation(
+        &mut tx,
+        &ctx,
+        id,
+        order::ReturnReasonTranslation {
+            return_reason_id: id,
+            locale: "tr".into(),
+            label: "Yanlış beden".into(),
+            description: None,
+        },
+    )
+    .await?;
+
+    let translated = store::get_return_reason(&mut tx, &ctx, id, Some("tr")).await?;
+    assert_eq!(translated.label, "Yanlış beden");
+
+    let untranslated = store::get_return_reason(&mut tx, &ctx, id, None).await?;
+    assert_eq!(untranslated.label, "Wrong size");
+
+    drop(tx);
+    shop.close().await;
+    Ok(())
+}
+
+/// #188/#173: a shipping option's own list route takes the locale as a
+/// parameter now, not a separate `…/translations/{locale}` route.
+#[tokio::test]
+async fn a_storefront_shipping_option_is_read_in_its_requested_locale() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let set = fulfilment::create_set(
+        &mut tx,
+        &ctx,
+        fulfilment::NewFulfillmentSet {
+            name: "Delivery".into(),
+            kind: fulfilment::SetKind::Shipping,
+        },
+    )
+    .await?;
+    let zone = fulfilment::create_service_zone(
+        &mut tx,
+        &ctx,
+        fulfilment::NewServiceZone {
+            name: "Everywhere".into(),
+            fulfillment_set_id: set.id,
+        },
+    )
+    .await?;
+    fulfilment::create_geo_zone(
+        &mut tx,
+        &ctx,
+        fulfilment::NewGeoZone {
+            kind: fulfilment::ZoneKind::Country,
+            country_code: "TR".into(),
+            province_code: None,
+            city: None,
+            postal_expression: None,
+            service_zone_id: zone.id,
+        },
+    )
+    .await?;
+    let option = fulfilment::create_shipping_option(
+        &mut tx,
+        &ctx,
+        fulfilment::NewShippingOption {
+            name: "Next day".into(),
+            price_type: fulfilment::PriceKind::Flat,
+            service_zone_id: zone.id,
+            shipping_profile_id: None,
+            provider_id: None,
+            shipping_option_type_id: None,
+            data: None,
+            is_return: false,
+            enabled_in_store: true,
+        },
+    )
+    .await?;
+
+    let token = any_token(&mut tx, &ctx).await;
+    let opened = store::create_cart(
+        &mut tx,
+        &ctx,
+        &token,
+        CreateCart {
+            currency_code: "TRY".into(),
+            region_id: None,
+            sales_channel_id: None,
+            email: None,
+        },
+    )
+    .await?;
+
+    let query = |locale: Option<&str>| store::ListShippingOptions {
+        cart_id: opened.id,
+        country_code: "TR".into(),
+        province_code: None,
+        city: None,
+        postal_code: None,
+        locale: locale.map(str::to_owned),
+    };
+
+    let fallen_back = store::list_shipping_options(&mut tx, &ctx, query(Some("tr"))).await?;
+    assert_eq!(fallen_back.len(), 1);
+    assert_eq!(
+        fallen_back[0].name, "Next day",
+        "no Turkish translation yet, so the shop's own name answers"
+    );
+
+    fulfilment::put_shipping_option_translation(
+        &mut tx,
+        &ctx,
+        option.id,
+        fulfilment::ShippingOptionTranslation {
+            shipping_option_id: option.id,
+            locale: "tr".into(),
+            name: "Ertesi gün".into(),
+        },
+    )
+    .await?;
+
+    let translated = store::list_shipping_options(&mut tx, &ctx, query(Some("tr"))).await?;
+    assert_eq!(translated[0].name, "Ertesi gün");
+
+    let untranslated = store::list_shipping_options(&mut tx, &ctx, query(None)).await?;
+    assert_eq!(untranslated[0].name, "Next day");
 
     drop(tx);
     shop.close().await;
@@ -668,7 +975,7 @@ async fn another_scope_sees_none_of_it() -> tezgah::Result<()> {
     let their_token = any_token(&mut elsewhere, &theirs).await;
 
     assert!(
-        store::get_product(&mut elsewhere, &theirs, &their_token, "carpet")
+        store::get_product(&mut elsewhere, &theirs, &their_token, "carpet", None)
             .await
             .expect_err("that is another shop's product")
             .is_not_found()
@@ -1380,7 +1687,7 @@ async fn a_cart_opened_without_a_channel_or_region_gets_the_shops_default() -> t
     let ctx = shop.ctx();
 
     common::a_currency(&mut tx, shop.here, "TRY", 2).await;
-    a_store_row(&mut tx, shop.here.0).await;
+    a_store_row(&mut tx, &ctx).await;
 
     let region = domain_store::create_region(
         &mut tx,
