@@ -16,7 +16,8 @@ use common::Shop;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use tezgah::id::{
-    AccountHolderId, CustomerId, PriceId, SellingPlanId, StockLocationId, SubscriptionId, VariantId,
+    AccountHolderId, CustomerId, LineItemId, PriceId, SellingPlanId, StockLocationId,
+    SubscriptionId, VariantId,
 };
 use tezgah::money::{Currency, Money};
 use tezgah::payment::{
@@ -936,6 +937,102 @@ async fn a_renewal_declined_after_the_order_is_written_unwinds_cleanly() {
         "the renewal's reservation was never given back"
     );
     assert_eq!(orders(&shop).await, 0, "the unpaid order was not unwound");
+
+    shop.close().await;
+}
+
+/// #165: a renewal's hold used to name no line at all, so an operator looking
+/// at held stock on a subscription order had no way back to it — the same
+/// join checkout's order lines already answer.
+#[tokio::test]
+async fn a_renewal_reservation_names_its_order_line() {
+    let shop = Shop::open().await;
+    let seeded = a_contract(&shop, dec!(10), None).await;
+
+    let renewals = Renewals::new(Arc::new(Standing), seeded.location_id);
+    let renewed = renewals
+        .renew(&shop.pool, &shop.ctx(), seeded.id)
+        .await
+        .expect("the renewal to run");
+    let order_id = renewed.order_id.expect("a paid renewal writes an order");
+
+    let mut tx = shop.begin().await;
+    let held: i64 = sqlx::query_scalar(
+        "select count(*) from reservation_item ri
+         join order_line_item l on l.scope = ri.scope and l.id = ri.order_line_item_id
+         where ri.scope = $1 and l.order_id = $2",
+    )
+    .bind(shop.here.0)
+    .bind(order_id.as_uuid())
+    .fetch_one(&mut *tx)
+    .await
+    .expect("to count reservations joined to the order's own line");
+    tx.commit().await.expect("to commit");
+
+    assert_eq!(
+        held, 1,
+        "the renewal's hold names no line the order can be joined to"
+    );
+
+    shop.close().await;
+}
+
+/// #165: `release_lines` releases by line id, and a renewal's reservation
+/// used to name none — nothing but `reserve_stock`'s own compensate could
+/// ever give a renewal's stock back. This is the same release a cancelled
+/// checkout order already gets.
+#[tokio::test]
+async fn release_lines_gives_a_renewal_order_its_stock_back() {
+    let shop = Shop::open().await;
+    let seeded = a_contract(&shop, dec!(10), None).await;
+
+    let renewals = Renewals::new(Arc::new(Standing), seeded.location_id);
+    let renewed = renewals
+        .renew(&shop.pool, &shop.ctx(), seeded.id)
+        .await
+        .expect("the renewal to run");
+    let order_id = renewed.order_id.expect("a paid renewal writes an order");
+
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+
+    let item = inventory::inventory_items_for_variant(&mut tx, &ctx, seeded.variant_id)
+        .await
+        .expect("an inventory item")
+        .first()
+        .expect("an inventory item")
+        .inventory_item_id;
+    let before = inventory::level(&mut tx, &ctx, item, seeded.location_id)
+        .await
+        .expect("a level");
+
+    let line_ids: Vec<Uuid> =
+        sqlx::query_scalar("select id from order_line_item where scope = $1 and order_id = $2")
+            .bind(shop.here.0)
+            .bind(order_id.as_uuid())
+            .fetch_all(&mut *tx)
+            .await
+            .expect("the order's lines");
+    let lines: Vec<LineItemId> = line_ids.into_iter().map(LineItemId::from_uuid).collect();
+
+    let released = inventory::release_lines(&mut tx, &ctx, &lines)
+        .await
+        .expect("release_lines to reach a renewal order's line");
+    assert_eq!(
+        released, 1,
+        "the renewal's own reservation was not released"
+    );
+
+    let after = inventory::level(&mut tx, &ctx, item, seeded.location_id)
+        .await
+        .expect("a level");
+    tx.commit().await.expect("to commit");
+
+    assert_eq!(
+        after.reserved_quantity,
+        before.reserved_quantity - 1,
+        "release_lines did not give the renewal's held unit back"
+    );
 
     shop.close().await;
 }

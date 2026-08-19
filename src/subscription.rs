@@ -2321,7 +2321,15 @@ impl Step for ReserveStock {
         let undo: HeldStock = recall(keep);
 
         for id in undo.reservations {
-            inventory::release(tx, ctx, id).await?;
+            // `create_order` binds this same reservation onto an order line
+            // and its own compensation gives it back first when it runs, so
+            // by the time this one unwinds the row may already be gone
+            // (#148's tolerance, same reason checkout's compensate needs it).
+            match inventory::release(tx, ctx, id).await {
+                Ok(()) => {}
+                Err(err) if err.is_not_found() => {}
+                Err(err) => return Err(err),
+            }
         }
 
         Ok(())
