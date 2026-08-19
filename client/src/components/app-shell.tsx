@@ -53,18 +53,18 @@ export function AppShell() {
                     return (
                       <SidebarMenuItem key={section.slug}>
                         <SidebarMenuButton
-                          asChild
                           isActive={active}
                           tooltip={section.title}
+                          render={
+                            <Link to="/$section" params={{ section: section.slug }} />
+                          }
                         >
-                          <Link to="/$section" params={{ section: section.slug }}>
-                            <span className="truncate">{section.title}</span>
-                            {!section.built ? (
-                              <span className="text-muted-foreground ml-auto text-[10px] group-data-[collapsible=icon]:hidden">
-                                soon
-                              </span>
-                            ) : null}
-                          </Link>
+                          <span className="truncate">{section.title}</span>
+                          {!section.built ? (
+                            <span className="text-muted-foreground ml-auto text-[10px] group-data-[collapsible=icon]:hidden">
+                              soon
+                            </span>
+                          ) : null}
                         </SidebarMenuButton>
                       </SidebarMenuItem>
                     )

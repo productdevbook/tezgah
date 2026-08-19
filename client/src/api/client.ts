@@ -24,18 +24,27 @@ export type ApiPath = keyof paths
  * that renders it as "nothing here yet" tells the reader something false.
  */
 export class ApiError extends Error {
+  readonly kind: ApiErrorKind
+  readonly status: number
+  readonly code?: string
+
   constructor(
-    readonly kind: "unreachable" | "denied" | "not_found" | "refused",
-    readonly status: number,
+    kind: ApiErrorKind,
+    status: number,
     message: string,
-    readonly code?: string,
+    code?: string,
   ) {
     super(message)
     this.name = "ApiError"
+    this.kind = kind
+    this.status = status
+    this.code = code
   }
 }
 
-function kindOf(status: number): ApiError["kind"] {
+export type ApiErrorKind = "unreachable" | "denied" | "not_found" | "refused"
+
+function kindOf(status: number): ApiErrorKind {
   if (status === 401 || status === 403) return "denied"
   if (status === 404) return "not_found"
   return "refused"

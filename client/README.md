@@ -37,6 +37,14 @@ operations each section's tag declares. Three sections have screens — products
 orders, inventory. The rest say how many operations they are not drawing yet,
 because the operations exist and work; only the screen is missing.
 
+## Two of shadcn's own files are patched
+
+`src/components/ui/spinner.tsx` and `scroll-area.tsx` do not typecheck as
+generated — an svg's `strokeWidth` is `string | number` where `HugeiconsIcon`
+wants a number, and a namespace import nothing reads. Both are fixed in place,
+and `shadcn add` will write them back the way they were. If a build starts
+failing on either, that is what happened.
+
 ## Scripts
 
     bun run dev        # vite
