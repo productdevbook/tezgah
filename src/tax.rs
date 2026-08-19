@@ -1236,15 +1236,16 @@ fn decide(
     let home = subject.home_country();
     let crosses = home.is_some_and(|home| !home.eq_ignore_ascii_case(&address.country_code));
 
-    if subject.is_business && crosses {
-        if let Some(number) = subject.validated_id_for(&address.country_code) {
-            return Ok(TaxDecision {
-                treatment: TaxTreatment::ReverseCharge,
-                tax_id: Some(number.tax_id.clone()),
-                tax_id_evidence: number.evidence.clone(),
-                ..TaxDecision::default()
-            });
-        }
+    if subject.is_business
+        && crosses
+        && let Some(number) = subject.validated_id_for(&address.country_code)
+    {
+        return Ok(TaxDecision {
+            treatment: TaxTreatment::ReverseCharge,
+            tax_id: Some(number.tax_id.clone()),
+            tax_id_evidence: number.evidence.clone(),
+            ..TaxDecision::default()
+        });
     }
 
     // A consumer abroad is still charged — at their country's rate — but the

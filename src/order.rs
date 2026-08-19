@@ -4512,10 +4512,10 @@ async fn apply_action(
         }
     }
 
-    if let (Some(line), Some(after)) = (counted, after) {
-        if before > 0 {
-            crate::inventory::rescale_line(tx, ctx, line, before, after).await?;
-        }
+    if let (Some(line), Some(after)) = (counted, after)
+        && before > 0
+    {
+        crate::inventory::rescale_line(tx, ctx, line, before, after).await?;
     }
 
     Ok(())

@@ -516,15 +516,14 @@ pub async fn update_prices(
 
     check_batch(&changes)?;
 
-    if let Some(first) = changes.first() {
-        if changes
+    if let Some(first) = changes.first()
+        && changes
             .iter()
             .any(|change| change.amount.currency != first.amount.currency)
-        {
-            return Err(Error::invalid(
-                "one batch of prices carries one currency; split it",
-            ));
-        }
+    {
+        return Err(Error::invalid(
+            "one batch of prices carries one currency; split it",
+        ));
     }
 
     let mut result = BatchResult::default();

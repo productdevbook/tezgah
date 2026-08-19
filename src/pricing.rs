@@ -484,10 +484,10 @@ pub async fn update_price(
 ) -> Result<Price> {
     let _: Permit = ctx.permit(Action::Write, Resource::Pricing)?;
 
-    if let Some(amount) = change.amount {
-        if amount.amount.is_sign_negative() {
-            return Err(Error::invalid("a price cannot be negative"));
-        }
+    if let Some(amount) = change.amount
+        && amount.amount.is_sign_negative()
+    {
+        return Err(Error::invalid("a price cannot be negative"));
     }
 
     let price = sqlx::query_as::<_, Price>(
@@ -701,10 +701,10 @@ pub async fn create_price_list(
     if !LIST_STATUSES.contains(&new.status.as_str()) {
         return Err(Error::invalid("a price list is draft, active or expired"));
     }
-    if let (Some(starts), Some(ends)) = (new.starts_at, new.ends_at) {
-        if starts >= ends {
-            return Err(Error::invalid("a price list ends after it starts"));
-        }
+    if let (Some(starts), Some(ends)) = (new.starts_at, new.ends_at)
+        && starts >= ends
+    {
+        return Err(Error::invalid("a price list ends after it starts"));
     }
 
     let id = PriceListId::new();
@@ -748,10 +748,10 @@ pub async fn update_price_list(
 ) -> Result<PriceList> {
     let _: Permit = ctx.permit(Action::Write, Resource::Pricing)?;
 
-    if let Some(status) = &change.status {
-        if !LIST_STATUSES.contains(&status.as_str()) {
-            return Err(Error::invalid("a price list is draft, active or expired"));
-        }
+    if let Some(status) = &change.status
+        && !LIST_STATUSES.contains(&status.as_str())
+    {
+        return Err(Error::invalid("a price list is draft, active or expired"));
     }
 
     let list = sqlx::query_as::<_, PriceList>(

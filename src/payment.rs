@@ -1642,12 +1642,12 @@ pub async fn save_account_holder(
     .fetch_optional(&mut **tx)
     .await?;
 
-    if let Some(Some(owner)) = existing_owner {
-        if new.customer_id.is_none_or(|c| c.as_uuid() != owner) {
-            return Err(Error::conflict(
-                "that account is already saved against a different customer",
-            ));
-        }
+    if let Some(Some(owner)) = existing_owner
+        && new.customer_id.is_none_or(|c| c.as_uuid() != owner)
+    {
+        return Err(Error::conflict(
+            "that account is already saved against a different customer",
+        ));
     }
 
     let holder = sqlx::query_as::<_, AccountHolder>(
