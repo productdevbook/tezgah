@@ -111,8 +111,9 @@ what they did.
 ## The HTTP surface
 
 `src/api/` carries both surfaces as one route table — `api::routes()` — read by
-the router, by the OpenAPI generator, and by the tests that check each route
-asks the permission it declares. The generated document is committed at
+the OpenAPI generator, by the tests that check each route asks the permission it
+declares, and by whatever router you bind it to. It describes the surface; it
+does not serve it. The generated document is committed at
 [`tests/snapshots/openapi.json`](tests/snapshots/openapi.json), so a change to
 the API is a change to a file somebody reviews.
 
