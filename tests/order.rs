@@ -1056,7 +1056,6 @@ async fn a_cancelled_order_gives_the_promotion_use_back() -> tezgah::Result<()> 
             is_automatic: false,
             usage_limit: None,
             customer_usage_limit: None,
-            metadata: None,
         },
     )
     .await?;
