@@ -157,20 +157,32 @@ pub async fn lookup(
 }
 
 /// kasapay's [`kasapay_core::Status`] is six variants and `#[non_exhaustive]`;
-/// tezgah's [`AuthorizationStatus`] is three. `Authorized` and `Captured` both
-/// become `Authorized` here — iyzico's own checkout form already conflates
-/// the two in tezgah's existing adapter (`src/providers/iyzico.rs`'s
-/// `capture` confirms money already taken rather than moving it again) — and
-/// `Pending`/`RequiresAction` both become `RequiresMore`, which is not quite
-/// honest: `Pending` means "still processing", not "the shopper has
-/// something to do". tezgah's enum has no third bucket for it. Not resolved
-/// here; noted so the day `RequiresMore` gains a poll-again cousin, this is
-/// where to look.
+/// tezgah's [`AuthorizationStatus`] is four, also `#[non_exhaustive]`.
+/// `Authorized` and `Captured` both become `Authorized` here — iyzico's own
+/// checkout form already conflates the two in tezgah's existing adapter
+/// (`src/providers/iyzico.rs`'s `capture` confirms money already taken
+/// rather than moving it again).
+///
+/// `Pending` and `RequiresAction` are kept apart (tezgah#168):
+/// `RequiresAction` needs a human, `Pending` needs nobody, and folding the
+/// two together used to turn a renewal the provider was still processing
+/// into a permanent decline the moment nobody was in a browser to act on it.
+///
+/// `Canceled` stays with `Failed` under `Error`: both are a closed
+/// authorisation this attempt will never get money out of, and
+/// [`crate::payment::Authorized::Failed`]'s "the session is closed, a new
+/// one is the retry" is exactly as true of a cancelled hold as of a
+/// declined one.
+///
+/// The wildcard is required by `Status`'s own `#[non_exhaustive]`, not by any
+/// variant left unhandled above; `RequiresMore` is the conservative unknown
+/// default, same as before this fix.
 fn map_status(status: kasapay_core::Status) -> AuthorizationStatus {
     use kasapay_core::Status;
     match status {
         Status::Authorized | Status::Captured => AuthorizationStatus::Authorized,
-        Status::Pending | Status::RequiresAction => AuthorizationStatus::RequiresMore,
+        Status::RequiresAction => AuthorizationStatus::RequiresMore,
+        Status::Pending => AuthorizationStatus::Pending,
         Status::Failed | Status::Canceled => AuthorizationStatus::Error,
         _ => AuthorizationStatus::RequiresMore,
     }
@@ -459,5 +471,53 @@ mod tests {
             *fake.looked_up.lock().expect("lock"),
             vec!["order-1".to_owned(); 3],
         );
+    }
+
+    // -----------------------------------------------------------------
+    // Status — tezgah#168: `Pending` and `RequiresAction` used to fold
+    // together, which inverted an off-session renewal's outcome.
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn a_provider_still_working_is_pending_not_requires_more() {
+        use kasapay_core::Status;
+
+        assert_eq!(map_status(Status::Pending), AuthorizationStatus::Pending);
+        assert_eq!(
+            map_status(Status::RequiresAction),
+            AuthorizationStatus::RequiresMore
+        );
+    }
+
+    #[test]
+    fn a_cancelled_authorisation_is_a_closed_end_state_like_a_decline() {
+        use kasapay_core::Status;
+
+        // Both are a session this attempt will never get money out of;
+        // `Authorized::Failed`'s "closed, a new one is the retry" is true of
+        // either one.
+        assert_eq!(map_status(Status::Canceled), AuthorizationStatus::Error);
+        assert_eq!(map_status(Status::Failed), AuthorizationStatus::Error);
+    }
+
+    #[test]
+    fn every_kasapay_status_lands_on_one_of_tezgahs_four() {
+        use kasapay_core::Status;
+
+        assert_eq!(
+            map_status(Status::Authorized),
+            AuthorizationStatus::Authorized
+        );
+        assert_eq!(
+            map_status(Status::Captured),
+            AuthorizationStatus::Authorized
+        );
+        assert_eq!(
+            map_status(Status::RequiresAction),
+            AuthorizationStatus::RequiresMore
+        );
+        assert_eq!(map_status(Status::Pending), AuthorizationStatus::Pending);
+        assert_eq!(map_status(Status::Failed), AuthorizationStatus::Error);
+        assert_eq!(map_status(Status::Canceled), AuthorizationStatus::Error);
     }
 }

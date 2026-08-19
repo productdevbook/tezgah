@@ -55,6 +55,11 @@ struct Refusing;
 #[derive(Debug, Default)]
 struct Insisting;
 
+/// A bank that is still working on it, unlike `Insisting`: nobody has to do
+/// anything, least of all a shopper who is not there.
+#[derive(Debug, Default)]
+struct Processing;
+
 macro_rules! bank {
     ($name:ident) => {
         #[async_trait]
@@ -113,6 +118,7 @@ macro_rules! bank {
 bank!(Standing);
 bank!(Refusing);
 bank!(Insisting);
+bank!(Processing);
 
 #[async_trait]
 impl RecurringProvider for Standing {
@@ -156,6 +162,20 @@ impl RecurringProvider for Insisting {
             amount: None,
             data: serde_json::json!({}),
             redirect: Some("https://example.test/3ds".into()),
+            message: None,
+            installment: None,
+        })
+    }
+}
+
+#[async_trait]
+impl RecurringProvider for Processing {
+    async fn authorize_stored(&self, _: StoredChargeRequest) -> tezgah::Result<Authorization> {
+        Ok(Authorization {
+            status: AuthorizationStatus::Pending,
+            amount: None,
+            data: serde_json::json!({}),
+            redirect: None,
             message: None,
             installment: None,
         })
@@ -1157,6 +1177,55 @@ async fn a_provider_asking_for_the_shopper_is_a_decline_rather_than_a_redirect()
 
     assert!(renewed.declined, "a hold nobody can complete was accepted");
     assert_eq!(read(&shop, seeded.id).await.status, "past_due");
+
+    shop.close().await;
+}
+
+/// tezgah#168: unlike `RequiresMore`, `Pending` asks nobody for anything —
+/// the provider is still working. Reading it as a decline would dun a
+/// customer whose payment was about to succeed, so the run has to stay
+/// retryable instead of unwinding.
+#[tokio::test]
+async fn a_provider_still_working_does_not_start_dunning() {
+    let shop = Shop::open().await;
+    let seeded = a_contract(&shop, dec!(10), None).await;
+
+    let processing = Renewals::new(Arc::new(Processing), seeded.location_id);
+    let stalled = processing.renew(&shop.pool, &shop.ctx(), seeded.id).await;
+    assert!(
+        stalled.is_err(),
+        "a provider still working was read as a settled outcome"
+    );
+
+    let after = read(&shop, seeded.id).await;
+    assert_eq!(
+        after.status, "active",
+        "a provider still working started dunning"
+    );
+    assert_eq!(after.dunning_attempts, 0);
+    assert_eq!(
+        orders(&shop).await,
+        1,
+        "the order the earlier steps wrote went missing"
+    );
+
+    // The run is still open under the same key rather than thrown away: the
+    // same cycle finishes once the provider actually answers, with nothing
+    // charged — or ordered — twice.
+    let standing = Renewals::new(Arc::new(Standing), seeded.location_id);
+    let renewed = standing
+        .renew(&shop.pool, &shop.ctx(), seeded.id)
+        .await
+        .expect("the same run to resume once the provider answers");
+
+    assert!(!renewed.declined);
+    assert_eq!(renewed.cycle, 1);
+    assert_eq!(billed_cycles(&shop, seeded.id).await, vec![1]);
+    assert_eq!(orders(&shop).await, 1, "resuming wrote a second order");
+
+    let after = read(&shop, seeded.id).await;
+    assert_eq!(after.status, "active");
+    assert_eq!(after.dunning_attempts, 0);
 
     shop.close().await;
 }

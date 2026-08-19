@@ -1275,6 +1275,7 @@ impl AuthorizeAnswer {
             status: match auth.status {
                 AuthorizationStatus::Authorized => "authorized",
                 AuthorizationStatus::RequiresMore => "requires_more",
+                AuthorizationStatus::Pending => "pending",
                 AuthorizationStatus::Error => "error",
             }
             .to_string(),
@@ -1295,6 +1296,7 @@ impl AuthorizeAnswer {
         let status = match self.status.as_str() {
             "authorized" => AuthorizationStatus::Authorized,
             "requires_more" => AuthorizationStatus::RequiresMore,
+            "pending" => AuthorizationStatus::Pending,
             "error" => AuthorizationStatus::Error,
             _ => {
                 return Err(Failure::Final(Error::bug(
@@ -1570,6 +1572,16 @@ impl ReachingStep for AuthorizePayment {
                     .map_err(Failure::Final)?;
 
                 carried.requires_more = true;
+
+                Ok(Outcome::waiting(carried.value()?))
+            }
+            // Nobody has anything to do, unlike `RequiresMore`: the provider
+            // is still working, so the shopper is not sent anywhere and the
+            // run just waits for the answer that already-open session gets.
+            Authorized::Pending(_) => {
+                order::set_status(tx, ctx, order_id, OrderStatus::Pending)
+                    .await
+                    .map_err(Failure::Final)?;
 
                 Ok(Outcome::waiting(carried.value()?))
             }

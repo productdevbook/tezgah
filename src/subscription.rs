@@ -2777,6 +2777,7 @@ impl ChargeAnswer {
             status: match auth.status {
                 AuthorizationStatus::Authorized => "authorized",
                 AuthorizationStatus::RequiresMore => "requires_more",
+                AuthorizationStatus::Pending => "pending",
                 AuthorizationStatus::Error => "error",
             }
             .to_string(),
@@ -2797,6 +2798,7 @@ impl ChargeAnswer {
         let status = match self.status.as_str() {
             "authorized" => AuthorizationStatus::Authorized,
             "requires_more" => AuthorizationStatus::RequiresMore,
+            "pending" => AuthorizationStatus::Pending,
             "error" => AuthorizationStatus::Error,
             _ => {
                 return Err(Failure::Final(Error::bug(
@@ -3064,6 +3066,14 @@ impl ReachingStep for ChargeStoredMethod {
 
                 Ok(Outcome::new(carried.value()?, kept(&undo)))
             }
+            // The provider is still working, not waiting on anybody: a
+            // renewal that dunned here would chase a customer who paid
+            // (tezgah#168). `Retry` leaves the row `called`, so the next
+            // pass asks `resume` rather than opening a second charge.
+            Authorized::Pending(_) => Err(Failure::Retry(Error::provider(
+                "payment",
+                "the provider is still working on this charge",
+            ))),
             Authorized::RequiresMore(_) | Authorized::Failed(_) => Err(Failure::Final(
                 Error::provider("payment", "the provider would not hold the money"),
             )),

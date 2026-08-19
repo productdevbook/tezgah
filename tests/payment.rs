@@ -58,6 +58,14 @@ impl FakeProvider {
         }
     }
 
+    fn still_processing() -> FakeProvider {
+        FakeProvider {
+            authorization: AuthorizationStatus::Pending,
+            holds: None,
+            plan: None,
+        }
+    }
+
     fn holding(amount: Money) -> FakeProvider {
         FakeProvider {
             authorization: AuthorizationStatus::Authorized,
@@ -609,6 +617,39 @@ async fn a_session_that_needs_a_second_factor_is_left_open() {
         .expect("the session");
     tx.commit().await.expect("to commit");
     assert_eq!(done.status(), SessionStatus::Authorized);
+
+    shop.close().await;
+}
+
+/// tezgah#168: unlike `RequiresMore`, `Pending` is not a reason to send the
+/// shopper anywhere — the provider itself is still working.
+#[tokio::test]
+async fn a_provider_still_working_is_pending_not_requires_more() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let session = open_session(&shop, try_(dec!(100.00))).await;
+
+    let outcome = authorize(&shop, &FakeProvider::still_processing(), session).await;
+    assert!(
+        outcome.is_pending(),
+        "a provider still working was read as needing the shopper"
+    );
+    assert!(!outcome.requires_more());
+
+    let mut tx = shop.begin().await;
+    let waiting = payment::session(&mut tx, &ctx, session)
+        .await
+        .expect("the session");
+    tx.commit().await.expect("to commit");
+    assert_eq!(waiting.status(), SessionStatus::Pending);
+    assert!(waiting.status().is_open());
+
+    // The retry is the same session authorising again, not a new one.
+    let paid = authorize(&shop, &FakeProvider::approving(), session)
+        .await
+        .payment()
+        .expect("a payment once the provider actually answers");
+    assert_eq!(paid.amount, dec!(100.00));
 
     shop.close().await;
 }

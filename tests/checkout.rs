@@ -43,6 +43,9 @@ enum Answer {
     Authorize,
     Decline,
     SecondFactor,
+    /// The provider is still working. Unlike `SecondFactor`, nobody — least
+    /// of all the shopper — has anything to do about it.
+    StillProcessing,
     /// `authorize` always fails, the way a provider that cannot be reached
     /// does — for reaching a `ReachingStep`'s `call`/`resume` failure path
     /// without ever producing an answer to record.
@@ -89,6 +92,7 @@ impl PaymentProvider for Bank {
             Answer::Authorize => AuthorizationStatus::Authorized,
             Answer::Decline => AuthorizationStatus::Error,
             Answer::SecondFactor => AuthorizationStatus::RequiresMore,
+            Answer::StillProcessing => AuthorizationStatus::Pending,
             Answer::NetworkDown => unreachable!("handled above"),
         };
 
@@ -867,6 +871,53 @@ async fn a_second_factor_keeps_everything_it_has() -> Result<()> {
         .await,
         1,
         "the stock was let go of while the shopper was at their bank"
+    );
+
+    shop.close().await;
+    Ok(())
+}
+
+/// tezgah#168: a provider that is still working is not the same wait as a
+/// second factor — nobody is sent anywhere — but it is still a wait, not a
+/// decline: the run stays open for the same session to answer.
+#[tokio::test]
+async fn a_provider_still_working_keeps_the_session_open_without_asking_the_shopper() -> Result<()>
+{
+    let shop = Shop::open().await;
+    let here = ready(&shop, 10, 2).await;
+    let bank = Bank::saying(Answer::StillProcessing);
+    let checkout = Checkout::new(
+        Arc::clone(&bank) as Arc<dyn PaymentProvider>,
+        here.location_id,
+    );
+
+    let placed = checkout
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
+        .await?;
+    assert_eq!(placed.run.state, State::Waiting);
+    assert!(
+        !placed.requires_more,
+        "nobody has anything to do while the provider is still working"
+    );
+
+    let order_id = placed.order_id.expect("an order that is waiting");
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+
+    let order = order::get(&mut tx, &ctx, order_id).await?;
+    assert_eq!(order.status()?, OrderStatus::Pending);
+    tx.commit().await.expect("to commit");
+
+    assert_eq!(*bank.canceled.lock(), 0);
+    assert_eq!(
+        count(
+            &shop.pool,
+            shop.here,
+            "select count(*) from reservation_item where scope = $1"
+        )
+        .await,
+        1,
+        "the stock was let go of while the provider was still working"
     );
 
     shop.close().await;

@@ -604,11 +604,17 @@ pub struct AuthorizeRequest {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum AuthorizationStatus {
     Authorized,
     /// 3-D Secure, a bank app, a second factor. The session stays open and
     /// nothing is canceled: the shopper comes back and it is tried again.
     RequiresMore,
+    /// The provider is still working and nobody has anything to do. Not the
+    /// same as [`AuthorizationStatus::RequiresMore`]: off-session there is no
+    /// shopper to send anywhere either way, but this one is worth asking
+    /// again rather than a reason to give up (tezgah#168).
+    Pending,
     Error,
 }
 
@@ -748,11 +754,15 @@ pub struct NewAccountHolder {
 
 /// What [`authorize`] settled on, which is not always a payment.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum Authorized {
     /// The provider is holding the money and a `payment` row now says so.
     Payment(Payment),
     /// The shopper has more to do. The session is open, nothing is canceled.
     RequiresMore(PaymentSession),
+    /// The provider is still working. The session is open, nothing is
+    /// canceled or held — ask again rather than treat this as a decline.
+    Pending(PaymentSession),
     /// The provider said no. The session is closed; a new one is the retry.
     Failed(PaymentSession),
 }
@@ -766,12 +776,17 @@ impl Authorized {
             Authorized::RequiresMore(_) => {
                 Err(Error::conflict("that payment needs the shopper again"))
             }
+            Authorized::Pending(_) => Err(Error::conflict("that payment is still being taken")),
             Authorized::Failed(_) => Err(Error::conflict("that payment was refused")),
         }
     }
 
     pub fn requires_more(&self) -> bool {
         matches!(self, Authorized::RequiresMore(_))
+    }
+
+    pub fn is_pending(&self) -> bool {
+        matches!(self, Authorized::Pending(_))
     }
 }
 
@@ -1169,6 +1184,21 @@ pub async fn authorize(
             )
             .await?;
             Ok(Authorized::RequiresMore(session))
+        }
+        AuthorizationStatus::Pending => {
+            let session =
+                set_session_status(tx, ctx, id, SessionStatus::Pending, Some(auth.data), None)
+                    .await?;
+            ctx.emit(
+                tx,
+                Event {
+                    name: "payment.pending",
+                    entity_id: id.as_uuid(),
+                    payload: serde_json::json!({}),
+                },
+            )
+            .await?;
+            Ok(Authorized::Pending(session))
         }
         AuthorizationStatus::Error => {
             let session =
