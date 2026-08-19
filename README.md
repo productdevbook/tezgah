@@ -191,8 +191,10 @@ in two currencies prices in both.
 
 Translating the interface a shopper reads, formatting a number for their
 locale, and reporting over what already sits in Postgres — those belong to
-whatever a host is built in, for the same reason tezgah ships no admin UI. A
-product's own content is different: `catalogue` carries a title, a description
+whatever a host is built in, for the same reason the crate draws no screens
+itself. [`client/`](client) is an admin panel over the API, in this repository
+but not in the crate: depending on tezgah pulls in no React. A product's own
+content is different: `catalogue` carries a title, a description
 and a handle per locale, because that text is the shop's data rather than the
 surrounding chrome.
 

@@ -1,0 +1,78 @@
+/**
+ * The panel's navigation, and what stands behind each entry.
+ *
+ * `operations` is what `tests/snapshots/openapi.json` declares for that tag on
+ * the admin surface — the number is here so a screen that covers three of
+ * thirty-seven cannot quietly read as finished.
+ */
+export type Section = {
+  slug: string
+  title: string
+  /** The OpenAPI tag whose operations this section is built over. */
+  tag: string
+  operations: number
+  /** False until a screen exists; the route renders what is missing instead. */
+  built: boolean
+}
+
+export type Group = {
+  title: string
+  sections: Section[]
+}
+
+export const GROUPS: Group[] = [
+  {
+    title: "Selling",
+    sections: [
+      { slug: "products", title: "Products", tag: "catalogue", operations: 79, built: true },
+      { slug: "pricing", title: "Pricing", tag: "pricing", operations: 23, built: false },
+      { slug: "promotions", title: "Promotions", tag: "promotion", operations: 19, built: false },
+    ],
+  },
+  {
+    title: "Orders",
+    sections: [
+      { slug: "orders", title: "Orders", tag: "order", operations: 112, built: true },
+      { slug: "baskets", title: "Baskets", tag: "order_basket", operations: 5, built: false },
+      { slug: "carts", title: "Carts", tag: "cart", operations: 11, built: false },
+      { slug: "subscriptions", title: "Subscriptions", tag: "subscription", operations: 26, built: false },
+    ],
+  },
+  {
+    title: "Getting it there",
+    sections: [
+      { slug: "inventory", title: "Inventory", tag: "inventory", operations: 37, built: true },
+      { slug: "fulfilment", title: "Fulfilment", tag: "fulfilment", operations: 35, built: false },
+    ],
+  },
+  {
+    title: "Money",
+    sections: [
+      { slug: "payments", title: "Payments", tag: "payment", operations: 19, built: false },
+      { slug: "credit", title: "Credit", tag: "credit", operations: 17, built: false },
+      { slug: "payouts", title: "Payouts", tag: "payout", operations: 7, built: false },
+      { slug: "tax", title: "Tax", tag: "tax", operations: 24, built: false },
+    ],
+  },
+  {
+    title: "The shop",
+    sections: [
+      { slug: "customers", title: "Customers", tag: "customer", operations: 25, built: false },
+      { slug: "store", title: "Store", tag: "store", operations: 32, built: false },
+      { slug: "digital", title: "Digital", tag: "digital", operations: 8, built: false },
+      { slug: "workflows", title: "Workflows", tag: "workflow", operations: 4, built: false },
+    ],
+  },
+]
+
+export const SECTIONS: Section[] = GROUPS.flatMap((g) => g.sections)
+
+export function sectionBySlug(slug: string): Section | undefined {
+  return SECTIONS.find((s) => s.slug === slug)
+}
+
+/** What the admin surface declares in total, against what has a screen. */
+export const COVERAGE = {
+  operations: SECTIONS.reduce((n, s) => n + s.operations, 0),
+  covered: SECTIONS.filter((s) => s.built).reduce((n, s) => n + s.operations, 0),
+}
