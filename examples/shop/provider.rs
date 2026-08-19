@@ -149,12 +149,12 @@ impl PaymentProvider for KasapayProvider {
 
     async fn capture(&self, req: CaptureRequest) -> tezgah::Result<CaptureResult> {
         let id = Self::kasapay_payment_id(&req.data)?;
-        mapping::capture(&self.provider, &id, req.amount, self.exponent, None).await
+        mapping::capture(self.provider.as_ref(), &id, req.amount, self.exponent, None).await
     }
 
     async fn refund(&self, req: RefundRequest) -> tezgah::Result<RefundResult> {
         let id = Self::kasapay_payment_id(&req.data)?;
-        mapping::refund(&self.provider, &id, req.amount, self.exponent, None).await
+        mapping::refund(self.provider.as_ref(), &id, req.amount, self.exponent, None).await
     }
 
     async fn cancel(&self, req: CancelRequest) -> tezgah::Result<()> {
@@ -163,7 +163,7 @@ impl PaymentProvider for KasapayProvider {
             // nothing there to release.
             return Ok(());
         };
-        mapping::cancel(&self.provider, &id).await
+        mapping::cancel(self.provider.as_ref(), &id).await
     }
 
     /// `kasapay_core::Provider` carries no webhook call at all — verifying a
@@ -191,7 +191,12 @@ impl LookupProvider for KasapayProvider {
         &self,
         session_id: tezgah::id::PaymentSessionId,
     ) -> tezgah::Result<Option<Authorization>> {
-        mapping::lookup(&self.provider, &session_id.to_string(), self.exponent).await
+        mapping::lookup(
+            self.provider.as_ref(),
+            &session_id.to_string(),
+            self.exponent,
+        )
+        .await
     }
 }
 
