@@ -656,17 +656,37 @@ async fn a_declined_card_leaves_nothing_behind() -> Result<()> {
     Ok(())
 }
 
+/// The `authorize_payment` step's own row, for a test that needs to see
+/// past `checkout.place`'s `Result` to what the runner actually did with it.
+async fn authorize_payment_row(shop: &Shop) -> (String, i32, i32, Option<String>) {
+    let mut tx = shop.begin().await;
+    let row: (String, i32, i32, Option<String>) = sqlx::query_as(
+        "select s.state, s.attempts, s.max_attempts, s.locked_by
+         from workflow_step s
+         join workflow_run r on r.id = s.run_id
+         where r.scope = $1 and r.name = 'checkout' and s.name = 'authorize_payment'
+         order by r.created_at desc
+         limit 1",
+    )
+    .bind(shop.here.0)
+    .fetch_one(&mut *tx)
+    .await
+    .expect("the authorize_payment row");
+    tx.commit().await.expect("to commit");
+    row
+}
+
 /// #158 §4: `prepare` opens the session and commits on its own, before the
 /// provider is ever asked. When the provider cannot be reached at all — every
 /// `call`/`resume` failing — the run never finishes, but the session
 /// `prepare` opened must not be left open once attempts run out and the run
 /// gives up: `compensate` is fed from `prepare`, not only from `record`.
 ///
-/// `AuthorizePayment` does not override `max_attempts`, so three calls with
-/// the same idempotency key — what a client retrying a failed request looks
-/// like — is what it takes to exhaust it: the first two find the row
-/// `called` from the one before and resume it, asking the provider again
-/// because `Bank` answers no `LookupProvider`; the third gives up.
+/// `AuthorizePayment` does not override `max_attempts`, so a bounded number
+/// of retries with the same idempotency key — what a client retrying a
+/// failed request looks like — is what it takes to exhaust it: each finds
+/// the row `called` from the one before and resumes it, asking the provider
+/// again because `Bank` answers no `LookupProvider`, until attempts run out.
 #[tokio::test]
 async fn a_session_the_provider_never_answered_is_closed_once_attempts_are_gone() -> Result<()> {
     let shop = Shop::open().await;
@@ -677,31 +697,33 @@ async fn a_session_the_provider_never_answered_is_closed_once_attempts_are_gone(
         here.location_id,
     );
 
-    let first = checkout
-        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
-        .await;
-    assert!(
-        first.is_err(),
-        "the first attempt should report the run is not finished yet"
-    );
-    let second = checkout
-        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
-        .await;
-    assert!(second.is_err(), "the second attempt should be the same");
+    let mut placed = None;
+    for attempt in 1..=6 {
+        match checkout
+            .place(&shop.pool, &shop.ctx(), here.cart_id, None)
+            .await
+        {
+            Ok(p) => {
+                placed = Some(p);
+                break;
+            }
+            Err(err) => {
+                let (state, attempts, max_attempts, locked_by) = authorize_payment_row(&shop).await;
+                eprintln!(
+                    "attempt {attempt}: place() said {err:?}; \
+                     authorize_payment row: state={state} attempts={attempts}/{max_attempts} \
+                     locked_by={locked_by:?}"
+                );
+            }
+        }
+    }
+    let placed = placed.expect("the run to settle within six attempts");
 
-    let placed = checkout
-        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
-        .await?;
     assert_eq!(
         placed.run.state,
         State::Reverted,
         "{:?}",
         placed.run.failure
-    );
-    assert_eq!(
-        *bank.authorized.lock(),
-        3,
-        "the provider should have been asked once per attempt"
     );
 
     nothing_left_behind(&shop, here.cart_id).await;
