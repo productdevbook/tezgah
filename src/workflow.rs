@@ -1160,6 +1160,10 @@ async fn invoke_reaching(
     }
 
     let resuming = row.state == "called";
+    eprintln!(
+        "invoke_reaching(): worker={:?} row.state={:?} row.attempts={} resuming={resuming}",
+        held.worker, row.state, row.attempts
+    );
 
     let (prepared, attempts_now) = if resuming {
         let envelope = row.prepared.clone().ok_or_else(|| {
@@ -1177,6 +1181,11 @@ async fn invoke_reaching(
     } else {
         step.call(ctx, &prepared).await
     };
+    eprintln!(
+        "invoke_reaching(): answer.is_ok()={} prepared.data={:?}",
+        answer.is_ok(),
+        prepared.data
+    );
 
     let answer = match answer {
         Ok(answer) => answer,
@@ -1400,7 +1409,16 @@ async fn record_phase(
         .await
         .map_err(|err| Stop::Refused(Failure::Final(err)))?;
 
-    match step.record(&mut tx, ctx, prepared, answer).await {
+    let record_result = step.record(&mut tx, ctx, prepared, answer).await;
+    let record_result_label = match &record_result {
+        Ok(Outcome::Ran { .. }) => "Ok(Ran)".to_string(),
+        Ok(Outcome::Skipped { .. }) => "Ok(Skipped)".to_string(),
+        Ok(Outcome::Waiting { .. }) => "Ok(Waiting)".to_string(),
+        Err(Failure::Retry(err)) => format!("Err(Retry({err}))"),
+        Err(Failure::Final(err)) => format!("Err(Final({err}))"),
+    };
+    eprintln!("record_phase(): record()={record_result_label}");
+    match record_result {
         Ok(outcome) => {
             let (state, compensate_input) = match &outcome {
                 Outcome::Ran {
@@ -1427,6 +1445,10 @@ async fn record_phase(
             .fetch_optional(&mut *tx)
             .await
             .map_err(|err| Stop::Refused(Failure::Final(Error::from(err))))?;
+            eprintln!(
+                "record_phase(): guarded update matched={} state={state}",
+                updated.is_some()
+            );
 
             if updated.is_none() {
                 drop(tx);
