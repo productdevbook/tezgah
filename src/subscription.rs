@@ -2630,7 +2630,7 @@ impl Step for CreateOrder {
             }
         }
 
-        erase_order(tx, ctx, order_id).await
+        order::erase(tx, ctx, order_id).await
     }
 }
 
@@ -2683,71 +2683,6 @@ async fn copy_address(
         country_code: row.country_code,
         phone: row.phone,
     }))
-}
-
-/// Takes back an order this run wrote moments ago, children first. Every key
-/// below is `on delete restrict`, so a delete that hits something a later step
-/// added fails loudly rather than tearing a live order apart.
-async fn erase_order(tx: &mut Tx<'_>, ctx: &Ctx<'_>, order_id: OrderId) -> Result<()> {
-    for (table, parent, key) in [
-        (
-            "order_line_item_adjustment",
-            "order_line_item",
-            "order_line_item_id",
-        ),
-        (
-            "order_line_item_tax_line",
-            "order_line_item",
-            "order_line_item_id",
-        ),
-    ] {
-        sqlx::query(&format!(
-            "delete from {table}
-             where scope = $1
-               and {key} in (select id from {parent} where scope = $1 and order_id = $2)"
-        ))
-        .bind(ctx.scope.0)
-        .bind(order_id.as_uuid())
-        .execute(&mut **tx)
-        .await?;
-    }
-
-    for table in [
-        "order_status_history",
-        "order_summary",
-        "order_item",
-        "order_transaction",
-        "order_line_item",
-    ] {
-        sqlx::query(&format!(
-            "delete from {table} where scope = $1 and order_id = $2"
-        ))
-        .bind(ctx.scope.0)
-        .bind(order_id.as_uuid())
-        .execute(&mut **tx)
-        .await?;
-    }
-
-    let addresses: Vec<(Option<Uuid>, Option<Uuid>)> = sqlx::query_as(
-        r#"delete from "order" where scope = $1 and id = $2
-           returning shipping_address_id, billing_address_id"#,
-    )
-    .bind(ctx.scope.0)
-    .bind(order_id.as_uuid())
-    .fetch_all(&mut **tx)
-    .await?;
-
-    for (shipping, billing) in addresses {
-        for address in [shipping, billing].into_iter().flatten() {
-            sqlx::query("delete from order_address where scope = $1 and id = $2")
-                .bind(ctx.scope.0)
-                .bind(address)
-                .execute(&mut **tx)
-                .await?;
-        }
-    }
-
-    Ok(())
 }
 
 // ---------------------------------------------------------------------------

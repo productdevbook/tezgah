@@ -767,6 +767,113 @@ pub async fn create_draft(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewOrder) -> Resu
     place(tx, ctx, new, true).await
 }
 
+/// Takes an order back out, children first — [`place`]'s undo, for a
+/// `CreateOrder` step whose workflow unwinds moments after writing one.
+///
+/// Every key below is `on delete restrict`, so the children have to be named
+/// here and a delete that hits something a later step added fails loudly
+/// rather than tearing a live order apart. Nothing is reached by cascade on
+/// purpose: the adjustments, tax lines, transfers and status history are the
+/// record of what happened, and a compensation path is the last place that
+/// should quietly take them — the same reason this list is a table of names
+/// rather than a scan of the catalogue for anything that happens to point at
+/// `"order"`. checkout and subscription used to each keep their own copy of
+/// it, and subscription's had fallen behind: no reservation release, and two
+/// shipping-method tables and `order_transfer`/`order_credit_line` missing
+/// from its second list (#163). A renewal does not reach `place`'s
+/// `reserved_for` today, so nothing currently rebinds its hold onto the order
+/// line the way checkout's does — but the day that changes, this is the one
+/// place that has to know, instead of a second copy nobody remembered to
+/// update.
+///
+/// The `order_line_item`/`order_shipping_method` money tables come from
+/// [`LineMoney::tables`], the same match [`insert_line_money`] uses to write
+/// them, so a third kind of line money is one match arm, read by both sides.
+pub(crate) async fn erase(tx: &mut Tx<'_>, ctx: &Ctx<'_>, order_id: OrderId) -> Result<()> {
+    // The line money hangs off the line or the shipping method, not the
+    // order, and 0025 made it `restrict` — so it goes before its parent.
+    for kind in LineMoney::kinds() {
+        let (adjustment_table, tax_table, parent_table, key) = kind.tables();
+        for table in [adjustment_table, tax_table] {
+            sqlx::query(&format!(
+                "delete from {table}
+                 where scope = $1
+                   and {key} in (select id from {parent_table} where scope = $1 and order_id = $2)"
+            ))
+            .bind(ctx.scope.0)
+            .bind(order_id.as_uuid())
+            .execute(&mut **tx)
+            .await?;
+        }
+    }
+
+    // `place` rebinds a reserve_stock hold onto the order line the moment it
+    // writes one, so undoing the order has to give the hold back the same
+    // way `reserve_stock`'s own compensate does —
+    // `reservation_item.order_line_item_id` is `restrict`, and the line
+    // cannot go while a reservation still names it.
+    let lines: Vec<Uuid> =
+        sqlx::query_scalar("select id from order_line_item where scope = $1 and order_id = $2")
+            .bind(ctx.scope.0)
+            .bind(order_id.as_uuid())
+            .fetch_all(&mut **tx)
+            .await?;
+    let line_ids: Vec<LineItemId> = lines.into_iter().map(LineItemId::from_uuid).collect();
+    crate::inventory::release_lines(tx, ctx, &line_ids).await?;
+
+    for table in [
+        "order_status_history",
+        "order_transfer",
+        "order_summary",
+        "order_item",
+        "order_shipping_method",
+        "order_credit_line",
+        "order_transaction",
+        "order_line_item",
+    ] {
+        sqlx::query(&format!(
+            "delete from {table} where scope = $1 and order_id = $2"
+        ))
+        .bind(ctx.scope.0)
+        .bind(order_id.as_uuid())
+        .execute(&mut **tx)
+        .await?;
+    }
+
+    let addresses: Vec<(Option<Uuid>, Option<Uuid>)> = sqlx::query_as(
+        r#"delete from "order" where scope = $1 and id = $2
+           returning shipping_address_id, billing_address_id"#,
+    )
+    .bind(ctx.scope.0)
+    .bind(order_id.as_uuid())
+    .fetch_all(&mut **tx)
+    .await?;
+
+    for (shipping, billing) in addresses {
+        for address in [shipping, billing].into_iter().flatten() {
+            sqlx::query("delete from order_address where scope = $1 and id = $2")
+                .bind(ctx.scope.0)
+                .bind(address)
+                .execute(&mut **tx)
+                .await?;
+        }
+    }
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Delete,
+            entity: "order",
+            entity_id: order_id.as_uuid(),
+            summary: serde_json::json!({ "reason": "workflow compensated" }),
+        },
+    )
+    .await?;
+
+    Ok(())
+}
+
 async fn place(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewOrder, draft: bool) -> Result<Order> {
     let id = OrderId::new();
     let _: Permit = ctx.permit(
@@ -5190,19 +5297,34 @@ enum LineMoney {
 }
 
 impl LineMoney {
-    fn tables(self) -> (&'static str, &'static str, &'static str) {
+    /// `(adjustment table, tax table, parent table, the column naming the
+    /// parent)`. `erase` reads the same match to delete a line's or a
+    /// shipping method's money, so this one arm is the only place either
+    /// pair of table names is written.
+    fn tables(self) -> (&'static str, &'static str, &'static str, &'static str) {
         match self {
             LineMoney::Line(_) => (
                 "order_line_item_adjustment",
                 "order_line_item_tax_line",
+                "order_line_item",
                 "order_line_item_id",
             ),
             LineMoney::Shipping(_) => (
                 "order_shipping_method_adjustment",
                 "order_shipping_method_tax_line",
+                "order_shipping_method",
                 "order_shipping_method_id",
             ),
         }
+    }
+
+    /// Both shapes money hangs off an order in, owner unset — for a caller
+    /// that only wants [`Self::tables`] and has no row to point at.
+    fn kinds() -> [LineMoney; 2] {
+        [
+            LineMoney::Line(LineItemId::from_uuid(Uuid::nil())),
+            LineMoney::Shipping(Uuid::nil()),
+        ]
     }
 
     fn owner(self) -> Uuid {
@@ -5238,7 +5360,7 @@ async fn insert_line_money(
     adjustments: &[NewAdjustment],
     tax_lines: &[NewTaxLine],
 ) -> Result<()> {
-    let (adjustment_table, tax_table, column) = owner.tables();
+    let (adjustment_table, tax_table, _parent_table, column) = owner.tables();
 
     for adjustment in adjustments {
         sqlx::query(&format!(

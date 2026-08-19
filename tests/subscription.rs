@@ -875,10 +875,12 @@ async fn a_declined_charge_leaves_the_contract_past_due_with_a_retry_queued() {
 }
 
 /// #163: `create_order`'s own undo used to be a shorter, separately typed
-/// copy of checkout's, and never released the stock `reserve_stock` had
-/// promised — so a renewal that reserves, writes the order, and is then
-/// declined has to unwind cleanly and hand the stock back, the same as a
-/// checkout that never became an order.
+/// copy of checkout's. `reserve_stock`'s own compensate already gives its
+/// hold back by reservation id regardless of what `create_order`'s does, so
+/// this does not catch a hard failure on today's plain renewal — nothing
+/// currently rebinds the hold onto the order line the way checkout does. It
+/// locks in the outcome a renewal's rewind has to keep once that changes: a
+/// clean revert, nothing dead-lettered, the stock back where it was.
 #[tokio::test]
 async fn a_renewal_declined_after_the_order_is_written_unwinds_cleanly() {
     let shop = Shop::open().await;

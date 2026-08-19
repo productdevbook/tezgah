@@ -780,7 +780,7 @@ impl Step for CreateOrder {
             return Ok(());
         };
 
-        erase_order(tx, ctx, order_id).await
+        order::erase(tx, ctx, order_id).await
     }
 }
 
@@ -1660,116 +1660,4 @@ async fn copy_address(
         country_code: row.country_code,
         phone: row.phone,
     }))
-}
-
-/// Takes an order back out, children first.
-///
-/// Only ever called to undo an order this run wrote moments ago. Every key
-/// below is `on delete restrict`, so the children have to be named here and a
-/// delete that hits something a later step added fails loudly rather than
-/// tearing a live order apart. Nothing is reached by cascade on purpose: the
-/// adjustments, tax lines, transfers and status history are the record of what
-/// happened, and a compensation path is the last place that should quietly
-/// take them.
-async fn erase_order(tx: &mut Tx<'_>, ctx: &Ctx<'_>, order_id: OrderId) -> Result<()> {
-    // The line money hangs off the line, not the order, and 0025 made it
-    // `restrict` — so it goes before the line it belongs to.
-    for (table, parent, key) in [
-        (
-            "order_line_item_adjustment",
-            "order_line_item",
-            "order_line_item_id",
-        ),
-        (
-            "order_line_item_tax_line",
-            "order_line_item",
-            "order_line_item_id",
-        ),
-        (
-            "order_shipping_method_adjustment",
-            "order_shipping_method",
-            "order_shipping_method_id",
-        ),
-        (
-            "order_shipping_method_tax_line",
-            "order_shipping_method",
-            "order_shipping_method_id",
-        ),
-    ] {
-        sqlx::query(&format!(
-            "delete from {table}
-             where scope = $1
-               and {key} in (select id from {parent} where scope = $1 and order_id = $2)"
-        ))
-        .bind(ctx.scope.0)
-        .bind(order_id.as_uuid())
-        .execute(&mut **tx)
-        .await?;
-    }
-
-    // `create_order` rebinds a reserve_stock hold onto the order line the
-    // moment it writes one (`order::create`), so undoing the order has to
-    // give the hold back the same way `reserve_stock`'s own compensate does
-    // — `reservation_item.order_line_item_id` is `restrict`, and the line
-    // cannot go while a reservation still names it.
-    let lines: Vec<Uuid> =
-        sqlx::query_scalar("select id from order_line_item where scope = $1 and order_id = $2")
-            .bind(ctx.scope.0)
-            .bind(order_id.as_uuid())
-            .fetch_all(&mut **tx)
-            .await?;
-    let line_ids: Vec<LineItemId> = lines.into_iter().map(LineItemId::from_uuid).collect();
-    inventory::release_lines(tx, ctx, &line_ids).await?;
-
-    for table in [
-        "order_status_history",
-        "order_transfer",
-        "order_summary",
-        "order_item",
-        "order_shipping_method",
-        "order_credit_line",
-        "order_transaction",
-        "order_line_item",
-    ] {
-        sqlx::query(&format!(
-            "delete from {table} where scope = $1 and order_id = $2"
-        ))
-        .bind(ctx.scope.0)
-        .bind(order_id.as_uuid())
-        .execute(&mut **tx)
-        .await?;
-    }
-
-    let addresses: Vec<(Option<Uuid>, Option<Uuid>)> = sqlx::query_as(
-        r#"delete from "order" where scope = $1 and id = $2
-           returning shipping_address_id, billing_address_id"#,
-    )
-    .bind(ctx.scope.0)
-    .bind(order_id.as_uuid())
-    .fetch_all(&mut **tx)
-    .await?;
-
-    for (shipping, billing) in addresses {
-        for address in [shipping, billing].into_iter().flatten() {
-            sqlx::query("delete from order_address where scope = $1 and id = $2")
-                .bind(ctx.scope.0)
-                .bind(address)
-                .execute(&mut **tx)
-                .await?;
-        }
-    }
-
-    ctx.audit(
-        tx,
-        AuditEntry {
-            actor: ctx.actor.clone(),
-            action: Action::Delete,
-            entity: "order",
-            entity_id: order_id.as_uuid(),
-            summary: serde_json::json!({ "reason": "checkout compensated" }),
-        },
-    )
-    .await?;
-
-    Ok(())
 }
