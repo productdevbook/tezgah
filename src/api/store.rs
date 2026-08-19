@@ -26,8 +26,8 @@ use uuid::Uuid;
 use crate::error::{Error, Result};
 use crate::id::{
     AccountHolderId, AddressId, CartId, CategoryId, CollectionId, CustomerId, LineItemId, OptionId,
-    OrderId, PaymentCollectionId, PaymentSessionId, ProductId, ProductTagId, ProductTypeId,
-    RegionId, SalesChannelId, SellingPlanId, ShippingOptionId, VariantId,
+    OrderId, PaymentCollectionId, PaymentSessionId, ProductId, ProductImageId, ProductTagId,
+    ProductTypeId, RegionId, SalesChannelId, SellingPlanId, ShippingOptionId, VariantId,
 };
 use crate::money::{Currency, Money};
 use crate::page::{Cursor, Page, Paging};
@@ -93,6 +93,25 @@ impl From<catalogue::Product> for ProductView {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImageView {
+    pub id: ProductImageId,
+    pub url: String,
+    pub alt_text: Option<String>,
+    pub rank: i32,
+}
+
+impl From<catalogue::ProductImage> for ImageView {
+    fn from(row: catalogue::ProductImage) -> Self {
+        ImageView {
+            id: row.id,
+            url: row.url,
+            alt_text: row.alt_text,
+            rank: row.rank,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VariantView {
     pub id: VariantId,
     pub product_id: ProductId,
@@ -100,6 +119,10 @@ pub struct VariantView {
     pub sku: Option<String>,
     pub barcode: Option<String>,
     pub allows_backorder: bool,
+    /// This variant's own attached images; a variant with none of its own
+    /// shows the product's — nothing here means "shown the same as every
+    /// other variant of this product", never "shown with nothing at all".
+    pub images: Vec<ImageView>,
 }
 
 impl From<catalogue::ProductVariant> for VariantView {
@@ -111,6 +134,7 @@ impl From<catalogue::ProductVariant> for VariantView {
             sku: row.sku,
             barcode: row.barcode,
             allows_backorder: row.allows_backorder,
+            images: Vec::new(),
         }
     }
 }
@@ -931,8 +955,36 @@ pub async fn list_variants(
     )
     .await?;
 
+    // One statement for every variant's own images, plus the product's once
+    // as the fallback a variant with none of its own falls back to — not one
+    // query per row in the page.
+    let ids: Vec<VariantId> = page.items.iter().map(|row| row.id).collect();
+    let own = catalogue::variant_images(tx, ctx, &ids).await?;
+    let fallback: Vec<ImageView> = catalogue::images(tx, ctx, query.product_id)
+        .await?
+        .into_iter()
+        .map(ImageView::from)
+        .collect();
+
+    let items = page
+        .items
+        .into_iter()
+        .map(|row| {
+            let images = match own.get(&row.id) {
+                Some(images) if !images.is_empty() => {
+                    images.iter().cloned().map(ImageView::from).collect()
+                }
+                _ => fallback.clone(),
+            };
+            VariantView {
+                images,
+                ..VariantView::from(row)
+            }
+        })
+        .collect();
+
     Ok(Page {
-        items: page.items.into_iter().map(VariantView::from).collect(),
+        items,
         next: page.next,
     })
 }
@@ -945,7 +997,18 @@ pub async fn get_variant(
 ) -> Result<VariantView> {
     let row = catalogue::variant(tx, ctx, id).await?;
     visible(tx, ctx, token, row.product_id).await?;
-    Ok(VariantView::from(row))
+
+    let own = catalogue::images_for_variant(tx, ctx, id).await?;
+    let images = if own.is_empty() {
+        catalogue::images(tx, ctx, row.product_id).await?
+    } else {
+        own
+    };
+
+    Ok(VariantView {
+        images: images.into_iter().map(ImageView::from).collect(),
+        ..VariantView::from(row)
+    })
 }
 
 #[derive(Debug, Clone, Deserialize)]

@@ -704,11 +704,12 @@ async fn the_migrations_apply_to_an_empty_database() {
 /// Tables that carry no scope on purpose: the scope registry itself, the table
 /// registry, sqlx's own, and the order transitions, which are the library's
 /// rules rather than a shop's.
-const UNSCOPED: [&str; 7] = [
+const UNSCOPED: [&str; 8] = [
     "tezgah_scope",
     "tezgah_table",
     "_sqlx_migrations",
     "tezgah_order_status_move",
+    "tezgah_product_status_move",
     "tezgah_evidence_table",
     "tezgah_scoped_fk_table",
     "tezgah_cross_scope_fk",

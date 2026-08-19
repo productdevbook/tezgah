@@ -34,9 +34,9 @@ const MAX_ATTACHED: i64 = 200;
 
 macro_rules! product_columns {
     () => {
-        "id, handle, title, subtitle, description, status, thumbnail_url, is_discountable, \
-         product_type_id, product_collection_id, weight, length, height, width, material, \
-         hs_code, origin_country, external_id, metadata, created_at, updated_at"
+        "id, handle, title, subtitle, description, status, rejected_reason, thumbnail_url, \
+         is_discountable, product_type_id, product_collection_id, weight, length, height, width, \
+         material, hs_code, origin_country, external_id, metadata, created_at, updated_at"
     };
 }
 
@@ -51,8 +51,8 @@ macro_rules! variant_columns {
 
 macro_rules! category_columns {
     () => {
-        "id, parent_id, mpath, name, handle, description, rank, is_active, is_internal, metadata, \
-         created_at, updated_at"
+        "id, parent_id, mpath, name, handle, description, rank, is_active, is_internal, \
+         external_id, metadata, created_at, updated_at"
     };
 }
 
@@ -61,29 +61,39 @@ macro_rules! category_columns {
 // ---------------------------------------------------------------------------
 
 /// Where a product is in its life. `draft` is invisible, `published` is for
-/// sale, `archived` is kept for the orders that already name it.
+/// sale, `archived` is kept for the orders that already name it. `proposed`
+/// and `rejected` are a marketplace's review of a seller's submission —
+/// invisible the same as `draft`, but reached only through
+/// [`submit_for_review`], [`approve_product`] and [`reject_product`], not
+/// through a plain edit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ProductStatus {
     Draft,
+    Proposed,
     Published,
     Archived,
+    Rejected,
 }
 
 impl ProductStatus {
     pub const fn as_str(self) -> &'static str {
         match self {
             ProductStatus::Draft => "draft",
+            ProductStatus::Proposed => "proposed",
             ProductStatus::Published => "published",
             ProductStatus::Archived => "archived",
+            ProductStatus::Rejected => "rejected",
         }
     }
 
     pub fn parse(text: &str) -> Result<Self> {
         match text {
             "draft" => Ok(ProductStatus::Draft),
+            "proposed" => Ok(ProductStatus::Proposed),
             "published" => Ok(ProductStatus::Published),
             "archived" => Ok(ProductStatus::Archived),
+            "rejected" => Ok(ProductStatus::Rejected),
             other => Err(Error::invalid(format!("{other:?} is not a product status"))),
         }
     }
@@ -132,6 +142,10 @@ pub struct Product {
     pub subtitle: Option<String>,
     pub description: Option<String>,
     pub status: ProductStatus,
+    /// Why an approver sent this back, set by [`reject_product`] and cleared
+    /// by [`submit_for_review`]. `None` off a product that was never
+    /// rejected, or one resubmitted since.
+    pub rejected_reason: Option<String>,
     pub thumbnail_url: Option<String>,
     pub is_discountable: bool,
     pub product_type_id: Option<ProductTypeId>,
@@ -216,6 +230,7 @@ pub struct ProductCollection {
     pub id: CollectionId,
     pub handle: String,
     pub title: String,
+    pub external_id: Option<String>,
     pub metadata: serde_json::Value,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
@@ -232,6 +247,7 @@ pub struct ProductCategory {
     pub rank: i32,
     pub is_active: bool,
     pub is_internal: bool,
+    pub external_id: Option<String>,
     pub metadata: serde_json::Value,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
@@ -248,6 +264,7 @@ impl ProductCategory {
 pub struct ProductTag {
     pub id: ProductTagId,
     pub value: String,
+    pub external_id: Option<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -255,6 +272,7 @@ pub struct ProductTag {
 pub struct ProductType {
     pub id: ProductTypeId,
     pub value: String,
+    pub external_id: Option<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -438,6 +456,7 @@ pub struct NewCategory {
     pub rank: Option<i32>,
     pub is_active: Option<bool>,
     pub is_internal: Option<bool>,
+    pub external_id: Option<String>,
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -449,6 +468,7 @@ pub struct CategoryPatch {
     pub rank: Option<i32>,
     pub is_active: Option<bool>,
     pub is_internal: Option<bool>,
+    pub external_id: Option<String>,
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -851,8 +871,16 @@ pub async fn update_product(
     Ok(product)
 }
 
-/// Moves a product's status. Archiving does not remove it: an order already
-/// names it, and the row has to stay readable for that.
+/// Moves a product's status among `draft`, `published` and `archived`.
+/// Archiving does not remove it: an order already names it, and the row has
+/// to stay readable for that.
+///
+/// Never `proposed` or `rejected`: those are a marketplace's review of a
+/// seller's submission, reached only through [`submit_for_review`],
+/// [`approve_product`] and [`reject_product`] — each its own permission, its
+/// own reason for existing, and in `reject_product`'s case a reason recorded
+/// with it. A product under review does not move by a plain status change
+/// either, so a bulk import cannot approve one on its way past.
 pub async fn set_product_status(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -866,9 +894,17 @@ pub async fn set_product_status(
         },
     )?;
 
+    if matches!(status, ProductStatus::Proposed | ProductStatus::Rejected) {
+        return Err(Error::invalid(
+            "submit_for_review, approve_product or reject_product moves a product there, not a \
+             plain status change",
+        ));
+    }
+
     let product = sqlx::query_as::<_, Product>(concat!(
         "update product set status = $3
          where scope = $1 and id = $2 and deleted_at is null
+           and status not in ('proposed', 'rejected')
          returning ",
         product_columns!()
     ))
@@ -876,8 +912,15 @@ pub async fn set_product_status(
     .bind(id.as_uuid())
     .bind(status)
     .fetch_optional(&mut **tx)
-    .await?
-    .ok_or_else(|| Error::not_found("product"))?;
+    .await?;
+
+    let Some(product) = product else {
+        exists_product(tx, ctx, id).await?;
+        return Err(Error::conflict(
+            "submit_for_review, approve_product or reject_product move a product in review, not \
+             a plain status change",
+        ));
+    };
 
     note(
         tx,
@@ -893,6 +936,8 @@ pub async fn set_product_status(
         ProductStatus::Draft => "product.drafted",
         ProductStatus::Published => "product.published",
         ProductStatus::Archived => "product.archived",
+        ProductStatus::Proposed => "product.proposed",
+        ProductStatus::Rejected => "product.rejected",
     };
     ctx.emit(
         tx,
@@ -913,6 +958,178 @@ pub async fn publish_product(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ProductId) -> R
 
 pub async fn archive_product(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ProductId) -> Result<Product> {
     set_product_status(tx, ctx, id, ProductStatus::Archived).await
+}
+
+// ---------------------------------------------------------------------------
+// Review, for a marketplace gating what a seller lists
+//
+// A seller submits with the same `Action::Write` that lets them edit their
+// own draft — submitting is their call, not the operator's. Deciding what
+// happens to the submission is a different power: `Action::Moderate`, asked
+// by `approve_product` and `reject_product` alike, the same way `Action::Settle`
+// is asked separately from `Action::Write` for money. A host's `Authorizer`
+// can grant a seller `Write` on their own products and withhold `Moderate`
+// entirely, so the seller who may edit a listing is not thereby the one who
+// may put it in front of customers.
+// ---------------------------------------------------------------------------
+
+/// Sends a draft, or a submission sent back once already, for review. Clears
+/// whatever reason a previous rejection left — the edit that follows this
+/// call is the one being judged now, not the one before it.
+pub async fn submit_for_review(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ProductId) -> Result<Product> {
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Product {
+            id: Some(id.as_uuid()),
+        },
+    )?;
+
+    let product = sqlx::query_as::<_, Product>(concat!(
+        "update product set status = 'proposed', rejected_reason = null
+         where scope = $1 and id = $2 and deleted_at is null and status in ('draft', 'rejected')
+         returning ",
+        product_columns!()
+    ))
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    let Some(product) = product else {
+        exists_product(tx, ctx, id).await?;
+        return Err(Error::conflict(
+            "only a draft or a rejected product can be submitted for review",
+        ));
+    };
+
+    note(
+        tx,
+        ctx,
+        Action::Write,
+        "product",
+        id.as_uuid(),
+        serde_json::json!({ "status": "proposed" }),
+    )
+    .await?;
+
+    ctx.emit(
+        tx,
+        Event {
+            name: "product.proposed",
+            entity_id: id.as_uuid(),
+            payload: serde_json::json!({ "handle": product.handle }),
+        },
+    )
+    .await?;
+
+    Ok(product)
+}
+
+/// Approves a submission and publishes it in the same move — there is no
+/// `proposed` product that is approved but not yet for sale.
+pub async fn approve_product(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ProductId) -> Result<Product> {
+    let _: Permit = ctx.permit(
+        Action::Moderate,
+        Resource::Product {
+            id: Some(id.as_uuid()),
+        },
+    )?;
+
+    let product = sqlx::query_as::<_, Product>(concat!(
+        "update product set status = 'published'
+         where scope = $1 and id = $2 and deleted_at is null and status = 'proposed'
+         returning ",
+        product_columns!()
+    ))
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    let Some(product) = product else {
+        exists_product(tx, ctx, id).await?;
+        return Err(Error::conflict("only a proposed product can be approved"));
+    };
+
+    note(
+        tx,
+        ctx,
+        Action::Moderate,
+        "product",
+        id.as_uuid(),
+        serde_json::json!({ "status": "published" }),
+    )
+    .await?;
+
+    ctx.emit(
+        tx,
+        Event {
+            name: "product.published",
+            entity_id: id.as_uuid(),
+            payload: serde_json::json!({ "handle": product.handle }),
+        },
+    )
+    .await?;
+
+    Ok(product)
+}
+
+/// Rejects a submission, recording why. `reason` is trimmed the way any other
+/// free text here is; an empty one is refused rather than silently kept —
+/// a seller reading this back deserves an actual answer.
+pub async fn reject_product(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ProductId,
+    reason: &str,
+) -> Result<Product> {
+    let _: Permit = ctx.permit(
+        Action::Moderate,
+        Resource::Product {
+            id: Some(id.as_uuid()),
+        },
+    )?;
+
+    let reason = required("reason", reason)?;
+
+    let product = sqlx::query_as::<_, Product>(concat!(
+        "update product set status = 'rejected', rejected_reason = $3
+         where scope = $1 and id = $2 and deleted_at is null and status = 'proposed'
+         returning ",
+        product_columns!()
+    ))
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .bind(&reason)
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    let Some(product) = product else {
+        exists_product(tx, ctx, id).await?;
+        return Err(Error::conflict("only a proposed product can be rejected"));
+    };
+
+    note(
+        tx,
+        ctx,
+        Action::Moderate,
+        "product",
+        id.as_uuid(),
+        serde_json::json!({ "status": "rejected", "reason": reason }),
+    )
+    .await?;
+
+    ctx.emit(
+        tx,
+        Event {
+            name: "product.rejected",
+            entity_id: id.as_uuid(),
+            payload: serde_json::json!({ "handle": product.handle }),
+        },
+    )
+    .await?;
+
+    Ok(product)
 }
 
 /// Soft: the handle is freed for reuse, the row stays for whatever already
@@ -1779,28 +1996,58 @@ async fn existing_combinations(
 // Collection, type, tag
 // ---------------------------------------------------------------------------
 
+/// The collection a previous import already left behind for this
+/// `external_id`, if any — so a second run finds it instead of making
+/// another one.
+async fn collection_by_external_id(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    external_id: &str,
+) -> Result<Option<ProductCollection>> {
+    sqlx::query_as::<_, ProductCollection>(
+        "select id, handle, title, external_id, metadata, created_at
+         from product_collection
+         where scope = $1 and external_id = $2 and deleted_at is null",
+    )
+    .bind(ctx.scope.0)
+    .bind(external_id)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(Error::from)
+}
+
 pub async fn create_collection(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
     title: &str,
     handle_text: &str,
+    external_id: Option<&str>,
 ) -> Result<ProductCollection> {
     let _: Permit = ctx.permit(Action::Write, Resource::Product { id: None })?;
 
     let title = required("title", title)?;
     let handle = handle(handle_text)?;
+    let external_id = nullable(external_id.map(str::to_owned));
+
+    if let Some(external_id) = &external_id {
+        if let Some(existing) = collection_by_external_id(tx, ctx, external_id).await? {
+            return Ok(existing);
+        }
+    }
+
     let id = CollectionId::new();
 
     let collection = sqlx::query_as::<_, ProductCollection>(
-        "insert into product_collection (id, scope, handle, title)
-         values ($1, $2, $3, $4)
+        "insert into product_collection (id, scope, handle, title, external_id)
+         values ($1, $2, $3, $4, $5)
          on conflict do nothing
-         returning id, handle, title, metadata, created_at",
+         returning id, handle, title, external_id, metadata, created_at",
     )
     .bind(id.as_uuid())
     .bind(ctx.scope.0)
     .bind(&handle)
     .bind(&title)
+    .bind(&external_id)
     .fetch_optional(&mut **tx)
     .await?
     .ok_or_else(|| Error::conflict("that handle is already a collection here"))?;
@@ -1824,6 +2071,7 @@ pub async fn update_collection(
     id: CollectionId,
     title: Option<&str>,
     handle_text: Option<&str>,
+    external_id: Option<Option<&str>>,
 ) -> Result<ProductCollection> {
     let _: Permit = ctx.permit(Action::Write, Resource::Product { id: None })?;
 
@@ -1838,19 +2086,23 @@ pub async fn update_collection(
 
     let collection = sqlx::query_as::<_, ProductCollection>(
         "update product_collection
-            set title = coalesce($3, title), handle = coalesce($4, handle)
+            set title = coalesce($3, title),
+                handle = coalesce($4, handle),
+                external_id = case when $5::bool then $6 else external_id end
          where scope = $1 and id = $2 and deleted_at is null
            and not exists (
                select 1 from product_collection other
                where other.scope = $1 and other.handle = $4 and other.id <> $2
                  and other.deleted_at is null
            )
-         returning id, handle, title, metadata, created_at",
+         returning id, handle, title, external_id, metadata, created_at",
     )
     .bind(ctx.scope.0)
     .bind(id.as_uuid())
     .bind(title)
     .bind(new_handle)
+    .bind(external_id.is_some())
+    .bind(external_id.flatten())
     .fetch_optional(&mut **tx)
     .await?;
 
@@ -1887,7 +2139,7 @@ pub async fn collection(
     let _: Permit = ctx.permit(Action::View, Resource::Product { id: None })?;
 
     sqlx::query_as::<_, ProductCollection>(
-        "select id, handle, title, metadata, created_at
+        "select id, handle, title, external_id, metadata, created_at
          from product_collection
          where scope = $1 and id = $2 and deleted_at is null",
     )
@@ -1906,7 +2158,7 @@ pub async fn collections(
     let _: Permit = ctx.permit(Action::View, Resource::Product { id: None })?;
 
     let rows = sqlx::query_as::<_, ProductCollection>(
-        "select id, handle, title, metadata, created_at
+        "select id, handle, title, external_id, metadata, created_at
          from product_collection
          where scope = $1
            and deleted_at is null
@@ -1931,21 +2183,54 @@ pub async fn delete_collection(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: CollectionId)
     soft_delete(tx, ctx, "product_collection", "collection", id.as_uuid()).await
 }
 
-pub async fn create_type(tx: &mut Tx<'_>, ctx: &Ctx<'_>, value: &str) -> Result<ProductType> {
+/// The type a previous import already left behind for this `external_id`, if
+/// any — so a second run finds it instead of making another one.
+async fn type_by_external_id(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    external_id: &str,
+) -> Result<Option<ProductType>> {
+    sqlx::query_as::<_, ProductType>(
+        "select id, value, external_id, created_at
+         from product_type
+         where scope = $1 and external_id = $2 and deleted_at is null",
+    )
+    .bind(ctx.scope.0)
+    .bind(external_id)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(Error::from)
+}
+
+pub async fn create_type(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    value: &str,
+    external_id: Option<&str>,
+) -> Result<ProductType> {
     let _: Permit = ctx.permit(Action::Write, Resource::Product { id: None })?;
 
     let value = required("value", value)?;
+    let external_id = nullable(external_id.map(str::to_owned));
+
+    if let Some(external_id) = &external_id {
+        if let Some(existing) = type_by_external_id(tx, ctx, external_id).await? {
+            return Ok(existing);
+        }
+    }
+
     let id = ProductTypeId::new();
 
     let row = sqlx::query_as::<_, ProductType>(
-        "insert into product_type (id, scope, value)
-         values ($1, $2, $3)
+        "insert into product_type (id, scope, value, external_id)
+         values ($1, $2, $3, $4)
          on conflict do nothing
-         returning id, value, created_at",
+         returning id, value, external_id, created_at",
     )
     .bind(id.as_uuid())
     .bind(ctx.scope.0)
     .bind(&value)
+    .bind(&external_id)
     .fetch_optional(&mut **tx)
     .await?
     .ok_or_else(|| Error::conflict("that type is already here"))?;
@@ -1967,7 +2252,7 @@ pub async fn types(tx: &mut Tx<'_>, ctx: &Ctx<'_>, paging: Paging) -> Result<Pag
     let _: Permit = ctx.permit(Action::View, Resource::Product { id: None })?;
 
     let rows = sqlx::query_as::<_, ProductType>(
-        "select id, value, created_at
+        "select id, value, external_id, created_at
          from product_type
          where scope = $1
            and deleted_at is null
@@ -1996,7 +2281,7 @@ pub async fn product_type(
     let _: Permit = ctx.permit(Action::View, Resource::Product { id: None })?;
 
     sqlx::query_as::<_, ProductType>(
-        "select id, value, created_at
+        "select id, value, external_id, created_at
          from product_type
          where scope = $1 and id = $2 and deleted_at is null",
     )
@@ -2011,21 +2296,54 @@ pub async fn delete_type(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ProductTypeId) -> R
     soft_delete(tx, ctx, "product_type", "type", id.as_uuid()).await
 }
 
-pub async fn create_tag(tx: &mut Tx<'_>, ctx: &Ctx<'_>, value: &str) -> Result<ProductTag> {
+/// The tag a previous import already left behind for this `external_id`, if
+/// any — so a second run finds it instead of making another one.
+async fn tag_by_external_id(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    external_id: &str,
+) -> Result<Option<ProductTag>> {
+    sqlx::query_as::<_, ProductTag>(
+        "select id, value, external_id, created_at
+         from product_tag
+         where scope = $1 and external_id = $2 and deleted_at is null",
+    )
+    .bind(ctx.scope.0)
+    .bind(external_id)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(Error::from)
+}
+
+pub async fn create_tag(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    value: &str,
+    external_id: Option<&str>,
+) -> Result<ProductTag> {
     let _: Permit = ctx.permit(Action::Write, Resource::Product { id: None })?;
 
     let value = required("value", value)?;
+    let external_id = nullable(external_id.map(str::to_owned));
+
+    if let Some(external_id) = &external_id {
+        if let Some(existing) = tag_by_external_id(tx, ctx, external_id).await? {
+            return Ok(existing);
+        }
+    }
+
     let id = ProductTagId::new();
 
     let row = sqlx::query_as::<_, ProductTag>(
-        "insert into product_tag (id, scope, value)
-         values ($1, $2, $3)
+        "insert into product_tag (id, scope, value, external_id)
+         values ($1, $2, $3, $4)
          on conflict do nothing
-         returning id, value, created_at",
+         returning id, value, external_id, created_at",
     )
     .bind(id.as_uuid())
     .bind(ctx.scope.0)
     .bind(&value)
+    .bind(&external_id)
     .fetch_optional(&mut **tx)
     .await?
     .ok_or_else(|| Error::conflict("that tag is already here"))?;
@@ -2047,7 +2365,7 @@ pub async fn tags(tx: &mut Tx<'_>, ctx: &Ctx<'_>, paging: Paging) -> Result<Page
     let _: Permit = ctx.permit(Action::View, Resource::Product { id: None })?;
 
     let rows = sqlx::query_as::<_, ProductTag>(
-        "select id, value, created_at
+        "select id, value, external_id, created_at
          from product_tag
          where scope = $1
            and deleted_at is null
@@ -2072,7 +2390,7 @@ pub async fn product_tag(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ProductTagId) -> Re
     let _: Permit = ctx.permit(Action::View, Resource::Product { id: None })?;
 
     sqlx::query_as::<_, ProductTag>(
-        "select id, value, created_at
+        "select id, value, external_id, created_at
          from product_tag
          where scope = $1 and id = $2 and deleted_at is null",
     )
@@ -2155,6 +2473,26 @@ pub async fn product_tags(
 // Category
 // ---------------------------------------------------------------------------
 
+/// The category a previous import already left behind for this `external_id`,
+/// if any — so a second run finds it instead of making another one.
+async fn category_by_external_id(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    external_id: &str,
+) -> Result<Option<ProductCategory>> {
+    sqlx::query_as::<_, ProductCategory>(concat!(
+        "select ",
+        category_columns!(),
+        " from product_category
+         where scope = $1 and external_id = $2 and deleted_at is null"
+    ))
+    .bind(ctx.scope.0)
+    .bind(external_id)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(Error::from)
+}
+
 pub async fn create_category(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -2172,12 +2510,19 @@ pub async fn create_category(
         category(tx, ctx, parent).await?;
     }
 
+    let external_id = nullable(new.external_id);
+    if let Some(external_id) = &external_id {
+        if let Some(existing) = category_by_external_id(tx, ctx, external_id).await? {
+            return Ok(existing);
+        }
+    }
+
     let id = CategoryId::new();
     let row = sqlx::query_as::<_, ProductCategory>(concat!(
         "insert into product_category
              (id, scope, parent_id, name, handle, description, rank, is_active, is_internal, \
-         metadata)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         external_id, metadata)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          on conflict do nothing
          returning ",
         category_columns!(),
@@ -2191,6 +2536,7 @@ pub async fn create_category(
     .bind(new.rank.unwrap_or(0))
     .bind(new.is_active.unwrap_or(false))
     .bind(new.is_internal.unwrap_or(false))
+    .bind(&external_id)
     .bind(metadata_or_empty(new.metadata))
     .fetch_optional(&mut **tx)
     .await?
@@ -2325,6 +2671,7 @@ pub async fn update_category(
              rank = coalesce($6, rank),
              is_active = coalesce($7, is_active),
              is_internal = coalesce($8, is_internal),
+             external_id = case when $10::bool then $11 else external_id end,
              metadata = coalesce($9, metadata)
          where scope = $1 and id = $2 and deleted_at is null
            and not exists (
@@ -2344,6 +2691,8 @@ pub async fn update_category(
     .bind(patch.is_active)
     .bind(patch.is_internal)
     .bind(patch.metadata)
+    .bind(patch.external_id.is_some())
+    .bind(nullable(patch.external_id))
     .fetch_optional(&mut **tx)
     .await?;
 
@@ -2680,6 +3029,177 @@ pub async fn remove_image(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ProductImageId) ->
         serde_json::json!({}),
     )
     .await
+}
+
+// ---------------------------------------------------------------------------
+// Images on a variant
+//
+// A pivot, not a nullable `product_image.variant_id`: Medusa models this the
+// same way (`ProductVariantProductImage`) because one image can belong to
+// several variants at once — a "front view" shot worn by both the red and
+// the blue variant is one row here twice, not a second copy of the image.
+// ---------------------------------------------------------------------------
+
+/// Attaches an image already on this variant's product to the variant
+/// itself. Idempotent: attaching one already attached changes nothing and
+/// still answers `Ok`.
+pub async fn attach_image_to_variant(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    variant_id: VariantId,
+    image_id: ProductImageId,
+) -> Result<()> {
+    let _: Permit = ctx.permit(Action::Write, Resource::Product { id: None })?;
+
+    let inserted = sqlx::query(
+        "insert into product_variant_image (id, scope, variant_id, image_id)
+         select $1, $2, v.id, i.id
+         from product_variant v
+         join product_image i on i.scope = v.scope and i.product_id = v.product_id
+         where v.scope = $2 and v.id = $3 and v.deleted_at is null and i.id = $4
+         on conflict do nothing",
+    )
+    .bind(Uuid::now_v7())
+    .bind(ctx.scope.0)
+    .bind(variant_id.as_uuid())
+    .bind(image_id.as_uuid())
+    .execute(&mut **tx)
+    .await?
+    .rows_affected();
+
+    if inserted == 0 {
+        let already: Option<Uuid> = sqlx::query_scalar(
+            "select variant_id from product_variant_image
+             where scope = $1 and variant_id = $2 and image_id = $3",
+        )
+        .bind(ctx.scope.0)
+        .bind(variant_id.as_uuid())
+        .bind(image_id.as_uuid())
+        .fetch_optional(&mut **tx)
+        .await?;
+
+        if already.is_none() {
+            return Err(Error::not_found("image"));
+        }
+    }
+
+    note(
+        tx,
+        ctx,
+        Action::Write,
+        "product_variant_image",
+        variant_id.as_uuid(),
+        serde_json::json!({ "image": image_id.to_string() }),
+    )
+    .await
+}
+
+pub async fn detach_image_from_variant(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    variant_id: VariantId,
+    image_id: ProductImageId,
+) -> Result<()> {
+    let _: Permit = ctx.permit(Action::Delete, Resource::Product { id: None })?;
+
+    let gone = sqlx::query(
+        "delete from product_variant_image
+         where scope = $1 and variant_id = $2 and image_id = $3",
+    )
+    .bind(ctx.scope.0)
+    .bind(variant_id.as_uuid())
+    .bind(image_id.as_uuid())
+    .execute(&mut **tx)
+    .await?
+    .rows_affected();
+
+    if gone == 0 {
+        return Err(Error::not_found("link"));
+    }
+
+    note(
+        tx,
+        ctx,
+        Action::Delete,
+        "product_variant_image",
+        variant_id.as_uuid(),
+        serde_json::json!({ "image": image_id.to_string() }),
+    )
+    .await
+}
+
+/// Every image attached to any of these variants, keyed by variant — one
+/// statement, so a page of variants does not cost one query each. A variant
+/// absent from the map has none of its own; the caller decides what that
+/// means (the storefront falls back to the product's).
+pub async fn variant_images(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    variant_ids: &[VariantId],
+) -> Result<std::collections::HashMap<VariantId, Vec<ProductImage>>> {
+    let _: Permit = ctx.permit(Action::View, Resource::Product { id: None })?;
+
+    let mut by_variant: std::collections::HashMap<VariantId, Vec<ProductImage>> =
+        std::collections::HashMap::new();
+    if variant_ids.is_empty() {
+        return Ok(by_variant);
+    }
+
+    let wanted: Vec<Uuid> = variant_ids.iter().map(VariantId::as_uuid).collect();
+    let rows: Vec<VariantImageRow> = sqlx::query_as(
+        "select l.variant_id, i.id, i.product_id, i.url, i.alt_text, i.rank, i.created_at
+         from product_variant_image l
+         join product_image i on i.scope = l.scope and i.id = l.image_id
+         where l.scope = $1 and l.variant_id = any($2)
+         order by i.rank, i.created_at, i.id
+         limit $3",
+    )
+    .bind(ctx.scope.0)
+    .bind(&wanted)
+    .bind(MAX_ATTACHED)
+    .fetch_all(&mut **tx)
+    .await?;
+
+    for row in rows {
+        by_variant
+            .entry(row.variant_id)
+            .or_default()
+            .push(ProductImage {
+                id: row.id,
+                product_id: row.product_id,
+                url: row.url,
+                alt_text: row.alt_text,
+                rank: row.rank,
+                created_at: row.created_at,
+            });
+    }
+
+    Ok(by_variant)
+}
+
+#[derive(Debug, Clone, FromRow)]
+struct VariantImageRow {
+    variant_id: VariantId,
+    id: ProductImageId,
+    product_id: ProductId,
+    url: String,
+    alt_text: Option<String>,
+    rank: i32,
+    created_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// One variant's own attached images, exactly as attached — no fallback to
+/// the product's. `store::get_variant` is where the fallback belongs; this is
+/// what the admin screen shows when deciding what to attach or detach next.
+pub async fn images_for_variant(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    variant_id: VariantId,
+) -> Result<Vec<ProductImage>> {
+    Ok(variant_images(tx, ctx, &[variant_id])
+        .await?
+        .remove(&variant_id)
+        .unwrap_or_default())
 }
 
 // ---------------------------------------------------------------------------

@@ -86,6 +86,7 @@ pub struct ProductView {
     pub subtitle: Option<String>,
     pub description: Option<String>,
     pub status: catalogue::ProductStatus,
+    pub rejected_reason: Option<String>,
     pub thumbnail_url: Option<String>,
     pub is_discountable: bool,
     pub product_type_id: Option<ProductTypeId>,
@@ -112,6 +113,7 @@ impl From<catalogue::Product> for ProductView {
             subtitle: row.subtitle,
             description: row.description,
             status: row.status,
+            rejected_reason: row.rejected_reason,
             thumbnail_url: row.thumbnail_url,
             is_discountable: row.is_discountable,
             product_type_id: row.product_type_id,
@@ -250,6 +252,7 @@ pub struct CollectionView {
     pub id: CollectionId,
     pub handle: String,
     pub title: String,
+    pub external_id: Option<String>,
     pub metadata: serde_json::Value,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
@@ -260,6 +263,7 @@ impl From<catalogue::ProductCollection> for CollectionView {
             id: row.id,
             handle: row.handle,
             title: row.title,
+            external_id: row.external_id,
             metadata: row.metadata,
             created_at: row.created_at,
         }
@@ -279,6 +283,7 @@ pub struct CategoryView {
     /// warehouse rather than a page on the shop.
     pub is_internal: bool,
     pub depth: usize,
+    pub external_id: Option<String>,
     pub metadata: serde_json::Value,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
@@ -296,6 +301,7 @@ impl From<catalogue::ProductCategory> for CategoryView {
             rank: row.rank,
             is_active: row.is_active,
             is_internal: row.is_internal,
+            external_id: row.external_id,
             metadata: row.metadata,
             created_at: row.created_at,
             updated_at: row.updated_at,
@@ -307,6 +313,7 @@ impl From<catalogue::ProductCategory> for CategoryView {
 pub struct TagView {
     pub id: ProductTagId,
     pub value: String,
+    pub external_id: Option<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -315,6 +322,7 @@ impl From<catalogue::ProductTag> for TagView {
         TagView {
             id: row.id,
             value: row.value,
+            external_id: row.external_id,
             created_at: row.created_at,
         }
     }
@@ -324,6 +332,7 @@ impl From<catalogue::ProductTag> for TagView {
 pub struct TypeView {
     pub id: ProductTypeId,
     pub value: String,
+    pub external_id: Option<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -332,6 +341,7 @@ impl From<catalogue::ProductType> for TypeView {
         TypeView {
             id: row.id,
             value: row.value,
+            external_id: row.external_id,
             created_at: row.created_at,
         }
     }
@@ -849,6 +859,39 @@ pub async fn archive_product(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ProductId) -> R
     ))
 }
 
+pub async fn submit_product_for_review(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ProductId,
+) -> Result<ProductView> {
+    Ok(ProductView::from(
+        catalogue::submit_for_review(tx, ctx, id).await?,
+    ))
+}
+
+pub async fn approve_product(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ProductId) -> Result<ProductView> {
+    Ok(ProductView::from(
+        catalogue::approve_product(tx, ctx, id).await?,
+    ))
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RejectProduct {
+    pub reason: String,
+}
+
+pub async fn reject_product(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ProductId,
+    body: RejectProduct,
+) -> Result<ProductView> {
+    Ok(ProductView::from(
+        catalogue::reject_product(tx, ctx, id, &body.reason).await?,
+    ))
+}
+
 // ---------------------------------------------------------------------------
 // Product images
 // ---------------------------------------------------------------------------
@@ -888,6 +931,46 @@ pub async fn add_image(
 
 pub async fn remove_image(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ProductImageId) -> Result<()> {
     catalogue::remove_image(tx, ctx, id).await
+}
+
+// ---------------------------------------------------------------------------
+// Images on a variant
+// ---------------------------------------------------------------------------
+
+pub async fn list_variant_images(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    variant_id: VariantId,
+) -> Result<Vec<ImageView>> {
+    Ok(catalogue::images_for_variant(tx, ctx, variant_id)
+        .await?
+        .into_iter()
+        .map(ImageView::from)
+        .collect())
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AttachVariantImage {
+    pub image_id: ProductImageId,
+}
+
+pub async fn attach_image_to_variant(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    variant_id: VariantId,
+    body: AttachVariantImage,
+) -> Result<()> {
+    catalogue::attach_image_to_variant(tx, ctx, variant_id, body.image_id).await
+}
+
+pub async fn detach_image_from_variant(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    variant_id: VariantId,
+    image_id: ProductImageId,
+) -> Result<()> {
+    catalogue::detach_image_from_variant(tx, ctx, variant_id, image_id).await
 }
 
 // ---------------------------------------------------------------------------
@@ -1292,6 +1375,7 @@ pub async fn list_collections(
 pub struct CreateCollection {
     pub title: String,
     pub handle: String,
+    pub external_id: Option<String>,
 }
 
 pub async fn create_collection(
@@ -1300,7 +1384,14 @@ pub async fn create_collection(
     body: CreateCollection,
 ) -> Result<CollectionView> {
     Ok(CollectionView::from(
-        catalogue::create_collection(tx, ctx, &body.title, &body.handle).await?,
+        catalogue::create_collection(
+            tx,
+            ctx,
+            &body.title,
+            &body.handle,
+            body.external_id.as_deref(),
+        )
+        .await?,
     ))
 }
 
@@ -1319,6 +1410,8 @@ pub async fn get_collection(
 pub struct UpdateCollection {
     pub title: Option<String>,
     pub handle: Option<String>,
+    #[serde(default, deserialize_with = "double_option")]
+    pub external_id: Option<Option<String>>,
 }
 
 pub async fn update_collection(
@@ -1327,9 +1420,15 @@ pub async fn update_collection(
     id: CollectionId,
     body: UpdateCollection,
 ) -> Result<CollectionView> {
-    let row =
-        catalogue::update_collection(tx, ctx, id, body.title.as_deref(), body.handle.as_deref())
-            .await?;
+    let row = catalogue::update_collection(
+        tx,
+        ctx,
+        id,
+        body.title.as_deref(),
+        body.handle.as_deref(),
+        body.external_id.as_ref().map(|inner| inner.as_deref()),
+    )
+    .await?;
     Ok(CollectionView::from(row))
 }
 
@@ -1353,11 +1452,12 @@ pub async fn list_types(
 #[serde(deny_unknown_fields)]
 pub struct CreateValue {
     pub value: String,
+    pub external_id: Option<String>,
 }
 
 pub async fn create_type(tx: &mut Tx<'_>, ctx: &Ctx<'_>, body: CreateValue) -> Result<TypeView> {
     Ok(TypeView::from(
-        catalogue::create_type(tx, ctx, &body.value).await?,
+        catalogue::create_type(tx, ctx, &body.value, body.external_id.as_deref()).await?,
     ))
 }
 
@@ -1371,7 +1471,7 @@ pub async fn list_tags(tx: &mut Tx<'_>, ctx: &Ctx<'_>, query: ListQuery) -> Resu
 
 pub async fn create_tag(tx: &mut Tx<'_>, ctx: &Ctx<'_>, body: CreateValue) -> Result<TagView> {
     Ok(TagView::from(
-        catalogue::create_tag(tx, ctx, &body.value).await?,
+        catalogue::create_tag(tx, ctx, &body.value, body.external_id.as_deref()).await?,
     ))
 }
 
@@ -1417,6 +1517,7 @@ pub struct CreateCategory {
     pub rank: Option<i32>,
     pub is_active: Option<bool>,
     pub is_internal: Option<bool>,
+    pub external_id: Option<String>,
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -1433,6 +1534,7 @@ pub async fn create_category(
         rank: body.rank,
         is_active: body.is_active,
         is_internal: body.is_internal,
+        external_id: body.external_id,
         metadata: body.metadata,
     };
     Ok(CategoryView::from(
@@ -1453,6 +1555,7 @@ pub struct UpdateCategory {
     pub rank: Option<i32>,
     pub is_active: Option<bool>,
     pub is_internal: Option<bool>,
+    pub external_id: Option<String>,
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -1469,6 +1572,7 @@ pub async fn update_category(
         rank: body.rank,
         is_active: body.is_active,
         is_internal: body.is_internal,
+        external_id: body.external_id,
         metadata: body.metadata,
     };
     Ok(CategoryView::from(
@@ -2941,6 +3045,30 @@ pub(super) static ROUTES: &[Route] = &[
     },
     Route {
         surface: Surface::Admin,
+        method: Method::Post,
+        path: "/admin/products/{id}/submit",
+        action: Action::Write,
+        domain: CATALOGUE,
+        summary: "Submit a draft or a rejected product for review",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Post,
+        path: "/admin/products/{id}/approve",
+        action: Action::Moderate,
+        domain: CATALOGUE,
+        summary: "Approve a proposed product and publish it",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Post,
+        path: "/admin/products/{id}/reject",
+        action: Action::Moderate,
+        domain: CATALOGUE,
+        summary: "Reject a proposed product, recording why",
+    },
+    Route {
+        surface: Surface::Admin,
         method: Method::Get,
         path: "/admin/products/{id}/images",
         action: Action::View,
@@ -3122,6 +3250,30 @@ pub(super) static ROUTES: &[Route] = &[
         action: Action::Write,
         domain: CATALOGUE,
         summary: "Set which option values a variant stands for",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Get,
+        path: "/admin/product-variants/{id}/images",
+        action: Action::View,
+        domain: CATALOGUE,
+        summary: "List a variant's own attached images",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Post,
+        path: "/admin/product-variants/{id}/images",
+        action: Action::Write,
+        domain: CATALOGUE,
+        summary: "Attach one of the product's images to a variant",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Delete,
+        path: "/admin/product-variants/{id}/images/{image_id}",
+        action: Action::Delete,
+        domain: CATALOGUE,
+        summary: "Detach an image from a variant",
     },
     Route {
         surface: Surface::Admin,

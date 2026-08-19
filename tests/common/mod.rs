@@ -687,3 +687,44 @@ impl Jobs for OnlyMine {
         Ok(())
     }
 }
+
+/// A host that grants every action except `Moderate`, so "a seller may submit
+/// their own listing but not approve it" can be asserted rather than assumed.
+pub struct NoModerate;
+
+impl Authorizer for NoModerate {
+    fn authorize(&self, _: &Actor, action: Action, _: &Resource) -> tezgah::Result<Permit> {
+        if action == Action::Moderate {
+            Err(tezgah::Error::denied())
+        } else {
+            Ok(Permit::granted())
+        }
+    }
+}
+
+impl Clock for NoModerate {
+    fn now(&self) -> DateTime<Utc> {
+        Utc::now()
+    }
+}
+
+#[async_trait]
+impl AuditSink for NoModerate {
+    async fn record(&self, _: &mut Tx<'_>, _: AuditEntry) -> tezgah::Result<()> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl EventSink for NoModerate {
+    async fn emit(&self, _: &mut Tx<'_>, _: Event) -> tezgah::Result<()> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl Jobs for NoModerate {
+    async fn enqueue(&self, _: &mut Tx<'_>, _: JobSpec) -> tezgah::Result<()> {
+        Ok(())
+    }
+}

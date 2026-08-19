@@ -970,6 +970,28 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
         admin_catalogue::archive_product(&mut tx, &ctx, ProductId::new())
     );
     denied!(
+        Method::Post,
+        "/admin/products/{id}/submit",
+        admin_catalogue::submit_product_for_review(&mut tx, &ctx, ProductId::new())
+    );
+    denied!(
+        Method::Post,
+        "/admin/products/{id}/approve",
+        admin_catalogue::approve_product(&mut tx, &ctx, ProductId::new())
+    );
+    denied!(
+        Method::Post,
+        "/admin/products/{id}/reject",
+        admin_catalogue::reject_product(
+            &mut tx,
+            &ctx,
+            ProductId::new(),
+            admin_catalogue::RejectProduct {
+                reason: "not what was described".to_string()
+            }
+        )
+    );
+    denied!(
         Method::Get,
         "/admin/products/{id}/images",
         admin_catalogue::list_images(&mut tx, &ctx, ProductId::new())
@@ -1167,6 +1189,33 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
     );
     denied!(
         Method::Get,
+        "/admin/product-variants/{id}/images",
+        admin_catalogue::list_variant_images(&mut tx, &ctx, VariantId::new())
+    );
+    denied!(
+        Method::Post,
+        "/admin/product-variants/{id}/images",
+        admin_catalogue::attach_image_to_variant(
+            &mut tx,
+            &ctx,
+            VariantId::new(),
+            admin_catalogue::AttachVariantImage {
+                image_id: ProductImageId::new()
+            }
+        )
+    );
+    denied!(
+        Method::Delete,
+        "/admin/product-variants/{id}/images/{image_id}",
+        admin_catalogue::detach_image_from_variant(
+            &mut tx,
+            &ctx,
+            VariantId::new(),
+            ProductImageId::new()
+        )
+    );
+    denied!(
+        Method::Get,
         "/admin/product-categories",
         admin_catalogue::list_categories(&mut tx, &ctx, admin_catalogue::ListCategories::default())
     );
@@ -1227,7 +1276,8 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
             &mut tx,
             &ctx,
             admin_catalogue::CreateValue {
-                value: "sale".to_string()
+                value: "sale".to_string(),
+                external_id: None,
             }
         )
     );
@@ -1248,7 +1298,8 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
             &mut tx,
             &ctx,
             admin_catalogue::CreateValue {
-                value: "physical".to_string()
+                value: "physical".to_string(),
+                external_id: None,
             }
         )
     );
@@ -1271,6 +1322,7 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
             admin_catalogue::CreateCollection {
                 title: "Summer".to_string(),
                 handle: "summer".to_string(),
+                external_id: None,
             }
         )
     );

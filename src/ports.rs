@@ -68,6 +68,13 @@ pub enum Action {
     /// Moves money: capture, refund, cancel. Always answered separately from
     /// `Write`, because editing an order and refunding one are not one power.
     Settle,
+    /// Decides someone else's submission: approving or rejecting a
+    /// marketplace seller's proposed listing. Answered separately from
+    /// `Write` for the same reason `Settle` is — the seller who may edit
+    /// their own draft is not thereby the one who may put it in front of
+    /// customers, and a host granting the second should not be granting the
+    /// first by accident.
+    Moderate,
 }
 
 /// What is being reached for, carrying the ids an authorizer needs to judge

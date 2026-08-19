@@ -192,6 +192,106 @@ async fn a_variant_of_a_draft_is_not_here_either() -> tezgah::Result<()> {
     Ok(())
 }
 
+/// A product sold in more than one colour: picking a variant shows that
+/// variant's own photos, not the other colour's — and a variant nobody has
+/// photographed specifically still shows something, the product's own.
+#[tokio::test]
+async fn a_variant_shows_its_own_images_from_the_storefront() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let made = catalogue::create_product(&mut tx, &ctx, draft("kilim")).await?;
+    let red = catalogue::create_variant(
+        &mut tx,
+        &ctx,
+        made.id,
+        catalogue::NewVariant {
+            title: "Red".into(),
+            ..catalogue::NewVariant::default()
+        },
+    )
+    .await?;
+    let blue = catalogue::create_variant(
+        &mut tx,
+        &ctx,
+        made.id,
+        catalogue::NewVariant {
+            title: "Blue".into(),
+            ..catalogue::NewVariant::default()
+        },
+    )
+    .await?;
+
+    let shared = catalogue::add_image(
+        &mut tx,
+        &ctx,
+        made.id,
+        catalogue::NewImage {
+            url: "https://example.com/shared.jpg".into(),
+            ..catalogue::NewImage::default()
+        },
+    )
+    .await?;
+    let red_only = catalogue::add_image(
+        &mut tx,
+        &ctx,
+        made.id,
+        catalogue::NewImage {
+            url: "https://example.com/red.jpg".into(),
+            ..catalogue::NewImage::default()
+        },
+    )
+    .await?;
+    catalogue::attach_image_to_variant(&mut tx, &ctx, red.id, red_only.id).await?;
+
+    catalogue::publish_product(&mut tx, &ctx, made.id).await?;
+    let token = any_token(&mut tx, &ctx).await;
+
+    let seen_red = store::get_variant(&mut tx, &ctx, &token, red.id).await?;
+    let red_ids: Vec<_> = seen_red.images.iter().map(|image| image.id).collect();
+    assert_eq!(
+        red_ids,
+        vec![red_only.id],
+        "the red variant shows only what was attached to it, not the shared gallery too"
+    );
+
+    let seen_blue = store::get_variant(&mut tx, &ctx, &token, blue.id).await?;
+    let blue_ids: Vec<_> = seen_blue.images.iter().map(|image| image.id).collect();
+    assert_eq!(
+        blue_ids,
+        vec![shared.id],
+        "a variant nothing was attached to falls back to the product's own images"
+    );
+
+    let listed = store::list_variants(
+        &mut tx,
+        &ctx,
+        &token,
+        ListVariants {
+            product_id: made.id,
+            after: None,
+            limit: None,
+        },
+    )
+    .await?;
+    let by_id: std::collections::HashMap<_, _> = listed
+        .items
+        .into_iter()
+        .map(|variant| (variant.id, variant.images.len()))
+        .collect();
+    assert_eq!(by_id.get(&red.id), Some(&1));
+    assert_eq!(
+        by_id.get(&blue.id),
+        Some(&1),
+        "the list falls back the same way get_variant does"
+    );
+
+    drop(tx);
+    shop.close().await;
+    Ok(())
+}
+
 #[tokio::test]
 async fn a_cart_is_not_reached_by_somebody_else() -> tezgah::Result<()> {
     let shop = Shop::open().await;

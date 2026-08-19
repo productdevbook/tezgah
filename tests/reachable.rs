@@ -309,7 +309,7 @@ const TOLERATED: [(&str, &str); 48] = [
 ];
 
 /// Tables no code in `src/` writes to, each with the reason.
-const TOLERATED_TABLES: [(&str, &str); 6] = [
+const TOLERATED_TABLES: [(&str, &str); 7] = [
     (
         "tezgah_table",
         "the register a migration writes through `tezgah_register`, read by \
@@ -339,6 +339,11 @@ const TOLERATED_TABLES: [(&str, &str); 6] = [
         "tezgah_order_status_move",
         "the allowed status moves, declared in SQL so the database refuses \
          one the library never asked for",
+    ),
+    (
+        "tezgah_product_status_move",
+        "the same shape for a product's status, since `proposed` and \
+         `rejected` need the same database-level backstop",
     ),
 ];
 

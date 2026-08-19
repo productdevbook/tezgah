@@ -3,13 +3,14 @@
 
 mod common;
 
-use common::Shop;
+use common::{NoModerate, Shop};
 use tezgah::catalogue::{
-    self, CategoryTranslation, Combination, NewCategory, NewProduct, NewVariant, ProductFilter,
-    ProductStatus, ProductTranslation, VariantPlan,
+    self, CategoryTranslation, Combination, NewCategory, NewImage, NewProduct, NewVariant,
+    ProductFilter, ProductStatus, ProductTranslation, VariantPlan,
 };
 use tezgah::id::{CategoryId, ProductId};
 use tezgah::page::Paging;
+use tezgah::ports::Actor;
 use uuid::Uuid;
 
 fn draft(handle: &str, title: &str) -> NewProduct {
@@ -406,13 +407,13 @@ async fn a_product_is_filed_and_found_by_where_it_is_filed() {
     let ctx = shop.ctx();
     let mut tx = shop.begin().await;
 
-    let collection = catalogue::create_collection(&mut tx, &ctx, "Summer", "summer")
+    let collection = catalogue::create_collection(&mut tx, &ctx, "Summer", "summer", None)
         .await
         .expect("a collection");
-    let tag = catalogue::create_tag(&mut tx, &ctx, "handmade")
+    let tag = catalogue::create_tag(&mut tx, &ctx, "handmade", None)
         .await
         .expect("a tag");
-    let kind = catalogue::create_type(&mut tx, &ctx, "rug")
+    let kind = catalogue::create_type(&mut tx, &ctx, "rug", None)
         .await
         .expect("a type");
 
@@ -851,6 +852,310 @@ async fn renaming_onto_a_taken_handle_is_refused_without_killing_the_transaction
     .await
     .expect("the transaction to still take a free handle");
     assert_eq!(renamed.handle, "cicim-2");
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+#[tokio::test]
+async fn a_second_import_by_external_id_does_not_duplicate_the_taxonomy() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let kind = catalogue::create_type(&mut tx, &ctx, "Rug", Some("pim-1"))
+        .await
+        .expect("a type");
+    let again = catalogue::create_type(&mut tx, &ctx, "Rug (renamed upstream)", Some("pim-1"))
+        .await
+        .expect("the same type again");
+    assert_eq!(kind.id, again.id);
+    assert_eq!(
+        again.value, "Rug",
+        "the second run found the first row rather than another"
+    );
+
+    let tag = catalogue::create_tag(&mut tx, &ctx, "Handmade", Some("pim-2"))
+        .await
+        .expect("a tag");
+    let again = catalogue::create_tag(&mut tx, &ctx, "Handmade (renamed upstream)", Some("pim-2"))
+        .await
+        .expect("the same tag again");
+    assert_eq!(tag.id, again.id);
+
+    let collection = catalogue::create_collection(&mut tx, &ctx, "Summer", "summer", Some("pim-3"))
+        .await
+        .expect("a collection");
+    let again = catalogue::create_collection(
+        &mut tx,
+        &ctx,
+        "Summer (renamed upstream)",
+        "summer-2",
+        Some("pim-3"),
+    )
+    .await
+    .expect("the same collection again");
+    assert_eq!(collection.id, again.id);
+
+    let category = catalogue::create_category(
+        &mut tx,
+        &ctx,
+        NewCategory {
+            name: "Rugs".into(),
+            handle: "rugs".into(),
+            external_id: Some("pim-4".into()),
+            ..NewCategory::default()
+        },
+    )
+    .await
+    .expect("a category");
+    let again = catalogue::create_category(
+        &mut tx,
+        &ctx,
+        NewCategory {
+            name: "Rugs (renamed upstream)".into(),
+            handle: "rugs-2".into(),
+            external_id: Some("pim-4".into()),
+            ..NewCategory::default()
+        },
+    )
+    .await
+    .expect("the same category again");
+    assert_eq!(category.id, again.id);
+
+    let types = catalogue::types(&mut tx, &ctx, Paging::first(10))
+        .await
+        .expect("to list types");
+    assert_eq!(types.items.len(), 1, "the taxonomy did not duplicate");
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+#[tokio::test]
+async fn a_variant_shows_its_own_images_and_falls_back_to_the_products() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let product = catalogue::create_product(&mut tx, &ctx, draft("kilim", "A kilim"))
+        .await
+        .expect("a product");
+    let red = catalogue::create_variant(
+        &mut tx,
+        &ctx,
+        product.id,
+        NewVariant {
+            title: "Red".into(),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("a red variant");
+    let blue = catalogue::create_variant(
+        &mut tx,
+        &ctx,
+        product.id,
+        NewVariant {
+            title: "Blue".into(),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("a blue variant");
+
+    // A general, unattached product image — proves `images_for_variant`
+    // returns only what is attached, not the product's whole gallery.
+    catalogue::add_image(
+        &mut tx,
+        &ctx,
+        product.id,
+        NewImage {
+            url: "https://example.com/general.jpg".into(),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("a general image");
+    let red_front = catalogue::add_image(
+        &mut tx,
+        &ctx,
+        product.id,
+        NewImage {
+            url: "https://example.com/red-front.jpg".into(),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("a red image");
+
+    catalogue::attach_image_to_variant(&mut tx, &ctx, red.id, red_front.id)
+        .await
+        .expect("to attach the red image to the red variant");
+
+    let red_images = catalogue::images_for_variant(&mut tx, &ctx, red.id)
+        .await
+        .expect("the red variant's own images");
+    assert_eq!(red_images.len(), 1);
+    assert_eq!(red_images[0].id, red_front.id);
+
+    let blue_images = catalogue::images_for_variant(&mut tx, &ctx, blue.id)
+        .await
+        .expect("the blue variant's own images");
+    assert!(
+        blue_images.is_empty(),
+        "the blue variant has nothing of its own attached"
+    );
+
+    let by_variant = catalogue::variant_images(&mut tx, &ctx, &[red.id, blue.id])
+        .await
+        .expect("a batch read");
+    assert_eq!(by_variant.get(&red.id).map(Vec::len), Some(1));
+    assert!(by_variant.get(&blue.id).is_none());
+
+    // Attaching an image already belonging to a different product is refused.
+    let other = catalogue::create_product(&mut tx, &ctx, draft("cicim", "A cicim"))
+        .await
+        .expect("a second product");
+    let elsewhere = catalogue::add_image(
+        &mut tx,
+        &ctx,
+        other.id,
+        NewImage {
+            url: "https://example.com/elsewhere.jpg".into(),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("an image on the other product");
+    let refused = catalogue::attach_image_to_variant(&mut tx, &ctx, red.id, elsewhere.id).await;
+    assert!(
+        refused
+            .expect_err("a foreign image is not attachable")
+            .is_not_found()
+    );
+
+    catalogue::detach_image_from_variant(&mut tx, &ctx, red.id, red_front.id)
+        .await
+        .expect("to detach");
+    let red_images = catalogue::images_for_variant(&mut tx, &ctx, red.id)
+        .await
+        .expect("the red variant's images after detaching");
+    assert!(red_images.is_empty());
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+#[tokio::test]
+async fn a_proposed_product_is_approved_or_rejected() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let approved = catalogue::create_product(&mut tx, &ctx, draft("kilim", "A kilim"))
+        .await
+        .expect("a draft");
+    let proposed = catalogue::submit_for_review(&mut tx, &ctx, approved.id)
+        .await
+        .expect("to submit for review");
+    assert_eq!(proposed.status, ProductStatus::Proposed);
+    assert!(shop.host.emitted("product.proposed"));
+
+    let published = catalogue::approve_product(&mut tx, &ctx, approved.id)
+        .await
+        .expect("to approve");
+    assert_eq!(published.status, ProductStatus::Published);
+    assert!(shop.host.emitted("product.published"));
+
+    let rejected_one = catalogue::create_product(&mut tx, &ctx, draft("cicim", "A cicim"))
+        .await
+        .expect("a second draft");
+    catalogue::submit_for_review(&mut tx, &ctx, rejected_one.id)
+        .await
+        .expect("to submit for review");
+    let rejected = catalogue::reject_product(&mut tx, &ctx, rejected_one.id, "blurry photos")
+        .await
+        .expect("to reject");
+    assert_eq!(rejected.status, ProductStatus::Rejected);
+    assert_eq!(rejected.rejected_reason.as_deref(), Some("blurry photos"));
+    assert!(shop.host.emitted("product.rejected"));
+
+    // A rejected listing is not a dead end: the seller can resubmit it.
+    let resubmitted = catalogue::submit_for_review(&mut tx, &ctx, rejected_one.id)
+        .await
+        .expect("to resubmit after fixing it");
+    assert_eq!(resubmitted.status, ProductStatus::Proposed);
+    assert_eq!(
+        resubmitted.rejected_reason, None,
+        "the old reason does not survive a resubmission"
+    );
+
+    // A plain status change does not reach into a review: it is not the
+    // function that gates it.
+    let bypass =
+        catalogue::set_product_status(&mut tx, &ctx, rejected_one.id, ProductStatus::Published)
+            .await;
+    assert!(
+        bypass
+            .expect_err("proposed is not moved by a plain status change")
+            .is_conflict()
+    );
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+#[tokio::test]
+async fn approving_or_rejecting_needs_moderate_not_write() {
+    let shop = Shop::open().await;
+    let no_moderate = NoModerate;
+    let ctx = shop.ctx();
+    let restricted = shop.ctx_as(Actor::Staff { id: Uuid::now_v7() }, &no_moderate);
+    let mut tx = shop.begin().await;
+
+    let product = catalogue::create_product(&mut tx, &ctx, draft("kilim", "A kilim"))
+        .await
+        .expect("a draft");
+    // Submitting is the seller's own write, still allowed.
+    catalogue::submit_for_review(&mut tx, &ctx, product.id)
+        .await
+        .expect("to submit");
+
+    let denied = catalogue::approve_product(&mut tx, &restricted, product.id).await;
+    assert!(denied.expect_err("approving needs Moderate").is_denied());
+
+    let denied = catalogue::reject_product(&mut tx, &restricted, product.id, "no").await;
+    assert!(denied.expect_err("rejecting needs Moderate").is_denied());
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+#[tokio::test]
+async fn the_database_refuses_a_status_move_the_library_never_asked_for() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let product = catalogue::create_product(&mut tx, &ctx, draft("kilim", "A kilim"))
+        .await
+        .expect("a draft");
+    catalogue::publish_product(&mut tx, &ctx, product.id)
+        .await
+        .expect("to publish");
+
+    // Bypassing the library's own guard (raw SQL, the shape a bug or a
+    // direct write against the table would take): the database's own
+    // trigger is what actually stands in the way, not just the guard above.
+    let bypassed = sqlx::query("update product set status = 'proposed' where id = $1")
+        .bind(product.id.as_uuid())
+        .execute(&mut *tx)
+        .await;
+    assert!(
+        bypassed.is_err(),
+        "the database allowed a product to go from published to proposed"
+    );
 
     tx.rollback().await.expect("to roll back");
     shop.close().await;
