@@ -2984,6 +2984,11 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
     );
     denied!(
         Method::Get,
+        "/admin/claims/{id}/lines",
+        admin_order::claim_lines(&mut tx, &ctx, ClaimId::new())
+    );
+    denied!(
+        Method::Get,
         "/admin/claims/{id}/items",
         admin_order::claim_actions(&mut tx, &ctx, ClaimId::new())
     );

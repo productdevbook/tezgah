@@ -388,12 +388,14 @@ async fn a_claim_replaces_through_the_change_mechanism() -> tezgah::Result<()> {
                 quantity: 1,
                 reason: Some("production_failure".into()),
                 note: None,
+                images: vec!["https://example.com/claims/dent.jpg".into()],
             }],
             replacements: vec![ClaimLine {
                 order_line_item_id: line_id,
                 quantity: 1,
                 reason: None,
                 note: None,
+                images: Vec::new(),
             }],
             collect: false,
             location_id: None,
@@ -416,6 +418,23 @@ async fn a_claim_replaces_through_the_change_mechanism() -> tezgah::Result<()> {
     assert!(changes.items.iter().any(|change| {
         change.change_type == "claim" && change.order_claim_id == Some(claim.id)
     }));
+
+    // What went wrong is readable back, photo included — an operator judging
+    // the claim is not taking the customer's word for it.
+    let lines = order::claim_items(&mut tx, &ctx, claim.id).await?;
+    let faulty = lines
+        .iter()
+        .find(|line| !line.is_additional_item)
+        .expect("the faulty line");
+    let images: Vec<String> =
+        serde_json::from_value(faulty.images.clone().expect("images were written"))
+            .expect("a list of urls");
+    assert_eq!(images, vec!["https://example.com/claims/dent.jpg"]);
+    let replacement = lines
+        .iter()
+        .find(|line| line.is_additional_item)
+        .expect("the replacement line");
+    assert!(replacement.images.is_none());
 
     tx.rollback().await.expect("to roll back");
     shop.close().await;

@@ -4387,6 +4387,10 @@ pub struct ClaimLine {
     /// `missing_item`, `wrong_item`, `production_failure` or `other`.
     pub reason: Option<String>,
     pub note: Option<String>,
+    /// What the damage looks like. tezgah holds no media of its own — these
+    /// are URLs into whatever the host stores files with, the same pattern
+    /// `product_image` uses for a product's own pictures.
+    pub images: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -4475,11 +4479,17 @@ pub async fn request_claim(
         .map(|line| (line, false))
         .chain(request.replacements.iter().map(|line| (line, true)))
     {
+        let images = if line.images.is_empty() {
+            None
+        } else {
+            Some(serde_json::json!(line.images))
+        };
+
         sqlx::query(
             "insert into order_claim_item
                  (id, scope, order_claim_id, order_line_item_id, reason, quantity,
-                  is_additional_item, note)
-             values ($1, $2, $3, $4, $5, $6, $7, $8)",
+                  is_additional_item, images, note)
+             values ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
         )
         .bind(Uuid::now_v7())
         .bind(ctx.scope.0)
@@ -4488,6 +4498,7 @@ pub async fn request_claim(
         .bind(&line.reason)
         .bind(line.quantity)
         .bind(additional)
+        .bind(images)
         .bind(&line.note)
         .execute(&mut **tx)
         .await?;
@@ -4572,6 +4583,80 @@ pub async fn request_claim(
     .await?;
 
     Ok(claim)
+}
+
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct ClaimItem {
+    pub id: Uuid,
+    pub order_claim_id: ClaimId,
+    pub order_line_item_id: LineItemId,
+    pub reason: Option<String>,
+    pub quantity: i32,
+    pub is_additional_item: bool,
+    pub images: Option<Value>,
+    pub note: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+const CLAIM_ITEM_COLUMNS: &str = "id, order_claim_id, order_line_item_id, reason, quantity, \
+                                  is_additional_item, images, note, created_at";
+
+/// A claim's own lines, so a limit exists even though nothing has come close
+/// to it: a claim opens on an order's line items, and `MAX_LINES` is already
+/// how many of those an order can hold.
+const MAX_CLAIM_ITEMS: i64 = MAX_LINES;
+
+/// What was claimed: one row per line, faulty or replacement, each with
+/// whatever photos came with it.
+pub async fn claim_items(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ClaimId) -> Result<Vec<ClaimItem>> {
+    let found: Option<(Uuid, Option<Uuid>)> = sqlx::query_as(
+        r#"select oc.order_id, o.customer_id
+           from order_claim oc
+           join "order" o on o.scope = oc.scope and o.id = oc.order_id
+           where oc.scope = $1 and oc.id = $2"#,
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    // A miss still asks — with the claim's own id standing in for the
+    // order's, the same way `read`'s does — so a wrong id and somebody
+    // else's claim answer the same way rather than telling a stranger which
+    // ids exist.
+    let (order_id, customer_id) = match found {
+        Some(row) => row,
+        None => {
+            let _: Permit = ctx.permit(
+                Action::View,
+                Resource::Order {
+                    id: id.as_uuid(),
+                    customer: None,
+                },
+            )?;
+            return Err(Error::not_found("claim"));
+        }
+    };
+
+    let _: Permit = ctx.permit(
+        Action::View,
+        Resource::Order {
+            id: order_id,
+            customer: customer_id,
+        },
+    )?;
+
+    Ok(sqlx::query_as::<_, ClaimItem>(&format!(
+        "select {CLAIM_ITEM_COLUMNS} from order_claim_item
+         where scope = $1 and order_claim_id = $2
+         order by is_additional_item, created_at, id
+         limit $3"
+    ))
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .bind(MAX_CLAIM_ITEMS)
+    .fetch_all(&mut **tx)
+    .await?)
 }
 
 // ---------------------------------------------------------------------------

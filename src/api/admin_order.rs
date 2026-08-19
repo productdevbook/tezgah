@@ -491,6 +491,41 @@ impl From<order::Claim> for ClaimView {
     }
 }
 
+/// One line of a claim: what was wrong with it, or what is being sent
+/// instead — [`order::ClaimLine::images`] is what a support agent judges the
+/// damage from.
+#[derive(Debug, Clone, Serialize)]
+pub struct ClaimItemView {
+    pub id: Uuid,
+    pub order_claim_id: ClaimId,
+    pub order_line_item_id: LineItemId,
+    pub reason: Option<String>,
+    pub quantity: i32,
+    pub is_additional_item: bool,
+    pub images: Vec<String>,
+    pub note: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl From<order::ClaimItem> for ClaimItemView {
+    fn from(row: order::ClaimItem) -> Self {
+        ClaimItemView {
+            images: row
+                .images
+                .map(|value| serde_json::from_value(value).unwrap_or_default())
+                .unwrap_or_default(),
+            id: row.id,
+            order_claim_id: row.order_claim_id,
+            order_line_item_id: row.order_line_item_id,
+            reason: row.reason,
+            quantity: row.quantity,
+            is_additional_item: row.is_additional_item,
+            note: row.note,
+            created_at: row.created_at,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct PaymentView {
     pub id: PaymentId,
@@ -2283,6 +2318,10 @@ pub struct ClaimLineIn {
     pub quantity: i32,
     pub reason: Option<String>,
     pub note: Option<String>,
+    /// Photos of the damage, as URLs into wherever the host keeps files —
+    /// tezgah stores none of its own.
+    #[serde(default)]
+    pub images: Vec<String>,
 }
 
 impl ClaimLineIn {
@@ -2292,6 +2331,7 @@ impl ClaimLineIn {
             quantity: self.quantity,
             reason: self.reason,
             note: self.note,
+            images: self.images,
         }
     }
 }
@@ -2377,6 +2417,17 @@ pub async fn get_claim(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ClaimId) -> Result<Cl
     let row = read_claim(tx, ctx, id).await?;
     let _: Permit = ctx.permit(Action::View, order_resource(row.order_id, None))?;
     Ok(row.into())
+}
+
+/// What was actually claimed: one row per faulty or replacement line, with
+/// whatever photos of the damage came in with it.
+pub async fn claim_lines(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: ClaimId,
+) -> Result<Vec<ClaimItemView>> {
+    let rows = order::claim_items(tx, ctx, id).await?;
+    Ok(rows.into_iter().map(ClaimItemView::from).collect())
 }
 
 pub async fn claim_actions(
@@ -4322,6 +4373,13 @@ pub(super) static ROUTES: &[Route] = &[
     route!(Get, "/admin/claims", View, "order", "List claims"),
     route!(Post, "/admin/claims", Write, "order", "Raise a claim"),
     route!(Get, "/admin/claims/{id}", View, "order", "Fetch one claim"),
+    route!(
+        Get,
+        "/admin/claims/{id}/lines",
+        View,
+        "order",
+        "What was claimed, faulty or replacement, with any photos"
+    ),
     route!(
         Get,
         "/admin/claims/{id}/items",
