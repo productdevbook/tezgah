@@ -1348,6 +1348,7 @@ async fn stall(pool: &PgPool, ctx: &Ctx<'_>, held: Claim<'_>, bump: bool) -> Res
     // symptom (a called row's own driver losing its own claim) does not
     // match anything in the code as read. Remove before merging.
     #[derive(sqlx::FromRow, Debug)]
+    #[allow(dead_code)]
     struct Before {
         state: String,
         attempts: i32,
