@@ -26,7 +26,7 @@ export const GROUPS: Group[] = [
     sections: [
       { slug: "products", title: "Products", tag: "catalogue", operations: 79, built: true },
       { slug: "pricing", title: "Pricing", tag: "pricing", operations: 23, built: false },
-      { slug: "promotions", title: "Promotions", tag: "promotion", operations: 19, built: false },
+      { slug: "promotions", title: "Promotions", tag: "promotion", operations: 19, built: true },
     ],
   },
   {
@@ -35,7 +35,7 @@ export const GROUPS: Group[] = [
       { slug: "orders", title: "Orders", tag: "order", operations: 112, built: true },
       { slug: "baskets", title: "Baskets", tag: "order_basket", operations: 5, built: false },
       { slug: "carts", title: "Carts", tag: "cart", operations: 11, built: false },
-      { slug: "subscriptions", title: "Subscriptions", tag: "subscription", operations: 26, built: false },
+      { slug: "subscriptions", title: "Subscriptions", tag: "subscription", operations: 26, built: true },
     ],
   },
   {
@@ -57,8 +57,8 @@ export const GROUPS: Group[] = [
   {
     title: "The shop",
     sections: [
-      { slug: "customers", title: "Customers", tag: "customer", operations: 25, built: false },
-      { slug: "store", title: "Store", tag: "store", operations: 32, built: false },
+      { slug: "customers", title: "Customers", tag: "customer", operations: 25, built: true },
+      { slug: "store", title: "Store", tag: "store", operations: 32, built: true },
       { slug: "digital", title: "Digital", tag: "digital", operations: 8, built: false },
       { slug: "workflows", title: "Workflows", tag: "workflow", operations: 4, built: false },
     ],

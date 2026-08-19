@@ -1,3 +1,5 @@
+import type { z } from "zod"
+
 import type { paths } from "./schema"
 
 /**
@@ -22,6 +24,11 @@ export type ApiPath = keyof paths
  * `unreachable` is its own case rather than a status of zero: no host is
  * serving the API, which is the state this panel is written in, and a screen
  * that renders it as "nothing here yet" tells the reader something false.
+ *
+ * `drifted` is the one this panel needs most. Its types are transcribed from
+ * `src/api/*.rs` by hand (#202), so the crate can change one without this
+ * knowing. Parsing at the boundary turns that from a blank cell into a
+ * refusal that names the field.
  */
 export class ApiError extends Error {
   readonly kind: ApiErrorKind
@@ -42,7 +49,12 @@ export class ApiError extends Error {
   }
 }
 
-export type ApiErrorKind = "unreachable" | "denied" | "not_found" | "refused"
+export type ApiErrorKind =
+  | "unreachable"
+  | "denied"
+  | "not_found"
+  | "refused"
+  | "drifted"
 
 function kindOf(status: number): ApiErrorKind {
   if (status === 401 || status === 403) return "denied"
@@ -58,14 +70,15 @@ function fill(path: string, params: Record<string, string>): string {
   })
 }
 
-export async function get<T>(
+export async function get<S extends z.ZodTypeAny>(
   path: ApiPath,
   options: {
+    schema: S
     params?: Record<string, string>
     query?: Record<string, string | number | undefined>
     signal?: AbortSignal
-  } = {},
-): Promise<T> {
+  },
+): Promise<z.infer<S>> {
   const url = new URL(BASE + fill(path, options.params ?? {}), location.origin)
   for (const [key, value] of Object.entries(options.query ?? {})) {
     if (value !== undefined) url.searchParams.set(key, String(value))
@@ -92,5 +105,16 @@ export async function get<T>(
     )
   }
 
-  return (await response.json()) as T
+  const parsed = options.schema.safeParse(await response.json())
+  if (!parsed.success) {
+    throw new ApiError(
+      "drifted",
+      response.status,
+      parsed.error.issues
+        .slice(0, 3)
+        .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
+        .join("; "),
+    )
+  }
+  return parsed.data
 }
