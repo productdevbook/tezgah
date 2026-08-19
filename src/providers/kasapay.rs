@@ -32,19 +32,43 @@ use crate::payment::{Authorization, AuthorizationStatus, CaptureResult, RefundRe
 
 /// Converts a tezgah amount into kasapay's minor-unit [`kasapay_core::Money`].
 ///
-/// Errors rather than rounding or dropping: kasapay's `Currency` is nine
-/// variants, closed on purpose, and a shop selling outside them cannot be
-/// represented in a `ChargeRequest` at all — see this module's own doc and
-/// kasapay#149. Silently falling back to a nearby currency would be a shop
-/// charged in the wrong money; that is worse than refusing the call.
-pub fn to_kasapay_money(money: Money) -> Result<kasapay_core::Money> {
+/// `exponent` is the shop's own — [`crate::store::exponent`], the one place
+/// this crate reads "how many decimal places does this currency have"
+/// (tezgah#94, tezgah#171). `kasapay_core::Currency::exponent()` is read here
+/// for one thing only, same as the module doc says: to answer whether kasapay
+/// knows the currency at all. It is not consulted for rounding, because
+/// `Money::allocate` was already rounded at the shop's exponent before this
+/// function sees a part, and re-rounding each part at a second, possibly
+/// different exponent is how parts stop summing to the whole.
+///
+/// A shop's `currency` row is free to configure an exponent kasapay's own
+/// table disagrees with for that code — 0..=6, shop-editable, exactly per
+/// `store.rs`'s doc. This function does not adjudicate that disagreement by
+/// picking a side; it errors, because a mismatch here means kasapay will
+/// decode the minor units it is handed by its own fixed exponent, not the
+/// shop's, and silently proceeding would send a shop's money at a scale
+/// nothing downstream agreed to.
+///
+/// Also errors rather than rounding or dropping when kasapay does not know
+/// the currency at all: kasapay's `Currency` is nine variants, closed on
+/// purpose, and a shop selling outside them cannot be represented in a
+/// `ChargeRequest` — see this module's own doc and kasapay#149.
+pub fn to_kasapay_money(money: Money, exponent: u32) -> Result<kasapay_core::Money> {
     let currency = kasapay_core::Currency::from_str(money.currency.as_str()).map_err(|_| {
         Error::invalid(format!(
             "kasapay does not know currency {} (kasapay#149)",
             money.currency
         ))
     })?;
-    let exponent = currency.exponent();
+    let kasapay_exponent = currency.exponent();
+    if exponent != kasapay_exponent {
+        return Err(Error::invalid(format!(
+            "{} is configured at {exponent} decimal places but kasapay settles it at \
+             {kasapay_exponent} (kasapay#149) — reconcile the shop's currency row before \
+             routing it through kasapay",
+            money.currency
+        )));
+    }
     let scale = Decimal::from(10u64.pow(exponent));
     let minor = (money.amount.round_dp(exponent) * scale)
         .round()
@@ -54,16 +78,17 @@ pub fn to_kasapay_money(money: Money) -> Result<kasapay_core::Money> {
 }
 
 /// The inverse of [`to_kasapay_money`], for reading an amount back out of
-/// kasapay's answer.
+/// kasapay's answer. `exponent` is the same shop exponent the outgoing call
+/// used, for the same reason: kasapay's minor units are decoded at the scale
+/// they were encoded at, not re-derived from kasapay's own table.
 ///
 /// `kasapay_core::Currency::code()` always writes three ASCII letters, so
 /// [`Currency::parse`] cannot fail on it in practice — but this still reports
 /// rather than assumes, because a library does not panic on a fact about
 /// another crate that only holds today.
-pub fn from_kasapay_money(money: kasapay_core::Money) -> Result<Money> {
+pub fn from_kasapay_money(money: kasapay_core::Money, exponent: u32) -> Result<Money> {
     let currency = Currency::parse(money.currency().code())
         .map_err(|_| Error::bug("kasapay named a currency tezgah could not parse"))?;
-    let exponent = money.currency().exponent();
     let scale = Decimal::from(10u64.pow(exponent));
     Ok(Money::new(
         Decimal::from(money.minor_units()) / scale,
@@ -81,21 +106,26 @@ fn from_kasapay_error(err: kasapay_core::Error) -> Error {
 /// `payment_id` is the provider's own identifier — what
 /// [`kasapay_core::PaymentId::issued`] wraps — never tezgah's own
 /// [`crate::id::PaymentId`], which kasapay has never heard of.
+///
+/// `exponent` is the shop's own, from [`crate::store::exponent`] — see
+/// [`to_kasapay_money`] for why it is a parameter rather than read off
+/// kasapay's own table.
 pub async fn capture(
     provider: &dyn kasapay_core::Provider,
     payment_id: &str,
     amount: Money,
+    exponent: u32,
     idempotency_key: Option<&str>,
 ) -> Result<CaptureResult> {
     let id = kasapay_core::PaymentId::issued(payment_id);
-    let minor = to_kasapay_money(amount)?;
+    let minor = to_kasapay_money(amount, exponent)?;
     let key = idempotency_key.map(kasapay_core::IdempotencyKey::new);
     let charge = provider
         .capture(&id, Some(minor), key.as_ref())
         .await
         .map_err(from_kasapay_error)?;
     Ok(CaptureResult {
-        amount: from_kasapay_money(charge.amount)?,
+        amount: from_kasapay_money(charge.amount, exponent)?,
         data: charge.raw.json().unwrap_or_else(|| serde_json::json!({})),
     })
 }
@@ -110,14 +140,19 @@ pub async fn cancel(provider: &dyn kasapay_core::Provider, payment_id: &str) -> 
 
 /// `refund` for a provider whose kasapay adapter answers close to 1:1: gives
 /// money back off a payment kasapay already captured.
+///
+/// `exponent` is the shop's own, from [`crate::store::exponent`] — see
+/// [`to_kasapay_money`] for why it is a parameter rather than read off
+/// kasapay's own table.
 pub async fn refund(
     provider: &dyn kasapay_core::Provider,
     payment_id: &str,
     amount: Money,
+    exponent: u32,
     idempotency_key: Option<&str>,
 ) -> Result<RefundResult> {
     let id = kasapay_core::PaymentId::issued(payment_id);
-    let minor = to_kasapay_money(amount)?;
+    let minor = to_kasapay_money(amount, exponent)?;
     let mut builder = kasapay_core::RefundRequest::builder(id).amount(minor);
     if let Some(key) = idempotency_key {
         builder = builder.idempotency_key(kasapay_core::IdempotencyKey::new(key));
@@ -130,7 +165,7 @@ pub async fn refund(
         .await
         .map_err(from_kasapay_error)?;
     Ok(RefundResult {
-        amount: from_kasapay_money(refund.amount)?,
+        amount: from_kasapay_money(refund.amount, exponent)?,
         data: refund.raw.json().unwrap_or_else(|| serde_json::json!({})),
     })
 }
@@ -144,14 +179,19 @@ pub async fn refund(
 /// taken and safe to retry, `Ok(Some(_))` is what happened, and `Err(_)` is
 /// the question going unanswered — never collapsed into the first, which is
 /// how a shopper is charged twice.
+///
+/// `exponent` is the shop's own, from [`crate::store::exponent`] for the
+/// currency the caller expects this order back in — see [`to_kasapay_money`]
+/// for why it is a parameter rather than read off kasapay's own table.
 pub async fn lookup(
     provider: &dyn kasapay_core::Provider,
     order_ref: &str,
+    exponent: u32,
 ) -> Result<Option<Authorization>> {
     let order = kasapay_core::OrderRef::new(order_ref.to_owned());
     match provider.lookup(&order).await {
         Ok(None) => Ok(None),
-        Ok(Some(charge)) => Ok(Some(to_authorization(charge)?)),
+        Ok(Some(charge)) => Ok(Some(to_authorization(charge, exponent)?)),
         Err(err) => Err(from_kasapay_error(err)),
     }
 }
@@ -196,14 +236,14 @@ fn map_status(status: kasapay_core::Status) -> Result<AuthorizationStatus> {
     }
 }
 
-fn to_authorization(charge: kasapay_core::Charge) -> Result<Authorization> {
+fn to_authorization(charge: kasapay_core::Charge, exponent: u32) -> Result<Authorization> {
     let redirect = match &charge.next_action {
         Some(kasapay_core::NextAction::Redirect { url, .. }) => Some(url.to_string()),
         _ => None,
     };
     Ok(Authorization {
         status: map_status(charge.status)?,
-        amount: Some(from_kasapay_money(charge.amount)?),
+        amount: Some(from_kasapay_money(charge.amount, exponent)?),
         data: charge.raw.json().unwrap_or_else(|| serde_json::json!({})),
         redirect,
         message: None,
@@ -236,40 +276,96 @@ mod tests {
     #[test]
     fn round_trips_a_two_decimal_currency() {
         let money = Money::new(dec!(10.50), try_("TRY"));
-        let kasapay = to_kasapay_money(money).expect("TRY is one of the nine");
+        let kasapay = to_kasapay_money(money, 2).expect("TRY is one of the nine, at exponent 2");
         assert_eq!(kasapay.minor_units(), 1050);
-        assert_eq!(from_kasapay_money(kasapay).expect("round trips"), money);
+        assert_eq!(from_kasapay_money(kasapay, 2).expect("round trips"), money);
     }
 
     #[test]
     fn round_trips_usd() {
         let money = Money::new(dec!(7.05), try_("USD"));
-        let kasapay = to_kasapay_money(money).expect("USD is one of the nine");
+        let kasapay = to_kasapay_money(money, 2).expect("USD is one of the nine, at exponent 2");
         assert_eq!(kasapay.minor_units(), 705);
-        assert_eq!(from_kasapay_money(kasapay).expect("round trips"), money);
+        assert_eq!(from_kasapay_money(kasapay, 2).expect("round trips"), money);
     }
 
     #[test]
     fn round_trips_jpy_with_no_decimal_places() {
         let money = Money::new(dec!(1200), try_("JPY"));
-        let kasapay = to_kasapay_money(money).expect("JPY is one of the nine");
+        let kasapay = to_kasapay_money(money, 0).expect("JPY is one of the nine, at exponent 0");
         assert_eq!(kasapay.minor_units(), 1200);
-        assert_eq!(from_kasapay_money(kasapay).expect("round trips"), money);
+        assert_eq!(from_kasapay_money(kasapay, 0).expect("round trips"), money);
     }
 
     #[test]
     fn round_trips_kwd_with_three_decimal_places() {
         let money = Money::new(dec!(3.500), try_("KWD"));
-        let kasapay = to_kasapay_money(money).expect("KWD is one of the nine");
+        let kasapay = to_kasapay_money(money, 3).expect("KWD is one of the nine, at exponent 3");
         assert_eq!(kasapay.minor_units(), 3500);
-        assert_eq!(from_kasapay_money(kasapay).expect("round trips"), money);
+        assert_eq!(from_kasapay_money(kasapay, 3).expect("round trips"), money);
     }
 
     #[test]
     fn a_currency_kasapay_does_not_know_is_an_explicit_error_not_a_silent_round() {
         let money = Money::new(dec!(10), try_("PLN"));
-        let err = to_kasapay_money(money).expect_err("PLN is not one of kasapay's nine");
+        let err = to_kasapay_money(money, 2).expect_err("PLN is not one of kasapay's nine");
         assert_eq!(err.code(), "invalid");
+    }
+
+    // -----------------------------------------------------------------
+    // tezgah#171 — the shop's own exponent (store::exponent) is what
+    // `Money::allocate` rounded the parts by; kasapay-core hard-codes its
+    // own for the nine currencies it settles. When a shop has configured a
+    // currency at a different exponent than kasapay's, this boundary must
+    // say so rather than pick one silently — kasapay decodes minor units by
+    // its own fixed table, so a mismatch is an inconsistency, not a
+    // rounding choice tezgah can paper over.
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn a_shop_exponent_that_disagrees_with_kasapays_own_is_an_explicit_error() {
+        // kasapay-core hard-codes TRY at 2; a shop's `currency` row may say 3.
+        let money = Money::new(dec!(10.500), try_("TRY"));
+        let err = to_kasapay_money(money, 3).expect_err("TRY is 2 at kasapay, not 3");
+        assert_eq!(err.code(), "invalid");
+    }
+
+    #[test]
+    fn a_shop_exponent_beyond_kasapays_max_is_also_an_explicit_error() {
+        // The schema allows up to 6; kasapay's own maximum among its nine,
+        // KWD, is 3.
+        let money = Money::new(dec!(3.500000), try_("KWD"));
+        let err = to_kasapay_money(money, 6).expect_err("KWD is 3 at kasapay, not 6");
+        assert_eq!(err.code(), "invalid");
+    }
+
+    #[test]
+    fn from_kasapay_money_also_refuses_to_guess_when_told_a_different_exponent() {
+        let kasapay = KMoney::from_minor_units(1050, KCurrency::Try);
+        let at_kasapays_own = from_kasapay_money(kasapay, 2).expect("round trips");
+        let at_a_different_exponent = from_kasapay_money(kasapay, 3).expect("still decodes");
+        assert_ne!(at_kasapays_own, at_a_different_exponent);
+    }
+
+    #[test]
+    fn allocated_parts_still_sum_to_the_whole_after_the_kasapay_boundary() {
+        let exponent = 3;
+        let total = Money::new(dec!(10.001), try_("KWD"));
+        let weights = [dec!(1), dec!(1), dec!(1)];
+        let parts = crate::money::allocate(total, &weights, exponent).expect("allocates");
+        assert_eq!(parts.len(), 3);
+        // The remainder lands on one part, not evenly — a second, coarser
+        // rounding at the kasapay boundary is exactly what would break this.
+        assert_ne!(parts[0].amount, parts[1].amount);
+
+        let mut sum = Money::new(Decimal::ZERO, try_("KWD"));
+        for part in parts {
+            let kasapay = to_kasapay_money(part, exponent).expect("KWD is one of the nine");
+            let back = from_kasapay_money(kasapay, exponent).expect("round trips");
+            sum = sum.plus(back).expect("same currency throughout");
+        }
+
+        assert_eq!(sum, total);
     }
 
     // -----------------------------------------------------------------
@@ -415,7 +511,7 @@ mod tests {
         let fake = FakeKasapay::default();
         let amount = Money::new(dec!(10.00), try_("TRY"));
 
-        let result = capture(&fake, "pay_1", amount, Some("idem-1"))
+        let result = capture(&fake, "pay_1", amount, 2, Some("idem-1"))
             .await
             .expect("captures");
 
@@ -446,7 +542,9 @@ mod tests {
         let fake = FakeKasapay::default();
         let amount = Money::new(dec!(4.25), try_("TRY"));
 
-        let result = refund(&fake, "pay_3", amount, None).await.expect("refunds");
+        let result = refund(&fake, "pay_3", amount, 2, None)
+            .await
+            .expect("refunds");
 
         assert_eq!(result.amount, amount);
         let calls = fake.refunded.lock().expect("lock");
@@ -463,17 +561,22 @@ mod tests {
         let fake = FakeKasapay::default();
 
         *fake.lookup_answer.lock().expect("lock") = Some(LookupAnswer::None);
-        assert!(lookup(&fake, "order-1").await.expect("answers").is_none());
+        assert!(
+            lookup(&fake, "order-1", 2)
+                .await
+                .expect("answers")
+                .is_none()
+        );
 
         *fake.lookup_answer.lock().expect("lock") = Some(LookupAnswer::Some(Box::new(a_charge())));
-        let found = lookup(&fake, "order-1")
+        let found = lookup(&fake, "order-1", 2)
             .await
             .expect("answers")
             .expect("something happened to it");
         assert_eq!(found.status, AuthorizationStatus::Authorized);
 
         *fake.lookup_answer.lock().expect("lock") = Some(LookupAnswer::Err);
-        assert!(lookup(&fake, "order-1").await.is_err());
+        assert!(lookup(&fake, "order-1", 2).await.is_err());
 
         assert_eq!(
             *fake.looked_up.lock().expect("lock"),
