@@ -2029,10 +2029,10 @@ pub async fn create_collection(
     let handle = handle(handle_text)?;
     let external_id = nullable(external_id.map(str::to_owned));
 
-    if let Some(external_id) = &external_id {
-        if let Some(existing) = collection_by_external_id(tx, ctx, external_id).await? {
-            return Ok(existing);
-        }
+    if let Some(external_id) = &external_id
+        && let Some(existing) = collection_by_external_id(tx, ctx, external_id).await?
+    {
+        return Ok(existing);
     }
 
     let id = CollectionId::new();
@@ -2213,10 +2213,10 @@ pub async fn create_type(
     let value = required("value", value)?;
     let external_id = nullable(external_id.map(str::to_owned));
 
-    if let Some(external_id) = &external_id {
-        if let Some(existing) = type_by_external_id(tx, ctx, external_id).await? {
-            return Ok(existing);
-        }
+    if let Some(external_id) = &external_id
+        && let Some(existing) = type_by_external_id(tx, ctx, external_id).await?
+    {
+        return Ok(existing);
     }
 
     let id = ProductTypeId::new();
@@ -2326,10 +2326,10 @@ pub async fn create_tag(
     let value = required("value", value)?;
     let external_id = nullable(external_id.map(str::to_owned));
 
-    if let Some(external_id) = &external_id {
-        if let Some(existing) = tag_by_external_id(tx, ctx, external_id).await? {
-            return Ok(existing);
-        }
+    if let Some(external_id) = &external_id
+        && let Some(existing) = tag_by_external_id(tx, ctx, external_id).await?
+    {
+        return Ok(existing);
     }
 
     let id = ProductTagId::new();
@@ -2511,10 +2511,10 @@ pub async fn create_category(
     }
 
     let external_id = nullable(new.external_id);
-    if let Some(external_id) = &external_id {
-        if let Some(existing) = category_by_external_id(tx, ctx, external_id).await? {
-            return Ok(existing);
-        }
+    if let Some(external_id) = &external_id
+        && let Some(existing) = category_by_external_id(tx, ctx, external_id).await?
+    {
+        return Ok(existing);
     }
 
     let id = CategoryId::new();
