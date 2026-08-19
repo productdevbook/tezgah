@@ -5,3 +5,5 @@
 
 # Scratch an agent may write while working; never committed.
 .claude/tmp/
+# An agent working in isolation gets a worktree here.
+.claude/worktrees/
