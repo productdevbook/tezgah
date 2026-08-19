@@ -371,14 +371,14 @@ fn dynamic_sql_interpolations(source: &str) -> Vec<Interpolation> {
         let open = i + marker.len() - 1;
         if let Some(close) = matching_close_paren(&chars, open) {
             let body = &chars[open + 1..close];
-            if let Some(literal) = leading_string_literal(body) {
-                if is_sql_shaped(&literal) {
-                    let line = chars[..i].iter().filter(|c| **c == '\n').count() + 1;
-                    let mut seen = BTreeSet::new();
-                    for name in placeholders(&literal) {
-                        if !is_constant_name(&name) && seen.insert(name.clone()) {
-                            out.push(Interpolation { line, name });
-                        }
+            if let Some(literal) = leading_string_literal(body)
+                && is_sql_shaped(&literal)
+            {
+                let line = chars[..i].iter().filter(|c| **c == '\n').count() + 1;
+                let mut seen = BTreeSet::new();
+                for name in placeholders(&literal) {
+                    if !is_constant_name(&name) && seen.insert(name.clone()) {
+                        out.push(Interpolation { line, name });
                     }
                 }
             }

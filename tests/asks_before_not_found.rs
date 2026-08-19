@@ -287,10 +287,10 @@ fn verdict(
     let Some(not_found_at) = function.body.find("not_found(") else {
         return Verdict::NotApplicable;
     };
-    if let Some(permit_at) = function.body.find("ctx.permit(") {
-        if permit_at < not_found_at {
-            return Verdict::Safe;
-        }
+    if let Some(permit_at) = function.body.find("ctx.permit(")
+        && permit_at < not_found_at
+    {
+        return Verdict::Safe;
     }
     match first_statement_call(&function.body) {
         Some(callee) => match verdict(module, &callee, by_module, visited) {

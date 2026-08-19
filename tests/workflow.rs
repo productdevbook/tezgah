@@ -279,10 +279,10 @@ impl Step for Linger {
 
 async fn until_settled(pool: &sqlx::PgPool, ctx: &Ctx<'_>, id: tezgah::id::WorkflowRunId) {
     loop {
-        if let Ok(run) = workflow::get(pool, ctx, id).await {
-            if matches!(run.state, State::Done | State::Reverted | State::Failed) {
-                return;
-            }
+        if let Ok(run) = workflow::get(pool, ctx, id).await
+            && matches!(run.state, State::Done | State::Reverted | State::Failed)
+        {
+            return;
         }
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
