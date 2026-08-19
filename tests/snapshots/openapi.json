@@ -17,8 +17,18 @@
         ],
         "type": "object"
       },
+      "CampaignId": {
+        "description": "Identifies one campaign.",
+        "format": "uuid",
+        "type": "string"
+      },
       "CategoryId": {
         "description": "Identifies one category.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "CollectionId": {
+        "description": "Identifies one collection.",
         "format": "uuid",
         "type": "string"
       },
@@ -87,10 +97,221 @@
         ],
         "type": "object"
       },
+      "CustomerId": {
+        "description": "Identifies one customer.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "CustomerView": {
+        "properties": {
+          "anonymised": {
+            "type": "boolean"
+          },
+          "company_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "first_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "has_account": {
+            "type": "boolean"
+          },
+          "id": {
+            "$ref": "#/components/schemas/CustomerId"
+          },
+          "last_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "metadata": true,
+          "phone": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "first_name",
+          "last_name",
+          "phone",
+          "company_name",
+          "has_account",
+          "anonymised",
+          "metadata",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "InventoryItemId": {
+        "description": "Identifies one inventory item.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "InventoryItemView": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/InventoryItemId"
+          },
+          "requires_shipping": {
+            "type": "boolean"
+          },
+          "sku": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "sku",
+          "title",
+          "requires_shipping",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "OrderBasketId": {
+        "description": "Identifies one order basket.",
+        "format": "uuid",
+        "type": "string"
+      },
       "OrderId": {
         "description": "Identifies one order.",
         "format": "uuid",
         "type": "string"
+      },
+      "OrderView": {
+        "description": "An order as a back office sees it. Not `order::Order`: that is a row, it\ngrows a column whenever a migration says so, and it carries the scope.",
+        "properties": {
+          "basket_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrderBasketId"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The basket this order was split from, if a checkout that spanned more\nthan one seller-scope opened one."
+          },
+          "canceled_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "completed_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "currency_code": {
+            "type": "string"
+          },
+          "display_id": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fulfillment_status": {
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/OrderId"
+          },
+          "is_draft": {
+            "type": "boolean"
+          },
+          "payment_collection_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaymentCollectionId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "payment_status": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "version": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "display_id",
+          "email",
+          "currency_code",
+          "version",
+          "status",
+          "payment_status",
+          "fulfillment_status",
+          "is_draft",
+          "payment_collection_id",
+          "basket_id",
+          "completed_at",
+          "canceled_at",
+          "created_at"
+        ],
+        "type": "object"
       },
       "Page": {
         "properties": {
@@ -109,6 +330,11 @@
           "items"
         ],
         "type": "object"
+      },
+      "PaymentCollectionId": {
+        "description": "Identifies one payment collection.",
+        "format": "uuid",
+        "type": "string"
       },
       "PayoutId": {
         "description": "Identifies one payout.",
@@ -203,6 +429,333 @@
         ],
         "type": "object"
       },
+      "ProductId": {
+        "description": "Identifies one product.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "ProductStatus": {
+        "description": "Where a product is in its life. `draft` is invisible, `published` is for\nsale, `archived` is kept for the orders that already name it. `proposed`\nand `rejected` are a marketplace's review of a seller's submission —\ninvisible the same as `draft`, but reached only through\n[`submit_for_review`], [`approve_product`] and [`reject_product`], not\nthrough a plain edit.",
+        "enum": [
+          "draft",
+          "proposed",
+          "published",
+          "archived",
+          "rejected"
+        ],
+        "type": "string"
+      },
+      "ProductTypeId": {
+        "description": "Identifies one type.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "ProductView": {
+        "description": "A product as its own shop sees it: the status included, because deciding\nwhat to do next is the whole point of the screen this feeds.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "external_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "handle": {
+            "type": "string"
+          },
+          "height": {
+            "pattern": "^-?\\d+(\\.\\d+)?$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hs_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/ProductId"
+          },
+          "is_discountable": {
+            "type": "boolean"
+          },
+          "length": {
+            "pattern": "^-?\\d+(\\.\\d+)?$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "material": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "metadata": true,
+          "origin_country": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "product_collection_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CollectionId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "product_type_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProductTypeId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rejected_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProductStatus"
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "thumbnail_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "weight": {
+            "pattern": "^-?\\d+(\\.\\d+)?$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "width": {
+            "pattern": "^-?\\d+(\\.\\d+)?$",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "handle",
+          "title",
+          "subtitle",
+          "description",
+          "status",
+          "rejected_reason",
+          "thumbnail_url",
+          "is_discountable",
+          "product_type_id",
+          "product_collection_id",
+          "weight",
+          "length",
+          "height",
+          "width",
+          "material",
+          "hs_code",
+          "origin_country",
+          "external_id",
+          "metadata",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "PromotionId": {
+        "description": "Identifies one promotion.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "PromotionView": {
+        "properties": {
+          "campaign_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CampaignId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "code": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "customer_usage_limit": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/PromotionId"
+          },
+          "is_automatic": {
+            "type": "boolean"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "metadata": true,
+          "status": {
+            "type": "string"
+          },
+          "usage_limit": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "used": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "campaign_id",
+          "code",
+          "kind",
+          "status",
+          "is_automatic",
+          "usage_limit",
+          "used",
+          "customer_usage_limit",
+          "metadata",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "RegionId": {
+        "description": "Identifies one region.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "RegionView": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "currency_code": {
+            "type": "string"
+          },
+          "has_automatic_taxes": {
+            "type": "boolean"
+          },
+          "id": {
+            "$ref": "#/components/schemas/RegionId"
+          },
+          "is_tax_inclusive": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "payment_providers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "currency_code",
+          "is_tax_inclusive",
+          "has_automatic_taxes",
+          "payment_providers",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "SalesChannelId": {
+        "description": "Identifies one sales channel.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "SalesChannelView": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/SalesChannelId"
+          },
+          "is_disabled": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "is_disabled",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "SellingPlanId": {
+        "description": "Identifies one selling plan.",
+        "format": "uuid",
+        "type": "string"
+      },
       "SetCommissionRule": {
         "additionalProperties": false,
         "properties": {
@@ -236,6 +789,76 @@
         "required": [
           "kind",
           "value"
+        ],
+        "type": "object"
+      },
+      "SubscriptionId": {
+        "description": "Identifies one subscription.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "SubscriptionView": {
+        "description": "A contract as it leaves the building. No `payment_method_reference`: it is a\nreference to somebody's instrument and a list is read far more often than a\ncard is charged.",
+        "properties": {
+          "cancel_at_period_end": {
+            "type": "boolean"
+          },
+          "currency_code": {
+            "type": "string"
+          },
+          "current_period_end": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "current_period_start": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "customer_id": {
+            "$ref": "#/components/schemas/CustomerId"
+          },
+          "cycle": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "dunning_attempts": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "ended_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/SubscriptionId"
+          },
+          "next_billing_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "selling_plan_id": {
+            "$ref": "#/components/schemas/SellingPlanId"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "customer_id",
+          "selling_plan_id",
+          "currency_code",
+          "status",
+          "next_billing_at",
+          "current_period_start",
+          "current_period_end",
+          "cycle",
+          "cancel_at_period_end",
+          "ended_at",
+          "dunning_attempts"
         ],
         "type": "object"
       }
@@ -1915,6 +2538,27 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/CustomerView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -2019,6 +2663,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -4113,6 +4764,27 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/InventoryItemView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -4247,6 +4919,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryItemView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -5431,6 +6110,27 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/OrderView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -5498,6 +6198,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -9572,6 +10279,27 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/ProductView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -9766,6 +10494,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -10879,6 +11614,27 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/PromotionView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -10983,6 +11739,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromotionView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -11592,6 +12355,27 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/RegionView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -11659,6 +12443,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegionView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -12800,6 +13591,27 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/SalesChannelView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -12904,6 +13716,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SalesChannelView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -14291,6 +15110,27 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/SubscriptionView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -14418,6 +15258,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {

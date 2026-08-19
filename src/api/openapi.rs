@@ -24,7 +24,9 @@ use serde_json::{Map, Value, json};
 
 use crate::page::Page;
 
-use super::{Method, Route, Surface, payout, routes};
+use super::{
+    Method, Route, Surface, admin_catalogue, admin_order, admin_rest, payout, routes, subscription,
+};
 
 /// A storefront's key, which pins it to its sales channels.
 const STORE_SCHEME: &str = "publishableKey";
@@ -133,10 +135,15 @@ struct Body {
     response: Option<SchemaFn>,
 }
 
-/// The pilot for tezgah#202: one whole domain, request and response bodies
-/// both, `Page<T>` used three different ways. The rest of the route table
-/// carries no entry yet and documents no body, exactly as it did before this
-/// module knew how.
+/// The payout domain was the pilot for tezgah#202: request and response
+/// bodies both, `Page<T>` used three different ways. What follows it is the
+/// seven domains `client/` actually reads — catalogue, order, inventory,
+/// customer, promotion, subscription, store — each wired for exactly the
+/// view type `client/src/api/views.ts` hand-transcribes, on the list and
+/// single-fetch operations that return it. None of those seven has taken a
+/// request body here yet: nothing `client/` writes to them, so the create
+/// and edit routes still carry no entry, the same as before this module
+/// knew how.
 static BODIES: &[Body] = &[
     Body {
         operation_id: "postAdminCommissionRules",
@@ -167,6 +174,93 @@ static BODIES: &[Body] = &[
         operation_id: "getAdminPayoutBalanceByCurrencyCode",
         request: None,
         response: Some(schema_of::<payout::BalanceView>),
+    },
+    // --------------------------------------------------------- catalogue
+    Body {
+        operation_id: "getAdminProducts",
+        request: None,
+        response: Some(page_of::<admin_catalogue::ProductView>),
+    },
+    Body {
+        operation_id: "getAdminProductsById",
+        request: None,
+        response: Some(schema_of::<admin_catalogue::ProductView>),
+    },
+    // ------------------------------------------------------------- order
+    Body {
+        operation_id: "getAdminOrders",
+        request: None,
+        response: Some(page_of::<admin_order::OrderView>),
+    },
+    Body {
+        operation_id: "getAdminOrdersById",
+        request: None,
+        response: Some(schema_of::<admin_order::OrderView>),
+    },
+    // --------------------------------------------------------- inventory
+    Body {
+        operation_id: "getAdminInventoryItems",
+        request: None,
+        response: Some(page_of::<admin_catalogue::InventoryItemView>),
+    },
+    Body {
+        operation_id: "getAdminInventoryItemsById",
+        request: None,
+        response: Some(schema_of::<admin_catalogue::InventoryItemView>),
+    },
+    // ---------------------------------------------------------- customer
+    Body {
+        operation_id: "getAdminCustomers",
+        request: None,
+        response: Some(page_of::<admin_rest::CustomerView>),
+    },
+    Body {
+        operation_id: "getAdminCustomersById",
+        request: None,
+        response: Some(schema_of::<admin_rest::CustomerView>),
+    },
+    // --------------------------------------------------------- promotion
+    Body {
+        operation_id: "getAdminPromotions",
+        request: None,
+        response: Some(page_of::<admin_rest::PromotionView>),
+    },
+    Body {
+        operation_id: "getAdminPromotionsById",
+        request: None,
+        response: Some(schema_of::<admin_rest::PromotionView>),
+    },
+    // ------------------------------------------------------- subscription
+    Body {
+        operation_id: "getAdminSubscriptions",
+        request: None,
+        response: Some(page_of::<subscription::SubscriptionView>),
+    },
+    Body {
+        operation_id: "getAdminSubscriptionsById",
+        request: None,
+        response: Some(schema_of::<subscription::SubscriptionView>),
+    },
+    // ------------------------------------------------------------- store
+    Body {
+        operation_id: "getAdminRegions",
+        request: None,
+        response: Some(page_of::<admin_rest::RegionView>),
+    },
+    Body {
+        operation_id: "getAdminRegionsById",
+        request: None,
+        response: Some(schema_of::<admin_rest::RegionView>),
+    },
+    Body {
+        operation_id: "getAdminSalesChannels",
+        request: None,
+        response: Some(page_of::<admin_rest::SalesChannelView>),
+    },
+    Body {
+        operation_id: "getAdminSalesChannelsById",
+        request: None,
+        response: Some(schema_of::<admin_rest::SalesChannelView>),
     },
 ];
 
@@ -384,14 +478,94 @@ mod tests {
     #[test]
     fn money_crosses_the_wire_as_a_string_not_a_number() {
         let document = document();
-        let amount = document
-            .pointer("/components/schemas/BalanceView/properties/amount")
-            .expect("BalanceView.amount to carry a schema");
 
-        assert_eq!(
-            amount.get("type").and_then(Value::as_str),
-            Some("string"),
-            "a Decimal must serialise as a string, not a number: {amount}"
+        // Every `rust_decimal::Decimal` field BODIES currently reaches,
+        // response side: payout's own money, and catalogue's dimensions,
+        // which ride the same `for_serialize` generator and must answer the
+        // same way even though they are not money.
+        for pointer in [
+            "/components/schemas/BalanceView/properties/amount",
+            "/components/schemas/PayoutView/properties/amount",
+            "/components/schemas/PayoutLineView/properties/amount",
+            "/components/schemas/CommissionRuleView/properties/value",
+            "/components/schemas/ProductView/properties/weight",
+            "/components/schemas/ProductView/properties/length",
+            "/components/schemas/ProductView/properties/height",
+            "/components/schemas/ProductView/properties/width",
+        ] {
+            let schema = document
+                .pointer(pointer)
+                .unwrap_or_else(|| panic!("{pointer} to carry a schema"));
+            let types: Vec<&str> = match schema.get("type") {
+                Some(Value::String(one)) => vec![one.as_str()],
+                Some(Value::Array(many)) => many.iter().filter_map(Value::as_str).collect(),
+                other => panic!("{pointer} has no usable \"type\": {other:?}"),
+            };
+            assert!(
+                types.contains(&"string"),
+                "{pointer} must serialise as a string: {schema}"
+            );
+            assert!(
+                !types.contains(&"number"),
+                "{pointer} answers a number on the response contract: {schema}"
+            );
+        }
+
+        // The one Decimal BODIES reaches on the request side accepts both,
+        // because that is what serde-with-str actually parses.
+        let value = document
+            .pointer("/components/schemas/SetCommissionRule/properties/value")
+            .expect("SetCommissionRule.value to carry a schema");
+        let types: Vec<&str> = value
+            .get("type")
+            .and_then(Value::as_array)
+            .map(|many| many.iter().filter_map(Value::as_str).collect())
+            .unwrap_or_default();
+        assert!(
+            types.contains(&"string") && types.contains(&"number"),
+            "a request Decimal must accept both string and number: {value}"
         );
+    }
+
+    /// `document()` resolves a name two generators both define by letting the
+    /// request definition win, on trust that the only names that ever
+    /// collide are id newtypes — whose schema does not depend on direction —
+    /// "and not, say, a `Decimal`" (tezgah#202). This is what turns that
+    /// trust into something that fails instead of drifting quietly: if a
+    /// colliding name's two schemas ever disagree, the discrepancy is a
+    /// finding to stop and report, not something for `document()` to paper
+    /// over by picking a side.
+    #[test]
+    fn colliding_names_agree_across_generators() {
+        let (mut request_gen, mut response_gen) = schemas();
+        for body in BODIES {
+            if let Some(request) = body.request {
+                request(&mut request_gen);
+            }
+            if let Some(response) = body.response {
+                response(&mut response_gen);
+            }
+        }
+
+        let responded: std::collections::BTreeMap<&str, &Value> = response_gen
+            .definitions()
+            .iter()
+            .map(|(name, schema)| (name.as_str(), schema))
+            .collect();
+
+        for (name, requested) in request_gen.definitions() {
+            let Some(answered) = responded.get(name.as_str()) else {
+                continue;
+            };
+            assert_eq!(
+                requested, *answered,
+                "{name} means two different things depending on direction: \
+                 document() lets the request definition win on the assumption \
+                 that a colliding name is always an id newtype. {name} is not \
+                 one, or its schema depends on direction — either way, that \
+                 assumption just failed and document() needs to stop picking \
+                 a side silently."
+            );
+        }
     }
 }

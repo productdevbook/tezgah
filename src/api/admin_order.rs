@@ -116,7 +116,7 @@ fn config() -> Resource {
 
 /// An order as a back office sees it. Not `order::Order`: that is a row, it
 /// grows a column whenever a migration says so, and it carries the scope.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct OrderView {
     pub id: OrderId,
     pub display_id: Option<i64>,

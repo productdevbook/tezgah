@@ -208,15 +208,22 @@ writes an order, and the provider is not in your database.
 - [x] store API: catalogue, cart, checkout, orders, customer, returns
 - [x] admin API: everything else
 - [ ] OpenAPI generated from the code, snapshotted, client types generated —
-      generated and snapshotted (`tests/openapi.rs`). `src/api/openapi.rs` now
+      generated and snapshotted (`tests/openapi.rs`). `src/api/openapi.rs`
       derives request and response schemas from the same `Serialize`/
       `Deserialize` Rust types the handlers already take and return
       (`schemars`), keeping `Page<T>` to one shared schema regardless of `T`
-      rather than one copy per list. Only the payout domain's 6 operations
-      carry a schema so far — the mechanism, proved on a whole domain, request
-      and response bodies both. The other operations still answer `200` with
-      no body schema, and [`client/`](client) still transcribes the rest of
-      the payloads from `src/api/*.rs` by hand. productdevbook/tezgah#202.
+      rather than one copy per list. The payout domain proved the mechanism
+      on a whole domain, request and response bodies both; 22 operations
+      carry a schema now — payout's 6 plus, response side only, the list and
+      single-fetch operation for every view type
+      [`client/src/api/views.ts`](client/src/api/views.ts) hand-transcribes
+      across the seven domains it actually reads (catalogue, order,
+      inventory, customer, promotion, subscription, store). `views.ts` is not
+      deleted yet — that is the next step once its schemas are checked
+      against what `schemars` now generates for the same types — and the
+      create/edit routes in those seven domains, which `client/` does not
+      call yet, still answer `200` with no body schema, the same as the rest
+      of the table. productdevbook/tezgah#202.
 - [x] every route declares its permission, and a matrix test proves it —
       `tests/api_permissions.rs` calls 355 of the 446 routes in `routes()`
       against a host that denies everything and asserts `denied`; 91 are

@@ -103,7 +103,7 @@ impl From<subscription::SellingPlan> for PlanView {
 /// A contract as it leaves the building. No `payment_method_reference`: it is a
 /// reference to somebody's instrument and a list is read far more often than a
 /// card is charged.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SubscriptionView {
     pub id: SubscriptionId,
     pub customer_id: CustomerId,

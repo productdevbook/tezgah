@@ -1,5 +1,7 @@
 import { z } from "zod"
 
+import type { components } from "./schema"
+
 /**
  * What the admin surface answers with, as schemas that are checked at runtime.
  *
@@ -69,6 +71,9 @@ export const product = z.object({
   hs_code: z.string().nullable(),
   origin_country: z.string().nullable(),
   external_id: z.string().nullable(),
+  metadata: z.unknown(),
+  created_at: timestamp,
+  updated_at: timestamp,
 })
 export type Product = z.infer<typeof product>
 
@@ -171,3 +176,37 @@ export const salesChannel = z.object({
   created_at: timestamp,
 })
 export type SalesChannel = z.infer<typeof salesChannel>
+
+/**
+ * What stops the schemas above being wrong.
+ *
+ * Each line asserts that the type zod produces is *exactly* the type the
+ * document declares — not merely assignable, so a field the crate adds is
+ * caught as surely as one it renames. A mismatch is a build failure here
+ * rather than a blank cell in a table, which is the whole reason these are
+ * worth hand-writing while #202 is only part done.
+ *
+ * `schema.d.ts` is generated from `tests/snapshots/openapi.json`, and CI
+ * refuses a stale one. So the chain runs all the way: change a view struct in
+ * Rust, and either this file changes with it or the build stops.
+ */
+type Declared = components["schemas"]
+
+/** Invariant equality, not assignability: extra fields fail too. */
+type Exact<A, B> =
+  (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2
+    ? true
+    : { mismatch: [A, B] }
+
+type Assert<T extends true> = T
+
+export type SchemasMatchTheDocument = [
+  Assert<Exact<z.infer<typeof product>, Declared["ProductView"]>>,
+  Assert<Exact<z.infer<typeof order>, Declared["OrderView"]>>,
+  Assert<Exact<z.infer<typeof inventoryItem>, Declared["InventoryItemView"]>>,
+  Assert<Exact<z.infer<typeof customer>, Declared["CustomerView"]>>,
+  Assert<Exact<z.infer<typeof promotion>, Declared["PromotionView"]>>,
+  Assert<Exact<z.infer<typeof subscription>, Declared["SubscriptionView"]>>,
+  Assert<Exact<z.infer<typeof region>, Declared["RegionView"]>>,
+  Assert<Exact<z.infer<typeof salesChannel>, Declared["SalesChannelView"]>>,
+]

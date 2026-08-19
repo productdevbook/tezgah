@@ -6257,9 +6257,19 @@ export interface components {
         };
         /**
          * Format: uuid
+         * @description Identifies one campaign.
+         */
+        CampaignId: string;
+        /**
+         * Format: uuid
          * @description Identifies one category.
          */
         CategoryId: string;
+        /**
+         * Format: uuid
+         * @description Identifies one collection.
+         */
+        CollectionId: string;
         /**
          * Format: uuid
          * @description Identifies one commission rule.
@@ -6281,13 +6291,85 @@ export interface components {
         };
         /**
          * Format: uuid
+         * @description Identifies one customer.
+         */
+        CustomerId: string;
+        CustomerView: {
+            anonymised: boolean;
+            company_name: string | null;
+            /** Format: date-time */
+            created_at: string;
+            email: string | null;
+            first_name: string | null;
+            has_account: boolean;
+            id: components["schemas"]["CustomerId"];
+            last_name: string | null;
+            metadata: unknown;
+            phone: string | null;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /**
+         * Format: uuid
+         * @description Identifies one inventory item.
+         */
+        InventoryItemId: string;
+        InventoryItemView: {
+            /** Format: date-time */
+            created_at: string;
+            id: components["schemas"]["InventoryItemId"];
+            requires_shipping: boolean;
+            sku: string | null;
+            title: string | null;
+        };
+        /**
+         * Format: uuid
+         * @description Identifies one order basket.
+         */
+        OrderBasketId: string;
+        /**
+         * Format: uuid
          * @description Identifies one order.
          */
         OrderId: string;
+        /**
+         * @description An order as a back office sees it. Not `order::Order`: that is a row, it
+         *     grows a column whenever a migration says so, and it carries the scope.
+         */
+        OrderView: {
+            /**
+             * @description The basket this order was split from, if a checkout that spanned more
+             *     than one seller-scope opened one.
+             */
+            basket_id: components["schemas"]["OrderBasketId"] | null;
+            /** Format: date-time */
+            canceled_at: string | null;
+            /** Format: date-time */
+            completed_at: string | null;
+            /** Format: date-time */
+            created_at: string;
+            currency_code: string;
+            /** Format: int64 */
+            display_id: number | null;
+            email: string | null;
+            fulfillment_status: string;
+            id: components["schemas"]["OrderId"];
+            is_draft: boolean;
+            payment_collection_id: components["schemas"]["PaymentCollectionId"] | null;
+            payment_status: string;
+            status: string;
+            /** Format: int32 */
+            version: number;
+        };
         Page: {
             items: unknown[];
             next?: string | null;
         };
+        /**
+         * Format: uuid
+         * @description Identifies one payment collection.
+         */
+        PaymentCollectionId: string;
         /**
          * Format: uuid
          * @description Identifies one payout.
@@ -6316,11 +6398,146 @@ export interface components {
             /** Format: uuid */
             reference_id: string;
         };
+        /**
+         * Format: uuid
+         * @description Identifies one product.
+         */
+        ProductId: string;
+        /**
+         * @description Where a product is in its life. `draft` is invisible, `published` is for
+         *     sale, `archived` is kept for the orders that already name it. `proposed`
+         *     and `rejected` are a marketplace's review of a seller's submission —
+         *     invisible the same as `draft`, but reached only through
+         *     [`submit_for_review`], [`approve_product`] and [`reject_product`], not
+         *     through a plain edit.
+         * @enum {string}
+         */
+        ProductStatus: "draft" | "proposed" | "published" | "archived" | "rejected";
+        /**
+         * Format: uuid
+         * @description Identifies one type.
+         */
+        ProductTypeId: string;
+        /**
+         * @description A product as its own shop sees it: the status included, because deciding
+         *     what to do next is the whole point of the screen this feeds.
+         */
+        ProductView: {
+            /** Format: date-time */
+            created_at: string;
+            description: string | null;
+            external_id: string | null;
+            handle: string;
+            height: string | null;
+            hs_code: string | null;
+            id: components["schemas"]["ProductId"];
+            is_discountable: boolean;
+            length: string | null;
+            material: string | null;
+            metadata: unknown;
+            origin_country: string | null;
+            product_collection_id: components["schemas"]["CollectionId"] | null;
+            product_type_id: components["schemas"]["ProductTypeId"] | null;
+            rejected_reason: string | null;
+            status: components["schemas"]["ProductStatus"];
+            subtitle: string | null;
+            thumbnail_url: string | null;
+            title: string;
+            /** Format: date-time */
+            updated_at: string;
+            weight: string | null;
+            width: string | null;
+        };
+        /**
+         * Format: uuid
+         * @description Identifies one promotion.
+         */
+        PromotionId: string;
+        PromotionView: {
+            campaign_id: components["schemas"]["CampaignId"] | null;
+            code: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: int32 */
+            customer_usage_limit: number | null;
+            id: components["schemas"]["PromotionId"];
+            is_automatic: boolean;
+            kind: string;
+            metadata: unknown;
+            status: string;
+            /** Format: int32 */
+            usage_limit: number | null;
+            /** Format: int32 */
+            used: number;
+        };
+        /**
+         * Format: uuid
+         * @description Identifies one region.
+         */
+        RegionId: string;
+        RegionView: {
+            /** Format: date-time */
+            created_at: string;
+            currency_code: string;
+            has_automatic_taxes: boolean;
+            id: components["schemas"]["RegionId"];
+            is_tax_inclusive: boolean;
+            name: string;
+            payment_providers: string[];
+        };
+        /**
+         * Format: uuid
+         * @description Identifies one sales channel.
+         */
+        SalesChannelId: string;
+        SalesChannelView: {
+            /** Format: date-time */
+            created_at: string;
+            description: string | null;
+            id: components["schemas"]["SalesChannelId"];
+            is_disabled: boolean;
+            name: string;
+        };
+        /**
+         * Format: uuid
+         * @description Identifies one selling plan.
+         */
+        SellingPlanId: string;
         SetCommissionRule: {
             category_id?: components["schemas"]["CategoryId"] | null;
             currency_code?: string | null;
             kind: string;
             value: string | number;
+        };
+        /**
+         * Format: uuid
+         * @description Identifies one subscription.
+         */
+        SubscriptionId: string;
+        /**
+         * @description A contract as it leaves the building. No `payment_method_reference`: it is a
+         *     reference to somebody's instrument and a list is read far more often than a
+         *     card is charged.
+         */
+        SubscriptionView: {
+            cancel_at_period_end: boolean;
+            currency_code: string;
+            /** Format: date-time */
+            current_period_end: string;
+            /** Format: date-time */
+            current_period_start: string;
+            customer_id: components["schemas"]["CustomerId"];
+            /** Format: int32 */
+            cycle: number;
+            /** Format: int32 */
+            dunning_attempts: number;
+            /** Format: date-time */
+            ended_at: string | null;
+            id: components["schemas"]["SubscriptionId"];
+            /** Format: date-time */
+            next_billing_at: string;
+            selling_plan_id: components["schemas"]["SellingPlanId"];
+            status: string;
         };
     };
     responses: never;
@@ -8136,7 +8353,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["CustomerView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -8216,7 +8437,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["CustomerView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -10535,7 +10758,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["InventoryItemView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -10654,7 +10881,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["InventoryItemView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -11960,7 +12189,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["OrderView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -12040,7 +12273,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["OrderView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -16375,7 +16610,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["ProductView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -16572,7 +16811,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ProductView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -17765,7 +18006,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["PromotionView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -17845,7 +18090,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PromotionView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -18537,7 +18784,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["RegionView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -18617,7 +18868,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["RegionView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -19839,7 +20092,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["SalesChannelView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -19919,7 +20176,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["SalesChannelView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -21534,7 +21793,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["SubscriptionView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -21692,7 +21955,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["SubscriptionView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
