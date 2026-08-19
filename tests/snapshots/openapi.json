@@ -13622,6 +13622,34 @@
         ],
         "x-tezgah-permission": "view"
       },
+      "patch": {
+        "operationId": "patchAdminStores",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Edit the shop's own settings",
+        "tags": [
+          "store"
+        ],
+        "x-tezgah-permission": "write"
+      },
       "post": {
         "operationId": "postAdminStores",
         "parameters": [],
@@ -13644,7 +13672,7 @@
             "adminBearer": []
           }
         ],
-        "summary": "Edit the shop's own settings",
+        "summary": "Create the shop's own settings",
         "tags": [
           "store"
         ],
@@ -16706,54 +16734,7 @@
             "publishableKey": []
           }
         ],
-        "summary": "Fetch one browsable category",
-        "tags": [
-          "catalogue"
-        ],
-        "x-tezgah-permission": "view"
-      }
-    },
-    "/store/product-categories/{id}/translations/{locale}": {
-      "get": {
-        "operationId": "getStoreProductCategoriesByIdTranslationsByLocale",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "locale",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The call succeeded."
-          },
-          "400": {
-            "description": "The request was not well formed."
-          },
-          "403": {
-            "description": "The host's authorizer refused."
-          },
-          "404": {
-            "description": "No such thing, or none this caller may see."
-          }
-        },
-        "security": [
-          {
-            "publishableKey": []
-          }
-        ],
-        "summary": "Read a browsable category in one locale, falling back to the shop's own",
+        "summary": "Fetch one browsable category, optionally in a locale",
         "tags": [
           "catalogue"
         ],
@@ -17059,7 +17040,7 @@
             "publishableKey": []
           }
         ],
-        "summary": "List published products",
+        "summary": "List published products, optionally in a locale",
         "tags": [
           "catalogue"
         ],
@@ -17098,7 +17079,7 @@
             "publishableKey": []
           }
         ],
-        "summary": "Fetch one published product by its handle",
+        "summary": "Fetch one published product by its handle, optionally in a locale",
         "tags": [
           "catalogue"
         ],
@@ -17236,54 +17217,7 @@
             "publishableKey": []
           }
         ],
-        "summary": "Fetch one return reason",
-        "tags": [
-          "order"
-        ],
-        "x-tezgah-permission": "view"
-      }
-    },
-    "/store/return-reasons/{id}/translations/{locale}": {
-      "get": {
-        "operationId": "getStoreReturnReasonsByIdTranslationsByLocale",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "locale",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The call succeeded."
-          },
-          "400": {
-            "description": "The request was not well formed."
-          },
-          "403": {
-            "description": "The host's authorizer refused."
-          },
-          "404": {
-            "description": "No such thing, or none this caller may see."
-          }
-        },
-        "security": [
-          {
-            "publishableKey": []
-          }
-        ],
-        "summary": "Read a return reason in one locale, falling back to the shop's own",
+        "summary": "Fetch one return reason, optionally in a locale",
         "tags": [
           "order"
         ],
@@ -17343,7 +17277,7 @@
             "publishableKey": []
           }
         ],
-        "summary": "List what can deliver this cart to an address",
+        "summary": "List what can deliver this cart to an address, optionally in a locale",
         "tags": [
           "fulfilment"
         ],
@@ -17387,53 +17321,6 @@
           "fulfilment"
         ],
         "x-tezgah-permission": "write"
-      }
-    },
-    "/store/shipping-options/{id}/translations/{locale}": {
-      "get": {
-        "operationId": "getStoreShippingOptionsByIdTranslationsByLocale",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "locale",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The call succeeded."
-          },
-          "400": {
-            "description": "The request was not well formed."
-          },
-          "403": {
-            "description": "The host's authorizer refused."
-          },
-          "404": {
-            "description": "No such thing, or none this caller may see."
-          }
-        },
-        "security": [
-          {
-            "publishableKey": []
-          }
-        ],
-        "summary": "Read a shipping option's name in one locale, falling back to the shop's own",
-        "tags": [
-          "fulfilment"
-        ],
-        "x-tezgah-permission": "view"
       }
     },
     "/store/subscriptions": {
