@@ -1266,6 +1266,34 @@
           "store"
         ],
         "x-tezgah-permission": "view"
+      },
+      "post": {
+        "operationId": "postAdminCurrencies",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Enable a currency for the shop",
+        "tags": [
+          "store"
+        ],
+        "x-tezgah-permission": "write"
       }
     },
     "/admin/currencies/{code}": {
@@ -3261,6 +3289,84 @@
           }
         ],
         "summary": "Register a carrier",
+        "tags": [
+          "fulfilment"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/fulfillment-providers/{id}/disable": {
+      "post": {
+        "operationId": "postAdminFulfillmentProvidersByIdDisable",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Stop offering a carrier without deleting its shipments",
+        "tags": [
+          "fulfilment"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/fulfillment-providers/{id}/enable": {
+      "post": {
+        "operationId": "postAdminFulfillmentProvidersByIdEnable",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Resume offering a dropped carrier",
         "tags": [
           "fulfilment"
         ],
@@ -8454,6 +8560,129 @@
         "x-tezgah-permission": "view"
       }
     },
+    "/admin/product-variants/{id}/images": {
+      "get": {
+        "operationId": "getAdminProductVariantsByIdImages",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "List a variant's own attached images",
+        "tags": [
+          "catalogue"
+        ],
+        "x-tezgah-permission": "view"
+      },
+      "post": {
+        "operationId": "postAdminProductVariantsByIdImages",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Attach one of the product's images to a variant",
+        "tags": [
+          "catalogue"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/product-variants/{id}/images/{image_id}": {
+      "delete": {
+        "operationId": "deleteAdminProductVariantsByIdImagesByImageId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "image_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Detach an image from a variant",
+        "tags": [
+          "catalogue"
+        ],
+        "x-tezgah-permission": "delete"
+      }
+    },
     "/admin/product-variants/{id}/inventory-items": {
       "get": {
         "operationId": "getAdminProductVariantsByIdInventoryItems",
@@ -8951,6 +9180,45 @@
           "catalogue"
         ],
         "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/products/{id}/approve": {
+      "post": {
+        "operationId": "postAdminProductsByIdApprove",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Approve a proposed product and publish it",
+        "tags": [
+          "catalogue"
+        ],
+        "x-tezgah-permission": "moderate"
       }
     },
     "/admin/products/{id}/archive": {
@@ -9470,6 +9738,84 @@
           }
         ],
         "summary": "Put a product on sale",
+        "tags": [
+          "catalogue"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/products/{id}/reject": {
+      "post": {
+        "operationId": "postAdminProductsByIdReject",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Reject a proposed product, recording why",
+        "tags": [
+          "catalogue"
+        ],
+        "x-tezgah-permission": "moderate"
+      }
+    },
+    "/admin/products/{id}/submit": {
+      "post": {
+        "operationId": "postAdminProductsByIdSubmit",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Submit a draft or a rejected product for review",
         "tags": [
           "catalogue"
         ],
