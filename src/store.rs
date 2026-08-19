@@ -176,6 +176,29 @@ pub async fn store(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<Store> {
     read_store(tx, ctx).await
 }
 
+/// The shop's own configured fallbacks, or neither when it has not written a
+/// `store` row at all — every shop today, since nothing requires one before
+/// it opens its first cart. [`store`] is right to answer `not_found` when a
+/// caller asks for the row directly; a caller resolving a default reads
+/// through here instead, where "unconfigured" and "configured with nothing
+/// set" are the same answer.
+pub(crate) async fn defaults(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+) -> Result<(Option<RegionId>, Option<SalesChannelId>)> {
+    let _: Permit = ctx.permit(Action::View, Resource::Store)?;
+
+    Ok(
+        sqlx::query_as::<_, (Option<RegionId>, Option<SalesChannelId>)>(
+            "select default_region_id, default_sales_channel_id from store where scope = $1",
+        )
+        .bind(ctx.scope.0)
+        .fetch_optional(&mut **tx)
+        .await?
+        .unwrap_or((None, None)),
+    )
+}
+
 pub async fn update_store(tx: &mut Tx<'_>, ctx: &Ctx<'_>, patch: StorePatch) -> Result<Store> {
     let _: Permit = ctx.permit(Action::Write, Resource::Store)?;
 

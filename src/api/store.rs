@@ -1258,9 +1258,9 @@ pub async fn create_cart(
 
     // A cart opened without a region or a channel falls through to the shop's
     // configured default rather than opening with neither.
-    let shop = store::store(tx, ctx).await?;
-    let region_id = input.region_id.or(shop.default_region_id);
-    let sales_channel_id = input.sales_channel_id.or(shop.default_sales_channel_id);
+    let (default_region, default_channel) = store::defaults(tx, ctx).await?;
+    let region_id = input.region_id.or(default_region);
+    let sales_channel_id = input.sales_channel_id.or(default_channel);
 
     if let Some(wanted) = sales_channel_id {
         let channels = visible_channels(tx, ctx, token).await?;

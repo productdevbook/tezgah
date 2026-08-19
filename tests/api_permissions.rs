@@ -863,6 +863,22 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
         admin_rest::get_currency(&mut tx, &ctx, "usd")
     );
     denied!(
+        Method::Post,
+        "/admin/currencies",
+        admin_rest::create_currency(
+            &mut tx,
+            &ctx,
+            admin_rest::CreateCurrency {
+                code: "usd".to_string(),
+                numeric_code: None,
+                exponent: 2,
+                symbol: "$".to_string(),
+                symbol_native: "$".to_string(),
+                name: "US dollar".to_string(),
+            }
+        )
+    );
+    denied!(
         Method::Get,
         "/admin/stores",
         admin_rest::get_store(&mut tx, &ctx)
@@ -2285,6 +2301,16 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
             &ctx,
             admin_order::RegisterProvider { name: "x".into() }
         )
+    );
+    denied!(
+        Method::Post,
+        "/admin/fulfillment-providers/{id}/disable",
+        admin_order::disable_fulfillment_provider(&mut tx, &ctx, uuid::Uuid::now_v7())
+    );
+    denied!(
+        Method::Post,
+        "/admin/fulfillment-providers/{id}/enable",
+        admin_order::enable_fulfillment_provider(&mut tx, &ctx, uuid::Uuid::now_v7())
     );
     denied!(
         Method::Get,
