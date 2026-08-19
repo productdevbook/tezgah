@@ -78,7 +78,7 @@ impl ListQuery {
 
 /// A product as its own shop sees it: the status included, because deciding
 /// what to do next is the whole point of the screen this feeds.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ProductView {
     pub id: ProductId,
     pub handle: String,
@@ -571,7 +571,7 @@ impl From<inventory::StockLocation> for StockLocationView {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct InventoryItemView {
     pub id: InventoryItemId,
     pub sku: Option<String>,

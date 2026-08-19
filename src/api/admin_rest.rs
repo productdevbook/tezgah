@@ -58,7 +58,7 @@ fn map<T, U>(page: Page<T>, into: impl Fn(T) -> U) -> Page<U> {
 
 // ---------------------------------------------------------------- customers
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct CustomerView {
     pub id: CustomerId,
     pub email: Option<String>,
@@ -420,7 +420,7 @@ pub async fn remove_group_member(
 
 // --------------------------------------------------------------- promotions
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct PromotionView {
     pub id: PromotionId,
     pub campaign_id: Option<CampaignId>,
@@ -1206,7 +1206,7 @@ pub async fn delete_tax_rate_rule(tx: &mut Tx<'_>, ctx: &Ctx<'_>, rule_id: Uuid)
 
 // -------------------------------------------------- regions, channels, money
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct RegionView {
     pub id: RegionId,
     pub name: String,
@@ -1231,7 +1231,7 @@ impl From<store::Region> for RegionView {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct SalesChannelView {
     pub id: SalesChannelId,
     pub name: String,

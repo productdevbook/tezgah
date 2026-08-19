@@ -66,7 +66,7 @@ macro_rules! category_columns {
 /// invisible the same as `draft`, but reached only through
 /// [`submit_for_review`], [`approve_product`] and [`reject_product`], not
 /// through a plain edit.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ProductStatus {
     Draft,
