@@ -29,6 +29,7 @@ use tezgah::ports::{
     Permit, Resource, Tx,
 };
 use tezgah::subscription::{self, NewLine, NewPlan, NewPlanGroup, NewSubscription, Renewals};
+use tezgah::workflow::State;
 use tezgah::{Paging, credit, inventory, pricing};
 use uuid::Uuid;
 
@@ -869,6 +870,70 @@ async fn a_declined_charge_leaves_the_contract_past_due_with_a_retry_queued() {
         run_after > Utc::now() + Duration::hours(1),
         "the retry asked to run immediately, which is the same card in the same minute"
     );
+
+    shop.close().await;
+}
+
+/// #163: `create_order`'s own undo used to be a shorter, separately typed
+/// copy of checkout's, and never released the stock `reserve_stock` had
+/// promised — so a renewal that reserves, writes the order, and is then
+/// declined has to unwind cleanly and hand the stock back, the same as a
+/// checkout that never became an order.
+#[tokio::test]
+async fn a_renewal_declined_after_the_order_is_written_unwinds_cleanly() {
+    let shop = Shop::open().await;
+    let seeded = a_contract(&shop, dec!(10), None).await;
+
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    let item = inventory::inventory_items_for_variant(&mut tx, &ctx, seeded.variant_id)
+        .await
+        .expect("an inventory item")
+        .first()
+        .expect("an inventory item")
+        .inventory_item_id;
+    let before = inventory::level(&mut tx, &ctx, item, seeded.location_id)
+        .await
+        .expect("a level");
+    tx.commit().await.expect("to commit");
+
+    let renewals = Renewals::new(Arc::new(Refusing), seeded.location_id);
+    let renewed = renewals
+        .renew(&shop.pool, &shop.ctx(), seeded.id)
+        .await
+        .expect("the renewal to run and be refused");
+
+    assert!(renewed.declined);
+    assert_eq!(
+        renewed.run.state,
+        State::Reverted,
+        "the compensation itself failed rather than the charge: {:?}",
+        renewed.run.failure
+    );
+
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+
+    let dead_letters: i64 = sqlx::query_scalar(
+        "select count(*) from workflow_dead_letter where scope = $1 and run_id = $2",
+    )
+    .bind(shop.here.0)
+    .bind(renewed.run.id.as_uuid())
+    .fetch_one(&mut *tx)
+    .await
+    .expect("to count dead letters");
+    assert_eq!(dead_letters, 0, "a step's undo could not run");
+
+    let after = inventory::level(&mut tx, &ctx, item, seeded.location_id)
+        .await
+        .expect("a level");
+    tx.commit().await.expect("to commit");
+
+    assert_eq!(
+        after.reserved_quantity, before.reserved_quantity,
+        "the renewal's reservation was never given back"
+    );
+    assert_eq!(orders(&shop).await, 0, "the unpaid order was not unwound");
 
     shop.close().await;
 }
