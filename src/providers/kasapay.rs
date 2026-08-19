@@ -269,7 +269,7 @@ mod tests {
     #[derive(Debug)]
     enum LookupAnswer {
         None,
-        Some(Charge),
+        Some(Box<Charge>),
         Err,
     }
 
@@ -358,7 +358,7 @@ mod tests {
                 .push(order.as_str().to_owned());
             match self.lookup_answer.lock().expect("lock").take() {
                 Some(LookupAnswer::None) | None => Ok(None),
-                Some(LookupAnswer::Some(charge)) => Ok(Some(charge)),
+                Some(LookupAnswer::Some(charge)) => Ok(Some(*charge)),
                 Some(LookupAnswer::Err) => Err(KError::new(
                     KErrorKind::Transport,
                     self.id(),
@@ -445,7 +445,7 @@ mod tests {
         *fake.lookup_answer.lock().expect("lock") = Some(LookupAnswer::None);
         assert!(lookup(&fake, "order-1").await.expect("answers").is_none());
 
-        *fake.lookup_answer.lock().expect("lock") = Some(LookupAnswer::Some(a_charge()));
+        *fake.lookup_answer.lock().expect("lock") = Some(LookupAnswer::Some(Box::new(a_charge())));
         let found = lookup(&fake, "order-1")
             .await
             .expect("answers")

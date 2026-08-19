@@ -2,7 +2,7 @@
 name = "tezgah"
 version = "0.0.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 license = "MIT"
 description = "A commerce engine for Rust: products, carts, orders, payments, inventory, and a workflow runner that unwinds what it started."
 repository = "https://github.com/productdevbook/tezgah"
