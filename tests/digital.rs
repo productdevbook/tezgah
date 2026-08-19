@@ -3,7 +3,7 @@
 
 mod common;
 
-use common::Shop;
+use common::{Doorman, Shop};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use tezgah::catalogue::{self, NewProduct, NewVariant};
@@ -13,7 +13,7 @@ use tezgah::id::{CustomerId, OrderId, VariantId};
 use tezgah::money::{Currency, Money};
 use tezgah::order::{self, NewOrder, NewOrderLine};
 use tezgah::page::Paging;
-use tezgah::ports::{Ctx, Tx};
+use tezgah::ports::{Actor, Ctx, Tx};
 
 fn lira() -> Currency {
     Currency::parse("TRY").expect("a currency code")
@@ -508,5 +508,27 @@ async fn somebody_elses_library_is_neither_readable_nor_spendable() {
     assert!(refused.is_not_found());
 
     tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+/// #162: `redeem` read the token and only asked once a row existed, so a
+/// token nobody issued answered `not_found` without anybody being refused.
+#[tokio::test]
+async fn redeeming_a_token_nobody_issued_is_denied_not_not_found() {
+    let shop = Shop::open().await;
+    let doorman = Doorman;
+    let refused = shop.ctx_as(Actor::System, &doorman);
+    let mut tx = shop.begin().await;
+
+    let denied = digital::redeem(&mut tx, &refused, "no-such-token", Access::default())
+        .await
+        .expect_err("a refused actor redeems nothing that was never issued");
+    assert!(
+        denied.is_denied(),
+        "a token nobody issued must be refused, not answered as missing: {:?}",
+        denied.code()
+    );
+
+    tx.rollback().await.ok();
     shop.close().await;
 }

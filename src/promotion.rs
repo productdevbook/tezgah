@@ -1349,8 +1349,21 @@ pub async fn apply(tx: &mut Tx<'_>, ctx: &Ctx<'_>, cart_id: CartId) -> Result<Ve
     .bind(ctx.scope.0)
     .bind(cart_id.as_uuid())
     .fetch_optional(&mut **tx)
-    .await?
-    .ok_or_else(|| Error::not_found("cart"))?;
+    .await?;
+
+    // No row to say whose cart this is yet, so the ask below is on nobody's
+    // behalf — asked before answering even when there is nothing to answer
+    // about.
+    let Some(cart) = cart else {
+        let _: Permit = ctx.permit(
+            Action::Write,
+            Resource::Cart {
+                id: cart_id.as_uuid(),
+                customer: None,
+            },
+        )?;
+        return Err(Error::not_found("cart"));
+    };
 
     let _: Permit = ctx.permit(
         Action::Write,

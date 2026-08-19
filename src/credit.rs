@@ -1433,7 +1433,19 @@ pub async fn remove_cart_credit(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: CartCreditId
             .fetch_optional(&mut **tx)
             .await?;
 
-    let cart_id = cart_id.ok_or_else(|| Error::not_found("cart credit"))?;
+    // No row to name a cart with yet, so the ask below is on nobody's
+    // behalf — asked before answering even when there is nothing to answer
+    // about.
+    let Some(cart_id) = cart_id else {
+        let _: Permit = ctx.permit(
+            Action::Write,
+            Resource::Cart {
+                id: Uuid::nil(),
+                customer: None,
+            },
+        )?;
+        return Err(Error::not_found("cart credit"));
+    };
 
     let _: Permit = ctx.permit(
         Action::Write,

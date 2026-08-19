@@ -1373,16 +1373,27 @@ async fn load(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: CartId) -> Result<Cart> {
 /// A cart that has become an order is closed to every write, and saying so
 /// once is why nothing below repeats the check.
 async fn open(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: CartId, action: Action) -> Result<Cart> {
-    // Read before the permit because an authorizer is asked whose cart it is,
-    // and only the row knows.
     let cart = sqlx::query_as::<_, Cart>(&format!(
         "select {COLUMNS} from cart where scope = $1 and id = $2"
     ))
     .bind(ctx.scope.0)
     .bind(id.as_uuid())
     .fetch_optional(&mut **tx)
-    .await?
-    .ok_or_else(|| Error::not_found("cart"))?;
+    .await?;
+
+    // No row to say whose cart this is yet, so the ask below is on nobody's
+    // behalf — asked before answering even when there is nothing to answer
+    // about, same rule as `get`.
+    let Some(cart) = cart else {
+        let _: Permit = ctx.permit(
+            action,
+            Resource::Cart {
+                id: id.as_uuid(),
+                customer: None,
+            },
+        )?;
+        return Err(Error::not_found("cart"));
+    };
 
     let _: Permit = ctx.permit(
         action,

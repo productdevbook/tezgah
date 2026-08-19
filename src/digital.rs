@@ -673,15 +673,21 @@ pub async fn redeem(
     .bind(ctx.scope.0)
     .bind(&hashed)
     .fetch_optional(&mut **tx)
-    .await?
-    .ok_or_else(|| Error::not_found("download link"))?;
+    .await?;
 
-    // Constant time, so a wrong token cannot be improved by timing how wrong
-    // it was.
-    let matches: bool = hashed.as_bytes().ct_eq(found.token_hash.as_bytes()).into();
-    if !matches {
+    // No row to say whose download this is yet, so the ask below is on
+    // nobody's behalf — asked before answering even when there is nothing
+    // to answer about.
+    let Some(found) = found else {
+        let _: Permit = ctx.permit(
+            Action::View,
+            Resource::Order {
+                id: Uuid::nil(),
+                customer: None,
+            },
+        )?;
         return Err(Error::not_found("download link"));
-    }
+    };
 
     let _: Permit = ctx.permit(
         Action::View,
@@ -690,6 +696,13 @@ pub async fn redeem(
             customer: found.customer_id.map(CustomerId::as_uuid),
         },
     )?;
+
+    // Constant time, so a wrong token cannot be improved by timing how wrong
+    // it was.
+    let matches: bool = hashed.as_bytes().ct_eq(found.token_hash.as_bytes()).into();
+    if !matches {
+        return Err(Error::not_found("download link"));
+    }
     if access.as_customer.is_some() && access.as_customer != found.customer_id {
         return Err(Error::not_found("download link"));
     }

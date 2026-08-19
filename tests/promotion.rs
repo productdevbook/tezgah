@@ -6,12 +6,12 @@
 
 mod common;
 
-use common::Shop;
+use common::{Doorman, Shop};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use tezgah::id::{CartId, PromotionId};
 use tezgah::money::{Currency, Money};
-use tezgah::ports::{Ctx, Tx};
+use tezgah::ports::{Actor, Ctx, Tx};
 use tezgah::promotion::{
     self, Allocation, BudgetKind, MethodKind, NewApplicationMethod, NewCampaign, NewCampaignBudget,
     NewPromotion, PromotionKind, Status, TargetKind,
@@ -493,5 +493,27 @@ async fn another_shop_cannot_spend_this_ones_campaign() {
     );
     after.rollback().await.expect("to roll back");
 
+    shop.close().await;
+}
+
+/// #162: `apply` read the cart and only asked once a row existed, so a
+/// synthetic id answered `not_found` without anybody being refused.
+#[tokio::test]
+async fn applying_promotions_to_a_cart_that_does_not_exist_is_denied_not_not_found() {
+    let shop = Shop::open().await;
+    let doorman = Doorman;
+    let refused = shop.ctx_as(Actor::System, &doorman);
+    let mut tx = shop.begin().await;
+
+    let denied = promotion::apply(&mut tx, &refused, CartId::new())
+        .await
+        .expect_err("a refused actor prices nothing for a cart that isn't there");
+    assert!(
+        denied.is_denied(),
+        "a synthetic cart id must be refused, not answered as missing: {:?}",
+        denied.code()
+    );
+
+    tx.rollback().await.ok();
     shop.close().await;
 }

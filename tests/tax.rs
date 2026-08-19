@@ -6,11 +6,11 @@
 
 mod common;
 
-use common::Shop;
+use common::{Doorman, Shop};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use tezgah::money::{Currency, Money};
-use tezgah::ports::{Ctx, Tx};
+use tezgah::ports::{Actor, Ctx, Tx};
 use tezgah::tax::{
     self, NewTaxRate, NewTaxRateRule, NewTaxRegion, TaxReference, TaxTarget, TaxableAddress,
     TaxableLine,
@@ -1182,5 +1182,28 @@ async fn a_book_and_an_audiobook_are_taxed_in_two_different_countries() {
     );
 
     tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+/// #162: `set_cart_tax_lines` read the cart and only asked once a row
+/// existed, so a synthetic id answered `not_found` without anybody being
+/// refused.
+#[tokio::test]
+async fn setting_tax_lines_on_a_cart_that_does_not_exist_is_denied_not_not_found() {
+    let shop = Shop::open().await;
+    let doorman = Doorman;
+    let refused = shop.ctx_as(Actor::System, &doorman);
+    let mut tx = shop.begin().await;
+
+    let denied = tax::set_cart_tax_lines(&mut tx, &refused, tezgah::id::CartId::new(), &[], &[])
+        .await
+        .expect_err("a refused actor sets tax lines on nothing that is there");
+    assert!(
+        denied.is_denied(),
+        "a synthetic cart id must be refused, not answered as missing: {:?}",
+        denied.code()
+    );
+
+    tx.rollback().await.ok();
     shop.close().await;
 }

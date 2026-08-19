@@ -1,6 +1,6 @@
 mod common;
 
-use common::Shop;
+use common::{Doorman, Shop};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use tezgah::cart::{
@@ -9,11 +9,11 @@ use tezgah::cart::{
 };
 use tezgah::catalogue::{self, NewProduct, NewVariant};
 use tezgah::customer::{self, NewCustomer};
-use tezgah::id::VariantId;
+use tezgah::id::{CartId, CustomerId, VariantId};
 use tezgah::inventory;
 use tezgah::money::{Currency, Money};
 use tezgah::page::Paging;
-use tezgah::ports::{Ctx, Tx};
+use tezgah::ports::{Actor, Ctx, Tx};
 use tezgah::subscription;
 
 fn lira() -> tezgah::Result<Currency> {
@@ -1435,4 +1435,49 @@ async fn merging_carts_keeps_a_bundle_childs_parent() -> tezgah::Result<()> {
     tx.rollback().await.ok();
     shop.close().await;
     Ok(())
+}
+
+/// #162: `open`, the gate every write in this file shares, used to read the
+/// cart and only ask the host once a row existed — so a cart that did not
+/// exist answered `not_found` without anybody being refused. Every public
+/// function built on it is one call site; two are enough to prove the gate
+/// itself, not each caller separately.
+#[tokio::test]
+async fn a_write_on_a_cart_that_does_not_exist_is_denied_not_not_found() {
+    let shop = Shop::open().await;
+    let doorman = Doorman;
+    let refused = shop.ctx_as(Actor::System, &doorman);
+    let mut tx = shop.begin().await;
+
+    let denied = cart::add_line(
+        &mut tx,
+        &refused,
+        CartId::new(),
+        AddLine {
+            variant_id: VariantId::new(),
+            quantity: 1,
+            unit_price: money(dec!(20)).expect("a currency code"),
+            is_tax_inclusive: false,
+            selling_plan_id: None,
+        },
+    )
+    .await
+    .expect_err("a refused actor adds nothing to a cart that isn't there");
+    assert!(
+        denied.is_denied(),
+        "a synthetic cart id must be refused, not answered as missing: {:?}",
+        denied.code()
+    );
+
+    let denied = cart::set_customer(&mut tx, &refused, CartId::new(), CustomerId::new())
+        .await
+        .expect_err("a refused actor moves nobody's cart to nobody's customer");
+    assert!(
+        denied.is_denied(),
+        "a synthetic cart id must be refused, not answered as missing: {:?}",
+        denied.code()
+    );
+
+    tx.rollback().await.ok();
+    shop.close().await;
 }

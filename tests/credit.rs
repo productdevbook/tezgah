@@ -7,16 +7,16 @@
 
 mod common;
 
-use common::Shop;
+use common::{Doorman, Shop};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use tezgah::credit::{self, NewGiftCard, Redemption};
-use tezgah::id::{GiftCardId, OrderId, PaymentCollectionId};
+use tezgah::id::{CartCreditId, GiftCardId, OrderId, PaymentCollectionId};
 use tezgah::money::{Currency, Money};
 use tezgah::order::{self, NewOrder, NewOrderLine, NewTaxLine, TaxSnapshot};
 use tezgah::page::Paging;
 use tezgah::payment::{self, NewCollection};
-use tezgah::ports::{Ctx, Tx};
+use tezgah::ports::{Actor, Ctx, Tx};
 
 fn lira() -> Currency {
     Currency::parse("TRY").expect("a currency code")
@@ -1078,5 +1078,27 @@ async fn the_change_log_refuses_an_action_that_is_not_a_proposal() {
     .expect("an edit is still a change");
 
     tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+/// #162: `remove_cart_credit` read the row and only asked once one existed,
+/// so a synthetic id answered `not_found` without anybody being refused.
+#[tokio::test]
+async fn removing_a_cart_credit_that_does_not_exist_is_denied_not_not_found() {
+    let shop = Shop::open().await;
+    let doorman = Doorman;
+    let refused = shop.ctx_as(Actor::System, &doorman);
+    let mut tx = shop.begin().await;
+
+    let denied = credit::remove_cart_credit(&mut tx, &refused, CartCreditId::new())
+        .await
+        .expect_err("a refused actor removes nothing that isn't there");
+    assert!(
+        denied.is_denied(),
+        "a synthetic cart credit id must be refused, not answered as missing: {:?}",
+        denied.code()
+    );
+
+    tx.rollback().await.ok();
     shop.close().await;
 }
