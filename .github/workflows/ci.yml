@@ -69,9 +69,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          # A release, not the canary: the lockfile format tracks the bun
-          # version and a canary writes one no release can read.
-          bun-version: "1.4.0"
+          # The canary, matching the bun that writes bun.lock: the lockfile
+          # format tracks the bun version, and a release cannot read one a
+          # canary wrote. A rolling tag is the cost of that.
+          bun-version: "canary"
       - run: bun install --frozen-lockfile
       - run: bun run lint
       - run: bun run build
