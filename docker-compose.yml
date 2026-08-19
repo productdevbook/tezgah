@@ -1,0 +1,59 @@
+name: tezgah
+
+services:
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tezgah}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-tezgah}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tezgah} -d ${POSTGRES_DB:-tezgah}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  tezgah-server:
+    image: ghcr.io/productdevbook/tezgah-server:${TEZGAH_VERSION:-latest}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: ${SERVER_PORT:-8080}
+      # Built from the same POSTGRES_* values postgres itself uses, so there
+      # is one password to change in .env rather than two that can drift.
+      DATABASE_URL: postgres://${POSTGRES_USER:-tezgah}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-tezgah}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+    ports:
+      - "${SERVER_HTTP_PORT:-8081}:${SERVER_PORT:-8080}"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:${SERVER_PORT:-8080}/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  tezgah-panel:
+    image: ghcr.io/productdevbook/tezgah-panel:${TEZGAH_VERSION:-latest}
+    restart: unless-stopped
+    depends_on:
+      tezgah-server:
+        condition: service_healthy
+    environment:
+      TEZGAH_API_UPSTREAM: tezgah-server:${SERVER_PORT:-8080}
+    ports:
+      - "${PANEL_HTTP_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/ || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+volumes:
+  postgres_data:
