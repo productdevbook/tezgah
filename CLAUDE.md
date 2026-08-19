@@ -190,8 +190,11 @@ A capability a provider may or may not have arrives as an extension trait —
 that does not implement it cannot sell the thing that needs it, and says so at
 compile time rather than at the till.
 
-`src/providers/` predates that repository and is on its way out; see the issue
-tracking it.
+`src/providers/` used to hold tezgah's own hosted-flow adapters for Stripe and
+iyzico, written before kasapay existed — #53 deleted both once kasapay's own
+gaps closed under them. What is left is the mapping onto `Provider`, kept
+ready for whichever host wires it up; nothing here should grow back into a
+second payment abstraction.
 
 ## Commits and pull requests
 

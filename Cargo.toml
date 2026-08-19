@@ -14,14 +14,7 @@ async-trait = "0.1"
 base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 hex = { version = "0.4", default-features = false, features = ["alloc"] }
-hmac = { version = "0.12", default-features = false }
-kasapay-core = "0.0.3"
-reqwest = { version = "0.12", default-features = false, features = [
-    "rustls-tls",
-    "json",
-    "charset",
-    "http2",
-] }
+kasapay-core = "0.0.5"
 sha2 = { version = "0.10", default-features = false }
 subtle = { version = "2", default-features = false }
 rust_decimal = { version = "1", features = ["db-postgres", "serde-with-str"] }

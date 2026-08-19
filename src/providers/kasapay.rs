@@ -1,25 +1,28 @@
 //! Vocabulary borrowed from [kasapay](https://github.com/productdevbook/kasapay) — tezgah#53.
 //!
 //! Not a live adapter, and nothing here is called from [`crate::checkout`] or
-//! [`crate::subscription`] yet. `src/providers/stripe.rs` and `iyzico.rs`
-//! remain the production path: #53's design note found that
+//! [`crate::subscription`] yet. #53's design note found that
 //! [`PaymentProvider::create_session`]/`authorize` do not collapse onto
-//! [`kasapay_core::Provider::charge`] uniformly across both shipped
-//! providers, so no wrapper implements [`PaymentProvider`] over
-//! `kasapay_core::Provider` here. `capture`, `cancel`, `refund` and `lookup`
-//! do map close to 1:1 — that mapping is what this module is, kept ready for
-//! the adapter that will call it — plus the [`Money`] conversion boundary it
-//! depends on, proven lossless before anything is built on top of it.
+//! [`kasapay_core::Provider::charge`] uniformly across every provider, so no
+//! wrapper implements [`PaymentProvider`] over `kasapay_core::Provider` here.
+//! `capture`, `cancel`, `refund` and `lookup` do map close to 1:1 — that
+//! mapping is what this module is, kept ready for the adapter that will call
+//! it — plus the [`Money`] conversion boundary it depends on, proven lossless
+//! before anything is built on top of it.
 //!
-//! Deleting `src/providers/stripe.rs` waits on
-//! [kasapay#149](https://github.com/productdevbook/kasapay/issues/149):
-//! `kasapay_core::Currency` is nine variants, closed on purpose for iyzico's
-//! short settlement list, but shared by every adapter including Stripe's,
-//! which settles in 135+. Closing tezgah's own escape hatch before that lands
-//! somewhere else to go is the one thing this module does not do.
+//! `src/providers/stripe.rs` and `iyzico.rs` — tezgah's own hosted-flow
+//! adapters, written before kasapay existed — are gone. Both waited on a
+//! kasapay gap this module could not paper over: [kasapay#149] closed
+//! `Currency`'s nine-variant ceiling (it names 119 now, Stripe's own list
+//! among them), and [kasapay#150] gave `Provider::charge` a buyer, addresses
+//! and a basket, so iyzico's classic hosted form goes through the trait
+//! instead of refusing every call with `Unsupported`. Neither gap is this
+//! module's to hold open any longer.
 //!
 //! [`PaymentProvider`]: crate::payment::PaymentProvider
 //! [`PaymentProvider::create_session`]: crate::payment::PaymentProvider::create_session
+//! [kasapay#149]: https://github.com/productdevbook/kasapay/issues/149
+//! [kasapay#150]: https://github.com/productdevbook/kasapay/issues/150
 
 use std::str::FromStr;
 
@@ -50,22 +53,22 @@ use crate::payment::{Authorization, AuthorizationStatus, CaptureResult, RefundRe
 /// nothing downstream agreed to.
 ///
 /// Also errors rather than rounding or dropping when kasapay does not know
-/// the currency at all: kasapay's `Currency` is nine variants, closed on
-/// purpose, and a shop selling outside them cannot be represented in a
-/// `ChargeRequest` — see this module's own doc and kasapay#149.
+/// the currency at all: kasapay's `Currency` is closed — 119 variants as of
+/// kasapay 0.0.5, not open like tezgah's own — and a shop selling outside
+/// them cannot be represented in a `ChargeRequest`. What is left outside that
+/// list is currencies no provider here settles in, or ones ISO and a
+/// provider's own reading disagree about closely enough that kasapay declines
+/// to guess — see this module's own doc.
 pub fn to_kasapay_money(money: Money, exponent: u32) -> Result<kasapay_core::Money> {
     let currency = kasapay_core::Currency::from_str(money.currency.as_str()).map_err(|_| {
-        Error::invalid(format!(
-            "kasapay does not know currency {} (kasapay#149)",
-            money.currency
-        ))
+        Error::invalid(format!("kasapay does not know currency {}", money.currency))
     })?;
     let kasapay_exponent = currency.exponent();
     if exponent != kasapay_exponent {
         return Err(Error::invalid(format!(
             "{} is configured at {exponent} decimal places but kasapay settles it at \
-             {kasapay_exponent} (kasapay#149) — reconcile the shop's currency row before \
-             routing it through kasapay",
+             {kasapay_exponent} — reconcile the shop's currency row before routing it \
+             through kasapay",
             money.currency
         )));
     }
@@ -198,10 +201,9 @@ pub async fn lookup(
 
 /// kasapay's [`kasapay_core::Status`] is six variants and `#[non_exhaustive]`;
 /// tezgah's [`AuthorizationStatus`] is four, also `#[non_exhaustive]`.
-/// `Authorized` and `Captured` both become `Authorized` here — iyzico's own
-/// checkout form already conflates the two in tezgah's existing adapter
-/// (`src/providers/iyzico.rs`'s `capture` confirms money already taken
-/// rather than moving it again).
+/// `Authorized` and `Captured` both become `Authorized` here — the same
+/// conflation iyzico's own checkout form already needed when tezgah drove it
+/// directly, confirming money already taken rather than moving it again.
 ///
 /// `Pending` and `RequiresAction` are kept apart (tezgah#168):
 /// `RequiresAction` needs a human, `Pending` needs nobody, and folding the
@@ -276,7 +278,7 @@ mod tests {
     #[test]
     fn round_trips_a_two_decimal_currency() {
         let money = Money::new(dec!(10.50), try_("TRY"));
-        let kasapay = to_kasapay_money(money, 2).expect("TRY is one of the nine, at exponent 2");
+        let kasapay = to_kasapay_money(money, 2).expect("kasapay knows TRY, at exponent 2");
         assert_eq!(kasapay.minor_units(), 1050);
         assert_eq!(from_kasapay_money(kasapay, 2).expect("round trips"), money);
     }
@@ -284,7 +286,7 @@ mod tests {
     #[test]
     fn round_trips_usd() {
         let money = Money::new(dec!(7.05), try_("USD"));
-        let kasapay = to_kasapay_money(money, 2).expect("USD is one of the nine, at exponent 2");
+        let kasapay = to_kasapay_money(money, 2).expect("kasapay knows USD, at exponent 2");
         assert_eq!(kasapay.minor_units(), 705);
         assert_eq!(from_kasapay_money(kasapay, 2).expect("round trips"), money);
     }
@@ -292,7 +294,7 @@ mod tests {
     #[test]
     fn round_trips_jpy_with_no_decimal_places() {
         let money = Money::new(dec!(1200), try_("JPY"));
-        let kasapay = to_kasapay_money(money, 0).expect("JPY is one of the nine, at exponent 0");
+        let kasapay = to_kasapay_money(money, 0).expect("kasapay knows JPY, at exponent 0");
         assert_eq!(kasapay.minor_units(), 1200);
         assert_eq!(from_kasapay_money(kasapay, 0).expect("round trips"), money);
     }
@@ -300,22 +302,46 @@ mod tests {
     #[test]
     fn round_trips_kwd_with_three_decimal_places() {
         let money = Money::new(dec!(3.500), try_("KWD"));
-        let kasapay = to_kasapay_money(money, 3).expect("KWD is one of the nine, at exponent 3");
+        let kasapay = to_kasapay_money(money, 3).expect("kasapay knows KWD, at exponent 3");
         assert_eq!(kasapay.minor_units(), 3500);
         assert_eq!(from_kasapay_money(kasapay, 3).expect("round trips"), money);
     }
 
+    // kasapay 0.0.5 (kasapay#149) took `Currency` from nine variants to 119,
+    // PLN among them — a shop selling in PLN or SEK can now be routed through
+    // kasapay at all, where before neither could be represented in a
+    // `ChargeRequest`.
+    #[test]
+    fn round_trips_pln() {
+        let money = Money::new(dec!(19.99), try_("PLN"));
+        let kasapay = to_kasapay_money(money, 2).expect("kasapay#149: kasapay knows PLN now");
+        assert_eq!(kasapay.minor_units(), 1999);
+        assert_eq!(from_kasapay_money(kasapay, 2).expect("round trips"), money);
+    }
+
+    #[test]
+    fn round_trips_sek() {
+        let money = Money::new(dec!(249.50), try_("SEK"));
+        let kasapay = to_kasapay_money(money, 2).expect("kasapay#149: kasapay knows SEK now");
+        assert_eq!(kasapay.minor_units(), 24950);
+        assert_eq!(from_kasapay_money(kasapay, 2).expect("round trips"), money);
+    }
+
     #[test]
     fn a_currency_kasapay_does_not_know_is_an_explicit_error_not_a_silent_round() {
-        let money = Money::new(dec!(10), try_("PLN"));
-        let err = to_kasapay_money(money, 2).expect_err("PLN is not one of kasapay's nine");
+        // ISK: kasapay's own doc names this one deliberately, not an
+        // oversight — Stripe treats the Icelandic krona as zero-decimal
+        // where ISO calls it two, and kasapay declines to guess which
+        // reading a shop wants rather than pick one silently.
+        let money = Money::new(dec!(10), try_("ISK"));
+        let err = to_kasapay_money(money, 0).expect_err("ISK is not one of kasapay's 119");
         assert_eq!(err.code(), "invalid");
     }
 
     // -----------------------------------------------------------------
     // tezgah#171 — the shop's own exponent (store::exponent) is what
     // `Money::allocate` rounded the parts by; kasapay-core hard-codes its
-    // own for the nine currencies it settles. When a shop has configured a
+    // own for the currencies it settles. When a shop has configured a
     // currency at a different exponent than kasapay's, this boundary must
     // say so rather than pick one silently — kasapay decodes minor units by
     // its own fixed table, so a mismatch is an inconsistency, not a
@@ -332,8 +358,7 @@ mod tests {
 
     #[test]
     fn a_shop_exponent_beyond_kasapays_max_is_also_an_explicit_error() {
-        // The schema allows up to 6; kasapay's own maximum among its nine,
-        // KWD, is 3.
+        // The schema allows up to 6; KWD, kasapay's deepest, is 3.
         let money = Money::new(dec!(3.500000), try_("KWD"));
         let err = to_kasapay_money(money, 6).expect_err("KWD is 3 at kasapay, not 6");
         assert_eq!(err.code(), "invalid");
@@ -360,7 +385,7 @@ mod tests {
 
         let mut sum = Money::new(Decimal::ZERO, try_("KWD"));
         for part in parts {
-            let kasapay = to_kasapay_money(part, exponent).expect("KWD is one of the nine");
+            let kasapay = to_kasapay_money(part, exponent).expect("kasapay knows KWD");
             let back = from_kasapay_money(kasapay, exponent).expect("round trips");
             sum = sum.plus(back).expect("same currency throughout");
         }
@@ -409,6 +434,14 @@ mod tests {
         }
 
         async fn charge(&self, _request: &ChargeRequest) -> std::result::Result<Charge, KError> {
+            Err(KError::new(
+                KErrorKind::Unsupported,
+                self.id(),
+                "not exercised",
+            ))
+        }
+
+        async fn resume(&self, _continuation: &str) -> std::result::Result<Charge, KError> {
             Err(KError::new(
                 KErrorKind::Unsupported,
                 self.id(),
@@ -501,6 +534,7 @@ mod tests {
                 partial_refund: true,
                 repeated_refund: true,
                 lookup_by_order: true,
+                resume_by_continuation: false,
                 saved_instruments: false,
             }
         }

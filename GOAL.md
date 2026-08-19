@@ -49,11 +49,13 @@ needing a live provider fixture to construct an argument. A second matrix does
 the same for ownership: a storefront route must refuse another shopper's row and
 serve its own.
 
-What is left is written as issues rather than as boxes here: the payment
-providers moving onto kasapay (#53), which waits on two gaps filed against that
-repository — its `Currency` is closed at nine variants where Stripe settles in
-far more, and its `Provider` has no route for the hosted checkout form iyzico's
-most common flow uses.
+What is left is written as issues rather than as boxes here. #53 — the payment
+providers moving onto kasapay — closed both gaps it was filed waiting on:
+kasapay#149 opened `Currency` from nine variants to 119, and kasapay#150 gave
+`Provider::charge` a route for the hosted checkout form iyzico's most common
+flow uses. `src/providers/stripe.rs` and `iyzico.rs`, tezgah's own hosted-flow
+adapters written before kasapay existed, are gone with them; `src/providers/`
+holds only the kasapay mapping now, kept ready for whichever host wires it up.
 
 ## Stages
 

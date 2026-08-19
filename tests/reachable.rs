@@ -99,7 +99,7 @@ use std::path::{Path, PathBuf};
 
 /// Public functions nothing in the crate calls, each with the reason.
 /// Adding to this is not a fix.
-const TOLERATED: [(&str, &str); 47] = [
+const TOLERATED: [(&str, &str); 40] = [
     (
         "batch::import_workflow",
         "the import workflow a host runs through the runner when a file is large \
@@ -227,41 +227,6 @@ const TOLERATED: [(&str, &str); 47] = [
          the link today",
     ),
     (
-        "iyzico::authorization_header",
-        "verifying a provider's webhook signature, which the host does before it \
-         hands the body over",
-    ),
-    (
-        "iyzico::verify_webhook_signature",
-        "verifying a provider's webhook signature, which the host does before it \
-         hands the body over",
-    ),
-    (
-        "iyzico::webhook_signature",
-        "verifying a provider's webhook signature, which the host does before it \
-         hands the body over",
-    ),
-    (
-        "iyzico::read_event",
-        "verifying a provider's webhook signature, which the host does before it \
-         hands the body over",
-    ),
-    (
-        "stripe::read_event",
-        "parses a provider's webhook body, which the host does before it hands \
-         anything to the library",
-    ),
-    (
-        "stripe::verify_signature",
-        "verifying a provider's webhook signature, which the host does before it \
-         hands the body over",
-    ),
-    (
-        "stripe::signature_header",
-        "verifying a provider's webhook signature, which the host does before it \
-         hands the body over",
-    ),
-    (
         "kasapay::to_kasapay_money",
         "#53's design note stages this as its own PR — proving the Money \
          conversion round-trips before anything downstream depends on it, so \
@@ -273,9 +238,10 @@ const TOLERATED: [(&str, &str); 47] = [
     ),
     (
         "kasapay::capture",
-        "kept ready for #53's PaymentProvider wrapper; that step waits on \
-         kasapay#149 (Currency is nine variants, Stripe settles in 135+) \
-         before src/providers/stripe.rs can go",
+        "kept ready for #53's PaymentProvider wrapper; kasapay#149 and \
+         kasapay#150 — the two gaps that kept src/providers/stripe.rs and \
+         iyzico.rs around — are both closed, and those two files are gone, \
+         but nothing yet builds the wrapper that would call this",
     ),
     ("kasapay::cancel", "same as kasapay::capture"),
     ("kasapay::refund", "same as kasapay::capture"),
