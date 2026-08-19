@@ -10,7 +10,9 @@
 //!
 //! 1. every free `pub fn` outside `src/api/` has a caller somewhere else in
 //!    the crate;
-//! 2. every table a migration creates has a writer in `src/`;
+//! 2. every table a migration creates has a writer — in `src/`, resolved
+//!    through a `format!`'s own placeholder where the table name is not a
+//!    literal string there, or in a trigger a migration installs;
 //! 3. every value a `check (col in (..))` permits appears as a `'literal'`
 //!    somewhere in `src/`.
 //!
@@ -19,6 +21,31 @@
 //! written in the right column. Names are matched textually — a caller is a
 //! `module::name(` elsewhere, or a bare `name(` in a file that imported it —
 //! so two functions sharing a name share their callers.
+//!
+//! Check 2 resolves a `format!`-built table name exactly two ways: a private
+//! function's own parameter, read from every literal argument its callers in
+//! the same file pass (`table` in `catalogue::link` and `catalogue::unlink`);
+//! or a tuple element bound from a same-file method whose body is nothing but
+//! a `match` returning literal tuples (`adjustment_table`/`tax_table`, bound
+//! from `LineMoney::tables` in `order::insert_line_money`). Both are shapes
+//! `tests/format_sql.rs` already proved closed over literals, for the
+//! opposite reason — that check is proving a caller cannot smuggle a value
+//! in; this one is proving what the table name always resolves to. A table
+//! name built any other way — a loop variable over an array of names
+//! already bound elsewhere, the shape `order::erase` uses for the same two
+//! tables — resolves to nothing here, which costs no coverage: the
+//! tuple-destructure case above already wrote those two tables down. Until
+//! issue #187 this check also counted a table's name in quotes anywhere in
+//! `src/` as proof of a writer, which let `Error::not_found("currency")`
+//! pass for a table nothing wrote a row into; that form is gone, and the
+//! quoted forms it keeps are `insert into "T"`/`update "T"`/`delete from
+//! "T"` — the shape a reserved word like `"order"` is genuinely written in,
+//! not a name appearing anywhere for any reason. And check 2 reads
+//! `migrations/` for one more shape entirely: a trigger's own body between
+//! its `$$` delimiters, so `order_status_history` — written only by
+//! `tezgah_order_status_moves`, installed in migration 0020 — counts, where
+//! reading `src/` alone would have missed it, the same blind spot #118
+//! documented for check 3 below.
 //!
 //! Check 3 is weaker than checks 1 and 2, and it is worth being exact about
 //! how. It does not distinguish where a literal sits — a value in a `match`
@@ -666,12 +693,525 @@ fn words_after(text: &str, token: &str) -> Vec<String> {
     out
 }
 
+/// The index one past the `)` matching the `(` at `open`, skipping the
+/// contents of `"..."` string literals. `None` if it never closes. This and
+/// the handful of helpers below it duplicate `tests/format_sql.rs`'s own —
+/// each latch here reads the crate on its own, the same duplication
+/// `sources`/`files` above already carries.
+fn matching_close_paren(chars: &[char], open: usize) -> Option<usize> {
+    let mut depth = 0i32;
+    let mut i = open;
+    let mut in_str = false;
+    let mut escape = false;
+    while i < chars.len() {
+        let c = chars[i];
+        if in_str {
+            if escape {
+                escape = false;
+            } else if c == '\\' {
+                escape = true;
+            } else if c == '"' {
+                in_str = false;
+            }
+        } else {
+            match c {
+                '"' => in_str = true,
+                '(' => depth += 1,
+                ')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(i);
+                    }
+                }
+                _ => {}
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
+/// The first `"..."` string literal at the start of `chars` (leading
+/// whitespace allowed), unescaped quoting aside — its raw text between the
+/// quotes.
+fn leading_string_literal(chars: &[char]) -> Option<String> {
+    let mut i = 0;
+    while i < chars.len() && chars[i].is_whitespace() {
+        i += 1;
+    }
+    if chars.get(i) != Some(&'"') {
+        return None;
+    }
+    i += 1;
+    let start = i;
+    let mut escape = false;
+    while i < chars.len() {
+        let c = chars[i];
+        if escape {
+            escape = false;
+        } else if c == '\\' {
+            escape = true;
+        } else if c == '"' {
+            return Some(chars[start..i].iter().collect());
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Split `s` on its top-level commas — depth tracked over `(`, `[`, `<`,
+/// `{`, string contents skipped.
+fn split_top_level(s: &str) -> Vec<String> {
+    let chars: Vec<char> = s.chars().collect();
+    let mut depth = 0i32;
+    let mut in_str = false;
+    let mut escape = false;
+    let mut start = 0usize;
+    let mut out = Vec::new();
+    for (i, &c) in chars.iter().enumerate() {
+        if in_str {
+            if escape {
+                escape = false;
+            } else if c == '\\' {
+                escape = true;
+            } else if c == '"' {
+                in_str = false;
+            }
+            continue;
+        }
+        match c {
+            '"' => in_str = true,
+            '(' | '[' | '<' | '{' => depth += 1,
+            ')' | ']' | '>' | '}' => depth -= 1,
+            ',' if depth == 0 => {
+                out.push(
+                    chars[start..i]
+                        .iter()
+                        .collect::<String>()
+                        .trim()
+                        .to_string(),
+                );
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    let last: String = chars[start..].iter().collect::<String>().trim().to_string();
+    if !last.is_empty() {
+        out.push(last);
+    }
+    out
+}
+
+fn is_string_literal(arg: &str) -> bool {
+    let arg = arg.trim();
+    (arg.starts_with('"') && arg.ends_with('"') && arg.len() >= 2)
+        || (arg.starts_with("r\"") && arg.ends_with('"') && arg.len() >= 3)
+        || (arg.starts_with("r#") && arg.ends_with('#'))
+}
+
+/// A literal's text with its surrounding quotes removed — `"table"` becomes
+/// `table`.
+fn strip_quotes(s: &str) -> String {
+    let s = s.trim();
+    s.strip_prefix('"')
+        .and_then(|s| s.strip_suffix('"'))
+        .unwrap_or(s)
+        .to_string()
+}
+
+/// `true` if `chars[at..]` starts with the word `word` at a word boundary —
+/// not preceded and not followed by an identifier character.
+fn word_at(chars: &[char], at: usize, word: &[char]) -> bool {
+    if at + word.len() > chars.len() {
+        return false;
+    }
+    if at > 0 && ident_char(chars[at - 1]) {
+        return false;
+    }
+    if &chars[at..at + word.len()] != word {
+        return false;
+    }
+    !chars.get(at + word.len()).is_some_and(|c| ident_char(*c))
+}
+
+/// Call sites of `fn_name(` in `source`, its own `fn` declaration excluded,
+/// as the raw text of the call's argument list.
+fn call_sites(source: &str, fn_name: &str) -> Vec<String> {
+    let chars: Vec<char> = source.chars().collect();
+    let name_chars: Vec<char> = fn_name.chars().collect();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < chars.len() {
+        if !word_at(&chars, i, &name_chars) {
+            i += 1;
+            continue;
+        }
+        let after = i + name_chars.len();
+        let mut open = after;
+        while open < chars.len() && chars[open].is_whitespace() {
+            open += 1;
+        }
+        if chars.get(open) != Some(&'(') {
+            i = after;
+            continue;
+        }
+        // Skip the definition itself: `fn NAME(`, whitespace already spanned.
+        let mut before = i;
+        while before > 0 && chars[before - 1].is_whitespace() {
+            before -= 1;
+        }
+        let is_fn_keyword = before >= 2
+            && chars[before - 2] == 'f'
+            && chars[before - 1] == 'n'
+            && !(before >= 3 && ident_char(chars[before - 3]));
+        if is_fn_keyword {
+            i = open + 1;
+            continue;
+        }
+        if let Some(close) = matching_close_paren(&chars, open) {
+            out.push(chars[open + 1..close].iter().collect::<String>());
+            i = close + 1;
+        } else {
+            i = open + 1;
+        }
+    }
+    out
+}
+
+/// A `fn`/`async fn` found anywhere in a file — a free function or a method,
+/// `impl` blocks included, since a `format!`-built table name can be bound
+/// inside either.
+struct SrcFunction {
+    name: String,
+    params: String,
+    body: String,
+}
+
+/// Every function in `source`, its parameter list and body kept apart so a
+/// parameter's name can be checked against what the body does with it — the
+/// same walk `tests/format_sql.rs`'s `function_signatures` does.
+fn src_functions(source: &str) -> Vec<SrcFunction> {
+    let chars: Vec<char> = source.chars().collect();
+    let mut found = Vec::new();
+    let mut at = 0;
+
+    while at + 3 < chars.len() {
+        if !(chars[at] == 'f'
+            && chars[at + 1] == 'n'
+            && chars[at + 2].is_whitespace()
+            && (at == 0 || !ident_char(chars[at - 1])))
+        {
+            at += 1;
+            continue;
+        }
+
+        let mut name_at = at + 2;
+        while name_at < chars.len() && chars[name_at].is_whitespace() {
+            name_at += 1;
+        }
+        let name: String = chars[name_at..]
+            .iter()
+            .take_while(|c| ident_char(**c))
+            .collect();
+        if name.is_empty() {
+            at += 1;
+            continue;
+        }
+
+        let mut p = name_at + name.chars().count();
+        while p < chars.len() && chars[p] != '(' && chars[p] != '{' && chars[p] != ';' {
+            p += 1;
+        }
+        let params_end = if chars.get(p) == Some(&'(') {
+            matching_close_paren(&chars, p)
+        } else {
+            None
+        };
+        let Some(params_end) = params_end else {
+            at = name_at;
+            continue;
+        };
+        let params: String = chars[p + 1..params_end].iter().collect();
+
+        let mut depth = 0i32;
+        let mut i = params_end + 1;
+        let mut body_start = None;
+        while i < chars.len() {
+            match chars[i] {
+                '<' | '[' => depth += 1,
+                '>' | ']' => depth -= 1,
+                '{' if depth <= 0 => {
+                    body_start = Some(i);
+                    break;
+                }
+                ';' if depth <= 0 => break,
+                _ => {}
+            }
+            i += 1;
+        }
+        let Some(body_start) = body_start else {
+            at = params_end + 1;
+            continue;
+        };
+
+        let mut depth = 0i32;
+        let mut j = body_start;
+        while j < chars.len() {
+            match chars[j] {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                _ => {}
+            }
+            j += 1;
+        }
+
+        found.push(SrcFunction {
+            name,
+            params,
+            body: chars[body_start..j.min(chars.len())].iter().collect(),
+        });
+
+        at = body_start;
+    }
+
+    found
+}
+
+/// The `{name}` immediately after "insert into ", "update " or "delete
+/// from " in a `format!`'s leading SQL literal — the table position, not a
+/// placeholder occurring anywhere else in the string.
+fn dynamic_table_placeholder(literal: &str) -> Option<String> {
+    const PREFIXES: [&str; 3] = ["insert into ", "update ", "delete from "];
+    let trimmed = literal.trim_start();
+    for prefix in PREFIXES {
+        let Some(rest) = trimmed.strip_prefix(prefix) else {
+            continue;
+        };
+        let inner = rest.trim_start().strip_prefix('{')?;
+        let name: String = inner.chars().take_while(|c| ident_char(*c)).collect();
+        return if !name.is_empty() && inner[name.len()..].starts_with('}') {
+            Some(name)
+        } else {
+            None
+        };
+    }
+    None
+}
+
+/// Every dynamic table placeholder [`dynamic_table_placeholder`] finds
+/// inside a `format!(..)` call anywhere in `body`.
+fn dynamic_table_names_in_format_calls(body: &str) -> Vec<String> {
+    let chars: Vec<char> = body.chars().collect();
+    let marker: Vec<char> = "format!(".chars().collect();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i + marker.len() <= chars.len() {
+        if chars[i..i + marker.len()] != marker[..] {
+            i += 1;
+            continue;
+        }
+        let open = i + marker.len() - 1;
+        if let Some(close) = matching_close_paren(&chars, open) {
+            let inner = &chars[open + 1..close];
+            if let Some(literal) = leading_string_literal(inner)
+                && let Some(name) = dynamic_table_placeholder(&literal)
+            {
+                out.push(name);
+            }
+        }
+        i += marker.len();
+    }
+    out
+}
+
+/// Where `name` is bound to a tuple position by a `let (a, b, ..) =
+/// expr.method(..);` in `body` — the position, and the method's name, so its
+/// own literal arms can be read next.
+fn tuple_binding(body: &str, name: &str) -> Option<(usize, String)> {
+    let mut at = 0;
+    while let Some(found) = body[at..].find("let (") {
+        let start = at + found + "let (".len();
+        let close = start + body[start..].find(')')?;
+        let names: Vec<&str> = body[start..close].split(',').map(str::trim).collect();
+        let after = close + 1;
+        if let Some(position) = names.iter().position(|n| *n == name) {
+            let rest = &body[after..];
+            let stmt = &rest[..rest.find(';').unwrap_or(rest.len())];
+            if let Some(eq) = stmt.find('=') {
+                let expr = stmt[eq + 1..].trim();
+                if let Some(paren) = expr.find('(')
+                    && let Some(dot) = expr[..paren].rfind('.')
+                {
+                    let method = expr[dot + 1..paren].trim().to_string();
+                    if !method.is_empty() {
+                        return Some((position, method));
+                    }
+                }
+            }
+        }
+        at = after;
+    }
+    None
+}
+
+/// Every arm of a `match` in `body` that returns a tuple literal, read at
+/// `position` — `None` unless every arm found is a string literal there, so
+/// a match this cannot fully read resolves to nothing rather than a partial
+/// answer.
+fn literal_tuple_arms(body: &str, position: usize) -> Option<Vec<String>> {
+    let chars: Vec<char> = body.chars().collect();
+    let marker: Vec<char> = "=> (".chars().collect();
+    let mut arms = Vec::new();
+    let mut i = 0;
+    while i + marker.len() <= chars.len() {
+        if chars[i..i + marker.len()] != marker[..] {
+            i += 1;
+            continue;
+        }
+        let open = i + marker.len() - 1;
+        let close = matching_close_paren(&chars, open)?;
+        let inner: String = chars[open + 1..close].iter().collect();
+        let value = split_top_level(&inner).into_iter().nth(position)?;
+        if !is_string_literal(&value) {
+            return None;
+        }
+        arms.push(strip_quotes(&value));
+        i = close + 1;
+    }
+    if arms.is_empty() { None } else { Some(arms) }
+}
+
+/// The literal table names `name` can be at runtime, inside `function`'s own
+/// body — resolved two ways: `function`'s own parameter, read from every
+/// literal argument its callers in `source` pass (`table` in
+/// `catalogue::link`/`catalogue::unlink`); or a tuple element bound from a
+/// same-file method whose body is nothing but a `match` returning literal
+/// tuples (`LineMoney::tables`, bound in `order::insert_line_money`). See
+/// the module doc for what this does and does not cover.
+fn resolve_table_placeholder(
+    source: &str,
+    functions: &[SrcFunction],
+    function: &SrcFunction,
+    name: &str,
+) -> Vec<String> {
+    let params = split_top_level(&function.params);
+    if let Some(idx) = params.iter().position(|p| {
+        p.split_once(':')
+            .is_some_and(|(n, _)| n.trim().trim_start_matches("mut ").trim() == name)
+    }) {
+        return call_sites(source, &function.name)
+            .into_iter()
+            .filter_map(|call| split_top_level(&call).into_iter().nth(idx))
+            .filter(|arg| is_string_literal(arg))
+            .map(|arg| strip_quotes(&arg))
+            .collect();
+    }
+
+    if let Some((position, method)) = tuple_binding(&function.body, name)
+        && let Some(target) = functions.iter().find(|f| f.name == method)
+        && let Some(values) = literal_tuple_arms(&target.body, position)
+    {
+        return values;
+    }
+
+    Vec::new()
+}
+
+/// Every table a `format!`-built `insert into`/`update`/`delete from`
+/// writes, resolved through [`resolve_table_placeholder`] rather than
+/// searched for as a literal string — the gap issue #187 named:
+/// `tests/format_sql.rs` already proved these table names are always
+/// literals its callers pass, but a table name inside a `format!` is never a
+/// literal *string* in `src/` for a plain search to find.
+fn tables_written_via_dynamic_sql(sources: &[(PathBuf, String)]) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for (_, source) in sources {
+        let functions = src_functions(source);
+        for function in &functions {
+            for name in dynamic_table_names_in_format_calls(&function.body) {
+                out.extend(resolve_table_placeholder(
+                    source, &functions, function, &name,
+                ));
+            }
+        }
+    }
+    out
+}
+
+/// The text between each pair of `$$` delimiters following `returns
+/// trigger` in `migrations` — a trigger's own body, the one place a writer
+/// can live where `src/` never sees it.
+fn trigger_bodies(migrations: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut at = 0;
+    while let Some(found) = migrations[at..].find("returns trigger") {
+        let start = at + found;
+        let Some(open_rel) = migrations[start..].find("$$") else {
+            break;
+        };
+        let body_start = start + open_rel + 2;
+        let Some(close_rel) = migrations[body_start..].find("$$") else {
+            break;
+        };
+        let body_end = body_start + close_rel;
+        out.push(migrations[body_start..body_end].to_string());
+        at = body_end + 2;
+    }
+    out
+}
+
+/// Every table a trigger's own body writes with `insert into`, `update` or
+/// `delete from` — `order_status_history`, moved by
+/// `tezgah_order_status_moves` in migration 0020, is exactly this: a writer
+/// that lives in SQL and was invisible to a check reading only `src/`.
+fn tables_written_by_triggers(migrations: &str) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for body in trigger_bodies(migrations) {
+        for token in ["insert into ", "update ", "delete from "] {
+            out.extend(words_after(&body, token));
+        }
+    }
+    out
+}
+
+/// Whether `table` has a writer: a literal `insert into`/`update`/`delete
+/// from` in `source`, quoted or not — `"T"` only immediately after the
+/// keyword, the shape a reserved word like `"order"` needs, never a table's
+/// name in quotes for any other reason — or `table` resolved through a
+/// `format!` or a trigger body beforehand.
+fn table_is_written(
+    table: &str,
+    source: &str,
+    dynamic: &BTreeSet<String>,
+    triggered: &BTreeSet<String>,
+) -> bool {
+    [
+        format!("insert into {table}"),
+        format!("insert into \"{table}\""),
+        format!("update {table}"),
+        format!("update \"{table}\""),
+        format!("delete from {table}"),
+        format!("delete from \"{table}\""),
+    ]
+    .iter()
+    .any(|form| source.contains(form.as_str()))
+        || dynamic.contains(table)
+        || triggered.contains(table)
+}
+
 #[test]
 fn every_table_has_a_writer() {
     let migrations = migrations();
-    let source: String = sources()
-        .into_iter()
-        .map(|(_, text)| text)
+    let sources_list = sources();
+    let source: String = sources_list
+        .iter()
+        .map(|(_, text)| text.as_str())
         .collect::<Vec<_>>()
         .join("\n");
 
@@ -684,19 +1224,14 @@ fn every_table_has_a_writer() {
         tables.len()
     );
 
+    let dynamic = tables_written_via_dynamic_sql(&sources_list);
+    let triggered = tables_written_by_triggers(&migrations);
+
     let mut unwritten = Vec::new();
     let mut used = BTreeSet::new();
 
     for table in &tables {
-        let written = [
-            format!("insert into {table}"),
-            format!("update {table}"),
-            format!("delete from {table}"),
-            format!("\"{table}\""),
-        ]
-        .iter()
-        .any(|form| source.contains(form.as_str()));
-        if written {
+        if table_is_written(table, &source, &dynamic, &triggered) {
             continue;
         }
         match TOLERATED_TABLES.iter().find(|(known, _)| known == table) {
@@ -725,6 +1260,145 @@ fn every_table_has_a_writer() {
         "these have a writer now, or are gone; take them out of \
          TOLERATED_TABLES: {stale:?}"
     );
+}
+
+#[cfg(test)]
+mod table_writer_fixtures {
+    use super::*;
+
+    #[test]
+    fn a_table_name_in_an_error_message_is_not_a_writer() {
+        let source = r#"Err(Error::not_found("ghost_table"))"#;
+        assert!(
+            !table_is_written("ghost_table", source, &BTreeSet::new(), &BTreeSet::new()),
+            "a table's name in quotes anywhere in src/ must not count as a \
+             writer — that is exactly issue #187"
+        );
+    }
+
+    #[test]
+    fn a_table_with_no_writer_at_all_is_not_written() {
+        let source = "// nothing here writes to anything";
+        assert!(
+            !table_is_written("orphan_table", source, &BTreeSet::new(), &BTreeSet::new()),
+            "a table with no insert/update/delete anywhere — literal, \
+             dynamic, or triggered — must not pass"
+        );
+    }
+
+    #[test]
+    fn a_reserved_word_table_is_found_quoted() {
+        let source = r#"sqlx::query("insert into "order" (id) values ($1)")"#;
+        assert!(
+            table_is_written("order", source, &BTreeSet::new(), &BTreeSet::new()),
+            "a reserved word has to be quoted in valid SQL; that is still \
+             genuine evidence of a write, unlike a name in quotes anywhere"
+        );
+    }
+
+    #[test]
+    fn a_format_built_insert_is_resolved_through_its_only_caller() {
+        let source = r#"
+            async fn write_link(tx: &mut Tx<'_>, table: &'static str, other: Uuid) -> Result<()> {
+                sqlx::query(&format!("insert into {table} (id, other) values ($1, $2)"))
+                    .bind(Uuid::now_v7())
+                    .bind(other)
+                    .execute(tx)
+                    .await?;
+                Ok(())
+            }
+
+            async fn caller(tx: &mut Tx<'_>, other: Uuid) -> Result<()> {
+                write_link(tx, "widget_link", other).await
+            }
+        "#;
+        let sources = vec![(PathBuf::from("fixture.rs"), source.to_string())];
+        let dynamic = tables_written_via_dynamic_sql(&sources);
+        assert!(
+            dynamic.contains("widget_link"),
+            "a format!-built `insert into {{table}}` must resolve through the \
+             literal its only caller passes: {dynamic:?}"
+        );
+    }
+
+    #[test]
+    fn a_format_built_insert_is_resolved_through_a_literal_tuple_match() {
+        let source = r#"
+            enum Kind {
+                Line(Uuid),
+                Shipping(Uuid),
+            }
+
+            impl Kind {
+                fn tables(self) -> (&'static str, &'static str) {
+                    match self {
+                        Kind::Line(_) => ("line_adjustment", "line_tax"),
+                        Kind::Shipping(_) => ("shipping_adjustment", "shipping_tax"),
+                    }
+                }
+            }
+
+            async fn insert_money(tx: &mut Tx<'_>, owner: Kind) -> Result<()> {
+                let (adjustment_table, tax_table) = owner.tables();
+                sqlx::query(&format!("insert into {adjustment_table} (id) values ($1)"))
+                    .execute(tx)
+                    .await?;
+                sqlx::query(&format!("insert into {tax_table} (id) values ($1)"))
+                    .execute(tx)
+                    .await?;
+                Ok(())
+            }
+        "#;
+        let sources = vec![(PathBuf::from("fixture.rs"), source.to_string())];
+        let dynamic = tables_written_via_dynamic_sql(&sources);
+        assert!(
+            dynamic.contains("line_adjustment")
+                && dynamic.contains("shipping_adjustment")
+                && dynamic.contains("line_tax")
+                && dynamic.contains("shipping_tax"),
+            "a tuple element bound from a same-file method's literal match \
+             arms must resolve to every arm's value: {dynamic:?}"
+        );
+    }
+
+    #[test]
+    fn a_trigger_body_writer_is_found() {
+        let migrations = r#"
+            create or replace function tezgah_thing_moved() returns trigger
+            language plpgsql as $$
+            begin
+                insert into thing_history (id, thing_id) values (gen_random_uuid(), new.id);
+                return new;
+            end
+            $$;
+        "#;
+        let triggered = tables_written_by_triggers(migrations);
+        assert!(
+            triggered.contains("thing_history"),
+            "a table only a trigger writes must be found by reading a \
+             trigger's own body in migrations/: {triggered:?}"
+        );
+    }
+
+    #[test]
+    fn a_non_trigger_statement_in_migrations_is_not_read_as_a_writer() {
+        let migrations = r#"
+            insert into tezgah_order_status_move (was, became) values ('draft', 'pending');
+
+            create or replace function tezgah_untouched() returns void
+            language plpgsql as $$
+            begin
+                insert into decoy_table (id) values (gen_random_uuid());
+            end
+            $$;
+        "#;
+        let triggered = tables_written_by_triggers(migrations);
+        assert!(
+            triggered.is_empty(),
+            "a seed insert outside any trigger, and a function that is not \
+             `returns trigger`, must not count: {triggered:?}"
+        );
+    }
 }
 
 /// Every `check (col in ('a', 'b'))` in the migrations, as
