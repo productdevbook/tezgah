@@ -783,7 +783,12 @@ async fn drive(
         let mut outputs = vec![Value::Null; slot.steps.len()];
         let mut waiting = Vec::new();
         for (k, row) in rows.iter().enumerate() {
-            if row.state == "done" {
+            // `skipped` is as settled as `done`: the step decided there was
+            // nothing to do and wrote nothing, so a pass resuming this run —
+            // #158 gives one a reason that is not only a crash now — must
+            // carry its output forward rather than claim and invoke it
+            // again, which a `Step`'s own claim query would just lose to.
+            if row.state == "done" || row.state == "skipped" {
                 outputs[k] = row.output.clone().unwrap_or(Value::Null);
             } else if row.state == "waiting" {
                 // Nothing outside this run has said what it turned into yet:
@@ -1160,10 +1165,6 @@ async fn invoke_reaching(
     }
 
     let resuming = row.state == "called";
-    eprintln!(
-        "invoke_reaching(): worker={:?} row.state={:?} row.attempts={} resuming={resuming}",
-        held.worker, row.state, row.attempts
-    );
 
     let (prepared, attempts_now) = if resuming {
         let envelope = row.prepared.clone().ok_or_else(|| {
@@ -1181,11 +1182,6 @@ async fn invoke_reaching(
     } else {
         step.call(ctx, &prepared).await
     };
-    eprintln!(
-        "invoke_reaching(): answer.is_ok()={} prepared.data={:?}",
-        answer.is_ok(),
-        prepared.data
-    );
 
     let answer = match answer {
         Ok(answer) => answer,
@@ -1353,26 +1349,6 @@ async fn prepare_phase(
 async fn stall(pool: &PgPool, ctx: &Ctx<'_>, held: Claim<'_>, bump: bool) -> Result<Option<i32>> {
     let Claim { id, at, worker } = held;
     let mut tx = scoped(pool, ctx).await?;
-    // TEMPORARY #158 debugging: CI cannot be reproduced locally, and the
-    // symptom (a called row's own driver losing its own claim) does not
-    // match anything in the code as read. Remove before merging.
-    #[derive(sqlx::FromRow, Debug)]
-    #[allow(dead_code)]
-    struct Before {
-        state: String,
-        attempts: i32,
-        locked_by: Option<String>,
-        lease_until: Option<DateTime<Utc>>,
-    }
-    let before: Option<Before> = sqlx::query_as(
-        "select state, attempts, locked_by, lease_until from workflow_step
-         where run_id = $1 and ordering = $2",
-    )
-    .bind(id.as_uuid())
-    .bind(at)
-    .fetch_optional(&mut *tx)
-    .await?;
-    eprintln!("stall(): held.worker={worker:?} bump={bump} row-before={before:?}");
     let attempts: Option<i32> = sqlx::query_scalar(
         "update workflow_step
          set lease_until = null, locked_by = null,
@@ -1386,7 +1362,6 @@ async fn stall(pool: &PgPool, ctx: &Ctx<'_>, held: Claim<'_>, bump: bool) -> Res
     .bind(bump)
     .fetch_optional(&mut *tx)
     .await?;
-    eprintln!("stall(): matched={}", attempts.is_some());
     tx.commit().await?;
     Ok(attempts)
 }
@@ -1409,16 +1384,7 @@ async fn record_phase(
         .await
         .map_err(|err| Stop::Refused(Failure::Final(err)))?;
 
-    let record_result = step.record(&mut tx, ctx, prepared, answer).await;
-    let record_result_label = match &record_result {
-        Ok(Outcome::Ran { .. }) => "Ok(Ran)".to_string(),
-        Ok(Outcome::Skipped { .. }) => "Ok(Skipped)".to_string(),
-        Ok(Outcome::Waiting { .. }) => "Ok(Waiting)".to_string(),
-        Err(Failure::Retry(err)) => format!("Err(Retry({err}))"),
-        Err(Failure::Final(err)) => format!("Err(Final({err}))"),
-    };
-    eprintln!("record_phase(): record()={record_result_label}");
-    match record_result {
+    match step.record(&mut tx, ctx, prepared, answer).await {
         Ok(outcome) => {
             let (state, compensate_input) = match &outcome {
                 Outcome::Ran {
@@ -1445,10 +1411,6 @@ async fn record_phase(
             .fetch_optional(&mut *tx)
             .await
             .map_err(|err| Stop::Refused(Failure::Final(Error::from(err))))?;
-            eprintln!(
-                "record_phase(): guarded update matched={} state={state}",
-                updated.is_some()
-            );
 
             if updated.is_none() {
                 drop(tx);
