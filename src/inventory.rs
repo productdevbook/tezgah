@@ -1697,6 +1697,38 @@ pub async fn rebind_reservations(
     Ok(moved.rows_affected())
 }
 
+/// Names reservations directly, by id, onto the order line that ended up
+/// holding them — for a caller with no line of its own to reserve against
+/// first, unlike [`rebind_reservations`]'s cart line. A subscription renewal
+/// is the caller today: it only knows which reservations [`reserve`] gave it
+/// back, not a persisted line to match [`rebind_reservations`] against.
+pub(crate) async fn bind_reservations(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    reservation_ids: &[ReservationId],
+    line_item_id: LineItemId,
+) -> Result<u64> {
+    let _: Permit = ctx.permit(Action::Write, Resource::Inventory { id: None })?;
+
+    if reservation_ids.is_empty() {
+        return Ok(0);
+    }
+
+    let ids: Vec<uuid::Uuid> = reservation_ids.iter().map(|id| id.as_uuid()).collect();
+
+    let moved = sqlx::query(
+        "update reservation_item set order_line_item_id = $3
+         where scope = $1 and id = any($2)",
+    )
+    .bind(ctx.scope.0)
+    .bind(&ids)
+    .bind(line_item_id.as_uuid())
+    .execute(&mut **tx)
+    .await?;
+
+    Ok(moved.rows_affected())
+}
+
 /// Gives back every hold every line of a cart has. What `cart::expire` calls
 /// before it deletes an abandoned cart, so the reservation goes with an
 /// audit row and a `stock.released` event rather than with nothing at all.

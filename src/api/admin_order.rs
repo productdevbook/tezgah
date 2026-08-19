@@ -1094,6 +1094,7 @@ impl NewLineIn {
             withdrawal_exclusion: exclusion,
             reserved_for: None,
             parent_cart_line: None,
+            held_reservations: Vec::new(),
         })
     }
 }

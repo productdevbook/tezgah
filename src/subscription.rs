@@ -1616,8 +1616,6 @@ struct Carried {
     lines: Vec<PricedLine>,
     #[serde(default)]
     taxes: Vec<TaxOnLine>,
-    #[serde(default)]
-    reservations: Vec<ReservationId>,
     order_id: Option<OrderId>,
     payment_collection_id: Option<PaymentCollectionId>,
     payment_session_id: Option<PaymentSessionId>,
@@ -1658,6 +1656,13 @@ struct PricedLine {
     title: Option<String>,
     quantity: i32,
     unit_price: Decimal,
+    /// Reservations `reserve_stock` took for this line, so `create_order` can
+    /// bind them onto the order line it writes for it (#165) — a renewal has
+    /// no persisted line of its own to reserve against the way a cart line
+    /// serves checkout, so the reservations are what names the correspondence
+    /// instead.
+    #[serde(default)]
+    reservations: Vec<ReservationId>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2126,6 +2131,7 @@ impl Step for ResolvePrice {
                 title: line.title.clone(),
                 quantity: line.quantity,
                 unit_price: unit.amount,
+                reservations: Vec::new(),
             });
         }
 
@@ -2272,7 +2278,7 @@ impl Step for ReserveStock {
         let mut carried = Carried::of(input)?;
 
         let mut wanted = Vec::new();
-        for line in &carried.lines {
+        for (at, line) in carried.lines.iter().enumerate() {
             let items = inventory::inventory_items_for_variant(tx, ctx, line.variant_id)
                 .await
                 .map_err(Failure::Final)?;
@@ -2280,24 +2286,32 @@ impl Step for ReserveStock {
             for item in items {
                 wanted.push((
                     item.inventory_item_id,
+                    at,
                     line.quantity * item.required_quantity,
                 ));
             }
         }
 
-        wanted.sort_by_key(|(item, _)| item.as_uuid());
+        // Two renewals wanting the same items take the level rows in the same
+        // order; which line within one renewal breaks no tie a deadlock cares
+        // about.
+        wanted.sort_by_key(|(item, at, _)| (item.as_uuid(), *at));
 
-        for (item, quantity) in wanted {
+        for (item, at, quantity) in wanted {
             let held =
                 inventory::reserve(tx, ctx, item, self.location_id, quantity, None, false, None)
                     .await
                     .map_err(wedged)?;
 
-            carried.reservations.push(held.id);
+            carried.lines[at].reservations.push(held.id);
         }
 
         let undo = HeldStock {
-            reservations: carried.reservations.clone(),
+            reservations: carried
+                .lines
+                .iter()
+                .flat_map(|line| line.reservations.iter().copied())
+                .collect(),
         };
 
         Ok(Outcome::new(carried.value()?, kept(&undo)))
@@ -2515,6 +2529,7 @@ impl Step for CreateOrder {
                 NewOrderLine::of(title, line.quantity, Money::new(line.unit_price, currency));
             ordered.variant_id = Some(line.variant_id);
             ordered.tax_lines = tax_lines;
+            ordered.held_reservations = line.reservations.clone();
             lines.push(ordered);
         }
 

@@ -740,6 +740,7 @@ impl Step for CreateOrder {
                         .map(VariantId::from_uuid)
                         .and_then(|id| facts.get(&id))
                         .and_then(|f| f.withdrawal_exclusion),
+                    held_reservations: Vec::new(),
                 })
                 .collect(),
             shipping: methods

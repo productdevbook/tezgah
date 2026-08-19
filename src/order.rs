@@ -47,8 +47,8 @@ use crate::id::{
     AddressId, AgreementVersionId, CaptureId, ClaimId, CustomerId, ExchangeId, LineItemId,
     OrderAgreementId, OrderBasketId, OrderChangeId, OrderId, OrderInvoiceId, OrderItemId,
     OrderTransactionId, OrderTransferId, PaymentCollectionId, PaymentId, PromotionId, RefundId,
-    RegionId, ReturnId, SalesChannelId, SellingPlanId, ShippingOptionId, StockLocationId,
-    SubscriptionId, VariantId,
+    RegionId, ReservationId, ReturnId, SalesChannelId, SellingPlanId, ShippingOptionId,
+    StockLocationId, SubscriptionId, VariantId,
 };
 use crate::money::{Currency, Money};
 use crate::page::{Cursor, Page, Paging};
@@ -658,6 +658,12 @@ pub struct NewOrderLine {
     /// `checkout`'s `create_subscriptions` step is what a contract is opened
     /// from, reading this off the line rather than the cart it came from.
     pub selling_plan_id: Option<SellingPlanId>,
+    /// Reservations already taken for this exact line, named directly by
+    /// reservation id rather than through a line that existed before the
+    /// order did. A renewal has no cart line to reserve against and knows
+    /// only which reservations `reserve_stock` took for it; `create` binds
+    /// each straight onto the order line it writes here.
+    pub held_reservations: Vec<ReservationId>,
 }
 
 impl NewOrderLine {
@@ -686,6 +692,7 @@ impl NewOrderLine {
             reserved_for: None,
             parent_cart_line: None,
             selling_plan_id: None,
+            held_reservations: Vec::new(),
         }
     }
 }
@@ -780,11 +787,11 @@ pub async fn create_draft(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewOrder) -> Resu
 /// `"order"`. checkout and subscription used to each keep their own copy of
 /// it, and subscription's had fallen behind: no reservation release, and two
 /// shipping-method tables and `order_transfer`/`order_credit_line` missing
-/// from its second list (#163). A renewal does not reach `place`'s
-/// `reserved_for` today, so nothing currently rebinds its hold onto the order
-/// line the way checkout's does — but the day that changes, this is the one
-/// place that has to know, instead of a second copy nobody remembered to
-/// update.
+/// from its second list (#163). A renewal's hold is bound onto the order line
+/// the same way checkout's is (#165, via `held_reservations` rather than
+/// `reserved_for` — a renewal has no cart line to rebind from), so this one
+/// place releasing before it deletes is what both callers rely on rather than
+/// a second copy nobody remembered to update.
 ///
 /// The `order_line_item`/`order_shipping_method` money tables come from
 /// [`LineMoney::tables`], the same match [`insert_line_money`] uses to write
@@ -1045,6 +1052,9 @@ async fn place(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewOrder, draft: bool) -> Re
         if let Some(cart_line) = line.reserved_for {
             crate::inventory::rebind_reservations(tx, ctx, cart_line, line_id).await?;
             by_cart_line.insert(cart_line.as_uuid(), line_id);
+        }
+        if !line.held_reservations.is_empty() {
+            crate::inventory::bind_reservations(tx, ctx, &line.held_reservations, line_id).await?;
         }
         if let Some(parent_cart_line) = line.parent_cart_line {
             pending_parents.push((line_id, parent_cart_line));
