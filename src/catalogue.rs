@@ -486,7 +486,7 @@ pub struct VariantPlan {
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-pub(crate) fn required(field: &'static str, value: &str) -> Result<String> {
+fn required(field: &'static str, value: &str) -> Result<String> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
         return Err(Error::invalid(format!("a {field} is needed")));
@@ -504,7 +504,7 @@ fn handle(value: &str) -> Result<String> {
 
 /// Empty means cleared, so a caller can unset a nullable column with the same
 /// field it sets one with.
-pub(crate) fn nullable(value: Option<String>) -> Option<String> {
+fn nullable(value: Option<String>) -> Option<String> {
     value.and_then(|text| {
         let trimmed = text.trim();
         if trimmed.is_empty() {
@@ -515,11 +515,8 @@ pub(crate) fn nullable(value: Option<String>) -> Option<String> {
     })
 }
 
-/// The same shape the database's own check constraint admits. Shared past
-/// this module because `product_translation`, `product_category_translation`,
-/// `shipping_option_translation` and `return_reason_translation` all carry the
-/// identical constraint — one pattern, checked one way.
-pub(crate) fn locale(value: &str) -> Result<String> {
+/// The same shape the database's own check constraint admits.
+fn locale(value: &str) -> Result<String> {
     let trimmed = value.trim();
     let mut parts = trimmed.split('-');
     let language = parts.next().unwrap_or_default();

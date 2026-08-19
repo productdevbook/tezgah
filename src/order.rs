@@ -42,7 +42,6 @@ use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
 use crate::cart::{CartTotals, TotalsLine, TotalsShipping, compute};
-use crate::catalogue::{locale, nullable, required};
 use crate::error::{Error, Result};
 use crate::id::{
     AddressId, AgreementVersionId, CaptureId, ClaimId, CustomerId, ExchangeId, LineItemId,
@@ -3287,6 +3286,45 @@ pub async fn return_reason(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: Uuid) -> Result<R
     .fetch_optional(&mut **tx)
     .await?
     .ok_or_else(|| Error::not_found("return reason"))
+}
+
+fn required(field: &'static str, value: &str) -> Result<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(Error::invalid(format!("a {field} is needed")));
+    }
+    Ok(trimmed.to_owned())
+}
+
+/// Empty means cleared, so a caller can unset a nullable column with the same
+/// field it sets one with.
+fn nullable(value: Option<String>) -> Option<String> {
+    value.and_then(|text| {
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_owned())
+        }
+    })
+}
+
+/// The same shape the database's own check constraint admits.
+fn locale(value: &str) -> Result<String> {
+    let trimmed = value.trim();
+    let mut parts = trimmed.split('-');
+    let language = parts.next().unwrap_or_default();
+    let language_ok =
+        (2..=3).contains(&language.len()) && language.chars().all(|c| c.is_ascii_lowercase());
+    let rest_ok = parts.all(|part| {
+        (2..=8).contains(&part.len()) && part.chars().all(|c| c.is_ascii_alphanumeric())
+    });
+
+    if language_ok && rest_ok {
+        Ok(trimmed.to_owned())
+    } else {
+        Err(Error::invalid(format!("{trimmed:?} is not a locale")))
+    }
 }
 
 async fn exists_return_reason(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: Uuid) -> Result<()> {

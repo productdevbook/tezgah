@@ -16,7 +16,6 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
-use crate::catalogue::{locale, required};
 use crate::error::{Error, Result};
 use crate::id::{
     FulfillmentId, FulfillmentSetId, GeoZoneId, InventoryItemId, LineItemId, OrderId, OrderItemId,
@@ -43,6 +42,32 @@ const MAX_TRANSLATIONS: i64 = 200;
 
 fn config(id: Option<Uuid>) -> Resource {
     Resource::Shipping { id }
+}
+
+fn required(field: &'static str, value: &str) -> Result<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(Error::invalid(format!("a {field} is needed")));
+    }
+    Ok(trimmed.to_owned())
+}
+
+/// The same shape the database's own check constraint admits.
+fn locale(value: &str) -> Result<String> {
+    let trimmed = value.trim();
+    let mut parts = trimmed.split('-');
+    let language = parts.next().unwrap_or_default();
+    let language_ok =
+        (2..=3).contains(&language.len()) && language.chars().all(|c| c.is_ascii_lowercase());
+    let rest_ok = parts.all(|part| {
+        (2..=8).contains(&part.len()) && part.chars().all(|c| c.is_ascii_alphanumeric())
+    });
+
+    if language_ok && rest_ok {
+        Ok(trimmed.to_owned())
+    } else {
+        Err(Error::invalid(format!("{trimmed:?} is not a locale")))
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
