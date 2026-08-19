@@ -98,6 +98,11 @@ pub enum Allocation {
     Each,
     /// The value is one amount, shared between the lines it lands on.
     Across,
+    /// The value lands on the cheapest units of the target, up to
+    /// `max_quantity` units total — the same cheapest-first quota `buy_get`
+    /// always uses, reached here by a plain promotion. Not valid against
+    /// `target_type: order`, which has no units to sort by price.
+    Once,
 }
 
 impl Allocation {
@@ -105,6 +110,7 @@ impl Allocation {
         match self {
             Allocation::Each => "each",
             Allocation::Across => "across",
+            Allocation::Once => "once",
         }
     }
 }
@@ -166,6 +172,7 @@ pub struct Campaign {
     pub description: Option<String>,
     pub starts_at: Option<chrono::DateTime<chrono::Utc>>,
     pub ends_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub metadata: Option<serde_json::Value>,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -176,14 +183,21 @@ pub struct NewCampaign {
     pub description: Option<String>,
     pub starts_at: Option<chrono::DateTime<chrono::Utc>>,
     pub ends_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub metadata: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BudgetKind {
-    /// A limit on money given away.
+    /// A limit on money given away, in aggregate across every customer.
     Spend,
-    /// A limit on how many times the campaign is claimed.
+    /// A limit on how many times the campaign is claimed, in aggregate.
     Usage,
+    /// A limit on how many times the campaign is claimed by one customer (or
+    /// whatever `attribute` names), across every promotion it runs.
+    UseByAttribute,
+    /// A limit on money given away to one customer (or whatever `attribute`
+    /// names), across every promotion the campaign runs.
+    SpendByAttribute,
 }
 
 impl BudgetKind {
@@ -191,7 +205,20 @@ impl BudgetKind {
         match self {
             BudgetKind::Spend => "spend",
             BudgetKind::Usage => "usage",
+            BudgetKind::UseByAttribute => "use_by_attribute",
+            BudgetKind::SpendByAttribute => "spend_by_attribute",
         }
+    }
+
+    fn is_by_attribute(self) -> bool {
+        matches!(
+            self,
+            BudgetKind::UseByAttribute | BudgetKind::SpendByAttribute
+        )
+    }
+
+    fn needs_currency(self) -> bool {
+        matches!(self, BudgetKind::Spend | BudgetKind::SpendByAttribute)
     }
 }
 
@@ -205,6 +232,20 @@ pub struct CampaignBudget {
     pub cap: Option<Decimal>,
     pub used: Decimal,
     pub currency_code: Option<String>,
+    pub attribute: Option<String>,
+}
+
+/// One claim's worth of a by-attribute budget: what one customer (or whatever
+/// `attribute` names) has used of it, across every promotion the campaign
+/// runs.
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct CampaignBudgetUsage {
+    pub id: Uuid,
+    pub campaign_budget_id: Uuid,
+    pub attribute_value: String,
+    pub used: Decimal,
+    #[sqlx(rename = "limit")]
+    pub cap: Option<Decimal>,
 }
 
 #[derive(Debug, Clone)]
@@ -213,6 +254,10 @@ pub struct NewCampaignBudget {
     pub kind: BudgetKind,
     pub cap: Option<Decimal>,
     pub currency_code: Option<Currency>,
+    /// Which field a claim's context is resolved by, for `UseByAttribute` and
+    /// `SpendByAttribute` — `customer_id` today, since that is what a claim's
+    /// context carries.
+    pub attribute: Option<String>,
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
@@ -227,6 +272,7 @@ pub struct Promotion {
     pub usage_limit: Option<i32>,
     pub used: i32,
     pub customer_usage_limit: Option<i32>,
+    pub metadata: Option<serde_json::Value>,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -239,6 +285,7 @@ pub struct NewPromotion {
     pub campaign_id: Option<CampaignId>,
     pub usage_limit: Option<i32>,
     pub customer_usage_limit: Option<i32>,
+    pub metadata: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
@@ -314,9 +361,10 @@ pub async fn create_campaign(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewCampaign) -
 
     let id = CampaignId::new();
     let campaign = sqlx::query_as::<_, Campaign>(
-        "insert into campaign (id, scope, identifier, name, description, starts_at, ends_at)
-         values ($1, $2, $3, $4, $5, $6, $7)
-         returning id, identifier, name, description, starts_at, ends_at, created_at",
+        "insert into campaign
+             (id, scope, identifier, name, description, starts_at, ends_at, metadata)
+         values ($1, $2, $3, $4, $5, $6, $7, $8)
+         returning id, identifier, name, description, starts_at, ends_at, metadata, created_at",
     )
     .bind(id.as_uuid())
     .bind(ctx.scope.0)
@@ -325,6 +373,7 @@ pub async fn create_campaign(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewCampaign) -
     .bind(new.description.as_deref())
     .bind(new.starts_at)
     .bind(new.ends_at)
+    .bind(new.metadata)
     .fetch_one(&mut **tx)
     .await?;
 
@@ -347,7 +396,7 @@ pub async fn campaigns(tx: &mut Tx<'_>, ctx: &Ctx<'_>, paging: Paging) -> Result
     let _: Permit = ctx.permit(Action::View, Resource::Promotion { id: None })?;
 
     let rows = sqlx::query_as::<_, Campaign>(
-        "select id, identifier, name, description, starts_at, ends_at, created_at
+        "select id, identifier, name, description, starts_at, ends_at, metadata, created_at
          from campaign
          where scope = $1
            and ($2::timestamptz is null or (created_at, id) > ($2, $3))
@@ -376,18 +425,23 @@ pub async fn set_campaign_budget(
 ) -> Result<CampaignBudget> {
     let _: Permit = ctx.permit(Action::Write, Resource::Promotion { id: None })?;
 
-    if new.kind == BudgetKind::Spend && new.currency_code.is_none() {
+    if new.kind.needs_currency() && new.currency_code.is_none() {
         return Err(Error::invalid("a spend budget needs a currency"));
+    }
+    if new.kind.is_by_attribute() && new.attribute.as_deref().is_none_or(str::is_empty) {
+        return Err(Error::invalid("a budget by attribute needs to name it"));
     }
 
     let budget = sqlx::query_as::<_, CampaignBudget>(
-        r#"insert into campaign_budget (id, scope, campaign_id, type, "limit", currency_code)
-           values ($1, $2, $3, $4, $5, $6)
+        r#"insert into campaign_budget
+               (id, scope, campaign_id, type, "limit", currency_code, attribute)
+           values ($1, $2, $3, $4, $5, $6, $7)
            on conflict (scope, campaign_id) do update
              set type = excluded.type,
                  "limit" = excluded."limit",
-                 currency_code = excluded.currency_code
-           returning id, campaign_id, type, "limit", used, currency_code"#,
+                 currency_code = excluded.currency_code,
+                 attribute = excluded.attribute
+           returning id, campaign_id, type, "limit", used, currency_code, attribute"#,
     )
     .bind(Uuid::now_v7())
     .bind(ctx.scope.0)
@@ -395,17 +449,47 @@ pub async fn set_campaign_budget(
     .bind(new.kind.as_str())
     .bind(new.cap)
     .bind(new.currency_code.map(|code| code.as_str().to_string()))
+    .bind(new.attribute.as_deref().map(str::trim))
     .fetch_one(&mut **tx)
     .await?;
 
     Ok(budget)
 }
 
+/// What every attribute value a per-attribute budget has been claimed against
+/// has used of it — the customers (or whatever `attribute` names) counted
+/// toward a "$50 per customer across the campaign" cap, and how close each is
+/// to it. Configuration-adjacent rather than a customer's own data, so it is
+/// capped rather than paged, the way a promotion's own rule sets are.
+pub async fn campaign_budget_usage(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    campaign_id: CampaignId,
+) -> Result<Vec<CampaignBudgetUsage>> {
+    let _: Permit = ctx.permit(Action::View, Resource::Promotion { id: None })?;
+
+    let rows = sqlx::query_as::<_, CampaignBudgetUsage>(
+        r#"select u.id, u.campaign_budget_id, u.attribute_value, u.used, u."limit"
+           from campaign_budget_usage u
+           join campaign_budget b on b.id = u.campaign_budget_id and b.scope = u.scope
+           where u.scope = $1 and b.campaign_id = $2
+           order by u.attribute_value
+           limit $3"#,
+    )
+    .bind(ctx.scope.0)
+    .bind(campaign_id.as_uuid())
+    .bind(MAX_RULES)
+    .fetch_all(&mut **tx)
+    .await?;
+
+    Ok(rows)
+}
+
 pub async fn campaign(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: CampaignId) -> Result<Campaign> {
     let _: Permit = ctx.permit(Action::View, Resource::Promotion { id: None })?;
 
     sqlx::query_as::<_, Campaign>(
-        "select id, identifier, name, description, starts_at, ends_at, created_at
+        "select id, identifier, name, description, starts_at, ends_at, metadata, created_at
          from campaign
          where scope = $1 and id = $2",
     )
@@ -424,6 +508,7 @@ pub struct CampaignPatch {
     pub description: Option<String>,
     pub starts_at: Option<chrono::DateTime<chrono::Utc>>,
     pub ends_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub metadata: Option<serde_json::Value>,
 }
 
 pub async fn update_campaign(
@@ -452,9 +537,10 @@ pub async fn update_campaign(
              name = coalesce($4::text, name),
              description = coalesce($5::text, description),
              starts_at = coalesce($6::timestamptz, starts_at),
-             ends_at = coalesce($7::timestamptz, ends_at)
+             ends_at = coalesce($7::timestamptz, ends_at),
+             metadata = coalesce($8::jsonb, metadata)
          where scope = $1 and id = $2
-         returning id, identifier, name, description, starts_at, ends_at, created_at",
+         returning id, identifier, name, description, starts_at, ends_at, metadata, created_at",
     )
     .bind(ctx.scope.0)
     .bind(id.as_uuid())
@@ -463,6 +549,7 @@ pub async fn update_campaign(
     .bind(patch.description.as_deref())
     .bind(patch.starts_at)
     .bind(patch.ends_at)
+    .bind(patch.metadata)
     .fetch_optional(&mut **tx)
     .await?
     .ok_or_else(|| Error::not_found("campaign"))?;
@@ -551,7 +638,7 @@ async fn set_campaign(
         "update promotion set campaign_id = $3
          where scope = $1 and id = $2
          returning id, campaign_id, code, type, status, is_automatic, usage_limit, used,
-                   customer_usage_limit, created_at",
+                   customer_usage_limit, metadata, created_at",
     )
     .bind(ctx.scope.0)
     .bind(id.as_uuid())
@@ -583,6 +670,7 @@ pub struct PromotionPatch {
     pub is_automatic: Option<bool>,
     pub usage_limit: Option<i32>,
     pub customer_usage_limit: Option<i32>,
+    pub metadata: Option<serde_json::Value>,
 }
 
 pub async fn update_promotion(
@@ -616,10 +704,11 @@ pub async fn update_promotion(
              code = coalesce($3::text, code),
              is_automatic = coalesce($4::boolean, is_automatic),
              usage_limit = coalesce($5::integer, usage_limit),
-             customer_usage_limit = coalesce($6::integer, customer_usage_limit)
+             customer_usage_limit = coalesce($6::integer, customer_usage_limit),
+             metadata = coalesce($7::jsonb, metadata)
          where scope = $1 and id = $2
          returning id, campaign_id, code, type, status, is_automatic, usage_limit, used,
-                   customer_usage_limit, created_at",
+                   customer_usage_limit, metadata, created_at",
     )
     .bind(ctx.scope.0)
     .bind(id.as_uuid())
@@ -627,6 +716,7 @@ pub async fn update_promotion(
     .bind(patch.is_automatic)
     .bind(patch.usage_limit)
     .bind(patch.customer_usage_limit)
+    .bind(patch.metadata)
     .fetch_optional(&mut **tx)
     .await?
     .ok_or_else(|| Error::not_found("promotion"))?;
@@ -666,10 +756,10 @@ pub async fn create_promotion(
     let promotion = sqlx::query_as::<_, Promotion>(
         "insert into promotion
              (id, scope, campaign_id, code, type, status, is_automatic, usage_limit,
-              customer_usage_limit)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+              customer_usage_limit, metadata)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          returning id, campaign_id, code, type, status, is_automatic, usage_limit, used,
-                   customer_usage_limit, created_at",
+                   customer_usage_limit, metadata, created_at",
     )
     .bind(id.as_uuid())
     .bind(ctx.scope.0)
@@ -680,6 +770,7 @@ pub async fn create_promotion(
     .bind(new.is_automatic)
     .bind(new.usage_limit)
     .bind(new.customer_usage_limit)
+    .bind(new.metadata)
     .fetch_one(&mut **tx)
     .await?;
 
@@ -708,7 +799,7 @@ pub async fn promotion(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: PromotionId) -> Resul
 
     sqlx::query_as::<_, Promotion>(
         "select id, campaign_id, code, type, status, is_automatic, usage_limit, used,
-                customer_usage_limit, created_at
+                customer_usage_limit, metadata, created_at
          from promotion
          where scope = $1 and id = $2 and deleted_at is null",
     )
@@ -724,7 +815,7 @@ pub async fn promotions(tx: &mut Tx<'_>, ctx: &Ctx<'_>, paging: Paging) -> Resul
 
     let rows = sqlx::query_as::<_, Promotion>(
         "select id, campaign_id, code, type, status, is_automatic, usage_limit, used,
-                customer_usage_limit, created_at
+                customer_usage_limit, metadata, created_at
          from promotion
          where scope = $1
            and deleted_at is null
@@ -763,7 +854,7 @@ pub async fn set_status(
          set status = $3
          where scope = $1 and id = $2 and deleted_at is null
          returning id, campaign_id, code, type, status, is_automatic, usage_limit, used,
-                   customer_usage_limit, created_at",
+                   customer_usage_limit, metadata, created_at",
     )
     .bind(ctx.scope.0)
     .bind(id.as_uuid())
@@ -828,6 +919,11 @@ pub async fn set_application_method(
     }
     if new.kind == MethodKind::Fixed && new.currency_code.is_none() {
         return Err(Error::invalid("a fixed discount needs a currency"));
+    }
+    if new.allocation == Some(Allocation::Once) && new.target_type == TargetKind::Order {
+        return Err(Error::invalid(
+            "an allocation of once needs items or shipping methods, not the whole order",
+        ));
     }
 
     let method = sqlx::query_as::<_, ApplicationMethod>(
@@ -1117,18 +1213,13 @@ pub async fn release(
     }
 
     if let Some(campaign_id) = campaign_id {
-        sqlx::query(
-            r#"update campaign_budget
-               set used = greatest(used - case when type = 'spend' then $3 else 1 end, 0)
-               where scope = $1
-                 and campaign_id = $2
-                 and (type <> 'spend' or currency_code = $4)"#,
+        release_budget(
+            tx,
+            ctx,
+            CampaignId::from_uuid(campaign_id),
+            spend,
+            customer_id.map(|id| id.to_string()).as_deref(),
         )
-        .bind(ctx.scope.0)
-        .bind(campaign_id)
-        .bind(spend.amount)
-        .bind(spend.currency.as_str())
-        .execute(&mut **tx)
         .await?;
     }
 
@@ -1207,7 +1298,14 @@ async fn take(
     }
 
     if let Some(campaign_id) = campaign_id {
-        charge_budget(tx, ctx, CampaignId::from_uuid(campaign_id), spend).await?;
+        charge_budget(
+            tx,
+            ctx,
+            CampaignId::from_uuid(campaign_id),
+            spend,
+            customer_id.map(|id| id.to_string()).as_deref(),
+        )
+        .await?;
     }
 
     ctx.emit(
@@ -1225,56 +1323,155 @@ async fn take(
     Ok(())
 }
 
-/// Whether a budget exists and whether it moved, answered by one statement, so
-/// a campaign with no budget is not mistaken for one that is spent.
+/// What a claim costs the campaign's budget, moved by one statement so a
+/// caller can never see the counter between reading it and writing it back.
 ///
 /// The budget's own kind decides what is charged — one use, or the money the
 /// claim gave away — because a caller allowed to choose eventually charges the
-/// cheaper of the two.
+/// cheaper of the two. `spend`/`usage` move `campaign_budget`'s own counter,
+/// in aggregate across every customer; `use_by_attribute`/`spend_by_attribute`
+/// move the row `attribute_value` owns in `campaign_budget_usage` instead —
+/// one counter per customer (or whatever `attribute` names), shared by every
+/// promotion the campaign runs. A claim that resolved to no attribute value
+/// cannot charge a budget kept per attribute.
 async fn charge_budget(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
     campaign_id: CampaignId,
     spend: Money,
+    attribute_value: Option<&str>,
 ) -> Result<()> {
-    let (present, chargeable, moved): (i64, i64, i64) = sqlx::query_as(
-        r#"with budget as (
-               select id,
-                      case when type = 'spend' then $3::numeric else 1 end as charge,
-                      (type <> 'spend' or currency_code = $4) as chargeable
-               from campaign_budget
-               where scope = $1 and campaign_id = $2
-           ),
-           moved as (
-               update campaign_budget b
-               set used = b.used + g.charge
-               from budget g
-               where b.scope = $1
-                 and b.id = g.id
-                 and g.chargeable
-                 and (b."limit" is null or b.used + g.charge <= b."limit")
-               returning 1
-           )
-           select
-             (select count(*) from budget),
-             (select count(*) from budget where chargeable),
-             (select count(*) from moved)"#,
+    let budget: Option<(Uuid, String, Option<String>)> = sqlx::query_as(
+        "select id, type, currency_code from campaign_budget where scope = $1 and campaign_id = $2",
     )
     .bind(ctx.scope.0)
     .bind(campaign_id.as_uuid())
-    .bind(spend.amount)
-    .bind(spend.currency.as_str())
-    .fetch_one(&mut **tx)
+    .fetch_optional(&mut **tx)
     .await?;
 
-    if present > 0 && chargeable == 0 {
+    let Some((budget_id, kind, currency_code)) = budget else {
+        return Ok(());
+    };
+
+    let spends =
+        kind == BudgetKind::Spend.as_str() || kind == BudgetKind::SpendByAttribute.as_str();
+    if spends && currency_code.as_deref() != Some(spend.currency.as_str()) {
         return Err(Error::bug(
             "a campaign's budget is kept in another currency",
         ));
     }
-    if chargeable > 0 && moved == 0 {
+    let charge = if spends { spend.amount } else { Decimal::ONE };
+
+    let moved = if kind == BudgetKind::UseByAttribute.as_str()
+        || kind == BudgetKind::SpendByAttribute.as_str()
+    {
+        let Some(attribute_value) = attribute_value else {
+            return Err(Error::invalid(
+                "that campaign's budget is kept per attribute, and this claim named none",
+            ));
+        };
+
+        // Guarded on the insert branch too, not only the conflict branch: a
+        // first claim charging more than the whole cap must be refused, not
+        // written and left for the check constraint to reject the statement.
+        sqlx::query(
+            r#"insert into campaign_budget_usage
+                   (id, scope, campaign_budget_id, attribute_value, used, "limit")
+               select $1::uuid, $2::uuid, b.id, $4::text, $5::numeric, b."limit"
+               from campaign_budget b
+               where b.scope = $2
+                 and b.id = $3
+                 and (b."limit" is null or $5::numeric <= b."limit")
+               on conflict (scope, campaign_budget_id, attribute_value) do update
+                 set used = campaign_budget_usage.used + $5::numeric
+                 where campaign_budget_usage."limit" is null
+                    or campaign_budget_usage.used + $5::numeric
+                       <= campaign_budget_usage."limit""#,
+        )
+        .bind(Uuid::now_v7())
+        .bind(ctx.scope.0)
+        .bind(budget_id)
+        .bind(attribute_value)
+        .bind(charge)
+        .execute(&mut **tx)
+        .await?
+    } else {
+        sqlx::query(
+            r#"update campaign_budget
+               set used = used + $3
+               where scope = $1
+                 and id = $2
+                 and ("limit" is null or used + $3 <= "limit")"#,
+        )
+        .bind(ctx.scope.0)
+        .bind(budget_id)
+        .bind(charge)
+        .execute(&mut **tx)
+        .await?
+    };
+
+    if moved.rows_affected() == 0 {
         return Err(Error::conflict("that campaign's budget is spent"));
     }
+
+    Ok(())
+}
+
+/// The inverse of [`charge_budget`], clamped at zero the way [`release`]
+/// already is — a compensation that runs twice must not overdraw either
+/// counter in the other direction.
+async fn release_budget(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    campaign_id: CampaignId,
+    spend: Money,
+    attribute_value: Option<&str>,
+) -> Result<()> {
+    let budget: Option<(Uuid, String)> = sqlx::query_as(
+        "select id, type from campaign_budget where scope = $1 and campaign_id = $2",
+    )
+    .bind(ctx.scope.0)
+    .bind(campaign_id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    let Some((budget_id, kind)) = budget else {
+        return Ok(());
+    };
+
+    let spends =
+        kind == BudgetKind::Spend.as_str() || kind == BudgetKind::SpendByAttribute.as_str();
+    let charge = if spends { spend.amount } else { Decimal::ONE };
+
+    if kind == BudgetKind::UseByAttribute.as_str() || kind == BudgetKind::SpendByAttribute.as_str()
+    {
+        let Some(attribute_value) = attribute_value else {
+            return Ok(());
+        };
+
+        sqlx::query(
+            r#"update campaign_budget_usage
+               set used = greatest(used - $4, 0)
+               where scope = $1 and campaign_budget_id = $2 and attribute_value = $3"#,
+        )
+        .bind(ctx.scope.0)
+        .bind(budget_id)
+        .bind(attribute_value)
+        .bind(charge)
+        .execute(&mut **tx)
+        .await?;
+
+        return Ok(());
+    }
+
+    sqlx::query(
+        r#"update campaign_budget set used = greatest(used - $3, 0) where scope = $1 and id = $2"#,
+    )
+    .bind(ctx.scope.0)
+    .bind(budget_id)
+    .bind(charge)
+    .execute(&mut **tx)
+    .await?;
 
     Ok(())
 }
@@ -1476,6 +1673,7 @@ async fn apply_one(
     };
     let allocation = match method.allocation.as_deref() {
         Some("across") => Allocation::Across,
+        Some("once") => Allocation::Once,
         _ => Allocation::Each,
     };
 
@@ -1514,6 +1712,22 @@ async fn apply_one(
         line_slots
     };
 
+    // A plain promotion reaching for the same cheapest-first quota `buy_get`
+    // always applies, rather than a discount on every matched line or one
+    // amount split between them.
+    if allocation == Allocation::Once {
+        return Ok(cheapest_units(
+            promotion,
+            slots,
+            &chosen,
+            method.max_quantity.unwrap_or(i32::MAX),
+            kind,
+            value,
+            currency,
+            exponent,
+        ));
+    }
+
     let chosen: Vec<usize> = chosen
         .into_iter()
         .filter(|at| {
@@ -1538,6 +1752,9 @@ async fn apply_one(
             .filter_map(|at| slots.get(*at))
             .map(|slot| value.min(slot.remaining).round_dp(exponent))
             .collect(),
+        // `Once` always returns above; kept here only so the match stays
+        // exhaustive over every `Allocation`.
+        (_, Allocation::Once) => Vec::new(),
         (_, Allocation::Across) => {
             let base: Decimal = chosen
                 .iter()
@@ -1601,6 +1818,35 @@ fn buy_get(
     currency: Currency,
     exponent: u32,
 ) -> Vec<Adjustment> {
+    cheapest_units(
+        promotion,
+        slots,
+        targets,
+        method.apply_to_quantity.unwrap_or(1),
+        kind,
+        value,
+        currency,
+        exponent,
+    )
+}
+
+/// The cheapest units among `targets` are the ones the discount reaches, up to
+/// `quota` units total across every line it lands on. `buy_get`'s free units
+/// and a plain promotion's `Allocation::Once` are this same walk over a
+/// different quota — `apply_to_quantity` for the first, `max_quantity` for
+/// the second — so there is one implementation rather than two that have to
+/// agree.
+#[allow(clippy::too_many_arguments)]
+fn cheapest_units(
+    promotion: &Promotion,
+    slots: &mut [Slot],
+    targets: &[usize],
+    quota: i32,
+    kind: MethodKind,
+    value: Decimal,
+    currency: Currency,
+    exponent: u32,
+) -> Vec<Adjustment> {
     let mut order: Vec<usize> = targets
         .iter()
         .copied()
@@ -1612,7 +1858,7 @@ fn buy_get(
         .collect();
     order.sort_by_key(|at| slots.get(*at).map(|slot| slot.unit_price));
 
-    let mut left = method.apply_to_quantity.unwrap_or(1);
+    let mut left = quota;
     let mut out = Vec::new();
 
     for at in order {
@@ -1655,7 +1901,7 @@ fn buy_get(
 async fn candidates(tx: &mut Tx<'_>, ctx: &Ctx<'_>, codes: &[String]) -> Result<Vec<Promotion>> {
     let rows = sqlx::query_as::<_, Promotion>(
         "select p.id, p.campaign_id, p.code, p.type, p.status, p.is_automatic, p.usage_limit,
-                p.used, p.customer_usage_limit, p.created_at
+                p.used, p.customer_usage_limit, p.metadata, p.created_at
          from promotion p
          left join campaign c on c.id = p.campaign_id and c.scope = p.scope
          where p.scope = $1

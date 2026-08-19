@@ -141,6 +141,7 @@ async fn ten_percent_off(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> PromotionId {
             campaign_id: None,
             usage_limit: None,
             customer_usage_limit: None,
+            metadata: None,
         },
     )
     .await

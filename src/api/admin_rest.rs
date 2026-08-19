@@ -431,6 +431,7 @@ pub struct PromotionView {
     pub usage_limit: Option<i32>,
     pub used: i32,
     pub customer_usage_limit: Option<i32>,
+    pub metadata: Option<serde_json::Value>,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -446,6 +447,7 @@ impl From<promotion::Promotion> for PromotionView {
             usage_limit: row.usage_limit,
             used: row.used,
             customer_usage_limit: row.customer_usage_limit,
+            metadata: row.metadata,
             created_at: row.created_at,
         }
     }
@@ -514,6 +516,7 @@ pub struct CreatePromotion {
     pub campaign_id: Option<CampaignId>,
     pub usage_limit: Option<i32>,
     pub customer_usage_limit: Option<i32>,
+    pub metadata: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -585,6 +588,7 @@ pub async fn create_promotion(
         campaign_id: body.campaign_id,
         usage_limit: body.usage_limit,
         customer_usage_limit: body.customer_usage_limit,
+        metadata: body.metadata,
     };
     Ok(PromotionView::from(
         promotion::create_promotion(tx, ctx, new).await?,
@@ -608,6 +612,7 @@ pub struct UpdatePromotion {
     pub is_automatic: Option<bool>,
     pub usage_limit: Option<i32>,
     pub customer_usage_limit: Option<i32>,
+    pub metadata: Option<serde_json::Value>,
 }
 
 pub async fn update_promotion(
@@ -621,6 +626,7 @@ pub async fn update_promotion(
         is_automatic: body.is_automatic,
         usage_limit: body.usage_limit,
         customer_usage_limit: body.customer_usage_limit,
+        metadata: body.metadata,
     };
     Ok(PromotionView::from(
         promotion::update_promotion(tx, ctx, id, patch).await?,
@@ -717,6 +723,7 @@ pub struct CampaignView {
     pub description: Option<String>,
     pub starts_at: Option<chrono::DateTime<chrono::Utc>>,
     pub ends_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub metadata: Option<serde_json::Value>,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -729,6 +736,7 @@ impl From<promotion::Campaign> for CampaignView {
             description: row.description,
             starts_at: row.starts_at,
             ends_at: row.ends_at,
+            metadata: row.metadata,
             created_at: row.created_at,
         }
     }
@@ -742,6 +750,7 @@ pub struct CampaignBudgetView {
     pub cap: Option<Decimal>,
     pub used: Decimal,
     pub currency_code: Option<String>,
+    pub attribute: Option<String>,
 }
 
 impl From<promotion::CampaignBudget> for CampaignBudgetView {
@@ -753,6 +762,28 @@ impl From<promotion::CampaignBudget> for CampaignBudgetView {
             cap: row.cap,
             used: row.used,
             currency_code: row.currency_code,
+            attribute: row.attribute,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CampaignBudgetUsageView {
+    pub id: Uuid,
+    pub campaign_budget_id: Uuid,
+    pub attribute_value: String,
+    pub used: Decimal,
+    pub cap: Option<Decimal>,
+}
+
+impl From<promotion::CampaignBudgetUsage> for CampaignBudgetUsageView {
+    fn from(row: promotion::CampaignBudgetUsage) -> Self {
+        CampaignBudgetUsageView {
+            id: row.id,
+            campaign_budget_id: row.campaign_budget_id,
+            attribute_value: row.attribute_value,
+            used: row.used,
+            cap: row.cap,
         }
     }
 }
@@ -765,6 +796,7 @@ pub struct CreateCampaign {
     pub description: Option<String>,
     pub starts_at: Option<chrono::DateTime<chrono::Utc>>,
     pub ends_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub metadata: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -773,6 +805,7 @@ pub struct SetBudget {
     pub kind: promotion::BudgetKind,
     pub cap: Option<Decimal>,
     pub currency_code: Option<String>,
+    pub attribute: Option<String>,
 }
 
 pub async fn list_campaigns(
@@ -797,6 +830,7 @@ pub async fn create_campaign(
         description: body.description,
         starts_at: body.starts_at,
         ends_at: body.ends_at,
+        metadata: body.metadata,
     };
     Ok(CampaignView::from(
         promotion::create_campaign(tx, ctx, new).await?,
@@ -815,6 +849,7 @@ pub struct UpdateCampaign {
     pub description: Option<String>,
     pub starts_at: Option<chrono::DateTime<chrono::Utc>>,
     pub ends_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub metadata: Option<serde_json::Value>,
 }
 
 pub async fn update_campaign(
@@ -829,6 +864,7 @@ pub async fn update_campaign(
         description: body.description,
         starts_at: body.starts_at,
         ends_at: body.ends_at,
+        metadata: body.metadata,
     };
     Ok(CampaignView::from(
         promotion::update_campaign(tx, ctx, id, patch).await?,
@@ -874,10 +910,25 @@ pub async fn set_campaign_budget(
         kind: body.kind,
         cap: body.cap,
         currency_code: currency(body.currency_code)?,
+        attribute: body.attribute,
     };
     Ok(CampaignBudgetView::from(
         promotion::set_campaign_budget(tx, ctx, new).await?,
     ))
+}
+
+/// Bounded the way a promotion's own rule sets are: configuration a shop
+/// looks over, not a customer's own data.
+pub async fn list_campaign_budget_usage(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    campaign_id: CampaignId,
+) -> Result<Vec<CampaignBudgetUsageView>> {
+    Ok(promotion::campaign_budget_usage(tx, ctx, campaign_id)
+        .await?
+        .into_iter()
+        .map(CampaignBudgetUsageView::from)
+        .collect())
 }
 
 // ---------------------------------------------------------------------- tax
@@ -2117,7 +2168,15 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/campaigns/{id}/budget",
         action: Action::Write,
         domain: "promotion",
-        summary: "Set a campaign's spend or usage budget",
+        summary: "Set a campaign's spend, usage or per-attribute budget",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Get,
+        path: "/admin/campaigns/{id}/budget/usage",
+        action: Action::View,
+        domain: "promotion",
+        summary: "List how much of a per-attribute budget each attribute value has used",
     },
     Route {
         surface: Surface::Admin,

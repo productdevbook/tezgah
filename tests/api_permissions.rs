@@ -580,9 +580,15 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
             admin_rest::SetBudget {
                 kind: tezgah::promotion::BudgetKind::Spend,
                 cap: None,
-                currency_code: None
+                currency_code: None,
+                attribute: None
             }
         )
+    );
+    denied!(
+        Method::Get,
+        "/admin/campaigns/{id}/budget/usage",
+        admin_rest::list_campaign_budget_usage(&mut tx, &ctx, CampaignId::new())
     );
     denied!(
         Method::Get,

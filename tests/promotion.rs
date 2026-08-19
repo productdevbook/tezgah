@@ -67,6 +67,72 @@ async fn a_cart(tx: &mut Tx<'_>, scope: uuid::Uuid, lines: usize) -> CartId {
     cart
 }
 
+/// A cart with one line per price in `prices`, each a single unit.
+async fn a_cart_with_prices(tx: &mut Tx<'_>, scope: uuid::Uuid, prices: &[Decimal]) -> CartId {
+    let cart = CartId::new();
+    sqlx::query("insert into cart (id, scope, currency_code) values ($1, $2, 'TRY')")
+        .bind(cart.as_uuid())
+        .bind(scope)
+        .execute(&mut **tx)
+        .await
+        .expect("a cart");
+
+    for (at, price) in prices.iter().enumerate() {
+        sqlx::query(
+            "insert into cart_line_item
+                 (id, scope, cart_id, product_title, quantity, unit_price, currency_code)
+             values ($1, $2, $3, $4, 1, $5, 'TRY')",
+        )
+        .bind(Uuid::now_v7())
+        .bind(scope)
+        .bind(cart.as_uuid())
+        .bind(format!("Item {at}"))
+        .bind(price)
+        .execute(&mut **tx)
+        .await
+        .expect("a line item");
+    }
+
+    cart
+}
+
+/// Puts a code on a cart the way a customer typing it would, without going
+/// through checkout's own path to get there.
+async fn with_code(tx: &mut Tx<'_>, scope: uuid::Uuid, cart: CartId, code: &str) {
+    sqlx::query(
+        "update cart set metadata = jsonb_build_object('promotions', jsonb_build_array($3::text))
+         where scope = $1 and id = $2",
+    )
+    .bind(scope)
+    .bind(cart.as_uuid())
+    .bind(code)
+    .execute(&mut **tx)
+    .await
+    .expect("a promo code on the cart");
+}
+
+/// Every line an adjustment landed on, as `(unit_price, amount)`, sorted so two
+/// runs over differently-ordered rows compare equal.
+async fn adjusted_lines(
+    tx: &mut Tx<'_>,
+    scope: uuid::Uuid,
+    cart: CartId,
+) -> Vec<(Decimal, Decimal)> {
+    let mut rows: Vec<(Decimal, Decimal)> = sqlx::query_as(
+        "select l.unit_price, a.amount
+         from cart_line_item_adjustment a
+         join cart_line_item l on l.id = a.cart_line_item_id and l.scope = a.scope
+         where a.scope = $1 and l.cart_id = $2",
+    )
+    .bind(scope)
+    .bind(cart.as_uuid())
+    .fetch_all(&mut **tx)
+    .await
+    .expect("the stored adjustments");
+    rows.sort_by(|a, b| a.0.cmp(&b.0));
+    rows
+}
+
 async fn a_promotion(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -84,6 +150,7 @@ async fn a_promotion(
             campaign_id: None,
             usage_limit,
             customer_usage_limit: None,
+            metadata: None,
         },
     )
     .await
@@ -247,6 +314,7 @@ async fn a_customer_with_one_claim_each_cannot_take_a_second() {
             campaign_id: None,
             usage_limit: None,
             customer_usage_limit: Some(1),
+            metadata: None,
         },
     )
     .await
@@ -307,6 +375,7 @@ async fn a_campaign_spending(
             description: None,
             starts_at: None,
             ends_at: None,
+            metadata: None,
         },
     )
     .await
@@ -320,6 +389,7 @@ async fn a_campaign_spending(
             kind: BudgetKind::Spend,
             cap: Some(cap),
             currency_code: Some(lira()),
+            attribute: None,
         },
     )
     .await
@@ -345,6 +415,7 @@ async fn on_campaign(
             campaign_id: Some(campaign),
             usage_limit: None,
             customer_usage_limit: None,
+            metadata: None,
         },
     )
     .await
@@ -429,6 +500,7 @@ async fn a_campaign_counting_uses_ignores_what_a_claim_gave_away() {
             description: None,
             starts_at: None,
             ends_at: None,
+            metadata: None,
         },
     )
     .await
@@ -442,6 +514,7 @@ async fn a_campaign_counting_uses_ignores_what_a_claim_gave_away() {
             kind: BudgetKind::Usage,
             cap: Some(dec!(1)),
             currency_code: None,
+            attribute: None,
         },
     )
     .await
@@ -515,5 +588,427 @@ async fn applying_promotions_to_a_cart_that_does_not_exist_is_denied_not_not_fou
     );
 
     tx.rollback().await.ok();
+    shop.close().await;
+}
+
+/// #177: a plain promotion's `Allocation::Once` is `buy_get`'s own
+/// cheapest-first quota, reached without faking buy rules to get there. Both
+/// pick the same units of the same cart for the same money.
+#[tokio::test]
+async fn once_and_buy_get_discount_the_same_cheapest_units() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    seed_currency(&mut tx, shop.here.0).await;
+
+    // The cheapest two units are the ten and the twenty; the thirty is never
+    // among them.
+    let prices = [dec!(30), dec!(10), dec!(20)];
+
+    let once_cart = a_cart_with_prices(&mut tx, shop.here.0, &prices).await;
+    let once = promotion::create_promotion(
+        &mut tx,
+        &ctx,
+        NewPromotion {
+            code: "ONCE10".into(),
+            kind: PromotionKind::Standard,
+            status: Status::Active,
+            is_automatic: false,
+            campaign_id: None,
+            usage_limit: None,
+            customer_usage_limit: None,
+            metadata: None,
+        },
+    )
+    .await
+    .expect("a promotion")
+    .id;
+    promotion::set_application_method(
+        &mut tx,
+        &ctx,
+        NewApplicationMethod {
+            promotion_id: once,
+            kind: MethodKind::Percentage,
+            target_type: TargetKind::Items,
+            allocation: Some(Allocation::Once),
+            value: dec!(10),
+            currency_code: None,
+            max_quantity: Some(2),
+            apply_to_quantity: None,
+            buy_rules_min_quantity: None,
+        },
+    )
+    .await
+    .expect("an application method");
+    with_code(&mut tx, shop.here.0, once_cart, "ONCE10").await;
+
+    let buy_get_cart = a_cart_with_prices(&mut tx, shop.here.0, &prices).await;
+    let buy_get = promotion::create_promotion(
+        &mut tx,
+        &ctx,
+        NewPromotion {
+            code: "BUYGET10".into(),
+            kind: PromotionKind::BuyGet,
+            status: Status::Active,
+            is_automatic: false,
+            campaign_id: None,
+            usage_limit: None,
+            customer_usage_limit: None,
+            metadata: None,
+        },
+    )
+    .await
+    .expect("a promotion")
+    .id;
+    promotion::set_application_method(
+        &mut tx,
+        &ctx,
+        NewApplicationMethod {
+            promotion_id: buy_get,
+            kind: MethodKind::Percentage,
+            target_type: TargetKind::Items,
+            allocation: None,
+            value: dec!(10),
+            currency_code: None,
+            max_quantity: None,
+            apply_to_quantity: Some(2),
+            buy_rules_min_quantity: None,
+        },
+    )
+    .await
+    .expect("an application method");
+    with_code(&mut tx, shop.here.0, buy_get_cart, "BUYGET10").await;
+
+    let once_taken = promotion::apply(&mut tx, &ctx, once_cart)
+        .await
+        .expect("a discount");
+    let buy_get_taken = promotion::apply(&mut tx, &ctx, buy_get_cart)
+        .await
+        .expect("a discount");
+
+    assert_eq!(once_taken.len(), 2, "the thirty-lira line keeps its price");
+    assert_eq!(buy_get_taken.len(), 2);
+
+    let once_total: Decimal = once_taken.iter().map(|one| one.amount.amount).sum();
+    let buy_get_total: Decimal = buy_get_taken.iter().map(|one| one.amount.amount).sum();
+    assert_eq!(
+        once_total,
+        dec!(3.00),
+        "ten percent of ten plus ten percent of twenty"
+    );
+    assert_eq!(
+        once_total, buy_get_total,
+        "a plain promotion's once and buy_get's quota agree"
+    );
+
+    let once_lines = adjusted_lines(&mut tx, shop.here.0, once_cart).await;
+    let buy_get_lines = adjusted_lines(&mut tx, shop.here.0, buy_get_cart).await;
+    assert_eq!(
+        once_lines,
+        vec![(dec!(10), dec!(1.00)), (dec!(20), dec!(2.00))],
+        "the cheapest two units, not the thirty-lira one"
+    );
+    assert_eq!(
+        once_lines, buy_get_lines,
+        "the two paths reach the same lines for the same amounts"
+    );
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+/// #177: an order-wide discount has no units to sort by price, so `once` is
+/// refused for it at the point the application method is set rather than
+/// silently discounting the whole order.
+#[tokio::test]
+async fn once_allocation_is_refused_against_the_whole_order() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let id = a_promotion(&mut tx, &ctx, "ONCEORDER", None).await;
+
+    let denied = promotion::set_application_method(
+        &mut tx,
+        &ctx,
+        NewApplicationMethod {
+            promotion_id: id,
+            kind: MethodKind::Percentage,
+            target_type: TargetKind::Order,
+            allocation: Some(Allocation::Once),
+            value: dec!(10),
+            currency_code: None,
+            max_quantity: Some(2),
+            apply_to_quantity: None,
+            buy_rules_min_quantity: None,
+        },
+    )
+    .await
+    .expect_err("once needs units to sort by price, and the order has none");
+    assert_eq!(denied.code(), "invalid");
+
+    tx.rollback().await.ok();
+    shop.close().await;
+}
+
+/// #179: a promotion and its campaign carry their own metadata, the way every
+/// other entity in the schema does.
+#[tokio::test]
+async fn a_promotions_metadata_is_written_and_read_back() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let created = promotion::create_promotion(
+        &mut tx,
+        &ctx,
+        NewPromotion {
+            code: "META".into(),
+            kind: PromotionKind::Standard,
+            status: Status::Active,
+            is_automatic: false,
+            campaign_id: None,
+            usage_limit: None,
+            customer_usage_limit: None,
+            metadata: Some(serde_json::json!({ "source": "example.test" })),
+        },
+    )
+    .await
+    .expect("a promotion");
+    assert_eq!(
+        created.metadata,
+        Some(serde_json::json!({ "source": "example.test" }))
+    );
+
+    let fetched = promotion::promotion(&mut tx, &ctx, created.id)
+        .await
+        .expect("the promotion back");
+    assert_eq!(fetched.metadata, created.metadata);
+
+    let updated = promotion::update_promotion(
+        &mut tx,
+        &ctx,
+        created.id,
+        promotion::PromotionPatch {
+            metadata: Some(serde_json::json!({ "source": "example.com" })),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("to edit the metadata");
+    assert_eq!(
+        updated.metadata,
+        Some(serde_json::json!({ "source": "example.com" }))
+    );
+
+    let campaign = promotion::create_campaign(
+        &mut tx,
+        &ctx,
+        NewCampaign {
+            identifier: "welcome".into(),
+            name: "Welcome".into(),
+            description: None,
+            starts_at: None,
+            ends_at: None,
+            metadata: Some(serde_json::json!({ "owner": "marketing" })),
+        },
+    )
+    .await
+    .expect("a campaign");
+    assert_eq!(
+        campaign.metadata,
+        Some(serde_json::json!({ "owner": "marketing" }))
+    );
+
+    tx.rollback().await.ok();
+    shop.close().await;
+}
+
+/// #178: a per-customer campaign budget sees every promotion the campaign
+/// runs, not just one — the gap `promotion.customer_usage_limit` and
+/// `promotion_usage` cannot close, because both are scoped to a single
+/// promotion.
+#[tokio::test]
+async fn a_campaign_budget_by_attribute_counts_every_promotion_it_runs() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let mine = common::a_customer(&mut tx, &ctx).await;
+    let someone_elses = common::a_customer(&mut tx, &ctx).await;
+
+    let campaign = promotion::create_campaign(
+        &mut tx,
+        &ctx,
+        NewCampaign {
+            identifier: "WELCOME".into(),
+            name: "Welcome".into(),
+            description: None,
+            starts_at: None,
+            ends_at: None,
+            metadata: None,
+        },
+    )
+    .await
+    .expect("a campaign");
+
+    promotion::set_campaign_budget(
+        &mut tx,
+        &ctx,
+        NewCampaignBudget {
+            campaign_id: campaign.id,
+            kind: BudgetKind::UseByAttribute,
+            cap: Some(dec!(2)),
+            currency_code: None,
+            attribute: Some("customer_id".into()),
+        },
+    )
+    .await
+    .expect("a per-customer budget");
+
+    let first = on_campaign(&mut tx, &ctx, "WELCOME-A", campaign.id).await;
+    let second = on_campaign(&mut tx, &ctx, "WELCOME-B", campaign.id).await;
+
+    // The cap is two, spread across the campaign's two promotions rather than
+    // one each.
+    promotion::claim(&mut tx, &ctx, first, Some(mine), nothing())
+        .await
+        .expect("the first of two");
+    promotion::claim(&mut tx, &ctx, second, Some(mine), nothing())
+        .await
+        .expect("the second of two");
+
+    let refused = promotion::claim(&mut tx, &ctx, first, Some(mine), nothing())
+        .await
+        .expect_err("a third claim, from either promotion, over the cap");
+    assert!(refused.is_conflict());
+
+    // A cap kept per customer never sees another customer's claims.
+    promotion::claim(&mut tx, &ctx, first, Some(someone_elses), nothing())
+        .await
+        .expect("a different customer's own two claims");
+
+    let usage = promotion::campaign_budget_usage(&mut tx, &ctx, campaign.id)
+        .await
+        .expect("the per-attribute usage");
+    let mine_used = usage
+        .iter()
+        .find(|row| row.attribute_value == mine.to_string())
+        .expect("my own row")
+        .used;
+    assert_eq!(mine_used, dec!(2));
+
+    tx.rollback().await.ok();
+    shop.close().await;
+}
+
+/// #178: the same concurrency guarantee `campaign_budget`'s own aggregate
+/// counter already has, now proven for the per-attribute row — two real
+/// connections, at the same moment, not one after the other.
+#[tokio::test]
+async fn two_orders_claiming_a_customers_last_unit_of_a_campaign_budget_at_once() {
+    let shop = Shop::open().await;
+
+    let mut setup = shop.begin().await;
+    let ctx = shop.ctx();
+    let customer = common::a_customer(&mut setup, &ctx).await;
+
+    let campaign = promotion::create_campaign(
+        &mut setup,
+        &ctx,
+        NewCampaign {
+            identifier: "LASTUNIT".into(),
+            name: "Last unit".into(),
+            description: None,
+            starts_at: None,
+            ends_at: None,
+            metadata: None,
+        },
+    )
+    .await
+    .expect("a campaign");
+
+    promotion::set_campaign_budget(
+        &mut setup,
+        &ctx,
+        NewCampaignBudget {
+            campaign_id: campaign.id,
+            kind: BudgetKind::UseByAttribute,
+            cap: Some(dec!(1)),
+            currency_code: None,
+            attribute: Some("customer_id".into()),
+        },
+    )
+    .await
+    .expect("a per-customer budget");
+
+    // Two different promotions on the same campaign: what races here is the
+    // campaign's shared per-customer row, not either promotion's own counter.
+    let first_promo = on_campaign(&mut setup, &ctx, "RACE-A", campaign.id).await;
+    let second_promo = on_campaign(&mut setup, &ctx, "RACE-B", campaign.id).await;
+    setup.commit().await.expect("to keep the setup");
+
+    let first = async {
+        let mut tx = shop.begin().await;
+        let taken =
+            promotion::claim(&mut tx, &shop.ctx(), first_promo, Some(customer), nothing()).await;
+        match taken {
+            Ok(()) => {
+                tx.commit().await.expect("to keep the claim");
+                Ok(())
+            }
+            Err(err) => {
+                tx.rollback().await.expect("to give it back");
+                Err(err)
+            }
+        }
+    };
+    let second = async {
+        let mut tx = shop.begin().await;
+        let taken = promotion::claim(
+            &mut tx,
+            &shop.ctx(),
+            second_promo,
+            Some(customer),
+            nothing(),
+        )
+        .await;
+        match taken {
+            Ok(()) => {
+                tx.commit().await.expect("to keep the claim");
+                Ok(())
+            }
+            Err(err) => {
+                tx.rollback().await.expect("to give it back");
+                Err(err)
+            }
+        }
+    };
+
+    // Two connections at the same moment, not one after the other.
+    let (first, second) = tokio::join!(first, second);
+
+    assert_eq!(
+        i32::from(first.is_ok()) + i32::from(second.is_ok()),
+        1,
+        "a customer's last unit of a campaign budget went to both orders or to neither"
+    );
+
+    let mut after = shop.begin().await;
+    let used: Decimal = sqlx::query_scalar(
+        "select u.used
+         from campaign_budget_usage u
+         join campaign_budget b on b.id = u.campaign_budget_id and b.scope = u.scope
+         where u.scope = $1 and b.campaign_id = $2",
+    )
+    .bind(shop.here.0)
+    .bind(campaign.id.as_uuid())
+    .fetch_one(&mut *after)
+    .await
+    .expect("the per-customer counter");
+    after.commit().await.expect("to finish reading");
+    assert_eq!(used, dec!(1));
+
     shop.close().await;
 }

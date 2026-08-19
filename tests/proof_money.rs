@@ -294,6 +294,7 @@ async fn stock_the_shelf(shop: &Shop, run: u64) -> Shelf {
             campaign_id: None,
             usage_limit: Some(USAGE_LIMIT),
             customer_usage_limit: None,
+            metadata: None,
         },
     )
     .await
