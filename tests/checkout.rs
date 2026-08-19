@@ -1,10 +1,10 @@
 //! Checkout, against a real Postgres.
 //!
-//! The test that matters is `every_step_that_fails_leaves_nothing_behind`: the
-//! run is broken at each step in turn and the same four questions are asked
-//! afterwards every time — is any stock still reserved, is any money still
-//! held, is there half an order, is the cart still open. A saga is only worth
-//! having if the answers are no, no, no and yes.
+//! The tests that matter are the `*_failing_leaves_nothing_behind` family,
+//! one per step: the run is broken there and `nothing_left_behind` asks the
+//! same questions afterwards every time — is any stock still reserved, is
+//! any money still held, is there half an order, is the cart still open. A
+//! saga is only worth having if the answers are no, no, no and yes.
 
 mod common;
 
@@ -1750,6 +1750,205 @@ async fn a_purchased_gift_card_pays_for_the_next_basket() -> Result<()> {
     Ok(())
 }
 
+/// `redeem_credit` spends its instruments oldest first inside one
+/// transaction. A gift card ahead of a store credit that turns out disabled
+/// is redeemed and then never committed: the step never reaches an outcome
+/// to hand the runner, so what it already wrote goes down with the rest of
+/// its own transaction — the same as if it had spent nothing at all.
+#[tokio::test]
+async fn redeem_credit_failing_leaves_nothing_behind() -> Result<()> {
+    let shop = Shop::open().await;
+    let here = ready(&shop, 10, 2).await;
+    let ctx = shop.ctx();
+    let lira = Currency::parse("TRY").expect("a currency");
+
+    let mut tx = shop.begin().await;
+
+    let issued = tezgah::credit::issue(
+        &mut tx,
+        &ctx,
+        tezgah::credit::NewGiftCard {
+            balance: Money::new(dec!(5), lira),
+            issued_order_id: None,
+            customer_id: None,
+            expires_at: None,
+            reason: None,
+            line: None,
+        },
+    )
+    .await
+    .expect("a gift card");
+    tezgah::credit::apply_gift_card(
+        &mut tx,
+        &ctx,
+        here.cart_id,
+        &issued.code,
+        Money::new(dec!(5), lira),
+    )
+    .await
+    .expect("the card put against the cart");
+
+    let customer = common::a_customer(&mut tx, &ctx).await;
+    let account = tezgah::credit::grant_store_credit(
+        &mut tx,
+        &ctx,
+        customer,
+        Money::new(dec!(5), lira),
+        None,
+    )
+    .await
+    .expect("a balance");
+    tezgah::credit::apply_store_credit(
+        &mut tx,
+        &ctx,
+        here.cart_id,
+        customer,
+        Money::new(dec!(5), lira),
+    )
+    .await
+    .expect("the balance put against the cart");
+
+    // Disabled after it was put against the cart, not before: applying an
+    // instrument and redeeming it are different moments, and an account can
+    // go bad in between.
+    sqlx::query("update store_credit set disabled_at = now() where scope = $1 and id = $2")
+        .bind(shop.here.0)
+        .bind(account.id.as_uuid())
+        .execute(&mut *tx)
+        .await
+        .expect("to disable the balance");
+
+    tx.commit().await.expect("to commit");
+
+    let bank = Bank::saying(Answer::Authorize);
+    let checkout = Checkout::new(
+        Arc::clone(&bank) as Arc<dyn PaymentProvider>,
+        here.location_id,
+    );
+
+    let placed = checkout
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
+        .await?;
+    assert_eq!(placed.run.state, State::Reverted);
+    assert_eq!(*bank.authorized.lock(), 0, "the bank was never asked");
+
+    let mut tx = shop.begin().await;
+    let card = tezgah::credit::gift_card(&mut tx, &ctx, issued.card.id).await?;
+    let credit = tezgah::credit::store_credit_by_id(&mut tx, &ctx, account.id).await?;
+    tx.commit().await.expect("to commit");
+
+    assert_eq!(
+        card.balance,
+        dec!(5),
+        "the gift card the step redeemed before failing was not given back"
+    );
+    assert_eq!(credit.balance, dec!(5));
+
+    nothing_left_behind(&shop, here.cart_id).await;
+    shop.close().await;
+    Ok(())
+}
+
+/// The compensation path `redeem_credit_failing_leaves_nothing_behind` never
+/// reaches: both instruments are actually redeemed, `authorize_payment`
+/// declines afterwards, and `RedeemCredit::compensate` has to put back
+/// exactly what it took — not something greater than zero, the balance each
+/// account carried before the checkout touched it — and the order's own
+/// credit line has to be gone with the order.
+#[tokio::test]
+async fn a_declined_card_gives_back_every_credit_it_spent() -> Result<()> {
+    let shop = Shop::open().await;
+    let here = ready(&shop, 10, 2).await;
+    let ctx = shop.ctx();
+    let lira = Currency::parse("TRY").expect("a currency");
+
+    let mut tx = shop.begin().await;
+
+    let issued = tezgah::credit::issue(
+        &mut tx,
+        &ctx,
+        tezgah::credit::NewGiftCard {
+            balance: Money::new(dec!(5), lira),
+            issued_order_id: None,
+            customer_id: None,
+            expires_at: None,
+            reason: None,
+            line: None,
+        },
+    )
+    .await
+    .expect("a gift card");
+    tezgah::credit::apply_gift_card(
+        &mut tx,
+        &ctx,
+        here.cart_id,
+        &issued.code,
+        Money::new(dec!(5), lira),
+    )
+    .await
+    .expect("the card put against the cart");
+
+    let customer = common::a_customer(&mut tx, &ctx).await;
+    let account = tezgah::credit::grant_store_credit(
+        &mut tx,
+        &ctx,
+        customer,
+        Money::new(dec!(5), lira),
+        None,
+    )
+    .await
+    .expect("a balance");
+    tezgah::credit::apply_store_credit(
+        &mut tx,
+        &ctx,
+        here.cart_id,
+        customer,
+        Money::new(dec!(5), lira),
+    )
+    .await
+    .expect("the balance put against the cart");
+
+    tx.commit().await.expect("to commit");
+
+    let bank = Bank::saying(Answer::Decline);
+    let checkout = Checkout::new(
+        Arc::clone(&bank) as Arc<dyn PaymentProvider>,
+        here.location_id,
+    );
+
+    let placed = checkout
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
+        .await?;
+    assert_eq!(placed.run.state, State::Reverted);
+
+    let mut tx = shop.begin().await;
+    let card = tezgah::credit::gift_card(&mut tx, &ctx, issued.card.id).await?;
+    let credit = tezgah::credit::store_credit_by_id(&mut tx, &ctx, account.id).await?;
+    tx.commit().await.expect("to commit");
+
+    assert_eq!(card.balance, dec!(5), "the gift card was not given back");
+    assert_eq!(
+        credit.balance,
+        dec!(5),
+        "the store credit was not given back"
+    );
+
+    assert_eq!(
+        count(
+            &shop.pool,
+            shop.here,
+            "select count(*) from order_credit_line where scope = $1"
+        )
+        .await,
+        0,
+        "the order's credit line outlived the order it was written for"
+    );
+
+    nothing_left_behind(&shop, here.cart_id).await;
+    shop.close().await;
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Subscribing from the storefront
 // ---------------------------------------------------------------------------
@@ -1979,6 +2178,50 @@ async fn a_declined_card_rolls_back_the_contract_it_would_have_opened() -> Resul
         value
     };
     assert_eq!(count, 0, "a declined card leaves no contract behind");
+
+    nothing_left_behind(&shop, here.cart_id).await;
+    shop.close().await;
+    Ok(())
+}
+
+/// `create_subscriptions` can refuse the cart on its own, after
+/// `reserve_stock` and `create_order` already wrote something to undo — no
+/// instrument on file to charge later, so the bank is never even asked.
+#[tokio::test]
+async fn create_subscriptions_failing_leaves_nothing_behind() -> Result<()> {
+    let shop = Shop::open().await;
+    let here = ready_to_subscribe(&shop).await;
+
+    let mut tx = shop.begin().await;
+    sqlx::query("delete from account_holder where scope = $1")
+        .bind(shop.here.0)
+        .execute(&mut *tx)
+        .await
+        .expect("to take the payment method off file");
+    tx.commit().await.expect("to commit");
+
+    let bank = Bank::saying(Answer::Authorize);
+    let checkout = Checkout::new(
+        Arc::clone(&bank) as Arc<dyn PaymentProvider>,
+        here.location_id,
+    );
+
+    let placed = checkout
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
+        .await?;
+    assert_eq!(placed.run.state, State::Reverted);
+    assert_eq!(*bank.authorized.lock(), 0, "the bank was never asked");
+
+    assert_eq!(
+        count(
+            &shop.pool,
+            shop.here,
+            "select count(*) from subscription where scope = $1"
+        )
+        .await,
+        0,
+        "a contract was opened for a checkout that never placed an order"
+    );
 
     nothing_left_behind(&shop, here.cart_id).await;
     shop.close().await;
