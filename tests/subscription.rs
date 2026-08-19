@@ -193,7 +193,7 @@ bank!(Panicking);
 #[async_trait]
 impl RecurringProvider for Panicking {
     async fn authorize_stored(&self, _: StoredChargeRequest) -> tezgah::Result<Authorization> {
-        panic!("a contract with nothing due should never reach the provider");
+        unreachable!("a contract with nothing due should never reach the provider");
     }
 }
 
