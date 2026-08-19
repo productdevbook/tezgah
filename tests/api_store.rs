@@ -41,6 +41,22 @@ async fn any_token(tx: &mut Tx<'_>, ctx: &tezgah::ports::Ctx<'_>) -> String {
         .token
 }
 
+/// The `store` row itself has no writer anywhere in the crate — creating one
+/// is a host's onboarding concern, not tezgah's, the same way a currency's
+/// details were before #180. `update_store` only ever updates it.
+async fn a_store_row(tx: &mut Tx<'_>, scope: uuid::Uuid) {
+    sqlx::query(
+        "insert into store (id, scope, name, default_currency_code, supported_currency_codes)
+         values ($1, $2, 'Test shop', 'TRY', array['TRY'])
+         on conflict do nothing",
+    )
+    .bind(uuid::Uuid::now_v7())
+    .bind(scope)
+    .execute(&mut **tx)
+    .await
+    .expect("a store row");
+}
+
 /// A host that answers ownership the way a real one would, and says yes to
 /// everything else.
 ///
@@ -1364,6 +1380,7 @@ async fn a_cart_opened_without_a_channel_or_region_gets_the_shops_default() -> t
     let ctx = shop.ctx();
 
     common::a_currency(&mut tx, shop.here, "TRY", 2).await;
+    a_store_row(&mut tx, shop.here.0).await;
 
     let region = domain_store::create_region(
         &mut tx,

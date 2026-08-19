@@ -31,6 +31,21 @@ async fn a_channel(shop: &Shop, tx: &mut Tx<'_>, name: &str) -> SalesChannel {
     .expect("a channel")
 }
 
+/// The `store` row itself has no writer anywhere in the crate — a host
+/// creates one as part of its own onboarding. `update_store` only updates.
+async fn a_store_row(tx: &mut Tx<'_>, scope: uuid::Uuid) {
+    sqlx::query(
+        "insert into store (id, scope, name, default_currency_code, supported_currency_codes)
+         values ($1, $2, 'Test shop', 'TRY', array['TRY'])
+         on conflict do nothing",
+    )
+    .bind(uuid::Uuid::now_v7())
+    .bind(scope)
+    .execute(&mut **tx)
+    .await
+    .expect("a store row");
+}
+
 #[tokio::test]
 async fn a_channel_is_made_edited_and_taken_away_again() {
     let shop = Shop::open().await;
@@ -486,6 +501,7 @@ async fn the_default_sales_channel_cannot_be_deleted() {
     let ctx = shop.ctx();
     let mut tx = shop.begin().await;
 
+    a_store_row(&mut tx, shop.here.0).await;
     let channel = a_channel(&shop, &mut tx, "Web").await;
 
     store::update_store(
