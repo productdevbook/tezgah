@@ -99,7 +99,7 @@ use std::path::{Path, PathBuf};
 
 /// Public functions nothing in the crate calls, each with the reason.
 /// Adding to this is not a fix.
-const TOLERATED: [(&str, &str); 40] = [
+const TOLERATED: [(&str, &str); 41] = [
     (
         "batch::import_workflow",
         "the import workflow a host runs through the runner when a file is large \
@@ -246,6 +246,14 @@ const TOLERATED: [(&str, &str); 40] = [
     ("kasapay::cancel", "same as kasapay::capture"),
     ("kasapay::refund", "same as kasapay::capture"),
     ("kasapay::lookup", "same as kasapay::capture"),
+    (
+        "kasapay::map_status",
+        "tezgah#205 made this pub so a host's own authorize does not write \
+         a second copy of the six-way Status match; its only in-crate call \
+         is to_authorization, in the same file, which this check does not \
+         count as a caller — the callers this was exported for are outside \
+         src/, in a host's own PaymentProvider",
+    ),
     (
         "tax::rates_for",
         "the rates answering for an address, used by nobody outside its own \

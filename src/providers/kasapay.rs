@@ -10,6 +10,15 @@
 //! it — plus the [`Money`] conversion boundary it depends on, proven lossless
 //! before anything is built on top of it.
 //!
+//! `authorize` is still not shipped here, for the same reason it never was —
+//! but the six-way [`kasapay_core::Status`] match a host's own `authorize`
+//! has to read a `Charge` back through is exactly the one [`to_authorization`]
+//! already calls below, and tezgah#205 made [`map_status`] `pub`: the first
+//! host to wire kasapay in had no way to reach it and wrote a second copy,
+//! which is exactly the kind of disagreement [`map_status`]'s own doc warns
+//! about. A host writing its own `authorize` calls [`map_status`] rather than
+//! writing a third one.
+//!
 //! `src/providers/stripe.rs` and `iyzico.rs` — tezgah's own hosted-flow
 //! adapters, written before kasapay existed — are gone. Both waited on a
 //! kasapay gap this module could not paper over: [kasapay#149] closed
@@ -224,8 +233,20 @@ pub async fn lookup(
 /// #168 made `AuthorizationStatus` itself `#[non_exhaustive]`. An unmapped
 /// status is this mapping unfinished, not a business outcome, so it errors
 /// the same way an unreachable arm on tezgah's own enums already does
-/// elsewhere in this crate (`Error::bug`), rather than guessing at one.
-fn map_status(status: kasapay_core::Status) -> Result<AuthorizationStatus> {
+/// elsewhere in this crate (`Error::bug`), rather than guessing at one. That
+/// error propagates out of `authorize`/`lookup` as a retryable failure
+/// (`Failure::Retry` in `crate::checkout`) rather than as
+/// [`AuthorizationStatus::Error`] — a status this mapping does not
+/// recognise never gets the chance to write a session terminal, which is
+/// the same #169 outcome every caller of this function inherits, `pub` or
+/// not.
+///
+/// `pub` since tezgah#205: `capture`, `cancel`, `refund` and `lookup` above
+/// were already reachable through the trait they collapse onto, but
+/// `authorize` is each host's own, and reading its answer needs this exact
+/// match — so before #205 every host wrote its own copy, and a second copy
+/// is exactly where two of these six could start disagreeing.
+pub fn map_status(status: kasapay_core::Status) -> Result<AuthorizationStatus> {
     use kasapay_core::Status;
     match status {
         Status::Authorized | Status::Captured => Ok(AuthorizationStatus::Authorized),

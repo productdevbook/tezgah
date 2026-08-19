@@ -15,10 +15,11 @@
 //! uniformly across every provider — that is exactly why
 //! `src/providers/kasapay.rs` ships no mapping for either — so `authorize`
 //! below is where this example has to open a `kasapay_core::ChargeRequest`
-//! and read a `Charge` back itself, including its own copy of the six-way
-//! `Status` match. That match already exists, correctly, as
-//! `src/providers/kasapay.rs::map_status` — but it is private to that
-//! module, so nothing outside it, this example included, can call it.
+//! and read a `Charge` back itself. Reading it back needs the same six-way
+//! `Status` match `capture`/`cancel`/`refund`/`lookup` already reach through
+//! the trait, and since tezgah#205 that match is `mapping::map_status` —
+//! `pub` now, so this is the first host to call it rather than the first to
+//! copy it.
 
 use std::sync::Arc;
 
@@ -74,25 +75,6 @@ impl KasapayProvider {
     }
 }
 
-/// A second copy of `src/providers/kasapay.rs::map_status`'s exact six arms,
-/// kept here only because that function is private to its module and there
-/// is no public one to call instead. The wildcard answers `Error::invalid`
-/// rather than the internal `Error::bug` that function reaches for —
-/// `Error::bug` is `pub(crate)`, and this file is outside the crate that
-/// owns it.
-fn map_status(status: kasapay_core::Status) -> tezgah::Result<AuthorizationStatus> {
-    use kasapay_core::Status;
-    match status {
-        Status::Authorized | Status::Captured => Ok(AuthorizationStatus::Authorized),
-        Status::RequiresAction => Ok(AuthorizationStatus::RequiresMore),
-        Status::Pending => Ok(AuthorizationStatus::Pending),
-        Status::Failed | Status::Canceled => Ok(AuthorizationStatus::Error),
-        _ => Err(tezgah::Error::invalid(
-            "kasapay reported a status this example does not map",
-        )),
-    }
-}
-
 fn map_provider_error(err: kasapay_core::Error) -> tezgah::Error {
     tezgah::Error::provider(err.provider().as_str(), err.to_string())
 }
@@ -127,7 +109,7 @@ impl PaymentProvider for KasapayProvider {
             .await
             .map_err(map_provider_error)?;
 
-        let status = map_status(charge.status)?;
+        let status = mapping::map_status(charge.status)?;
         let redirect = match &charge.next_action {
             Some(kasapay_core::NextAction::Redirect { url, .. }) => Some(url.to_string()),
             _ => None,
