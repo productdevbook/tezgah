@@ -877,6 +877,244 @@ async fn a_second_factor_keeps_everything_it_has() -> Result<()> {
     Ok(())
 }
 
+/// tezgah#170: nothing else ever drives a run parked in `State::Waiting`
+/// forward, so the session `AuthorizePayment::record` left open is
+/// `order::cancel`'s to close — the same as `AuthorizePayment::compensate`
+/// would, if `unwind` ever reached a `'waiting'` step, which it does not on
+/// purpose.
+#[tokio::test]
+async fn canceling_a_second_factor_order_closes_the_session_it_never_finished() -> Result<()> {
+    let shop = Shop::open().await;
+    let here = ready(&shop, 10, 2).await;
+    let bank = Bank::saying(Answer::SecondFactor);
+    let checkout = Checkout::new(
+        Arc::clone(&bank) as Arc<dyn PaymentProvider>,
+        here.location_id,
+    );
+
+    let placed = checkout
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
+        .await?;
+    assert_eq!(placed.run.state, State::Waiting);
+    let order_id = placed.order_id.expect("an order that is waiting");
+    let ctx = shop.ctx();
+
+    let mut tx = shop.begin().await;
+    let order = order::get(&mut tx, &ctx, order_id).await?;
+    let collection = order.payment_collection_id.expect("a collection");
+    let sessions = payment::sessions(&mut tx, &ctx, collection, tezgah::Paging::first(10)).await?;
+    tx.commit().await.expect("to commit");
+    assert_eq!(sessions.items.len(), 1);
+    let session = &sessions.items[0];
+    let session_id = session.id;
+    let asked = session.money().expect("an amount");
+    assert!(session.status().is_open());
+
+    let mut tx = shop.begin().await;
+    let canceled = order::cancel(&mut tx, &ctx, order_id).await?;
+    tx.commit().await.expect("to commit");
+    assert_eq!(canceled.status()?, OrderStatus::Canceled);
+
+    let mut tx = shop.begin().await;
+    let after = payment::session(&mut tx, &ctx, session_id).await?;
+    tx.commit().await.expect("to commit");
+    assert_eq!(
+        after.status(),
+        SessionStatus::Canceled,
+        "an order that abandoned its second factor must not leave the session open behind it"
+    );
+
+    // The shopper's bank finally answers, after the order that would have
+    // received it is already gone and its stock resold.
+    *bank.answer.lock() = Answer::Authorize;
+    let late = bank
+        .authorize(AuthorizeRequest {
+            session_id,
+            amount: asked,
+            data: serde_json::json!({}),
+            context: serde_json::json!({}),
+            installment_count: None,
+        })
+        .await?;
+
+    let mut tx = shop.begin().await;
+    let outcome = payment::authorize(&mut tx, &ctx, session_id, late).await;
+    tx.rollback().await.ok();
+    let err = outcome.expect_err("a session an order already gave up on must refuse completing");
+    assert!(err.is_conflict(), "{}", err.report());
+
+    assert_eq!(
+        count(
+            &shop.pool,
+            shop.here,
+            "select count(*) from payment where scope = $1"
+        )
+        .await,
+        0,
+        "the late redirect must not authorise money against goods already given back"
+    );
+
+    shop.close().await;
+    Ok(())
+}
+
+/// tezgah#170: a closed order and an already-closed session is the ordinary
+/// case, not an edge one — cancelling twice, or cancelling after the
+/// operator already dealt with the session by hand, must not fail on it.
+#[tokio::test]
+async fn canceling_a_second_factor_order_is_idempotent_about_its_session() -> Result<()> {
+    let shop = Shop::open().await;
+    let here = ready(&shop, 10, 2).await;
+    let bank = Bank::saying(Answer::SecondFactor);
+    let checkout = Checkout::new(
+        Arc::clone(&bank) as Arc<dyn PaymentProvider>,
+        here.location_id,
+    );
+
+    let placed = checkout
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
+        .await?;
+    let order_id = placed.order_id.expect("an order that is waiting");
+    let ctx = shop.ctx();
+
+    let mut tx = shop.begin().await;
+    let order = order::get(&mut tx, &ctx, order_id).await?;
+    let collection = order.payment_collection_id.expect("a collection");
+    let sessions = payment::sessions(&mut tx, &ctx, collection, tezgah::Paging::first(10)).await?;
+    let session_id = sessions.items[0].id;
+    // An operator closing the session out by hand before ever cancelling the
+    // order — `close_session` on an already-open session, same as `compensate`.
+    payment::close_session(&mut tx, &ctx, session_id).await?;
+    tx.commit().await.expect("to commit");
+
+    let mut tx = shop.begin().await;
+    let canceled = order::cancel(&mut tx, &ctx, order_id).await?;
+    tx.commit().await.expect("to commit");
+    assert_eq!(canceled.status()?, OrderStatus::Canceled);
+
+    shop.close().await;
+    Ok(())
+}
+
+/// tezgah#170: cancelling the order and the shopper's bank finally answering
+/// race for the same session row. Whichever gets there first, the two must
+/// never both win — the session is never left open, and money is never held
+/// against an order whose goods are already back on the shelf.
+#[tokio::test]
+async fn a_cancellation_and_a_late_second_factor_answer_never_both_win() -> Result<()> {
+    let shop = Shop::open().await;
+    let here = ready(&shop, 10, 2).await;
+    let bank = Bank::saying(Answer::SecondFactor);
+    let checkout = Checkout::new(
+        Arc::clone(&bank) as Arc<dyn PaymentProvider>,
+        here.location_id,
+    );
+
+    let placed = checkout
+        .place(&shop.pool, &shop.ctx(), here.cart_id, None)
+        .await?;
+    assert_eq!(placed.run.state, State::Waiting);
+    let order_id = placed.order_id.expect("an order that is waiting");
+    let ctx = shop.ctx();
+
+    let (session_id, asked) = {
+        let mut tx = shop.begin().await;
+        let order = order::get(&mut tx, &ctx, order_id).await?;
+        let collection = order.payment_collection_id.expect("a collection");
+        let sessions =
+            payment::sessions(&mut tx, &ctx, collection, tezgah::Paging::first(10)).await?;
+        tx.commit().await.expect("to commit");
+        let session = &sessions.items[0];
+        (session.id, session.money().expect("an amount"))
+    };
+
+    // Fetched outside either transaction, the way `AuthorizePayment::call`
+    // fetches it — the bank has already agreed to hold the money before
+    // either side of the race touches a row.
+    *bank.answer.lock() = Answer::Authorize;
+    let late = bank
+        .authorize(AuthorizeRequest {
+            session_id,
+            amount: asked,
+            data: serde_json::json!({}),
+            context: serde_json::json!({}),
+            installment_count: None,
+        })
+        .await?;
+
+    let gate = Arc::new(tokio::sync::Barrier::new(2));
+    let there = gate.clone();
+
+    let cancel = async {
+        let mut tx = shop.begin().await;
+        gate.wait().await;
+        let out = order::cancel(&mut tx, &shop.ctx(), order_id).await;
+        match &out {
+            Ok(_) => tx.commit().await.expect("to keep it"),
+            Err(_) => tx.rollback().await.expect("to give it back"),
+        }
+        out
+    };
+    let complete = async {
+        let mut tx = shop.begin().await;
+        there.wait().await;
+        let out = payment::authorize(&mut tx, &shop.ctx(), session_id, late).await;
+        match &out {
+            Ok(_) => tx.commit().await.expect("to keep it"),
+            Err(_) => tx.rollback().await.expect("to give it back"),
+        }
+        out
+    };
+
+    let (canceled, authorized) = tokio::join!(cancel, complete);
+
+    // Voiding a hold the race let land is the same thing cancelling already
+    // does to any other authorised, uncaptured payment — so cancellation
+    // itself always wins; what is decided by the race is only whether the
+    // hold ever became a `payment` in between.
+    let canceled = canceled.expect("cancelling must succeed whichever way the race goes");
+    assert_eq!(canceled.status()?, OrderStatus::Canceled);
+
+    let mut tx = shop.begin().await;
+    let session_after = payment::session(&mut tx, &ctx, session_id).await?;
+    let payment_row: Option<(bool,)> = sqlx::query_as(
+        "select canceled_at is not null from payment
+         where scope = $1 and payment_session_id = $2",
+    )
+    .bind(shop.here.0)
+    .bind(session_id.as_uuid())
+    .fetch_optional(&mut *tx)
+    .await?;
+    tx.commit().await.expect("to commit");
+
+    assert_eq!(
+        session_after.status(),
+        SessionStatus::Canceled,
+        "one side or the other must have closed it — never left open"
+    );
+
+    match authorized {
+        Ok(_) => {
+            let (payment_canceled,) =
+                payment_row.expect("the authorisation that won the race left its payment");
+            assert!(
+                payment_canceled,
+                "a payment the race let land must still be voided by the cancellation racing it"
+            );
+        }
+        Err(err) => {
+            assert!(err.is_conflict(), "{}", err.report());
+            assert!(
+                payment_row.is_none(),
+                "a refused authorisation must not leave a payment behind"
+            );
+        }
+    }
+
+    shop.close().await;
+    Ok(())
+}
+
 /// tezgah#168: a provider that is still working is not the same wait as a
 /// second factor — nobody is sent anywhere — but it is still a wait, not a
 /// decline: the run stays open for the same session to answer.

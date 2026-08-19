@@ -1563,6 +1563,12 @@ async fn release_payments(tx: &mut Tx<'_>, ctx: &Ctx<'_>, order: &Order) -> Resu
         ));
     }
 
+    // A session #158's `AuthorizePayment` left `'requires_more'`/`'pending'`
+    // (a second factor still outstanding, or the provider still working)
+    // never became a row the query below can find, and nothing else drives a
+    // run parked in `Outcome::Waiting` far enough to close it.
+    crate::payment::close_open_sessions(tx, ctx, collection).await?;
+
     let open: Vec<(Uuid, Option<Decimal>)> = sqlx::query_as(
         "select p.id, (select sum(t.amount) from order_transaction t
                        where t.scope = $1 and t.reference = 'payment'

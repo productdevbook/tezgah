@@ -1163,6 +1163,15 @@ pub async fn authorize(
         return Ok(Authorized::Payment(existing));
     }
 
+    // Closed under us — by a cancelled order, most likely (`order::cancel`
+    // closes a session's own `'pending'`/`'requires_more'` row with a single
+    // conditional update, so whichever of that and this holds the row's lock
+    // first is the one whose write survives). An answer for a session that is
+    // no longer open has nothing left to attach to.
+    if !session.status().is_open() {
+        return Err(Error::conflict("that payment session is no longer open"));
+    }
+
     match auth.status {
         AuthorizationStatus::RequiresMore => {
             let session = set_session_status(
@@ -1618,6 +1627,64 @@ pub async fn close_session(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: PaymentSessionId)
         },
     )
     .await?;
+
+    Ok(())
+}
+
+/// Closes every session still open against a collection, in one statement.
+///
+/// `order::cancel`'s counterpart to [`close_session`]: a session
+/// [`authorize`] left in `'requires_more'`/`'pending'` never becomes a
+/// [`Payment`], so `cancel`'s own scan of the `payment` table never finds it,
+/// and nothing else drives a workflow run parked in `'waiting'` far enough to
+/// reach `AuthorizePayment::compensate` — the only other caller of
+/// `close_session`.
+///
+/// One `update ... where status in (...)`, not a read then a write: a session
+/// [`authorize`] is concurrently resolving takes this row's lock first or
+/// second, never both, so exactly one of the two survives. Losing the race
+/// here means the row was already `'authorized'` when this ran, so nothing
+/// closes — the fresh [`Payment`] is left for the caller's own scan of the
+/// `payment` table to void, the same as any other authorised, uncaptured one.
+/// Losing it the other way means [`authorize`] found the row already closed
+/// and refused the answer instead of attaching it to a session that is not
+/// coming back.
+pub(crate) async fn close_open_sessions(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    collection: PaymentCollectionId,
+) -> Result<()> {
+    let closed: Vec<Uuid> = sqlx::query_scalar(
+        "update payment_session
+         set status = 'canceled'
+         where scope = $1 and payment_collection_id = $2
+           and status in ('pending', 'requires_more')
+         returning id",
+    )
+    .bind(ctx.scope.0)
+    .bind(collection.as_uuid())
+    .fetch_all(&mut **tx)
+    .await?;
+
+    if closed.is_empty() {
+        return Ok(());
+    }
+
+    for id in closed {
+        ctx.audit(
+            tx,
+            AuditEntry {
+                actor: ctx.actor.clone(),
+                action: Action::Write,
+                entity: "payment_session",
+                entity_id: id,
+                summary: serde_json::json!({ "closed": true }),
+            },
+        )
+        .await?;
+    }
+
+    recompute(tx, ctx, collection).await?;
 
     Ok(())
 }
