@@ -35,11 +35,12 @@ sqlx = { version = "0.8", default-features = false, features = [
 uuid = { version = "1", features = ["serde", "v7"] }
 
 [dev-dependencies]
+axum = "0.8"
 parking_lot = "0.12"
 proptest = "1"
 rust_decimal_macros = "1"
 url = "2"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "net"] }
 
 [lints.rust]
 missing_debug_implementations = "warn"
