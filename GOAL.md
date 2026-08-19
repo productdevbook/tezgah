@@ -112,9 +112,7 @@ writes an order, and the provider is not in your database.
 ### 6. Inventory and locations
 
 - [x] `inventory_item`, `inventory_level`, `reservation_item`
-- [ ] stock locations, and which channels each serves — locations have their
-      routes; `locations_for_sales_channel` is written and reachable from
-      nothing (#149)
+- [x] stock locations, and which channels each serves
 - [x] reserving raises `reserved` and leaves `stocked` alone
 - [x] fulfilling drops the reservation and lowers `stocked`
 - [x] reservations expire, on the host's clock — see `Jobs` in the README
@@ -129,9 +127,7 @@ writes an order, and the provider is not in your database.
       rewrite history
 - [x] totals computed one way, in one place
 - [x] a guest cart becomes a customer's on sign-in
-- [ ] carts expire, and expiry releases what they reserved — `cart::expire`
-      deletes the cart and nothing releases the reservation; there is no key
-      to cascade through either (#148)
+- [x] carts expire, and expiry releases what they reserved
 
 ### 8. Payment
 
@@ -139,9 +135,7 @@ writes an order, and the provider is not in your database.
 - [x] authorising and capturing are separate acts with separate permission
 - [x] `PaymentProvider` trait, and a fake that can fail on purpose
 - [x] Stripe, and iyzico
-- [ ] account holders: a saved customer at the provider — `save_account_holder`
-      is written but nothing saves or reads a saved card yet
-      (`tests/reachable.rs:181-184`)
+- [x] account holders: a saved customer at the provider
 - [x] inbound webhooks: signature checked, `(provider, event_id)` unique, so a
       replay is stored once and acted on once
 - [x] the amount charged is checked against the order, and a mismatch becomes a
