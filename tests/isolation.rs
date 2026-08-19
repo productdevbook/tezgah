@@ -485,10 +485,11 @@ fn satisfy_checks(
             }
         }
 
-        if let Some((needed, flag)) = excused_by_flag(def) {
-            if held(chosen, needed).is_none() && table.columns.iter().any(|c| c.name == flag) {
-                put(chosen, flag, "false".into());
-            }
+        if let Some((needed, flag)) = excused_by_flag(def)
+            && held(chosen, needed).is_none()
+            && table.columns.iter().any(|c| c.name == flag)
+        {
+            put(chosen, flag, "false".into());
         }
 
         if let Some((later, earlier)) = ordered_pair(def) {
