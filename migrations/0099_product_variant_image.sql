@@ -10,11 +10,17 @@ set statement_timeout = '60s';
 
 create table product_variant_image (
     id          uuid primary key,
-    variant_id  uuid not null references product_variant (id) on delete cascade,
-    image_id    uuid not null references product_image (id) on delete cascade
+    variant_id  uuid not null,
+    image_id    uuid not null
 );
 call tezgah_register('product_variant_image');
 create unique index product_variant_image_scope_variant_image_key
     on product_variant_image (scope, variant_id, image_id);
 create index product_variant_image_scope_image_idx
     on product_variant_image (scope, image_id);
+
+-- A plain `references` here would be checked with row-level security
+-- bypassed — 0026's finding — and this is a new table, not one this pass has
+-- to leave alone the way the rest of the catalogue was.
+call tezgah_fk('product_variant_image', 'variant_id', 'product_variant', 'cascade', true);
+call tezgah_fk('product_variant_image', 'image_id', 'product_image', 'cascade', true);
