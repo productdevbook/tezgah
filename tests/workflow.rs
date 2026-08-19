@@ -1420,3 +1420,261 @@ async fn replaying_the_default_resume_produces_one_authorisation() {
 
     shop.close().await;
 }
+
+/// A step that always asks to be tried again — standing in for #167's
+/// provider having a bad day. `max_attempts` is set per test so the ceiling
+/// is reached without waiting out the real backoff schedule.
+struct AlwaysRetries {
+    log: Log,
+    max_attempts: i32,
+    tries: Arc<Mutex<Vec<std::time::Instant>>>,
+}
+
+#[async_trait]
+impl Step for AlwaysRetries {
+    fn name(&self) -> &'static str {
+        "always-retries"
+    }
+
+    fn max_attempts(&self) -> i32 {
+        self.max_attempts
+    }
+
+    async fn invoke(
+        &self,
+        _tx: &mut Tx<'_>,
+        _ctx: &Ctx<'_>,
+        _input: &Value,
+    ) -> Result<Outcome, Failure> {
+        self.log.lock().push(self.name().to_string());
+        self.tries.lock().push(std::time::Instant::now());
+        Err(Failure::Retry(tezgah::Error::provider(
+            "fake",
+            "having a bad day",
+        )))
+    }
+}
+
+/// #167: `invoke_direct` claimed the attempt and ran `invoke` in the same
+/// transaction, so a `Failure::Retry` rolled the increment back with it and
+/// the loop never reached `max_attempts`. A step that always retries must now
+/// reach the ceiling, unwind the run, and leave the real count behind — not
+/// the value a rolled-back claim kept handing back.
+#[tokio::test]
+async fn a_step_that_always_retries_reaches_the_ceiling() {
+    let shop = Shop::open().await;
+    let log = log();
+    let tries = Arc::new(Mutex::new(Vec::new()));
+
+    let flow = Workflow::new("stuck-retry")
+        .then(Probe::unrevertable("charge", &log))
+        .then(AlwaysRetries {
+            log: log.clone(),
+            max_attempts: 2,
+            tries: tries.clone(),
+        });
+
+    let run = tokio::time::timeout(
+        Duration::from_secs(30),
+        workflow::run(&shop.pool, &shop.ctx(), &flow, "stuck-retry-1", json!({})),
+    )
+    .await
+    .expect(
+        "the run must finish on its own once attempts are exhausted — still \
+         running after 30s means the ceiling in max_attempts was never \
+         reached, which is #167 itself",
+    )
+    .expect("the run to be driven, and to report a failure rather than panic");
+
+    assert_eq!(run.state, State::Failed, "{:?}", run.failure);
+    assert_eq!(
+        tries.lock().len(),
+        2,
+        "invoke ran a different number of times than max_attempts allowed"
+    );
+
+    let attempts: i32 =
+        sqlx::query_scalar("select attempts from workflow_step where run_id = $1 and ordering = 1")
+            .bind(run.id.as_uuid())
+            .fetch_one(&mut *shop.begin().await)
+            .await
+            .expect("the retrying step's row");
+    assert_eq!(
+        attempts, 2,
+        "the persisted attempts must equal the ceiling, not the value a \
+         rolled-back claim kept returning"
+    );
+
+    let dead_letters: i64 = sqlx::query_scalar(
+        "select count(*) from workflow_dead_letter where run_id = $1 and step_name = 'charge'",
+    )
+    .bind(run.id.as_uuid())
+    .fetch_one(&mut *shop.begin().await)
+    .await
+    .expect("to count dead letters");
+    assert_eq!(
+        dead_letters, 1,
+        "the run must actually reach unwind and write the dead letter the \
+         earlier step's compensate failure owes — a run stuck retrying \
+         forever never gets there"
+    );
+
+    shop.close().await;
+}
+
+/// #167: `backoff` is fed the persisted attempt number. When the claim rolled
+/// back with every failed try, that number was 1 on every pass and the wait
+/// never grew; fixed, each pass's wait must be longer than the last.
+#[tokio::test]
+async fn backoff_between_retries_grows() {
+    let shop = Shop::open().await;
+    let log = log();
+    let tries = Arc::new(Mutex::new(Vec::new()));
+
+    let flow = Workflow::new("growing-backoff").then(AlwaysRetries {
+        log: log.clone(),
+        max_attempts: 3,
+        tries: tries.clone(),
+    });
+
+    tokio::time::timeout(
+        Duration::from_secs(30),
+        workflow::run(
+            &shop.pool,
+            &shop.ctx(),
+            &flow,
+            "growing-backoff-1",
+            json!({}),
+        ),
+    )
+    .await
+    .expect("the run to finish rather than retry forever")
+    .expect("the run to be driven, and to report a failure rather than panic");
+
+    let seen = tries.lock().clone();
+    assert_eq!(seen.len(), 3, "expected exactly max_attempts invocations");
+
+    let first_gap = seen[1].duration_since(seen[0]);
+    let second_gap = seen[2].duration_since(seen[1]);
+    assert!(
+        second_gap > first_gap + Duration::from_millis(100),
+        "the second wait ({second_gap:?}) did not grow past the first \
+         ({first_gap:?}) — backoff is sleeping the same interval every pass"
+    );
+
+    shop.close().await;
+}
+
+/// The `ReachingStep` counterpart to `AlwaysRetries` — always refuses at
+/// `prepare`, the phase #167 asked to be checked for the same shape
+/// `invoke_direct` had. `call` and `record` must never run: a `prepare` that
+/// never gets past its own retries has nothing for either to work from.
+struct AlwaysRetriesAtPrepare {
+    log: Log,
+}
+
+#[async_trait]
+impl ReachingStep for AlwaysRetriesAtPrepare {
+    fn name(&self) -> &'static str {
+        "always-retries-at-prepare"
+    }
+
+    fn max_attempts(&self) -> i32 {
+        2
+    }
+
+    async fn prepare(
+        &self,
+        _tx: &mut Tx<'_>,
+        _ctx: &Ctx<'_>,
+        _input: &Value,
+    ) -> Result<Prepared, Failure> {
+        self.log.lock().push("prepare".to_string());
+        Err(Failure::Retry(tezgah::Error::provider(
+            "fake",
+            "having a bad day",
+        )))
+    }
+
+    async fn call(&self, _ctx: &Ctx<'_>, _prepared: &Prepared) -> Result<Answer, Failure> {
+        panic!("call must never run: prepare never got past its own retries")
+    }
+
+    async fn record(
+        &self,
+        _tx: &mut Tx<'_>,
+        _ctx: &Ctx<'_>,
+        _prepared: &Prepared,
+        _answer: Answer,
+    ) -> Result<Outcome, Failure> {
+        panic!("record must never run: prepare never got past its own retries")
+    }
+}
+
+/// #167: `prepare_phase` claimed the attempt and ran `prepare` in the same
+/// transaction — the same shape `invoke_direct` had, carried into
+/// `invoke_reaching` by a different path. A `ReachingStep` whose `prepare`
+/// always retries must reach the ceiling exactly as a plain `Step` does.
+#[tokio::test]
+async fn a_reaching_steps_prepare_that_always_retries_reaches_the_ceiling() {
+    let shop = Shop::open().await;
+    let log = log();
+
+    let flow = Workflow::new("stuck-prepare-retry")
+        .then(Probe::unrevertable("charge", &log))
+        .reaching_step(AlwaysRetriesAtPrepare { log: log.clone() });
+
+    let run = tokio::time::timeout(
+        Duration::from_secs(30),
+        workflow::run(
+            &shop.pool,
+            &shop.ctx(),
+            &flow,
+            "stuck-prepare-retry-1",
+            json!({}),
+        ),
+    )
+    .await
+    .expect(
+        "the run must finish once attempts are exhausted — still running \
+         after 30s is #167's bug surviving in invoke_reaching",
+    )
+    .expect("the run to be driven, and to report a failure rather than panic");
+
+    assert_eq!(run.state, State::Failed, "{:?}", run.failure);
+    assert_eq!(
+        seen(&log)
+            .iter()
+            .filter(|entry| *entry == "prepare")
+            .count(),
+        2,
+        "prepare ran a different number of times than max_attempts allowed"
+    );
+
+    let attempts: i32 =
+        sqlx::query_scalar("select attempts from workflow_step where run_id = $1 and ordering = 1")
+            .bind(run.id.as_uuid())
+            .fetch_one(&mut *shop.begin().await)
+            .await
+            .expect("the retrying step's row");
+    assert_eq!(
+        attempts, 2,
+        "the persisted attempts must equal the ceiling, not the value a \
+         rolled-back claim kept returning"
+    );
+
+    let dead_letters: i64 = sqlx::query_scalar(
+        "select count(*) from workflow_dead_letter where run_id = $1 and step_name = 'charge'",
+    )
+    .bind(run.id.as_uuid())
+    .fetch_one(&mut *shop.begin().await)
+    .await
+    .expect("to count dead letters");
+    assert_eq!(
+        dead_letters, 1,
+        "the run must actually reach unwind and write the dead letter the \
+         earlier step's compensate failure owes"
+    );
+
+    shop.close().await;
+}

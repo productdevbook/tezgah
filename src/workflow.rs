@@ -1051,7 +1051,7 @@ async fn invoke_direct(
     loop {
         let leased = Utc::now() + LEASE;
 
-        let mut tx = scoped(pool, ctx)
+        let mut claim_tx = scoped(pool, ctx)
             .await
             .map_err(|err| Stop::Refused(Failure::Final(err)))?;
 
@@ -1068,13 +1068,26 @@ async fn invoke_direct(
         .bind(at)
         .bind(worker)
         .bind(leased)
-        .fetch_optional(&mut *tx)
+        .fetch_optional(&mut *claim_tx)
         .await
         .map_err(|err| Stop::Refused(Failure::Final(Error::from(err))))?;
 
         let Some(attempts) = taken else {
             return Err(Stop::Lost);
         };
+
+        // Committed on its own: `invoke` opens a second transaction below, so
+        // a `Failure::Retry` that rolls that one back cannot take the attempt
+        // it just used with it. Without this split `attempts` never advances
+        // past one and the ceiling in `max_attempts` is never reached.
+        claim_tx
+            .commit()
+            .await
+            .map_err(|err| Stop::Refused(Failure::Final(Error::from(err))))?;
+
+        let mut tx = scoped(pool, ctx)
+            .await
+            .map_err(|err| Stop::Refused(Failure::Final(err)))?;
 
         match step.invoke(&mut tx, ctx, input).await {
             Ok(outcome) => {
@@ -1262,7 +1275,7 @@ async fn prepare_phase(
     let Claim { id, at, worker } = held;
     loop {
         let leased = Utc::now() + LEASE;
-        let mut tx = scoped(pool, ctx)
+        let mut claim_tx = scoped(pool, ctx)
             .await
             .map_err(|err| Stop::Refused(Failure::Final(err)))?;
 
@@ -1279,13 +1292,25 @@ async fn prepare_phase(
         .bind(at)
         .bind(worker)
         .bind(leased)
-        .fetch_optional(&mut *tx)
+        .fetch_optional(&mut *claim_tx)
         .await
         .map_err(|err| Stop::Refused(Failure::Final(Error::from(err))))?;
 
         let Some(attempts) = taken else {
             return Err(Stop::Lost);
         };
+
+        // Committed on its own, same reason as `invoke_direct`: `prepare`
+        // opens a second transaction below, so a `Failure::Retry` there rolls
+        // back only its own writes, never the attempt this pass just used.
+        claim_tx
+            .commit()
+            .await
+            .map_err(|err| Stop::Refused(Failure::Final(Error::from(err))))?;
+
+        let mut tx = scoped(pool, ctx)
+            .await
+            .map_err(|err| Stop::Refused(Failure::Final(err)))?;
 
         match step.prepare(&mut tx, ctx, input).await {
             Ok(prepared) => {
