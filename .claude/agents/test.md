@@ -84,6 +84,17 @@ is not enough either: somebody else may be editing the same one. Before you
 stage, read `git diff <file>` and confirm every hunk is yours. If it is not,
 stage only your own hunks.
 
+When another session has already staged work in a file you also changed, do not
+touch the shared index at all. Build your own tree instead and commit that:
+
+    git hash-object -w <your-version-of-the-file>
+    git read-tree HEAD && git update-index --cacheinfo 100644,<hash>,<path>
+    git write-tree | xargs -I{} git commit-tree {} -p HEAD -m "..."
+    git update-ref HEAD <the-new-commit>
+
+Their staged state survives untouched. Say in the commit body that you did
+this, so the next reader knows why the tree looks the way it does.
+
 This has gone wrong three times. Twice a colleague's half-finished rename went
 out under somebody else's commit message; once it broke `main`, and the fix was
 a revert of one call plus a restore after the missing definition landed. Both
