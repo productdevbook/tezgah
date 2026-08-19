@@ -1597,7 +1597,7 @@ impl ReachingStep for AlwaysRetriesAtPrepare {
     }
 
     async fn call(&self, _ctx: &Ctx<'_>, _prepared: &Prepared) -> Result<Answer, Failure> {
-        panic!("call must never run: prepare never got past its own retries")
+        unreachable!("call must never run: prepare never got past its own retries")
     }
 
     async fn record(
@@ -1607,7 +1607,7 @@ impl ReachingStep for AlwaysRetriesAtPrepare {
         _prepared: &Prepared,
         _answer: Answer,
     ) -> Result<Outcome, Failure> {
-        panic!("record must never run: prepare never got past its own retries")
+        unreachable!("record must never run: prepare never got past its own retries")
     }
 }
 
