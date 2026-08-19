@@ -43,11 +43,26 @@ const MAX_KEY_CHANNELS: i64 = 200;
 /// answer.
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct CurrencyRow {
+    pub id: Uuid,
     pub code: String,
     pub symbol: String,
     pub name: String,
     /// 0 for JPY, 2 for TRY, 3 for KWD.
     pub exponent: i16,
+}
+
+/// What a host hands in to enable a currency: tezgah keeps no built-in list of
+/// ISO 4217 currencies, so the exponent, the symbols and the name are the
+/// caller's to supply, the same way a country's name and code arrive through
+/// [`NewRegionCountry`] rather than from a table baked into the crate.
+#[derive(Debug, Clone)]
+pub struct NewCurrency {
+    pub code: Currency,
+    pub numeric_code: Option<String>,
+    pub exponent: i16,
+    pub symbol: String,
+    pub symbol_native: String,
+    pub name: String,
 }
 
 impl CurrencyRow {
@@ -78,6 +93,17 @@ pub struct Region {
     pub currency_code: String,
     /// Whether the prices shown in this region already contain tax.
     pub is_tax_inclusive: bool,
+    /// Whether a cart mutation recomputes tax on its own. `false` is a region
+    /// a merchant reconciles by hand, or one behind a metered external tax
+    /// engine — `retax` leaves its tax lines alone rather than overwriting
+    /// what the host (or nobody) put there, and a host still writes them
+    /// itself through `tax::set_cart_tax_lines`.
+    pub has_automatic_taxes: bool,
+    /// Which payment providers a cart in this region may pay with. Empty
+    /// means unrestricted — every provider the shop has enabled — so a shop
+    /// that has never configured this keeps today's behaviour rather than
+    /// losing checkout the day this column starts being read.
+    pub payment_providers: Vec<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -86,6 +112,8 @@ pub struct NewRegion {
     pub name: String,
     pub currency_code: Currency,
     pub is_tax_inclusive: bool,
+    pub has_automatic_taxes: bool,
+    pub payment_providers: Vec<String>,
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
@@ -230,7 +258,7 @@ pub async fn currencies(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<Vec<CurrencyRo
     let _: Permit = ctx.permit(Action::View, Resource::Channel { id: None })?;
 
     let rows = sqlx::query_as::<_, CurrencyRow>(
-        "select code, symbol, name, exponent from currency
+        "select id, code, symbol, name, exponent from currency
          where scope = $1 order by code limit $2",
     )
     .bind(ctx.scope.0)
@@ -245,7 +273,7 @@ pub async fn currency(tx: &mut Tx<'_>, ctx: &Ctx<'_>, code: Currency) -> Result<
     let _: Permit = ctx.permit(Action::View, Resource::Channel { id: None })?;
 
     sqlx::query_as::<_, CurrencyRow>(
-        "select code, symbol, name, exponent from currency where scope = $1 and code = $2",
+        "select id, code, symbol, name, exponent from currency where scope = $1 and code = $2",
     )
     .bind(ctx.scope.0)
     .bind(code.as_str())
@@ -263,24 +291,125 @@ pub async fn exponent(tx: &mut Tx<'_>, ctx: &Ctx<'_>, code: Currency) -> Result<
     currency(tx, ctx, code).await?.places()
 }
 
+/// Enables a currency for this shop: a shop's `currency` table starts empty
+/// on purpose, and this is the only writer of it. tezgah keeps no built-in
+/// list of ISO 4217 currencies (unlike a host that seeds hundreds a shop will
+/// never use), so the exponent, the symbols and the name arrive from the
+/// caller. Idempotent: enabling an already-enabled currency updates it rather
+/// than conflicting, so a host can correct a symbol without a separate patch.
+pub async fn create_currency(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    new: NewCurrency,
+) -> Result<CurrencyRow> {
+    let _: Permit = ctx.permit(Action::Write, Resource::Channel { id: None })?;
+
+    if !(0..=4).contains(&new.exponent) {
+        return Err(Error::invalid("a currency's exponent is between 0 and 4"));
+    }
+    let symbol = new.symbol.trim().to_owned();
+    if symbol.is_empty() {
+        return Err(Error::invalid("a currency needs a symbol"));
+    }
+    let symbol_native = new.symbol_native.trim().to_owned();
+    if symbol_native.is_empty() {
+        return Err(Error::invalid("a currency needs a native symbol"));
+    }
+    let name = new.name.trim().to_owned();
+    if name.is_empty() {
+        return Err(Error::invalid("a currency needs a name"));
+    }
+    let numeric_code = new
+        .numeric_code
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+    if numeric_code
+        .as_ref()
+        .is_some_and(|code| code.len() != 3 || !code.bytes().all(|b| b.is_ascii_digit()))
+    {
+        return Err(Error::invalid("a currency's numeric code is three digits"));
+    }
+
+    let row = sqlx::query_as::<_, CurrencyRow>(
+        "insert into currency (id, scope, code, numeric_code, exponent, symbol, symbol_native, name)
+         values ($1, $2, $3, $4, $5, $6, $7, $8)
+         on conflict (scope, code) do update set
+             numeric_code = excluded.numeric_code,
+             exponent = excluded.exponent,
+             symbol = excluded.symbol,
+             symbol_native = excluded.symbol_native,
+             name = excluded.name
+         returning id, code, symbol, name, exponent",
+    )
+    .bind(Uuid::now_v7())
+    .bind(ctx.scope.0)
+    .bind(new.code.as_str())
+    .bind(numeric_code)
+    .bind(new.exponent)
+    .bind(symbol)
+    .bind(symbol_native)
+    .bind(name)
+    .fetch_one(&mut **tx)
+    .await?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "currency",
+            entity_id: row.id,
+            summary: serde_json::json!({ "code": row.code }),
+        },
+    )
+    .await?;
+
+    Ok(row)
+}
+
+const REGION_COLUMNS: &str = "id, name, currency_code, is_tax_inclusive, has_automatic_taxes, \
+                              payment_providers, created_at";
+
+/// Trims and validates a region's payment provider allow-list. Not checked
+/// against `payment_provider` itself: a region may name a provider before the
+/// host has registered it, the same order `region_country` already allows for
+/// a country and its region.
+fn payment_provider_codes(codes: Vec<String>) -> Result<Vec<String>> {
+    codes
+        .into_iter()
+        .map(|code| {
+            let trimmed = code.trim().to_owned();
+            if trimmed.is_empty() {
+                return Err(Error::invalid("a payment provider code is not empty"));
+            }
+            Ok(trimmed)
+        })
+        .collect()
+}
+
 pub async fn create_region(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewRegion) -> Result<Region> {
     let _: Permit = ctx.permit(Action::Write, Resource::Channel { id: None })?;
 
     if new.name.trim().is_empty() {
         return Err(Error::invalid("a region needs a name"));
     }
+    let payment_providers = payment_provider_codes(new.payment_providers)?;
 
     let id = RegionId::new();
-    let region = sqlx::query_as::<_, Region>(
-        "insert into region (id, scope, name, currency_code, is_tax_inclusive)
-         values ($1, $2, $3, $4, $5)
-         returning id, name, currency_code, is_tax_inclusive, created_at",
-    )
+    let region = sqlx::query_as::<_, Region>(&format!(
+        "insert into region
+             (id, scope, name, currency_code, is_tax_inclusive, has_automatic_taxes,
+              payment_providers)
+         values ($1, $2, $3, $4, $5, $6, $7)
+         returning {REGION_COLUMNS}"
+    ))
     .bind(id.as_uuid())
     .bind(ctx.scope.0)
     .bind(new.name.trim())
     .bind(new.currency_code.as_str())
     .bind(new.is_tax_inclusive)
+    .bind(new.has_automatic_taxes)
+    .bind(&payment_providers)
     .fetch_one(&mut **tx)
     .await?;
 
@@ -307,11 +436,11 @@ pub async fn region(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: RegionId) -> Result<Regi
         },
     )?;
 
-    sqlx::query_as::<_, Region>(
-        "select id, name, currency_code, is_tax_inclusive, created_at
+    sqlx::query_as::<_, Region>(&format!(
+        "select {REGION_COLUMNS}
          from region
-         where scope = $1 and id = $2",
-    )
+         where scope = $1 and id = $2"
+    ))
     .bind(ctx.scope.0)
     .bind(id.as_uuid())
     .fetch_optional(&mut **tx)
@@ -325,6 +454,8 @@ pub struct RegionPatch {
     pub name: Option<String>,
     pub currency_code: Option<Currency>,
     pub is_tax_inclusive: Option<bool>,
+    pub has_automatic_taxes: Option<bool>,
+    pub payment_providers: Option<Vec<String>>,
 }
 
 pub async fn update_region(
@@ -347,20 +478,28 @@ pub async fn update_region(
     {
         return Err(Error::invalid("a region needs a name"));
     }
+    let payment_providers = patch
+        .payment_providers
+        .map(payment_provider_codes)
+        .transpose()?;
 
-    let region = sqlx::query_as::<_, Region>(
+    let region = sqlx::query_as::<_, Region>(&format!(
         "update region set
              name = coalesce($3::text, name),
              currency_code = coalesce($4::text, currency_code),
-             is_tax_inclusive = coalesce($5::boolean, is_tax_inclusive)
+             is_tax_inclusive = coalesce($5::boolean, is_tax_inclusive),
+             has_automatic_taxes = coalesce($6::boolean, has_automatic_taxes),
+             payment_providers = coalesce($7::text[], payment_providers)
          where scope = $1 and id = $2
-         returning id, name, currency_code, is_tax_inclusive, created_at",
-    )
+         returning {REGION_COLUMNS}"
+    ))
     .bind(ctx.scope.0)
     .bind(id.as_uuid())
     .bind(patch.name.as_deref().map(str::trim))
     .bind(patch.currency_code.map(|c| c.as_str().to_owned()))
     .bind(patch.is_tax_inclusive)
+    .bind(patch.has_automatic_taxes)
+    .bind(payment_providers)
     .fetch_optional(&mut **tx)
     .await?
     .ok_or_else(|| Error::not_found("region"))?;
@@ -399,14 +538,14 @@ pub async fn locales(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<Vec<String>> {
 pub async fn regions(tx: &mut Tx<'_>, ctx: &Ctx<'_>, paging: Paging) -> Result<Page<Region>> {
     let _: Permit = ctx.permit(Action::View, Resource::Channel { id: None })?;
 
-    let rows = sqlx::query_as::<_, Region>(
-        "select id, name, currency_code, is_tax_inclusive, created_at
+    let rows = sqlx::query_as::<_, Region>(&format!(
+        "select {REGION_COLUMNS}
          from region
          where scope = $1
            and ($2::timestamptz is null or (created_at, id) > ($2, $3))
          order by created_at, id
-         limit $4",
-    )
+         limit $4"
+    ))
     .bind(ctx.scope.0)
     .bind(paging.after.map(|c| c.at))
     .bind(paging.after.map(|c| c.id))
@@ -597,7 +736,8 @@ pub async fn region_for_country(
 
     let code = iso_2(code)?;
     Ok(sqlx::query_as::<_, Region>(
-        "select r.id, r.name, r.currency_code, r.is_tax_inclusive, r.created_at
+        "select r.id, r.name, r.currency_code, r.is_tax_inclusive, r.has_automatic_taxes,
+                r.payment_providers, r.created_at
          from region_country c
          join region r on r.scope = c.scope and r.id = c.region_id
          where c.scope = $1 and c.iso_2 = $2",
@@ -732,14 +872,34 @@ pub async fn delete_sales_channel(
         },
     )?;
 
-    let done = sqlx::query("delete from sales_channel where scope = $1 and id = $2")
-        .bind(ctx.scope.0)
-        .bind(id.as_uuid())
-        .execute(&mut **tx)
-        .await?;
+    // The condition lives in the delete itself rather than a read beforehand:
+    // two tabs on the same channel always turn up.
+    let done = sqlx::query(
+        "delete from sales_channel
+         where scope = $1 and id = $2
+           and not exists (
+             select 1 from store
+             where store.scope = $1 and store.default_sales_channel_id = $2
+           )",
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .execute(&mut **tx)
+    .await?;
 
     if done.rows_affected() == 0 {
-        return Err(Error::not_found("sales channel"));
+        let exists: Option<Uuid> =
+            sqlx::query_scalar("select id from sales_channel where scope = $1 and id = $2")
+                .bind(ctx.scope.0)
+                .bind(id.as_uuid())
+                .fetch_optional(&mut **tx)
+                .await?;
+        return Err(match exists {
+            Some(_) => Error::conflict(
+                "a shop's default sales channel cannot be deleted; change the default first",
+            ),
+            None => Error::not_found("sales channel"),
+        });
     }
 
     ctx.audit(

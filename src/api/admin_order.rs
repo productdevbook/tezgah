@@ -715,6 +715,7 @@ pub struct ShippingOptionView {
     pub price_type: String,
     pub service_zone_id: ServiceZoneId,
     pub shipping_profile_id: Option<ShippingProfileId>,
+    pub shipping_option_type_id: Option<Uuid>,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -726,6 +727,7 @@ impl From<fulfilment::ShippingOption> for ShippingOptionView {
             price_type: row.price_type,
             service_zone_id: row.service_zone_id,
             shipping_profile_id: row.shipping_profile_id,
+            shipping_option_type_id: row.shipping_option_type_id,
             created_at: row.created_at,
         }
     }
@@ -3295,6 +3297,35 @@ pub async fn register_fulfillment_provider(
     })
 }
 
+/// Stops offering a carrier a shop has dropped. Its shipments keep their
+/// provider row; checkout stops offering the shipping options that pointed
+/// to it.
+pub async fn disable_fulfillment_provider(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: Uuid,
+) -> Result<ProviderView> {
+    let row = fulfilment::set_provider_enabled(tx, ctx, id, false).await?;
+    Ok(ProviderView {
+        id: row.id,
+        code: row.name,
+        is_enabled: row.is_enabled,
+    })
+}
+
+pub async fn enable_fulfillment_provider(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: Uuid,
+) -> Result<ProviderView> {
+    let row = fulfilment::set_provider_enabled(tx, ctx, id, true).await?;
+    Ok(ProviderView {
+        id: row.id,
+        code: row.name,
+        is_enabled: row.is_enabled,
+    })
+}
+
 pub async fn list_shipping_options(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -3305,7 +3336,7 @@ pub async fn list_shipping_options(
 
     let rows = sqlx::query_as::<_, fulfilment::ShippingOption>(
         "select id, name, price_type, service_zone_id, shipping_profile_id, provider_id,
-                data, created_at
+                shipping_option_type_id, data, created_at
          from shipping_option
          where scope = $1 and ($2::timestamptz is null or (created_at, id) > ($2, $3))
          order by created_at, id
@@ -3348,6 +3379,7 @@ pub struct CreateShippingOption {
     pub service_zone_id: ServiceZoneId,
     pub shipping_profile_id: Option<ShippingProfileId>,
     pub provider_id: Option<Uuid>,
+    pub shipping_option_type_id: Option<Uuid>,
     pub data: Option<Value>,
 }
 
@@ -3365,6 +3397,7 @@ pub async fn create_shipping_option(
         service_zone_id: input.service_zone_id,
         shipping_profile_id: input.shipping_profile_id,
         provider_id: input.provider_id,
+        shipping_option_type_id: input.shipping_option_type_id,
         data: input.data,
     };
     Ok(fulfilment::create_shipping_option(tx, ctx, new)
@@ -3463,6 +3496,7 @@ pub struct UpdateShippingOption {
     pub price_type: Option<PriceKindIn>,
     pub shipping_profile_id: Option<ShippingProfileId>,
     pub provider_id: Option<Uuid>,
+    pub shipping_option_type_id: Option<Uuid>,
     pub data: Option<Value>,
 }
 
@@ -3480,6 +3514,7 @@ pub async fn update_shipping_option(
         }),
         shipping_profile_id: input.shipping_profile_id,
         provider_id: input.provider_id,
+        shipping_option_type_id: input.shipping_option_type_id,
         data: input.data,
     };
     Ok(fulfilment::update_shipping_option(tx, ctx, id, patch)
@@ -4465,6 +4500,20 @@ pub(super) static ROUTES: &[Route] = &[
         Write,
         "fulfilment",
         "Register a carrier"
+    ),
+    route!(
+        Post,
+        "/admin/fulfillment-providers/{id}/disable",
+        Write,
+        "fulfilment",
+        "Stop offering a carrier without deleting its shipments"
+    ),
+    route!(
+        Post,
+        "/admin/fulfillment-providers/{id}/enable",
+        Write,
+        "fulfilment",
+        "Resume offering a dropped carrier"
     ),
     route!(
         Get,

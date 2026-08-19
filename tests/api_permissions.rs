@@ -709,7 +709,9 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
             admin_rest::CreateRegion {
                 name: String::new(),
                 currency_code: "USD".to_string(),
-                is_tax_inclusive: false
+                is_tax_inclusive: false,
+                has_automatic_taxes: true,
+                payment_providers: Vec::new()
             }
         )
     );
@@ -2249,6 +2251,7 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
                 service_zone_id: ServiceZoneId::new(),
                 shipping_profile_id: None,
                 provider_id: None,
+                shipping_option_type_id: None,
                 data: None,
             }
         )
@@ -3391,7 +3394,13 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
     denied!(
         Method::Get,
         "/store/payment-providers",
-        store::list_payment_providers(&mut tx, &ctx)
+        store::list_payment_providers(
+            &mut tx,
+            &ctx,
+            store::ListPaymentProviders {
+                cart_id: CartId::new()
+            }
+        )
     );
 
     // ------------------------------------------------------- credit.rs -----

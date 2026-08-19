@@ -11,6 +11,7 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use tezgah::money::{Currency, Money};
 use tezgah::ports::{Actor, Ctx, Tx};
+use tezgah::store;
 use tezgah::tax::{
     self, NewTaxRate, NewTaxRateRule, NewTaxRegion, TaxReference, TaxTarget, TaxableAddress,
     TaxableLine,
@@ -1242,5 +1243,101 @@ async fn setting_tax_lines_on_a_cart_that_does_not_exist_is_denied_not_not_found
     );
 
     tx.rollback().await.ok();
+    shop.close().await;
+}
+
+/// #185: a region that opted out of automatic tax keeps `retax` from ever
+/// running the calculation, even when the address and the line would
+/// otherwise produce a real rate.
+#[tokio::test]
+async fn a_region_without_automatic_taxes_computes_no_tax_on_reprice() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    seed_currency(&mut tx, shop.here.0).await;
+    a_country_rate(&mut tx, &ctx, "DE", dec!(19)).await;
+
+    let region = store::create_region(
+        &mut tx,
+        &ctx,
+        store::NewRegion {
+            name: "manual tax".into(),
+            currency_code: lira(),
+            is_tax_inclusive: false,
+            has_automatic_taxes: false,
+            payment_providers: Vec::new(),
+        },
+    )
+    .await
+    .expect("a region");
+
+    let variant = a_variant(&mut tx, &ctx, "mug", Some(true)).await;
+
+    let opened = cart::create(
+        &mut tx,
+        &ctx,
+        cart::NewCart {
+            region_id: Some(region.id),
+            ..cart::NewCart::guest(lira())
+        },
+    )
+    .await
+    .expect("a cart");
+
+    cart::set_addresses(
+        &mut tx,
+        &ctx,
+        opened.id,
+        Some(cart::CartAddress {
+            country_code: Some("DE".into()),
+            ..cart::CartAddress::default()
+        }),
+        None,
+    )
+    .await
+    .expect("an address");
+
+    cart::add_line(
+        &mut tx,
+        &ctx,
+        opened.id,
+        cart::AddLine {
+            variant_id: variant,
+            quantity: 1,
+            unit_price: Money::new(dec!(100), lira()),
+            is_tax_inclusive: false,
+            selling_plan_id: None,
+        },
+    )
+    .await
+    .expect("a line");
+
+    tezgah::api::store::reprice(&mut tx, &ctx, opened.id)
+        .await
+        .expect("reprice runs even with automatic taxes off");
+
+    let totals = cart::totals(&mut tx, &ctx, opened.id)
+        .await
+        .expect("totals");
+    assert_eq!(
+        totals.tax.amount,
+        Decimal::ZERO,
+        "a region that opted out of automatic tax gets none computed for it"
+    );
+
+    let counted: i64 = sqlx::query_scalar(
+        "select count(*) from cart_line_item_tax_line t
+         join cart_line_item l on l.scope = t.scope and l.id = t.cart_line_item_id
+         where t.scope = $1 and l.cart_id = $2",
+    )
+    .bind(shop.here.0)
+    .bind(opened.id.as_uuid())
+    .fetch_one(&mut *tx)
+    .await
+    .expect("the tax line count");
+    assert_eq!(counted, 0, "retax never ran, so it wrote nothing");
+
+    tx.rollback().await.expect("to roll back");
     shop.close().await;
 }

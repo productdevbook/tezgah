@@ -14,9 +14,10 @@ use chrono::{DateTime, Utc};
 use common::Shop;
 use rust_decimal_macros::dec;
 use tezgah::api::store::{
-    self, AddLineItem, CreateCart, ListOptions, ListPage, ListProducts, ListVariants, StartPayment,
-    StartPaymentSession,
+    self, AddLineItem, CreateCart, ListOptions, ListPage, ListPaymentProviders, ListProducts,
+    ListVariants, StartPayment, StartPaymentSession,
 };
+use tezgah::cart;
 use tezgah::catalogue::{self, NewProduct, NewVariant};
 use tezgah::id::{CartId, CustomerId, PaymentCollectionId};
 use tezgah::money::{Currency, Money};
@@ -1247,6 +1248,220 @@ async fn an_order_is_not_read_by_somebody_else() -> tezgah::Result<()> {
         .await
         .expect_err("somebody else's order is not theirs to read");
     assert!(refused.is_denied(), "{refused} was not a refusal");
+
+    drop(tx);
+    shop.close().await;
+    Ok(())
+}
+
+/// #183: a cart opened without a region or a channel falls through to the
+/// shop's configured default rather than opening with neither.
+#[tokio::test]
+async fn a_cart_opened_without_a_channel_or_region_gets_the_shops_default() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+
+    common::a_currency(&mut tx, shop.here, "TRY", 2).await;
+
+    let region = domain_store::create_region(
+        &mut tx,
+        &ctx,
+        domain_store::NewRegion {
+            name: "default region".into(),
+            currency_code: Currency::parse("TRY")?,
+            is_tax_inclusive: false,
+            has_automatic_taxes: true,
+            payment_providers: Vec::new(),
+        },
+    )
+    .await?;
+
+    let channel = domain_store::create_sales_channel(
+        &mut tx,
+        &ctx,
+        NewSalesChannel {
+            name: "Web".into(),
+            description: None,
+            is_disabled: false,
+        },
+    )
+    .await?;
+
+    domain_store::update_store(
+        &mut tx,
+        &ctx,
+        domain_store::StorePatch {
+            default_region_id: Some(region.id),
+            default_sales_channel_id: Some(channel.id),
+            ..domain_store::StorePatch::default()
+        },
+    )
+    .await?;
+
+    let issued = domain_store::create_publishable_key(&mut tx, &ctx, "storefront").await?;
+    domain_store::link_key_to_channel(&mut tx, &ctx, issued.key.id, channel.id).await?;
+
+    let made = store::create_cart(
+        &mut tx,
+        &ctx,
+        &issued.token,
+        CreateCart {
+            currency_code: "TRY".into(),
+            region_id: None,
+            sales_channel_id: None,
+            email: None,
+        },
+    )
+    .await?;
+
+    assert_eq!(
+        made.region_id,
+        Some(region.id),
+        "the shop's default region, not none"
+    );
+    let held = cart::get(&mut tx, &ctx, made.id).await?;
+    assert_eq!(
+        held.sales_channel_id,
+        Some(channel.id),
+        "the shop's default channel, not none"
+    );
+
+    // Naming a region or a channel explicitly still wins over the default.
+    let other_channel = domain_store::create_sales_channel(
+        &mut tx,
+        &ctx,
+        NewSalesChannel {
+            name: "Marketplace".into(),
+            description: None,
+            is_disabled: false,
+        },
+    )
+    .await?;
+    domain_store::link_key_to_channel(&mut tx, &ctx, issued.key.id, other_channel.id).await?;
+
+    let chosen = store::create_cart(
+        &mut tx,
+        &ctx,
+        &issued.token,
+        CreateCart {
+            currency_code: "TRY".into(),
+            region_id: None,
+            sales_channel_id: Some(other_channel.id),
+            email: None,
+        },
+    )
+    .await?;
+    let held_chosen = cart::get(&mut tx, &ctx, chosen.id).await?;
+    assert_eq!(held_chosen.sales_channel_id, Some(other_channel.id));
+
+    // A store's default sales channel cannot be deleted out from under it.
+    let refused = domain_store::delete_sales_channel(&mut tx, &ctx, channel.id)
+        .await
+        .expect_err("the default channel is not deletable while it is the default");
+    assert!(refused.is_conflict());
+
+    drop(tx);
+    shop.close().await;
+    Ok(())
+}
+
+/// #186: a region that has restricted its own payment providers only offers
+/// those; a region that never has still offers every enabled provider, the
+/// same as before this was read at all.
+#[tokio::test]
+async fn payment_providers_are_narrowed_by_the_carts_region() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+
+    common::a_currency(&mut tx, shop.here, "TRY", 2).await;
+    payment::register_provider(&mut tx, &ctx, "stripe").await?;
+    payment::register_provider(&mut tx, &ctx, "cod").await?;
+
+    let restricted = domain_store::create_region(
+        &mut tx,
+        &ctx,
+        domain_store::NewRegion {
+            name: "restricted".into(),
+            currency_code: Currency::parse("TRY")?,
+            is_tax_inclusive: false,
+            has_automatic_taxes: true,
+            payment_providers: vec!["stripe".into()],
+        },
+    )
+    .await?;
+    let open = domain_store::create_region(
+        &mut tx,
+        &ctx,
+        domain_store::NewRegion {
+            name: "unrestricted".into(),
+            currency_code: Currency::parse("TRY")?,
+            is_tax_inclusive: false,
+            has_automatic_taxes: true,
+            payment_providers: Vec::new(),
+        },
+    )
+    .await?;
+
+    let token = any_token(&mut tx, &ctx).await;
+
+    let narrow_cart = store::create_cart(
+        &mut tx,
+        &ctx,
+        &token,
+        CreateCart {
+            currency_code: "TRY".into(),
+            region_id: Some(restricted.id),
+            sales_channel_id: None,
+            email: None,
+        },
+    )
+    .await?;
+    let narrowed = store::list_payment_providers(
+        &mut tx,
+        &ctx,
+        ListPaymentProviders {
+            cart_id: narrow_cart.id,
+        },
+    )
+    .await?;
+    let narrowed_codes: Vec<String> = narrowed.into_iter().map(|row| row.code).collect();
+    assert_eq!(
+        narrowed_codes,
+        vec!["stripe".to_string()],
+        "cod is not on this region's allow-list"
+    );
+
+    let open_cart = store::create_cart(
+        &mut tx,
+        &ctx,
+        &token,
+        CreateCart {
+            currency_code: "TRY".into(),
+            region_id: Some(open.id),
+            sales_channel_id: None,
+            email: None,
+        },
+    )
+    .await?;
+    let mut everywhere: Vec<String> = store::list_payment_providers(
+        &mut tx,
+        &ctx,
+        ListPaymentProviders {
+            cart_id: open_cart.id,
+        },
+    )
+    .await?
+    .into_iter()
+    .map(|row| row.code)
+    .collect();
+    everywhere.sort();
+    assert_eq!(
+        everywhere,
+        vec!["cod".to_string(), "stripe".to_string()],
+        "a region that never restricted itself offers every enabled provider"
+    );
 
     drop(tx);
     shop.close().await;

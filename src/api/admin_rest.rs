@@ -1212,6 +1212,8 @@ pub struct RegionView {
     pub name: String,
     pub currency_code: String,
     pub is_tax_inclusive: bool,
+    pub has_automatic_taxes: bool,
+    pub payment_providers: Vec<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -1222,6 +1224,8 @@ impl From<store::Region> for RegionView {
             name: row.name,
             currency_code: row.currency_code,
             is_tax_inclusive: row.is_tax_inclusive,
+            has_automatic_taxes: row.has_automatic_taxes,
+            payment_providers: row.payment_providers,
             created_at: row.created_at,
         }
     }
@@ -1267,6 +1271,10 @@ impl From<store::CurrencyRow> for CurrencyView {
     }
 }
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CreateRegion {
@@ -1274,6 +1282,10 @@ pub struct CreateRegion {
     pub currency_code: String,
     #[serde(default)]
     pub is_tax_inclusive: bool,
+    #[serde(default = "default_true")]
+    pub has_automatic_taxes: bool,
+    #[serde(default)]
+    pub payment_providers: Vec<String>,
 }
 
 pub async fn list_regions(tx: &mut Tx<'_>, ctx: &Ctx<'_>, query: List) -> Result<Page<RegionView>> {
@@ -1292,6 +1304,8 @@ pub async fn create_region(
         name: body.name,
         currency_code: Currency::parse(&body.currency_code)?,
         is_tax_inclusive: body.is_tax_inclusive,
+        has_automatic_taxes: body.has_automatic_taxes,
+        payment_providers: body.payment_providers,
     };
     Ok(RegionView::from(store::create_region(tx, ctx, new).await?))
 }
@@ -1306,6 +1320,8 @@ pub struct UpdateRegion {
     pub name: Option<String>,
     pub currency_code: Option<String>,
     pub is_tax_inclusive: Option<bool>,
+    pub has_automatic_taxes: Option<bool>,
+    pub payment_providers: Option<Vec<String>>,
 }
 
 pub async fn update_region(
@@ -1318,6 +1334,8 @@ pub async fn update_region(
         name: body.name,
         currency_code: currency(body.currency_code)?,
         is_tax_inclusive: body.is_tax_inclusive,
+        has_automatic_taxes: body.has_automatic_taxes,
+        payment_providers: body.payment_providers,
     };
     Ok(RegionView::from(
         store::update_region(tx, ctx, id, patch).await?,
@@ -1609,6 +1627,37 @@ pub async fn list_currencies(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<Vec<Curre
 pub async fn get_currency(tx: &mut Tx<'_>, ctx: &Ctx<'_>, code: &str) -> Result<CurrencyView> {
     Ok(CurrencyView::from(
         store::currency(tx, ctx, Currency::parse(code)?).await?,
+    ))
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CreateCurrency {
+    pub code: String,
+    pub numeric_code: Option<String>,
+    pub exponent: i16,
+    pub symbol: String,
+    pub symbol_native: String,
+    pub name: String,
+}
+
+/// The only writer of a shop's `currency` table: nothing prices, opens a cart
+/// or pays out in a currency until a shop has enabled it here.
+pub async fn create_currency(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    body: CreateCurrency,
+) -> Result<CurrencyView> {
+    let new = store::NewCurrency {
+        code: Currency::parse(&body.code)?,
+        numeric_code: body.numeric_code,
+        exponent: body.exponent,
+        symbol: body.symbol,
+        symbol_native: body.symbol_native,
+        name: body.name,
+    };
+    Ok(CurrencyView::from(
+        store::create_currency(tx, ctx, new).await?,
     ))
 }
 
@@ -2441,6 +2490,14 @@ pub(super) static ROUTES: &[Route] = &[
         action: Action::View,
         domain: "store",
         summary: "List the currencies the shop trades in",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Post,
+        path: "/admin/currencies",
+        action: Action::Write,
+        domain: "store",
+        summary: "Enable a currency for the shop",
     },
     Route {
         surface: Surface::Admin,

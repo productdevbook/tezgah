@@ -745,6 +745,7 @@ async fn every_owned_store_route_refuses_the_other_shoppers_resource() -> tezgah
             shipping_profile_id: Some(profile_id),
             price_type: fulfilment::PriceKind::Flat,
             provider_id: None,
+            shipping_option_type_id: None,
             data: None,
         },
     )

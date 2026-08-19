@@ -6,7 +6,10 @@ mod common;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use common::{Doorman, Shop};
+use rust_decimal::Decimal;
+use tezgah::cart::{self, NewCart};
 use tezgah::id::{PublishableKeyId, SalesChannelId};
+use tezgah::money::Currency;
 use tezgah::page::Paging;
 use tezgah::ports::{
     Action, Actor, AuditEntry, AuditSink, Authorizer, Clock, Event, EventSink, JobSpec, Jobs,
@@ -404,6 +407,118 @@ async fn a_second_channel_of_the_same_name_is_refused_without_killing_the_transa
         .await
         .expect("the transaction to still be usable");
     assert_eq!(counted, 2);
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+/// #180: `currency` has no writer besides `store::create_currency`, and a
+/// currency it enables is what every rounding call site reads back.
+#[tokio::test]
+async fn a_currency_is_enabled_and_then_usable_in_a_cart() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let euro = Currency::parse("EUR").expect("a currency code");
+
+    let opened = cart::create(&mut tx, &ctx, NewCart::guest(euro))
+        .await
+        .expect("a cart in a currency this shop has not enabled yet");
+
+    let refused = cart::totals(&mut tx, &ctx, opened.id)
+        .await
+        .expect_err("EUR has no row in currency yet");
+    assert!(refused.is_not_found());
+
+    let made = store::create_currency(
+        &mut tx,
+        &ctx,
+        store::NewCurrency {
+            code: euro,
+            numeric_code: Some("978".into()),
+            exponent: 2,
+            symbol: "€".into(),
+            symbol_native: "€".into(),
+            name: "Euro".into(),
+        },
+    )
+    .await
+    .expect("enabling a currency");
+    assert_eq!(made.code, "EUR");
+    assert_eq!(made.exponent, 2);
+
+    let listed = store::currencies(&mut tx, &ctx)
+        .await
+        .expect("the currencies");
+    assert!(listed.iter().any(|row| row.code == "EUR"));
+
+    let totals = cart::totals(&mut tx, &ctx, opened.id)
+        .await
+        .expect("EUR now has a row to round with");
+    assert_eq!(totals.total.amount, Decimal::ZERO);
+
+    // Enabling an already-enabled currency updates it rather than colliding.
+    let reenabled = store::create_currency(
+        &mut tx,
+        &ctx,
+        store::NewCurrency {
+            code: euro,
+            numeric_code: None,
+            exponent: 2,
+            symbol: "€".into(),
+            symbol_native: "eur".into(),
+            name: "Euro".into(),
+        },
+    )
+    .await
+    .expect("enabling the same currency again");
+    assert_eq!(reenabled.id, made.id, "the same row, not a duplicate");
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+/// #183: a store's default sales channel cannot be deleted out from under it.
+#[tokio::test]
+async fn the_default_sales_channel_cannot_be_deleted() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let channel = a_channel(&shop, &mut tx, "Web").await;
+
+    store::update_store(
+        &mut tx,
+        &ctx,
+        StorePatch {
+            default_sales_channel_id: Some(channel.id),
+            ..StorePatch::default()
+        },
+    )
+    .await
+    .expect("setting the default");
+
+    let refused = store::delete_sales_channel(&mut tx, &ctx, channel.id)
+        .await
+        .expect_err("it is the shop's default");
+    assert!(refused.is_conflict());
+
+    let other = a_channel(&shop, &mut tx, "Other").await;
+    store::update_store(
+        &mut tx,
+        &ctx,
+        StorePatch {
+            default_sales_channel_id: Some(other.id),
+            ..StorePatch::default()
+        },
+    )
+    .await
+    .expect("changing the default");
+
+    store::delete_sales_channel(&mut tx, &ctx, channel.id)
+        .await
+        .expect("no longer the default, so deletable");
 
     tx.rollback().await.expect("to roll back");
     shop.close().await;

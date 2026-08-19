@@ -112,6 +112,7 @@ async fn ankara_only(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> tezgah::id::ServiceZoneI
             service_zone_id: zone.id,
             shipping_profile_id: None,
             provider_id: None,
+            shipping_option_type_id: None,
             data: None,
         },
     )
@@ -374,6 +375,7 @@ async fn a_shipping_options_name_is_localised_and_falls_back() {
             service_zone_id: zone,
             shipping_profile_id: None,
             provider_id: None,
+            shipping_option_type_id: None,
             data: None,
         },
     )
@@ -444,6 +446,7 @@ async fn a_shipping_option_translation_cannot_point_at_another_scopes_option() {
             service_zone_id: their_zone,
             shipping_profile_id: None,
             provider_id: None,
+            shipping_option_type_id: None,
             data: None,
         },
     )
@@ -489,6 +492,7 @@ async fn a_deleted_shipping_option_takes_its_translations_with_it() {
             service_zone_id: zone,
             shipping_profile_id: None,
             provider_id: None,
+            shipping_option_type_id: None,
             data: None,
         },
     )
@@ -543,6 +547,7 @@ async fn a_calculated_option_is_quoted_by_the_carrier_and_a_flat_one_is_not() {
             service_zone_id: zone,
             shipping_profile_id: None,
             provider_id: None,
+            shipping_option_type_id: None,
             data: None,
         },
     )
@@ -755,5 +760,193 @@ async fn shipping_settings_are_not_asked_for_as_a_parcel() {
         "the question was not put as a shipping one: {allowed:?}"
     );
 
+    shop.close().await;
+}
+
+/// #181: `shipping_option_type_id` reaches the row, is read back, and can be
+/// changed after the fact.
+#[tokio::test]
+async fn a_shipping_option_type_is_attached_and_read_back() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let zone = ankara_only(&mut tx, &ctx).await;
+
+    let express = Uuid::now_v7();
+    sqlx::query(
+        "insert into shipping_option_type (id, scope, label, code)
+         values ($1, $2, 'Express', 'express')",
+    )
+    .bind(express)
+    .bind(shop.here.0)
+    .execute(&mut *tx)
+    .await
+    .expect("a shipping option type");
+
+    let option = fulfilment::create_shipping_option(
+        &mut tx,
+        &ctx,
+        NewShippingOption {
+            name: "Same day".into(),
+            price_type: PriceKind::Flat,
+            service_zone_id: zone,
+            shipping_profile_id: None,
+            provider_id: None,
+            shipping_option_type_id: Some(express),
+            data: None,
+        },
+    )
+    .await
+    .expect("an option");
+    assert_eq!(option.shipping_option_type_id, Some(express));
+
+    let read = fulfilment::shipping_option(&mut tx, &ctx, option.id)
+        .await
+        .expect("the option read back");
+    assert_eq!(read.shipping_option_type_id, Some(express));
+
+    let standard = Uuid::now_v7();
+    sqlx::query(
+        "insert into shipping_option_type (id, scope, label, code)
+         values ($1, $2, 'Standard', 'standard')",
+    )
+    .bind(standard)
+    .bind(shop.here.0)
+    .execute(&mut *tx)
+    .await
+    .expect("a second type");
+
+    let updated = fulfilment::update_shipping_option(
+        &mut tx,
+        &ctx,
+        option.id,
+        fulfilment::ShippingOptionPatch {
+            shipping_option_type_id: Some(standard),
+            ..fulfilment::ShippingOptionPatch::default()
+        },
+    )
+    .await
+    .expect("the edit");
+    assert_eq!(updated.shipping_option_type_id, Some(standard));
+
+    let offered = fulfilment::options_for(
+        &mut tx,
+        &ctx,
+        &DeliveryAddress {
+            country_code: "TR".into(),
+            province_code: Some("06".into()),
+            ..DeliveryAddress::default()
+        },
+        None,
+        &parcel(),
+    )
+    .await
+    .expect("options");
+    assert!(
+        offered
+            .iter()
+            .any(|row| row.id == option.id && row.shipping_option_type_id == Some(standard)),
+        "checkout reads the type it was just changed to"
+    );
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+/// #182: dropping a carrier stops its options from being offered, without
+/// touching what it already shipped.
+#[tokio::test]
+async fn a_disabled_providers_options_stop_being_offered_but_its_shipments_are_untouched() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let zone = ankara_only(&mut tx, &ctx).await;
+
+    let provider = fulfilment::register_provider(&mut tx, &ctx, "carrier")
+        .await
+        .expect("a provider");
+    assert!(provider.is_enabled);
+
+    let carried = fulfilment::create_shipping_option(
+        &mut tx,
+        &ctx,
+        NewShippingOption {
+            name: "Carrier delivery".into(),
+            price_type: PriceKind::Flat,
+            service_zone_id: zone,
+            shipping_profile_id: None,
+            provider_id: Some(provider.id),
+            shipping_option_type_id: None,
+            data: None,
+        },
+    )
+    .await
+    .expect("an option");
+
+    let here = DeliveryAddress {
+        country_code: "TR".into(),
+        province_code: Some("06".into()),
+        ..DeliveryAddress::default()
+    };
+
+    let offered = fulfilment::options_for(&mut tx, &ctx, &here, None, &parcel())
+        .await
+        .expect("options");
+    assert!(offered.iter().any(|row| row.id == carried.id));
+
+    let (order, item, location) = an_order(&mut tx, shop.here.0).await;
+    let shipped = fulfilment::create_fulfillment(
+        &mut tx,
+        &ctx,
+        order,
+        NewFulfillment {
+            location_id: location,
+            shipping_option_id: Some(carried.id),
+            provider_id: Some(provider.id),
+            requires_shipping: true,
+            created_by: Some("a test".into()),
+            address: None,
+            data: None,
+            items: vec![half_of(item)],
+        },
+    )
+    .await
+    .expect("a fulfilment made while the carrier was on");
+
+    let disabled = fulfilment::set_provider_enabled(&mut tx, &ctx, provider.id, false)
+        .await
+        .expect("to disable it");
+    assert!(!disabled.is_enabled);
+
+    let offered_now = fulfilment::options_for(&mut tx, &ctx, &here, None, &parcel())
+        .await
+        .expect("options");
+    assert!(
+        !offered_now.iter().any(|row| row.id == carried.id),
+        "a dropped carrier's option stops being offered"
+    );
+    assert!(
+        !offered_now.is_empty(),
+        "ankara_only's own flat option, which has no provider, is unaffected"
+    );
+
+    let still_there = fulfilment::fulfillment(&mut tx, &ctx, order, shipped.id)
+        .await
+        .expect("the existing shipment is still there");
+    assert_eq!(still_there.provider_id, Some(provider.id));
+
+    let reenabled = fulfilment::set_provider_enabled(&mut tx, &ctx, provider.id, true)
+        .await
+        .expect("to resume offering it");
+    assert!(reenabled.is_enabled);
+
+    let offered_again = fulfilment::options_for(&mut tx, &ctx, &here, None, &parcel())
+        .await
+        .expect("options");
+    assert!(offered_again.iter().any(|row| row.id == carried.id));
+
+    tx.rollback().await.expect("to roll back");
     shop.close().await;
 }

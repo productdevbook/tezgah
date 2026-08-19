@@ -429,6 +429,8 @@ async fn a_delivery_country_resolves_to_the_region_that_serves_it() {
             name: format!("europe {}", Uuid::now_v7()),
             currency_code: euro(),
             is_tax_inclusive: false,
+            has_automatic_taxes: true,
+            payment_providers: Vec::new(),
         },
     )
     .await
@@ -562,6 +564,8 @@ async fn a_cart_priced_in_one_currency_is_not_delivered_to_another_region() {
             name: format!("europe {}", Uuid::now_v7()),
             currency_code: euro(),
             is_tax_inclusive: false,
+            has_automatic_taxes: true,
+            payment_providers: Vec::new(),
         },
     )
     .await

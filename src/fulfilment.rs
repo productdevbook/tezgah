@@ -191,6 +191,9 @@ pub struct ShippingOption {
     pub service_zone_id: ServiceZoneId,
     pub shipping_profile_id: Option<ShippingProfileId>,
     pub provider_id: Option<Uuid>,
+    /// What a shopper reads at checkout next to the price — "Standard" versus
+    /// "Express" — rather than anything tezgah itself decides between.
+    pub shipping_option_type_id: Option<Uuid>,
     pub data: Option<serde_json::Value>,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
@@ -202,6 +205,7 @@ pub struct NewShippingOption {
     pub service_zone_id: ServiceZoneId,
     pub shipping_profile_id: Option<ShippingProfileId>,
     pub provider_id: Option<Uuid>,
+    pub shipping_option_type_id: Option<Uuid>,
     pub data: Option<serde_json::Value>,
 }
 
@@ -471,6 +475,44 @@ pub async fn providers(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<Vec<Fulfillment
     .await?;
 
     Ok(rows)
+}
+
+/// Stops (or resumes) offering a carrier without deleting its row: shipments
+/// already made through it keep a real provider to point at, since
+/// `fulfillment.provider_id` is `on delete restrict`.
+pub async fn set_provider_enabled(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: Uuid,
+    enabled: bool,
+) -> Result<FulfillmentProviderRow> {
+    let _: Permit = ctx.permit(Action::Write, config(Some(id)))?;
+
+    let row = sqlx::query_as::<_, FulfillmentProviderRow>(
+        "update fulfillment_provider set is_enabled = $3
+         where scope = $1 and id = $2
+         returning id, name, is_enabled",
+    )
+    .bind(ctx.scope.0)
+    .bind(id)
+    .bind(enabled)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("fulfilment provider"))?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "fulfillment_provider",
+            entity_id: id,
+            summary: serde_json::json!({ "is_enabled": enabled }),
+        },
+    )
+    .await?;
+
+    Ok(row)
 }
 
 pub async fn create_shipping_profile(
@@ -783,6 +825,10 @@ pub async fn zones_for(
         .collect())
 }
 
+const SHIPPING_OPTION_COLUMNS: &str = "id, name, price_type, service_zone_id, \
+                                       shipping_profile_id, provider_id, \
+                                       shipping_option_type_id, data, created_at";
+
 pub async fn create_shipping_option(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -795,14 +841,13 @@ pub async fn create_shipping_option(
         return Err(Error::invalid("a shipping option needs a name"));
     }
 
-    let option = sqlx::query_as::<_, ShippingOption>(
+    let option = sqlx::query_as::<_, ShippingOption>(&format!(
         "insert into shipping_option
              (id, scope, name, price_type, service_zone_id, shipping_profile_id, provider_id,
-              data)
-         values ($1, $2, $3, $4, $5, $6, $7, $8)
-         returning id, name, price_type, service_zone_id, shipping_profile_id, provider_id,
-                   data, created_at",
-    )
+              shipping_option_type_id, data)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         returning {SHIPPING_OPTION_COLUMNS}"
+    ))
     .bind(id.as_uuid())
     .bind(ctx.scope.0)
     .bind(new.name.trim())
@@ -810,6 +855,7 @@ pub async fn create_shipping_option(
     .bind(new.service_zone_id.as_uuid())
     .bind(new.shipping_profile_id.map(ShippingProfileId::as_uuid))
     .bind(new.provider_id)
+    .bind(new.shipping_option_type_id)
     .bind(new.data.as_ref())
     .fetch_one(&mut **tx)
     .await?;
@@ -838,6 +884,7 @@ pub struct ShippingOptionPatch {
     pub price_type: Option<PriceKind>,
     pub shipping_profile_id: Option<ShippingProfileId>,
     pub provider_id: Option<Uuid>,
+    pub shipping_option_type_id: Option<Uuid>,
     pub data: Option<serde_json::Value>,
 }
 
@@ -857,23 +904,24 @@ pub async fn update_shipping_option(
         return Err(Error::invalid("a shipping option needs a name"));
     }
 
-    let option = sqlx::query_as::<_, ShippingOption>(
+    let option = sqlx::query_as::<_, ShippingOption>(&format!(
         "update shipping_option set
              name = coalesce($3::text, name),
              price_type = coalesce($4::text, price_type),
              shipping_profile_id = coalesce($5::uuid, shipping_profile_id),
              provider_id = coalesce($6::uuid, provider_id),
-             data = coalesce($7::jsonb, data)
+             shipping_option_type_id = coalesce($7::uuid, shipping_option_type_id),
+             data = coalesce($8::jsonb, data)
          where scope = $1 and id = $2
-         returning id, name, price_type, service_zone_id, shipping_profile_id, provider_id,
-                   data, created_at",
-    )
+         returning {SHIPPING_OPTION_COLUMNS}"
+    ))
     .bind(ctx.scope.0)
     .bind(id.as_uuid())
     .bind(patch.name.as_deref().map(str::trim))
     .bind(patch.price_type.map(PriceKind::as_str))
     .bind(patch.shipping_profile_id.map(ShippingProfileId::as_uuid))
     .bind(patch.provider_id)
+    .bind(patch.shipping_option_type_id)
     .bind(patch.data.as_ref())
     .fetch_optional(&mut **tx)
     .await?
@@ -938,12 +986,11 @@ pub async fn shipping_option(
 ) -> Result<ShippingOption> {
     let _: Permit = ctx.permit(Action::View, config(Some(id.as_uuid())))?;
 
-    sqlx::query_as::<_, ShippingOption>(
-        "select id, name, price_type, service_zone_id, shipping_profile_id, provider_id,
-                data, created_at
+    sqlx::query_as::<_, ShippingOption>(&format!(
+        "select {SHIPPING_OPTION_COLUMNS}
          from shipping_option
-         where scope = $1 and id = $2",
-    )
+         where scope = $1 and id = $2"
+    ))
     .bind(ctx.scope.0)
     .bind(id.as_uuid())
     .fetch_optional(&mut **tx)
@@ -1134,12 +1181,18 @@ pub async fn options_for(
         .map(|zone| zone.service_zone_id.as_uuid())
         .collect();
 
+    // A provider dropped by the shop stops being offered; a shipping option
+    // with no provider (the shop's own flat rate) is unaffected by any of
+    // this, so the join is left rather than inner.
     let options = sqlx::query_as::<_, ShippingOption>(
-        "select id, name, price_type, service_zone_id, shipping_profile_id, provider_id,
-                data, created_at
-         from shipping_option
-         where scope = $1 and service_zone_id = any($2)
-         order by created_at, id
+        "select so.id, so.name, so.price_type, so.service_zone_id, so.shipping_profile_id,
+                so.provider_id, so.shipping_option_type_id, so.data, so.created_at
+         from shipping_option so
+         left join fulfillment_provider fp
+           on fp.scope = so.scope and fp.id = so.provider_id
+         where so.scope = $1 and so.service_zone_id = any($2)
+           and (so.provider_id is null or fp.is_enabled)
+         order by so.created_at, so.id
          limit $3",
     )
     .bind(ctx.scope.0)

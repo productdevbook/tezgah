@@ -227,6 +227,8 @@ pub struct RegionView {
     pub name: String,
     pub currency_code: String,
     pub is_tax_inclusive: bool,
+    pub has_automatic_taxes: bool,
+    pub payment_providers: Vec<String>,
 }
 
 impl From<store::Region> for RegionView {
@@ -236,6 +238,8 @@ impl From<store::Region> for RegionView {
             name: row.name,
             currency_code: row.currency_code,
             is_tax_inclusive: row.is_tax_inclusive,
+            has_automatic_taxes: row.has_automatic_taxes,
+            payment_providers: row.payment_providers,
         }
     }
 }
@@ -1189,7 +1193,13 @@ pub async fn create_cart(
         _ => None,
     };
 
-    if let Some(wanted) = input.sales_channel_id {
+    // A cart opened without a region or a channel falls through to the shop's
+    // configured default rather than opening with neither.
+    let shop = store::store(tx, ctx).await?;
+    let region_id = input.region_id.or(shop.default_region_id);
+    let sales_channel_id = input.sales_channel_id.or(shop.default_sales_channel_id);
+
+    if let Some(wanted) = sales_channel_id {
         let channels = visible_channels(tx, ctx, token).await?;
         if !channels.contains(&wanted.as_uuid()) {
             return Err(Error::invalid(
@@ -1205,8 +1215,8 @@ pub async fn create_cart(
             customer_id: mine,
             email: input.email,
             currency_code: Currency::parse(&input.currency_code)?,
-            region_id: input.region_id,
-            sales_channel_id: input.sales_channel_id,
+            region_id,
+            sales_channel_id,
             basket_id: None,
             expires_at: None,
             metadata: None,
@@ -1563,6 +1573,17 @@ async fn retax(
 ) -> Result<()> {
     let holding = cart::get(tx, ctx, id).await?;
     let currency = cart_currency(&holding)?;
+
+    // A region that opted out of automatic tax keeps whatever tax lines are
+    // already there — set by the host through `tax::set_cart_tax_lines`, or
+    // none — rather than this recomputing and overwriting them on every
+    // mutation.
+    if let Some(region_id) = holding.region_id {
+        let region = store::region(tx, ctx, region_id).await?;
+        if !region.has_automatic_taxes {
+            return Ok(());
+        }
+    }
 
     let Some(to) = cart::delivery(tx, ctx, id).await? else {
         return tax::set_cart_tax_lines(tx, ctx, id, &[], &[]).await;
@@ -2452,15 +2473,42 @@ pub async fn create_payment_session(
     PaymentSessionView::of(made)
 }
 
-/// Only what a shopper may actually pay with.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ListPaymentProviders {
+    pub cart_id: CartId,
+}
+
+/// Only what a shopper may actually pay with: the shop's enabled providers,
+/// narrowed to the cart's region when that region has restricted itself to a
+/// list. A region that has never set `payment_providers` (still `{}`) offers
+/// every enabled provider, the same as before this read anything region-
+/// specific — an empty list is "not configured", not "nothing may be used
+/// here".
 pub async fn list_payment_providers(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
+    query: ListPaymentProviders,
 ) -> Result<Vec<PaymentProviderView>> {
+    let holding = own_cart(tx, ctx, query.cart_id, Action::View).await?;
+
+    let allowed = match holding.region_id {
+        Some(region_id) => {
+            let region = store::region(tx, ctx, region_id).await?;
+            (!region.payment_providers.is_empty()).then_some(region.payment_providers)
+        }
+        None => None,
+    };
+
     let found = payment::providers(tx, ctx).await?;
     Ok(found
         .into_iter()
         .filter(|provider| provider.is_enabled)
+        .filter(|provider| {
+            allowed
+                .as_ref()
+                .is_none_or(|list| list.contains(&provider.code))
+        })
         .map(|provider| PaymentProviderView {
             code: provider.code,
         })
