@@ -30,23 +30,30 @@ already solved by whatever embeds this, so it is asked for through
 
 ## Where this is
 
-Tests green. Both API surfaces are served — 446 routes in the route table,
-generated into a snapshotted OpenAPI document. Most domains in stages 2 to
-13 are module, schema and test complete and reachable from a route; the
-exceptions are marked below, not hidden in prose. Three functions are
-reachable from nothing and are tracked as #149: which warehouses serve a
-channel, reserving a named lot by hand, and saving a customer at a payment
-provider. The stage 15 proof suite already has substantive tests for all
-six of its claims. The permission-matrix gap once here is closed:
-`tests/api_permissions.rs` calls 355 of the 446 routes against a host that
-denies everything and asserts every one comes back denied, with the other
-91 named in a reasoned `TOLERATED` list rather than silently skipped — see
-stage 14 for what that list holds and why.
+Tests green. Both API surfaces are served, generated into a snapshotted OpenAPI
+document, and every domain in stages 2 to 13 is module, schema and test
+complete and reachable from a route.
 
-What is left beyond that is written as issues rather than as boxes here: the
-payment providers moving onto kasapay (#53), the seventeen listings that
-still want a page (#52), order transfer (#54), and six tables the isolation
-seeder cannot yet build a row for (#55).
+**Medusa's commerce surface has been swept model by model and field by field**,
+against v2.19.0's own source rather than from memory. All 36 of its modules are
+answered: 22 by a domain here, 9 by a port a host implements, 3 deliberately
+absent (search, the module-isolation link tables, admin-UI preferences), and
+translation by `catalogue`'s per-locale content plus the three entities a
+shopper reads. The sweep found 17 gaps. They were filed one by one and closed.
+
+The permission matrix that was once a gap now proves the rule for effectively
+the whole route table: every route called against a host that denies everything
+must come back denied, with a completeness check that fails the build if a route
+is neither called nor named. Its `TOLERATED` list is down to two entries, both
+needing a live provider fixture to construct an argument. A second matrix does
+the same for ownership: a storefront route must refuse another shopper's row and
+serve its own.
+
+What is left is written as issues rather than as boxes here: the payment
+providers moving onto kasapay (#53), which waits on two gaps filed against that
+repository — its `Currency` is closed at nine variants where Stripe settles in
+far more, and its `Provider` has no route for the hosted checkout form iyzico's
+most common flow uses.
 
 ## Stages
 
