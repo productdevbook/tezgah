@@ -46,6 +46,12 @@ production scenario: what a shop does, and what goes wrong. No speculation. If
 you find nothing, say nothing was found — do not manufacture a list. Check the
 open issues first and do not re-file what is already known.
 
+**If you dispatch a helper, it inherits your constraints.** A read-only role
+that sends a subagent to compare two files has not stopped being read-only —
+say so in the subagent's brief, explicitly, and have it report back rather than
+act. One filed five issues on its own initiative; the content held up, which is
+luck, not process.
+
 File issues with `gh issue create --repo productdevbook/tezgah`, titled in
 Conventional Commits style, written plainly and without flourish. Bodies go in
 `$CLAUDE_JOB_DIR/tmp`, never `/tmp`.
