@@ -19,4 +19,17 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
+  // After the block above, because the last matching config wins.
+  //
+  // shadcn writes these files and `shadcn add` overwrites them, so a fix made
+  // in one is erased the next time a component is added. They break both rules
+  // by design: a component file that also exports its `cva` variants, and a
+  // hook that sets state from an effect.
+  {
+    files: ['src/components/ui/**', 'src/hooks/use-mobile.ts'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+      'react-hooks/set-state-in-effect': 'off',
+    },
+  },
 ])
