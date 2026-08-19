@@ -56,7 +56,7 @@ use std::path::{Path, PathBuf};
 
 /// Public functions nothing in the crate calls, each with the reason.
 /// Adding to this is not a fix.
-const TOLERATED: [(&str, &str); 42] = [
+const TOLERATED: [(&str, &str); 48] = [
     (
         "batch::import_workflow",
         "the import workflow a host runs through the runner when a file is large \
@@ -222,6 +222,25 @@ const TOLERATED: [(&str, &str); 42] = [
         "verifying a provider's webhook signature, which the host does before it \
          hands the body over",
     ),
+    (
+        "kasapay::to_kasapay_money",
+        "#53's design note stages this as its own PR — proving the Money \
+         conversion round-trips before anything downstream depends on it, so \
+         nothing does yet",
+    ),
+    (
+        "kasapay::from_kasapay_money",
+        "the inverse of kasapay::to_kasapay_money, same reason",
+    ),
+    (
+        "kasapay::capture",
+        "kept ready for #53's PaymentProvider wrapper; that step waits on \
+         kasapay#149 (Currency is nine variants, Stripe settles in 135+) \
+         before src/providers/stripe.rs can go",
+    ),
+    ("kasapay::cancel", "same as kasapay::capture"),
+    ("kasapay::refund", "same as kasapay::capture"),
+    ("kasapay::lookup", "same as kasapay::capture"),
     (
         "tax::rates_for",
         "the rates answering for an address, used by nobody outside its own \
