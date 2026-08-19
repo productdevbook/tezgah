@@ -26,7 +26,8 @@ already solved by whatever embeds this, so it is asked for through
 | e-mail, SMS, push | `EventSink` | tezgah says `order.paid`; the host writes the letter |
 | file and image storage | a URL on the record | a host already has media |
 | caching | — | a library that caches behind your back is a bug |
-| analytics dashboards, admin UI | the API | a Rust library does not ship React |
+| analytics dashboards | the API | reporting over Postgres is the host's |
+| the admin screens | the API | the crate ships no UI; [`client/`](client) is a panel over it, built and released apart |
 
 ## Where this is
 

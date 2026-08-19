@@ -59,6 +59,35 @@ jobs:
           name: junit
           path: target/nextest/ci/junit.xml
 
+  client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          # A release, not the canary: the lockfile format tracks the bun
+          # version and a canary writes one no release can read.
+          bun-version: "1.4.0"
+      - run: bun install --frozen-lockfile
+      - run: bun run lint
+      - run: bun run build
+      # The panel's types are transcribed from src/api/*.rs by hand because the
+      # generated document carries no schemas. Regenerating what it does carry
+      # catches a path this panel calls and the crate no longer serves.
+      - name: The paths this panel may call
+        run: |
+          bunx openapi-typescript ../tests/snapshots/openapi.json -o src/api/schema.d.ts
+          if git diff --quiet -- src/api/schema.d.ts; then
+            exit 0
+          fi
+          echo "::error::src/api/schema.d.ts is stale — regenerate it from tests/snapshots/openapi.json and commit the result." >&2
+          git diff --stat -- src/api/schema.d.ts
+          exit 1
+
   audit:
     runs-on: ubuntu-latest
     permissions:
