@@ -464,13 +464,21 @@ pub async fn renew(
 
     let renewed = how.renew(pool, ctx, id).await?;
 
+    // No run means nothing was owed yet — `Renewals::renew` refused rather
+    // than billing a cycle before its `next_billing_at`.
+    let state = renewed
+        .run
+        .as_ref()
+        .map(|run| format!("{:?}", run.state).to_lowercase())
+        .unwrap_or_else(|| "not_due".to_string());
+
     Ok(RenewedView {
         order_id: renewed.order_id,
         cycle: renewed.cycle,
         declined: renewed.declined,
         cancelled: renewed.cancelled,
-        state: format!("{:?}", renewed.run.state).to_lowercase(),
-        failure: renewed.run.failure,
+        state,
+        failure: renewed.run.and_then(|run| run.failure),
     })
 }
 
@@ -540,11 +548,16 @@ pub async fn skip_subscription(
 /// What replacing a contract's card takes on either surface: the new
 /// reference and the instrument under it. `subscription::repoint_card` checks
 /// the reference is this contract's own customer's.
+///
+/// `mandate_reference` is the fresh consent for this instrument, if the
+/// caller collected one — left out, `subscription::repoint_card` clears the
+/// old mandate rather than carrying it onto a card it was never given for.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RepointCard {
     pub account_holder_id: AccountHolderId,
     pub payment_method_reference: String,
+    pub mandate_reference: Option<String>,
 }
 
 /// Points a contract at a different saved card, by hand — support fixing what
@@ -566,6 +579,7 @@ pub async fn repoint_subscription_card(
             id,
             body.account_holder_id,
             body.payment_method_reference,
+            body.mandate_reference,
             how,
         )
         .await?,
@@ -753,6 +767,7 @@ pub async fn repoint_my_subscription_card(
             id,
             body.account_holder_id,
             body.payment_method_reference,
+            body.mandate_reference,
             how,
         )
         .await?,

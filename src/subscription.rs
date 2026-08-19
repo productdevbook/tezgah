@@ -22,7 +22,10 @@
 //! schedulers firing at once, a cron overlapping itself and a host retrying its
 //! own job all collapse onto one run. Behind that, `subscription_order` is
 //! unique on `(scope, subscription_id, cycle)`, so even a run under another key
-//! cannot write a second order for a period already billed.
+//! cannot write a second order for a period already billed. That key guards a
+//! *repeat*, not the *next* cycle — a stale job, or an operator renewing by
+//! hand a second time, arriving after this contract has already moved on, is
+//! [`Renewals::renew`]'s own `next_billing_at` check to refuse.
 //!
 //! # A renewal runs as [`Actor::System`]
 //!
@@ -1231,13 +1234,25 @@ pub async fn skip_next(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: SubscriptionId) -> Re
 /// own queued job would have made, run early instead of waited for. Nothing
 /// about `subscription:{id}:{cycle}:{attempts}` changes: a late-arriving
 /// dunning job for the same attempt still resolves to the run this already
-/// made.
+/// made, and [`Renewals::renew`]'s own check against `next_billing_at` is what
+/// keeps that early call from ever billing a period this contract is not yet
+/// due for.
+///
+/// **The old mandate does not travel to the new card.** `mandate_reference` is
+/// the record that the shopper consented to this instrument being charged
+/// again; a repointed card is a different instrument, so the consent that
+/// named the old one does not name this one. Unless the caller hands in a
+/// fresh `mandate_reference`, both it and `mandate_accepted_at` are cleared
+/// rather than carried forward — a provider that never asked for a mandate
+/// does not miss it, and one that does (SEPA-style, off-session) is not left
+/// charging under a consent given for a card that is no longer this one.
 pub async fn repoint_card(
     pool: &PgPool,
     ctx: &Ctx<'_>,
     id: SubscriptionId,
     account_holder_id: AccountHolderId,
     payment_method_reference: String,
+    mandate_reference: Option<String>,
     how: &Renewals,
 ) -> Result<Subscription> {
     if payment_method_reference.trim().is_empty() {
@@ -1270,9 +1285,12 @@ pub async fn repoint_card(
         ));
     }
 
+    let mandate_accepted_at = mandate_reference.is_some().then(|| ctx.now());
+
     let changed = sqlx::query_as::<_, Subscription>(&format!(
         "update subscription
-         set account_holder_id = $3, payment_method_reference = $4
+         set account_holder_id = $3, payment_method_reference = $4,
+             mandate_reference = $5, mandate_accepted_at = $6
          where scope = $1 and id = $2
          returning {SUBSCRIPTION_COLUMNS}"
     ))
@@ -1280,6 +1298,8 @@ pub async fn repoint_card(
     .bind(id.as_uuid())
     .bind(account_holder_id.as_uuid())
     .bind(&payment_method_reference)
+    .bind(&mandate_reference)
+    .bind(mandate_accepted_at)
     .fetch_one(&mut *tx)
     .await?;
 
@@ -1814,9 +1834,14 @@ fn wedged(err: Error) -> Failure {
 /// What came of asking a contract for another period.
 #[derive(Debug, Clone)]
 pub struct Renewed {
-    pub run: workflow::Run,
+    /// `None` when nothing ran: `next_billing_at` was still ahead of the
+    /// call, so no workflow was started and nothing was charged. A duplicate
+    /// call — a stale queued job, an operator clicking twice — lands here
+    /// rather than as an error.
+    pub run: Option<workflow::Run>,
     pub order_id: Option<OrderId>,
-    /// The cycle this attempt was for, whether or not it billed.
+    /// The cycle this call was for, whether it billed, was refused, or was
+    /// not yet due.
     pub cycle: i32,
     /// The charge was refused and the contract is now `past_due`, with a
     /// dunning job queued or the contract cancelled for having run out of them.
@@ -1883,6 +1908,15 @@ impl Renewals {
     /// as whatever actor the caller assembled, which for a host's cron is
     /// [`Actor::System`](crate::ports::Actor::System) — an authorizer that
     /// denies it stops every renewal in the shop.
+    ///
+    /// **Refuses to bill early.** `subscription_order`'s unique `(subscription_id,
+    /// cycle)` stops the same cycle being billed twice, but says nothing about
+    /// the *next* one — `next_billing_at` is what says a cycle is not owed yet,
+    /// and this is the only place that reads it before charging anything. A
+    /// call against a contract that is not yet due answers with `Renewed::run`
+    /// set to `None` rather than an error: the host's own queue, an operator
+    /// renewing by hand, and an early dunning retry (#197) all reach this, and
+    /// none of them did anything wrong by asking twice.
     pub async fn renew(&self, pool: &PgPool, ctx: &Ctx<'_>, id: SubscriptionId) -> Result<Renewed> {
         let _: Permit = ctx.permit(
             Action::Write,
@@ -1896,6 +1930,17 @@ impl Renewals {
             let mut tx = scoped(pool, ctx).await?;
             let contract = get(&mut tx, ctx, id).await?;
             tx.commit().await?;
+
+            if contract.next_billing_at > ctx.now() {
+                return Ok(Renewed {
+                    run: None,
+                    order_id: None,
+                    cycle: contract.cycle + 1,
+                    declined: false,
+                    cancelled: false,
+                });
+            }
+
             (contract.cycle + 1, contract.dunning_attempts)
         };
 
@@ -1938,7 +1983,7 @@ impl Renewals {
             cycle,
             declined,
             cancelled,
-            run,
+            run: Some(run),
         })
     }
 }

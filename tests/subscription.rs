@@ -182,6 +182,21 @@ impl RecurringProvider for Processing {
     }
 }
 
+/// A bank that must never be asked anything — proof that a call against a
+/// contract with nothing due is refused before it can reach a provider, not
+/// merely left unbilled afterward.
+#[derive(Debug, Default)]
+struct Panicking;
+
+bank!(Panicking);
+
+#[async_trait]
+impl RecurringProvider for Panicking {
+    async fn authorize_stored(&self, _: StoredChargeRequest) -> tezgah::Result<Authorization> {
+        panic!("a contract with nothing due should never reach the provider");
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Hosts
 // ---------------------------------------------------------------------------
@@ -927,11 +942,12 @@ async fn a_renewal_declined_after_the_order_is_written_unwinds_cleanly() {
         .expect("the renewal to run and be refused");
 
     assert!(renewed.declined);
+    let run = renewed.run.as_ref().expect("a due contract to have run");
     assert_eq!(
-        renewed.run.state,
+        run.state,
         State::Reverted,
         "the compensation itself failed rather than the charge: {:?}",
-        renewed.run.failure
+        run.failure
     );
 
     let mut tx = shop.begin().await;
@@ -941,7 +957,7 @@ async fn a_renewal_declined_after_the_order_is_written_unwinds_cleanly() {
         "select count(*) from workflow_dead_letter where scope = $1 and run_id = $2",
     )
     .bind(shop.here.0)
-    .bind(renewed.run.id.as_uuid())
+    .bind(run.id.as_uuid())
     .fetch_one(&mut *tx)
     .await
     .expect("to count dead letters");
@@ -1340,6 +1356,7 @@ async fn repointing_a_past_due_contract_to_a_working_card_retries_it_immediately
         seeded.id,
         fresh.id,
         "pm_a_new_card".into(),
+        None,
         &standing,
     )
     .await
@@ -1393,6 +1410,7 @@ async fn repointing_a_contract_that_is_not_past_due_does_not_charge_it() {
         seeded.id,
         fresh.id,
         "pm_a_new_card".into(),
+        None,
         &refusing,
     )
     .await
@@ -1423,6 +1441,7 @@ async fn repointing_to_another_customers_holder_is_refused() {
         mine.id,
         theirs.holder_id,
         "pm_someone_elses".into(),
+        None,
         &standing,
     )
     .await
@@ -1475,12 +1494,305 @@ async fn repointing_to_a_scrubbed_holder_is_refused() {
         seeded.id,
         spare.id,
         "pm_a_ghost".into(),
+        None,
         &standing,
     )
     .await
     .expect_err("a contract was pointed at a scrubbed holder");
 
     assert!(refused.is_not_found());
+
+    shop.close().await;
+}
+
+// ---------------------------------------------------------------------------
+// #198: refusing to bill a cycle that is not due yet
+// ---------------------------------------------------------------------------
+
+/// The once-per-cycle guarantee is `subscription_order`'s unique key on
+/// `(subscription_id, cycle)`; it says nothing about billing the *next* cycle
+/// early. `Renewals::renew` has to refuse that itself, before the provider is
+/// ever asked — `Panicking` makes the point: if the check were missing, this
+/// test would fail with a panic from inside the bank rather than a failed
+/// assertion.
+#[tokio::test]
+async fn a_contract_that_is_not_yet_due_is_refused_without_asking_the_provider() {
+    let shop = Shop::open().await;
+    let seeded = a_contract(&shop, dec!(10), None).await;
+
+    let mut tx = shop.begin().await;
+    sqlx::query("update subscription set next_billing_at = $2 where scope = $1 and id = $3")
+        .bind(shop.here.0)
+        .bind(Utc::now() + Duration::days(7))
+        .bind(seeded.id.as_uuid())
+        .execute(&mut *tx)
+        .await
+        .expect("to move the contract out of the past");
+    tx.commit().await.expect("to commit");
+
+    let panicking = Renewals::new(Arc::new(Panicking), seeded.location_id);
+    let renewed = panicking
+        .renew(&shop.pool, &shop.ctx(), seeded.id)
+        .await
+        .expect("a call with nothing due to answer rather than fail");
+
+    assert!(
+        renewed.run.is_none(),
+        "a call with nothing due started a workflow"
+    );
+    assert!(renewed.order_id.is_none());
+    assert!(!renewed.declined);
+    assert!(!renewed.cancelled);
+    assert!(billed_cycles(&shop, seeded.id).await.is_empty());
+    assert_eq!(orders(&shop).await, 0);
+
+    let after = read(&shop, seeded.id).await;
+    assert_eq!(after.status, "active", "a refused call was treated as one");
+    assert_eq!(after.cycle, 0, "a call with nothing due moved the cycle");
+    assert_eq!(after.dunning_attempts, 0);
+
+    shop.close().await;
+}
+
+/// The shape #198 names directly: dunning queues a retry for a `past_due`
+/// contract, the customer replaces the card before it fires, #197's own early
+/// retry bills the contract right there and moves its cycle on — and the
+/// queued job, arriving after, is the exact call this test makes. It must not
+/// bill the period it now finds itself pointed at.
+#[tokio::test]
+async fn a_stale_queued_retry_after_an_early_repoint_does_not_bill_next_month_today() {
+    let shop = Shop::open().await;
+    let seeded = a_contract(&shop, dec!(10), None).await;
+    let ctx = shop.ctx();
+
+    let refusing = Renewals::new(Arc::new(Refusing), seeded.location_id);
+    refusing
+        .renew(&shop.pool, &ctx, seeded.id)
+        .await
+        .expect("the first attempt to run and be refused");
+    assert_eq!(read(&shop, seeded.id).await.status, "past_due");
+
+    let mut tx = shop.begin().await;
+    let fresh = payment::save_account_holder(
+        &mut tx,
+        &ctx,
+        payment::NewAccountHolder {
+            provider_code: "bank".into(),
+            customer_id: Some(seeded.customer_id),
+            external_id: format!("cus_{}", Uuid::now_v7().simple()),
+            email: None,
+            data: serde_json::json!({}),
+        },
+    )
+    .await
+    .expect("a fresh account holder");
+    tx.commit().await.expect("to commit");
+
+    let standing = Renewals::new(Arc::new(Standing), seeded.location_id);
+    subscription::repoint_card(
+        &shop.pool,
+        &ctx,
+        seeded.id,
+        fresh.id,
+        "pm_a_new_card".into(),
+        None,
+        &standing,
+    )
+    .await
+    .expect("the card to be repointed and the early retry to bill it");
+
+    assert_eq!(billed_cycles(&shop, seeded.id).await, vec![1]);
+    let after_retry = read(&shop, seeded.id).await;
+    assert_eq!(after_retry.status, "active");
+    assert_eq!(after_retry.cycle, 1);
+    assert!(
+        after_retry.next_billing_at > Utc::now(),
+        "the early retry's own advance did not move the clock forward"
+    );
+
+    // The dunning job the decline above queued is still sitting there — the
+    // early retry answered the same debt, but nothing removes the job that
+    // was already on the queue for it. This is that job firing late, against
+    // a contract that no longer owes anything.
+    let panicking = Renewals::new(Arc::new(Panicking), seeded.location_id);
+    let stale = panicking
+        .renew(&shop.pool, &ctx, seeded.id)
+        .await
+        .expect("the stale job to answer rather than fail");
+
+    assert!(stale.run.is_none(), "the stale job reached the provider");
+    assert!(stale.order_id.is_none(), "a period not yet due was billed");
+    assert!(!stale.declined);
+    assert!(!stale.cancelled);
+    assert_eq!(
+        billed_cycles(&shop, seeded.id).await,
+        vec![1],
+        "the stale job billed a second period"
+    );
+    assert_eq!(
+        read(&shop, seeded.id).await.cycle,
+        1,
+        "the stale job moved the cycle again"
+    );
+
+    shop.close().await;
+}
+
+/// A `past_due` contract's `next_billing_at` is always in the past by the
+/// time it gets there — `decline` never touches the column, and after this
+/// fix nothing can set `past_due` without having gone through the same check
+/// first — so #197's whole point, retrying on the spot, keeps working.
+#[tokio::test]
+async fn repointing_a_past_due_contract_still_retries_immediately_after_the_fix() {
+    let shop = Shop::open().await;
+    let seeded = a_contract(&shop, dec!(10), None).await;
+    let ctx = shop.ctx();
+
+    let refusing = Renewals::new(Arc::new(Refusing), seeded.location_id);
+    refusing
+        .renew(&shop.pool, &ctx, seeded.id)
+        .await
+        .expect("the first attempt to run and be refused");
+
+    let past_due = read(&shop, seeded.id).await;
+    assert_eq!(past_due.status, "past_due");
+    assert!(
+        past_due.next_billing_at <= Utc::now(),
+        "a past_due contract with nothing due yet would wrongly block #197's retry"
+    );
+
+    let mut tx = shop.begin().await;
+    let fresh = payment::save_account_holder(
+        &mut tx,
+        &ctx,
+        payment::NewAccountHolder {
+            provider_code: "bank".into(),
+            customer_id: Some(seeded.customer_id),
+            external_id: format!("cus_{}", Uuid::now_v7().simple()),
+            email: None,
+            data: serde_json::json!({}),
+        },
+    )
+    .await
+    .expect("a fresh account holder");
+    tx.commit().await.expect("to commit");
+
+    let standing = Renewals::new(Arc::new(Standing), seeded.location_id);
+    let repointed = subscription::repoint_card(
+        &shop.pool,
+        &ctx,
+        seeded.id,
+        fresh.id,
+        "pm_a_new_card".into(),
+        None,
+        &standing,
+    )
+    .await
+    .expect("the card to be repointed and the retry to run");
+
+    assert_eq!(
+        repointed.status, "active",
+        "the new card's retry did not run"
+    );
+    assert_eq!(billed_cycles(&shop, seeded.id).await, vec![1]);
+
+    shop.close().await;
+}
+
+/// The consent that named the old card does not name this one: repointing
+/// clears the mandate rather than letting it silently travel to a different
+/// instrument.
+#[tokio::test]
+async fn repointing_a_card_clears_the_old_mandate_by_default() {
+    let shop = Shop::open().await;
+    let seeded = a_contract(&shop, dec!(10), None).await;
+    let ctx = shop.ctx();
+    assert_eq!(
+        read(&shop, seeded.id).await.mandate_reference.as_deref(),
+        Some("mandate-1"),
+        "the seed contract needs a mandate for this test to prove anything"
+    );
+
+    let mut tx = shop.begin().await;
+    let fresh = payment::save_account_holder(
+        &mut tx,
+        &ctx,
+        payment::NewAccountHolder {
+            provider_code: "bank".into(),
+            customer_id: Some(seeded.customer_id),
+            external_id: format!("cus_{}", Uuid::now_v7().simple()),
+            email: None,
+            data: serde_json::json!({}),
+        },
+    )
+    .await
+    .expect("a fresh account holder");
+    tx.commit().await.expect("to commit");
+
+    let standing = Renewals::new(Arc::new(Standing), seeded.location_id);
+    let repointed = subscription::repoint_card(
+        &shop.pool,
+        &ctx,
+        seeded.id,
+        fresh.id,
+        "pm_a_new_card".into(),
+        None,
+        &standing,
+    )
+    .await
+    .expect("the card to be repointed");
+
+    assert_eq!(
+        repointed.mandate_reference, None,
+        "the old card's mandate silently travelled to the new one"
+    );
+    assert_eq!(repointed.mandate_accepted_at, None);
+
+    shop.close().await;
+}
+
+/// A caller that collected a fresh mandate for the new instrument has it kept
+/// rather than discarded.
+#[tokio::test]
+async fn repointing_a_card_with_a_fresh_mandate_keeps_it() {
+    let shop = Shop::open().await;
+    let seeded = a_contract(&shop, dec!(10), None).await;
+    let ctx = shop.ctx();
+
+    let mut tx = shop.begin().await;
+    let fresh = payment::save_account_holder(
+        &mut tx,
+        &ctx,
+        payment::NewAccountHolder {
+            provider_code: "bank".into(),
+            customer_id: Some(seeded.customer_id),
+            external_id: format!("cus_{}", Uuid::now_v7().simple()),
+            email: None,
+            data: serde_json::json!({}),
+        },
+    )
+    .await
+    .expect("a fresh account holder");
+    tx.commit().await.expect("to commit");
+
+    let standing = Renewals::new(Arc::new(Standing), seeded.location_id);
+    let repointed = subscription::repoint_card(
+        &shop.pool,
+        &ctx,
+        seeded.id,
+        fresh.id,
+        "pm_a_new_card".into(),
+        Some("mandate-2".into()),
+        &standing,
+    )
+    .await
+    .expect("the card to be repointed");
+
+    assert_eq!(repointed.mandate_reference.as_deref(), Some("mandate-2"));
+    assert!(
+        repointed.mandate_accepted_at.is_some(),
+        "a fresh mandate was recorded with no acceptance time"
+    );
 
     shop.close().await;
 }
