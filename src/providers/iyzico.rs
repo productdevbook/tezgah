@@ -534,4 +534,26 @@ mod tests {
         let params = String::from_utf8(decoded).expect("utf8");
         assert!(params.starts_with("apiKey:api&randomKey:rnd&signature:"));
     }
+
+    /// Locked down for tezgah#53: the day kasapay ships a `Webhook`
+    /// implementation for iyzico's classic notifications (`X-IYZ-SIGNATURE-V3`),
+    /// this is the format its composed `Event::id` gets byte-compared against
+    /// before any cutover, so a redelivery of a row already in
+    /// `payment_webhook_event` still dedupes against what it was written with.
+    /// Not done yet: kasapay v0.0.3 implements no `Webhook` for iyzico at all —
+    /// its own `CHANGELOG.md` says why, and it is not this notification
+    /// (`iyziEventType`/`paymentId`/`paymentConversationId`/`status`) but the
+    /// In-Store callback, an encrypted blob the delivery does not carry the key
+    /// for.
+    #[test]
+    fn the_composed_webhook_event_id_format_is_a_stable_contract() {
+        let payload = json!({
+            "iyziEventType": "CHECKOUTFORM_AUTH",
+            "paymentId": "12345678",
+            "paymentConversationId": "conv-1",
+            "status": "SUCCESS",
+        });
+        let event = read_event(&payload).expect("a valid notification");
+        assert_eq!(event.event_id, "CHECKOUTFORM_AUTH:12345678:SUCCESS");
+    }
 }

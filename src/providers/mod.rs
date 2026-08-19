@@ -24,6 +24,7 @@ use crate::error::{Error, Result};
 use crate::money::{Currency, Money};
 
 pub mod iyzico;
+pub mod kasapay;
 pub mod stripe;
 
 /// How long any one call to a provider may take before it is given up on.
