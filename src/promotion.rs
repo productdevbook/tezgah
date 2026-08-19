@@ -1149,6 +1149,10 @@ pub async fn remove_rule(
 ///
 /// A refusal leaves the counter it already moved to be undone by the caller's
 /// rollback, which is why both live in the caller's transaction.
+///
+/// [`Action::Settle`], not [`Action::Write`]: this spends a campaign's
+/// budget, and editing a promotion's name is not the same power as spending
+/// what it is allowed to give away.
 pub async fn claim(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -1156,6 +1160,13 @@ pub async fn claim(
     customer_id: Option<CustomerId>,
     spend: Money,
 ) -> Result<()> {
+    let _: Permit = ctx.permit(
+        Action::Settle,
+        Resource::Promotion {
+            id: Some(promotion_id.as_uuid()),
+        },
+    )?;
+
     if spend.is_negative() {
         return Err(Error::invalid(
             "a promotion cannot give away less than nothing",
@@ -1170,6 +1181,9 @@ pub async fn claim(
 /// The inverse of [`claim`], and clamped at zero rather than trusting the
 /// caller: a compensation that ran twice must leave a promotion with fewer
 /// uses than it started with in neither direction.
+///
+/// [`Action::Settle`] for the same reason [`claim`] asks for it: this gives
+/// spent budget back.
 pub async fn release(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -1178,7 +1192,7 @@ pub async fn release(
     spend: Money,
 ) -> Result<()> {
     let _: Permit = ctx.permit(
-        Action::Write,
+        Action::Settle,
         Resource::Promotion {
             id: Some(promotion_id.as_uuid()),
         },
@@ -1223,6 +1237,22 @@ pub async fn release(
         .await?;
     }
 
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Settle,
+            entity: "promotion",
+            entity_id: promotion_id.as_uuid(),
+            summary: serde_json::json!({
+                "released": spend.amount.to_string(),
+                "currency": spend.currency.as_str(),
+                "customer_id": customer_id.map(CustomerId::as_uuid),
+            }),
+        },
+    )
+    .await?;
+
     ctx.emit(
         tx,
         Event {
@@ -1238,6 +1268,8 @@ pub async fn release(
     Ok(())
 }
 
+// `claim` asks; this only spends. A private helper with its own permit
+// beside a caller that already asked would be asking twice.
 async fn take(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -1245,13 +1277,6 @@ async fn take(
     customer_id: Option<CustomerId>,
     spend: Money,
 ) -> Result<()> {
-    let _: Permit = ctx.permit(
-        Action::Write,
-        Resource::Promotion {
-            id: Some(promotion_id.as_uuid()),
-        },
-    )?;
-
     let taken = sqlx::query_as::<_, (Option<Uuid>,)>(
         "update promotion
          set used = used + 1
@@ -1307,6 +1332,22 @@ async fn take(
         )
         .await?;
     }
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Settle,
+            entity: "promotion",
+            entity_id: promotion_id.as_uuid(),
+            summary: serde_json::json!({
+                "spent": spend.amount.to_string(),
+                "currency": spend.currency.as_str(),
+                "customer_id": customer_id.map(CustomerId::as_uuid),
+            }),
+        },
+    )
+    .await?;
 
     ctx.emit(
         tx,

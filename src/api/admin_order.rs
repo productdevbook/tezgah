@@ -716,6 +716,8 @@ pub struct ShippingOptionView {
     pub service_zone_id: ServiceZoneId,
     pub shipping_profile_id: Option<ShippingProfileId>,
     pub shipping_option_type_id: Option<Uuid>,
+    pub is_return: bool,
+    pub enabled_in_store: bool,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -728,6 +730,8 @@ impl From<fulfilment::ShippingOption> for ShippingOptionView {
             service_zone_id: row.service_zone_id,
             shipping_profile_id: row.shipping_profile_id,
             shipping_option_type_id: row.shipping_option_type_id,
+            is_return: row.is_return,
+            enabled_in_store: row.enabled_in_store,
             created_at: row.created_at,
         }
     }
@@ -3336,7 +3340,7 @@ pub async fn list_shipping_options(
 
     let rows = sqlx::query_as::<_, fulfilment::ShippingOption>(
         "select id, name, price_type, service_zone_id, shipping_profile_id, provider_id,
-                shipping_option_type_id, data, created_at
+                shipping_option_type_id, data, is_return, enabled_in_store, created_at
          from shipping_option
          where scope = $1 and ($2::timestamptz is null or (created_at, id) > ($2, $3))
          order by created_at, id
@@ -3381,6 +3385,10 @@ pub struct CreateShippingOption {
     pub provider_id: Option<Uuid>,
     pub shipping_option_type_id: Option<Uuid>,
     pub data: Option<Value>,
+    #[serde(default)]
+    pub is_return: bool,
+    #[serde(default = "yes")]
+    pub enabled_in_store: bool,
 }
 
 pub async fn create_shipping_option(
@@ -3399,6 +3407,8 @@ pub async fn create_shipping_option(
         provider_id: input.provider_id,
         shipping_option_type_id: input.shipping_option_type_id,
         data: input.data,
+        is_return: input.is_return,
+        enabled_in_store: input.enabled_in_store,
     };
     Ok(fulfilment::create_shipping_option(tx, ctx, new)
         .await?
@@ -3450,7 +3460,43 @@ pub async fn order_shipping_options(
         ..Default::default()
     };
 
-    let options = fulfilment::options_for(tx, ctx, &address, row.sales_channel_id, &[]).await?;
+    let options = fulfilment::options_for(
+        tx,
+        ctx,
+        &address,
+        row.sales_channel_id,
+        &[],
+        fulfilment::ShippingAudience::Admin,
+    )
+    .await?;
+    Ok(options.into_iter().map(ShippingOptionView::from).collect())
+}
+
+/// Which options a return may ship back on: only the ones a shop marked for
+/// returns, so an operator is never offered the order's own delivery option
+/// to send a parcel the other way.
+pub async fn return_shipping_options(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order_id: OrderId,
+    country_code: &str,
+) -> Result<Vec<ShippingOptionView>> {
+    let row = order::get(tx, ctx, order_id).await?;
+
+    let address = fulfilment::DeliveryAddress {
+        country_code: country_code.to_owned(),
+        ..Default::default()
+    };
+
+    let options = fulfilment::options_for(
+        tx,
+        ctx,
+        &address,
+        row.sales_channel_id,
+        &[],
+        fulfilment::ShippingAudience::Return,
+    )
+    .await?;
     Ok(options.into_iter().map(ShippingOptionView::from).collect())
 }
 
@@ -3498,6 +3544,8 @@ pub struct UpdateShippingOption {
     pub provider_id: Option<Uuid>,
     pub shipping_option_type_id: Option<Uuid>,
     pub data: Option<Value>,
+    pub is_return: Option<bool>,
+    pub enabled_in_store: Option<bool>,
 }
 
 pub async fn update_shipping_option(
@@ -3516,6 +3564,8 @@ pub async fn update_shipping_option(
         provider_id: input.provider_id,
         shipping_option_type_id: input.shipping_option_type_id,
         data: input.data,
+        is_return: input.is_return,
+        enabled_in_store: input.enabled_in_store,
     };
     Ok(fulfilment::update_shipping_option(tx, ctx, id, patch)
         .await?
@@ -3880,6 +3930,13 @@ pub(super) static ROUTES: &[Route] = &[
         View,
         "fulfilment",
         "Which shipping options reach an order's address"
+    ),
+    route!(
+        Get,
+        "/admin/orders/{id}/returns/shipping-options",
+        View,
+        "fulfilment",
+        "Which shipping options a return may ship back on"
     ),
     // Draft orders
     route!(

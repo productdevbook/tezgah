@@ -1919,8 +1919,15 @@ pub async fn list_shipping_options(
         postal_code: query.postal_code,
     };
 
-    let found =
-        fulfilment::options_for(tx, ctx, &address, holding.sales_channel_id, &items).await?;
+    let found = fulfilment::options_for(
+        tx,
+        ctx,
+        &address,
+        holding.sales_channel_id,
+        &items,
+        fulfilment::ShippingAudience::Storefront,
+    )
+    .await?;
 
     let mut out = Vec::with_capacity(found.len());
     for option in found {

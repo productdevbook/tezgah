@@ -2331,6 +2331,8 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
                 provider_id: None,
                 shipping_option_type_id: None,
                 data: None,
+                is_return: false,
+                enabled_in_store: true,
             }
         )
     );
@@ -2494,6 +2496,11 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
         Method::Get,
         "/admin/orders/{id}/shipping-options",
         admin_order::order_shipping_options(&mut tx, &ctx, OrderId::new(), "TR")
+    );
+    denied!(
+        Method::Get,
+        "/admin/orders/{id}/returns/shipping-options",
+        admin_order::return_shipping_options(&mut tx, &ctx, OrderId::new(), "TR")
     );
     denied!(
         Method::Post,

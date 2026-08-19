@@ -688,6 +688,48 @@ impl Jobs for OnlyMine {
     }
 }
 
+/// A host that grants every action except `Settle`, so "a role trusted to
+/// edit is not thereby trusted to move money" can be asserted rather than
+/// assumed.
+pub struct NoSettle;
+
+impl Authorizer for NoSettle {
+    fn authorize(&self, _: &Actor, action: Action, _: &Resource) -> tezgah::Result<Permit> {
+        if action == Action::Settle {
+            Err(tezgah::Error::denied())
+        } else {
+            Ok(Permit::granted())
+        }
+    }
+}
+
+impl Clock for NoSettle {
+    fn now(&self) -> DateTime<Utc> {
+        Utc::now()
+    }
+}
+
+#[async_trait]
+impl AuditSink for NoSettle {
+    async fn record(&self, _: &mut Tx<'_>, _: AuditEntry) -> tezgah::Result<()> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl EventSink for NoSettle {
+    async fn emit(&self, _: &mut Tx<'_>, _: Event) -> tezgah::Result<()> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl Jobs for NoSettle {
+    async fn enqueue(&self, _: &mut Tx<'_>, _: JobSpec) -> tezgah::Result<()> {
+        Ok(())
+    }
+}
+
 /// A host that grants every action except `Moderate`, so "a seller may submit
 /// their own listing but not approve it" can be asserted rather than assumed.
 pub struct NoModerate;

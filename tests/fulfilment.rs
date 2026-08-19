@@ -10,7 +10,7 @@ use rust_decimal_macros::dec;
 use tezgah::fulfilment::{
     self, DeliveryAddress, FulfillmentProvider, NewFulfillment, NewFulfillmentItem,
     NewFulfillmentSet, NewGeoZone, NewLabel, NewServiceZone, NewShippingOption, PriceKind, SetKind,
-    Shipment, ShipmentRequest, Shippable, ShippingOptionTranslation, ZoneKind,
+    Shipment, ShipmentRequest, Shippable, ShippingAudience, ShippingOptionTranslation, ZoneKind,
 };
 use tezgah::id::{OrderId, OrderItemId, StockLocationId};
 use tezgah::money::{Currency, Money};
@@ -114,6 +114,8 @@ async fn ankara_only(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> tezgah::id::ServiceZoneI
             provider_id: None,
             shipping_option_type_id: None,
             data: None,
+            is_return: false,
+            enabled_in_store: true,
         },
     )
     .await
@@ -203,9 +205,16 @@ async fn an_address_is_offered_the_options_of_the_zone_it_falls_in() {
         province_code: Some("06".into()),
         ..DeliveryAddress::default()
     };
-    let offered = fulfilment::options_for(&mut tx, &ctx, &here, None, &parcel())
-        .await
-        .expect("options");
+    let offered = fulfilment::options_for(
+        &mut tx,
+        &ctx,
+        &here,
+        None,
+        &parcel(),
+        ShippingAudience::Storefront,
+    )
+    .await
+    .expect("options");
     assert_eq!(offered.len(), 1);
 
     let elsewhere = DeliveryAddress {
@@ -213,9 +222,16 @@ async fn an_address_is_offered_the_options_of_the_zone_it_falls_in() {
         province_code: Some("34".into()),
         ..DeliveryAddress::default()
     };
-    let offered = fulfilment::options_for(&mut tx, &ctx, &elsewhere, None, &parcel())
-        .await
-        .expect("options");
+    let offered = fulfilment::options_for(
+        &mut tx,
+        &ctx,
+        &elsewhere,
+        None,
+        &parcel(),
+        ShippingAudience::Storefront,
+    )
+    .await
+    .expect("options");
     assert!(
         offered.is_empty(),
         "a zone answered for a province it does not cover"
@@ -226,10 +242,167 @@ async fn an_address_is_offered_the_options_of_the_zone_it_falls_in() {
         province_code: Some("06".into()),
         ..DeliveryAddress::default()
     };
-    let offered = fulfilment::options_for(&mut tx, &ctx, &abroad, None, &parcel())
-        .await
-        .expect("options");
+    let offered = fulfilment::options_for(
+        &mut tx,
+        &ctx,
+        &abroad,
+        None,
+        &parcel(),
+        ShippingAudience::Storefront,
+    )
+    .await
+    .expect("options");
     assert!(offered.is_empty());
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+#[tokio::test]
+async fn a_return_only_option_is_hidden_from_the_storefront_and_offered_to_a_return() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let zone = ankara_only(&mut tx, &ctx).await;
+    let return_only = fulfilment::create_shipping_option(
+        &mut tx,
+        &ctx,
+        NewShippingOption {
+            name: "Drop-off return".into(),
+            price_type: PriceKind::Flat,
+            service_zone_id: zone,
+            shipping_profile_id: None,
+            provider_id: None,
+            shipping_option_type_id: None,
+            data: None,
+            is_return: true,
+            enabled_in_store: true,
+        },
+    )
+    .await
+    .expect("a return-only option");
+
+    let here = DeliveryAddress {
+        country_code: "TR".into(),
+        province_code: Some("06".into()),
+        ..DeliveryAddress::default()
+    };
+
+    let storefront = fulfilment::options_for(
+        &mut tx,
+        &ctx,
+        &here,
+        None,
+        &parcel(),
+        ShippingAudience::Storefront,
+    )
+    .await
+    .expect("options");
+    assert!(
+        !storefront.iter().any(|row| row.id == return_only.id),
+        "a return-only option must not reach the storefront"
+    );
+
+    let admin = fulfilment::options_for(
+        &mut tx,
+        &ctx,
+        &here,
+        None,
+        &parcel(),
+        ShippingAudience::Admin,
+    )
+    .await
+    .expect("options");
+    assert!(
+        !admin.iter().any(|row| row.id == return_only.id),
+        "a return-only option is not an order's own delivery either"
+    );
+
+    let returning = fulfilment::options_for(
+        &mut tx,
+        &ctx,
+        &here,
+        None,
+        &parcel(),
+        ShippingAudience::Return,
+    )
+    .await
+    .expect("options");
+    assert!(
+        returning.iter().any(|row| row.id == return_only.id),
+        "a return only lists options a shop marked for returns"
+    );
+    assert!(
+        !returning.iter().any(|row| row.name == "Next day"),
+        "the order's own delivery option is not offered to a return"
+    );
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+#[tokio::test]
+async fn an_admin_only_option_is_hidden_from_the_storefront() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let zone = ankara_only(&mut tx, &ctx).await;
+    let admin_only = fulfilment::create_shipping_option(
+        &mut tx,
+        &ctx,
+        NewShippingOption {
+            name: "Call the depot".into(),
+            price_type: PriceKind::Flat,
+            service_zone_id: zone,
+            shipping_profile_id: None,
+            provider_id: None,
+            shipping_option_type_id: None,
+            data: None,
+            is_return: false,
+            enabled_in_store: false,
+        },
+    )
+    .await
+    .expect("an admin-only option");
+
+    let here = DeliveryAddress {
+        country_code: "TR".into(),
+        province_code: Some("06".into()),
+        ..DeliveryAddress::default()
+    };
+
+    let storefront = fulfilment::options_for(
+        &mut tx,
+        &ctx,
+        &here,
+        None,
+        &parcel(),
+        ShippingAudience::Storefront,
+    )
+    .await
+    .expect("options");
+    assert!(
+        !storefront.iter().any(|row| row.id == admin_only.id),
+        "an admin-only option must not reach the storefront"
+    );
+
+    let admin = fulfilment::options_for(
+        &mut tx,
+        &ctx,
+        &here,
+        None,
+        &parcel(),
+        ShippingAudience::Admin,
+    )
+    .await
+    .expect("options");
+    assert!(
+        admin.iter().any(|row| row.id == admin_only.id),
+        "an admin surface still offers an option a shop reserved for admin or \
+         manual fulfilment"
+    );
 
     tx.rollback().await.expect("to roll back");
     shop.close().await;
@@ -348,9 +521,16 @@ async fn one_shops_shipping_options_are_invisible_to_another() {
         province_code: Some("06".into()),
         ..DeliveryAddress::default()
     };
-    let offered = fulfilment::options_for(&mut theirs, &shop.theirs(), &here, None, &parcel())
-        .await
-        .expect("options");
+    let offered = fulfilment::options_for(
+        &mut theirs,
+        &shop.theirs(),
+        &here,
+        None,
+        &parcel(),
+        ShippingAudience::Storefront,
+    )
+    .await
+    .expect("options");
     assert!(offered.is_empty(), "another shop's options were offered");
 
     theirs.rollback().await.expect("to roll back");
@@ -377,6 +557,8 @@ async fn a_shipping_options_name_is_localised_and_falls_back() {
             provider_id: None,
             shipping_option_type_id: None,
             data: None,
+            is_return: false,
+            enabled_in_store: true,
         },
     )
     .await
@@ -448,6 +630,8 @@ async fn a_shipping_option_translation_cannot_point_at_another_scopes_option() {
             provider_id: None,
             shipping_option_type_id: None,
             data: None,
+            is_return: false,
+            enabled_in_store: true,
         },
     )
     .await
@@ -494,6 +678,8 @@ async fn a_deleted_shipping_option_takes_its_translations_with_it() {
             provider_id: None,
             shipping_option_type_id: None,
             data: None,
+            is_return: false,
+            enabled_in_store: true,
         },
     )
     .await
@@ -549,6 +735,8 @@ async fn a_calculated_option_is_quoted_by_the_carrier_and_a_flat_one_is_not() {
             provider_id: None,
             shipping_option_type_id: None,
             data: None,
+            is_return: false,
+            enabled_in_store: true,
         },
     )
     .await
@@ -561,9 +749,17 @@ async fn a_calculated_option_is_quoted_by_the_carrier_and_a_flat_one_is_not() {
     };
 
     let carrier = Carrier::default();
-    let offered = fulfilment::priced_options_for(&mut tx, &ctx, &here, None, &parcel(), &carrier)
-        .await
-        .expect("options");
+    let offered = fulfilment::priced_options_for(
+        &mut tx,
+        &ctx,
+        &here,
+        None,
+        &parcel(),
+        &carrier,
+        ShippingAudience::Storefront,
+    )
+    .await
+    .expect("options");
     assert_eq!(offered.len(), 2);
 
     let calculated = offered
@@ -795,6 +991,8 @@ async fn a_shipping_option_type_is_attached_and_read_back() {
             provider_id: None,
             shipping_option_type_id: Some(express),
             data: None,
+            is_return: false,
+            enabled_in_store: true,
         },
     )
     .await
@@ -840,6 +1038,7 @@ async fn a_shipping_option_type_is_attached_and_read_back() {
         },
         None,
         &parcel(),
+        ShippingAudience::Storefront,
     )
     .await
     .expect("options");
@@ -880,6 +1079,8 @@ async fn a_disabled_providers_options_stop_being_offered_but_its_shipments_are_u
             provider_id: Some(provider.id),
             shipping_option_type_id: None,
             data: None,
+            is_return: false,
+            enabled_in_store: true,
         },
     )
     .await
@@ -891,9 +1092,16 @@ async fn a_disabled_providers_options_stop_being_offered_but_its_shipments_are_u
         ..DeliveryAddress::default()
     };
 
-    let offered = fulfilment::options_for(&mut tx, &ctx, &here, None, &parcel())
-        .await
-        .expect("options");
+    let offered = fulfilment::options_for(
+        &mut tx,
+        &ctx,
+        &here,
+        None,
+        &parcel(),
+        ShippingAudience::Storefront,
+    )
+    .await
+    .expect("options");
     assert!(offered.iter().any(|row| row.id == carried.id));
 
     let (order, item, location) = an_order(&mut tx, shop.here.0).await;
@@ -920,9 +1128,16 @@ async fn a_disabled_providers_options_stop_being_offered_but_its_shipments_are_u
         .expect("to disable it");
     assert!(!disabled.is_enabled);
 
-    let offered_now = fulfilment::options_for(&mut tx, &ctx, &here, None, &parcel())
-        .await
-        .expect("options");
+    let offered_now = fulfilment::options_for(
+        &mut tx,
+        &ctx,
+        &here,
+        None,
+        &parcel(),
+        ShippingAudience::Storefront,
+    )
+    .await
+    .expect("options");
     assert!(
         !offered_now.iter().any(|row| row.id == carried.id),
         "a dropped carrier's option stops being offered"
@@ -942,9 +1157,16 @@ async fn a_disabled_providers_options_stop_being_offered_but_its_shipments_are_u
         .expect("to resume offering it");
     assert!(reenabled.is_enabled);
 
-    let offered_again = fulfilment::options_for(&mut tx, &ctx, &here, None, &parcel())
-        .await
-        .expect("options");
+    let offered_again = fulfilment::options_for(
+        &mut tx,
+        &ctx,
+        &here,
+        None,
+        &parcel(),
+        ShippingAudience::Storefront,
+    )
+    .await
+    .expect("options");
     assert!(offered_again.iter().any(|row| row.id == carried.id));
 
     tx.rollback().await.expect("to roll back");

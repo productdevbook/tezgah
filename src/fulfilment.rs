@@ -195,6 +195,12 @@ pub struct ShippingOption {
     /// "Express" — rather than anything tezgah itself decides between.
     pub shipping_option_type_id: Option<Uuid>,
     pub data: Option<serde_json::Value>,
+    /// Only for a return shipment picking its own option, never the order's
+    /// original delivery. See [`ShippingAudience`].
+    pub is_return: bool,
+    /// `false` keeps an option usable for admin or manual fulfilment while
+    /// hiding it from the storefront's own listing. See [`ShippingAudience`].
+    pub enabled_in_store: bool,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -207,6 +213,8 @@ pub struct NewShippingOption {
     pub provider_id: Option<Uuid>,
     pub shipping_option_type_id: Option<Uuid>,
     pub data: Option<serde_json::Value>,
+    pub is_return: bool,
+    pub enabled_in_store: bool,
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
@@ -827,7 +835,8 @@ pub async fn zones_for(
 
 const SHIPPING_OPTION_COLUMNS: &str = "id, name, price_type, service_zone_id, \
                                        shipping_profile_id, provider_id, \
-                                       shipping_option_type_id, data, created_at";
+                                       shipping_option_type_id, data, is_return, \
+                                       enabled_in_store, created_at";
 
 pub async fn create_shipping_option(
     tx: &mut Tx<'_>,
@@ -844,8 +853,8 @@ pub async fn create_shipping_option(
     let option = sqlx::query_as::<_, ShippingOption>(&format!(
         "insert into shipping_option
              (id, scope, name, price_type, service_zone_id, shipping_profile_id, provider_id,
-              shipping_option_type_id, data)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+              shipping_option_type_id, data, is_return, enabled_in_store)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          returning {SHIPPING_OPTION_COLUMNS}"
     ))
     .bind(id.as_uuid())
@@ -857,6 +866,8 @@ pub async fn create_shipping_option(
     .bind(new.provider_id)
     .bind(new.shipping_option_type_id)
     .bind(new.data.as_ref())
+    .bind(new.is_return)
+    .bind(new.enabled_in_store)
     .fetch_one(&mut **tx)
     .await?;
 
@@ -886,6 +897,8 @@ pub struct ShippingOptionPatch {
     pub provider_id: Option<Uuid>,
     pub shipping_option_type_id: Option<Uuid>,
     pub data: Option<serde_json::Value>,
+    pub is_return: Option<bool>,
+    pub enabled_in_store: Option<bool>,
 }
 
 pub async fn update_shipping_option(
@@ -911,7 +924,9 @@ pub async fn update_shipping_option(
              shipping_profile_id = coalesce($5::uuid, shipping_profile_id),
              provider_id = coalesce($6::uuid, provider_id),
              shipping_option_type_id = coalesce($7::uuid, shipping_option_type_id),
-             data = coalesce($8::jsonb, data)
+             data = coalesce($8::jsonb, data),
+             is_return = coalesce($9::boolean, is_return),
+             enabled_in_store = coalesce($10::boolean, enabled_in_store)
          where scope = $1 and id = $2
          returning {SHIPPING_OPTION_COLUMNS}"
     ))
@@ -923,6 +938,8 @@ pub async fn update_shipping_option(
     .bind(patch.provider_id)
     .bind(patch.shipping_option_type_id)
     .bind(patch.data.as_ref())
+    .bind(patch.is_return)
+    .bind(patch.enabled_in_store)
     .fetch_optional(&mut **tx)
     .await?
     .ok_or_else(|| Error::not_found("shipping option"))?;
@@ -1162,12 +1179,47 @@ pub async fn localised_shipping_option(
     })
 }
 
+/// Who is asking for a list of shipping options, so an option a shop marked
+/// return-only or admin-only is offered to the right caller and nobody else.
+///
+/// Kept as a stored fact on [`ShippingOption`] rather than a value a caller
+/// passes into the rule-matching context the way `sales_channel_id` or
+/// `item_total` are: whether an option is for returns or for the storefront
+/// is a property of the option itself, decided once when a shop sets it up,
+/// not something that varies checkout to checkout. The general
+/// `shipping_option_rule` mechanism is still there for conditions that do
+/// vary by call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShippingAudience {
+    /// A shopper choosing how their own order gets to them: never a
+    /// return-only option, and never one a shop reserved for admin or manual
+    /// use.
+    Storefront,
+    /// An operator choosing what a return ships back on: only an option
+    /// marked for returns.
+    Return,
+    /// Any other admin use, such as choosing an order's own delivery: not a
+    /// return option, but an admin-only one is fine here.
+    Admin,
+}
+
+impl ShippingAudience {
+    fn admits(self, option: &ShippingOption) -> bool {
+        match self {
+            ShippingAudience::Storefront => !option.is_return && option.enabled_in_store,
+            ShippingAudience::Return => option.is_return,
+            ShippingAudience::Admin => !option.is_return,
+        }
+    }
+}
+
 pub async fn options_for(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
     address: &DeliveryAddress,
     sales_channel_id: Option<SalesChannelId>,
     items: &[Shippable],
+    audience: ShippingAudience,
 ) -> Result<Vec<ShippingOption>> {
     let _: Permit = ctx.permit(Action::View, config(None))?;
 
@@ -1186,7 +1238,8 @@ pub async fn options_for(
     // this, so the join is left rather than inner.
     let options = sqlx::query_as::<_, ShippingOption>(
         "select so.id, so.name, so.price_type, so.service_zone_id, so.shipping_profile_id,
-                so.provider_id, so.shipping_option_type_id, so.data, so.created_at
+                so.provider_id, so.shipping_option_type_id, so.data, so.is_return,
+                so.enabled_in_store, so.created_at
          from shipping_option so
          left join fulfillment_provider fp
            on fp.scope = so.scope and fp.id = so.provider_id
@@ -1226,6 +1279,7 @@ pub async fn options_for(
 
     Ok(options
         .into_iter()
+        .filter(|option| audience.admits(option))
         .filter(|option| match option.shipping_profile_id {
             Some(profile) => profiles.contains(&profile),
             None => true,
@@ -1260,8 +1314,9 @@ pub async fn priced_options_for(
     sales_channel_id: Option<SalesChannelId>,
     items: &[Shippable],
     provider: &dyn FulfillmentProvider,
+    audience: ShippingAudience,
 ) -> Result<Vec<PricedOption>> {
-    let options = options_for(tx, ctx, address, sales_channel_id, items).await?;
+    let options = options_for(tx, ctx, address, sales_channel_id, items, audience).await?;
 
     let mut priced = Vec::with_capacity(options.len());
     for option in options {

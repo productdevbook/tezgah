@@ -6,7 +6,7 @@
 
 mod common;
 
-use common::{Doorman, Shop};
+use common::{Doorman, NoSettle, Shop};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use tezgah::id::{CartId, PromotionId};
@@ -479,6 +479,91 @@ async fn releasing_a_claim_gives_the_money_back_to_the_campaign() {
     promotion::claim(&mut tx, &ctx, id, None, Money::new(dec!(20.00), lira()))
         .await
         .expect("the budget to be spendable again");
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+#[tokio::test]
+async fn claiming_a_budget_needs_settle_not_write() {
+    let shop = Shop::open().await;
+    let no_settle = NoSettle;
+    let ctx = shop.ctx();
+    let restricted = shop.ctx_as(Actor::Staff { id: Uuid::now_v7() }, &no_settle);
+    let mut tx = shop.begin().await;
+
+    seed_currency(&mut tx, shop.here.0).await;
+    let campaign = a_campaign_spending(&mut tx, &ctx, "WRITEONLY", dec!(20.00)).await;
+    let id = on_campaign(&mut tx, &ctx, "WRITEONLY", campaign).await;
+
+    let denied = promotion::claim(
+        &mut tx,
+        &restricted,
+        id,
+        None,
+        Money::new(dec!(5.00), lira()),
+    )
+    .await;
+    assert!(
+        denied
+            .expect_err("claiming spends budget, which needs Settle")
+            .is_denied()
+    );
+    assert_eq!(spent(&mut tx, shop.here.0, campaign).await, Decimal::ZERO);
+
+    promotion::claim(&mut tx, &ctx, id, None, Money::new(dec!(5.00), lira()))
+        .await
+        .expect("a host that grants Settle can still claim");
+
+    let denied = promotion::release(
+        &mut tx,
+        &restricted,
+        id,
+        None,
+        Money::new(dec!(5.00), lira()),
+    )
+    .await;
+    assert!(
+        denied
+            .expect_err("releasing gives budget back, which needs Settle")
+            .is_denied()
+    );
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+#[tokio::test]
+async fn claiming_and_releasing_a_promotion_write_an_audit_row() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    seed_currency(&mut tx, shop.here.0).await;
+    let campaign = a_campaign_spending(&mut tx, &ctx, "AUDITED", dec!(20.00)).await;
+    let id = on_campaign(&mut tx, &ctx, "AUDITED", campaign).await;
+
+    let before = shop.host.audits.lock().len();
+
+    promotion::claim(&mut tx, &ctx, id, None, Money::new(dec!(5.00), lira()))
+        .await
+        .expect("a claim");
+    let after_claim = shop.host.audits.lock().len();
+    assert!(
+        after_claim > before,
+        "claiming a promotion's budget should write an audit row"
+    );
+
+    promotion::release(&mut tx, &ctx, id, None, Money::new(dec!(5.00), lira()))
+        .await
+        .expect("a release");
+    let after_release = shop.host.audits.lock().len();
+    assert!(
+        after_release > after_claim,
+        "releasing a claim should write its own audit row"
+    );
+
+    assert!(shop.host.audited("promotion"));
 
     tx.rollback().await.expect("to roll back");
     shop.close().await;

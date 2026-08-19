@@ -747,6 +747,8 @@ async fn every_owned_store_route_refuses_the_other_shoppers_resource() -> tezgah
             provider_id: None,
             shipping_option_type_id: None,
             data: None,
+            is_return: false,
+            enabled_in_store: true,
         },
     )
     .await?;
