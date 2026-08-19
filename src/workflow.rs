@@ -1347,7 +1347,14 @@ async fn stall(pool: &PgPool, ctx: &Ctx<'_>, held: Claim<'_>, bump: bool) -> Res
     // TEMPORARY #158 debugging: CI cannot be reproduced locally, and the
     // symptom (a called row's own driver losing its own claim) does not
     // match anything in the code as read. Remove before merging.
-    let before: Option<(String, i32, Option<String>, Option<DateTime<Utc>>)> = sqlx::query_as(
+    #[derive(sqlx::FromRow, Debug)]
+    struct Before {
+        state: String,
+        attempts: i32,
+        locked_by: Option<String>,
+        lease_until: Option<DateTime<Utc>>,
+    }
+    let before: Option<Before> = sqlx::query_as(
         "select state, attempts, locked_by, lease_until from workflow_step
          where run_id = $1 and ordering = $2",
     )
