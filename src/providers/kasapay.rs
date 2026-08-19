@@ -175,16 +175,24 @@ pub async fn lookup(
 /// declined one.
 ///
 /// The wildcard is required by `Status`'s own `#[non_exhaustive]`, not by any
-/// variant left unhandled above; `RequiresMore` is the conservative unknown
-/// default, same as before this fix.
-fn map_status(status: kasapay_core::Status) -> AuthorizationStatus {
+/// variant left unhandled above. It used to default to `RequiresMore`, which
+/// off-session is a permanent decline (tezgah#169) — a seventh status
+/// kasapay adds tomorrow would compile, land in this arm, and start
+/// dunning contracts that may be fine, with nothing left to notice since
+/// #168 made `AuthorizationStatus` itself `#[non_exhaustive]`. An unmapped
+/// status is this mapping unfinished, not a business outcome, so it errors
+/// the same way an unreachable arm on tezgah's own enums already does
+/// elsewhere in this crate (`Error::bug`), rather than guessing at one.
+fn map_status(status: kasapay_core::Status) -> Result<AuthorizationStatus> {
     use kasapay_core::Status;
     match status {
-        Status::Authorized | Status::Captured => AuthorizationStatus::Authorized,
-        Status::RequiresAction => AuthorizationStatus::RequiresMore,
-        Status::Pending => AuthorizationStatus::Pending,
-        Status::Failed | Status::Canceled => AuthorizationStatus::Error,
-        _ => AuthorizationStatus::RequiresMore,
+        Status::Authorized | Status::Captured => Ok(AuthorizationStatus::Authorized),
+        Status::RequiresAction => Ok(AuthorizationStatus::RequiresMore),
+        Status::Pending => Ok(AuthorizationStatus::Pending),
+        Status::Failed | Status::Canceled => Ok(AuthorizationStatus::Error),
+        _ => Err(Error::bug(
+            "kasapay sent a status this mapping does not know",
+        )),
     }
 }
 
@@ -194,7 +202,7 @@ fn to_authorization(charge: kasapay_core::Charge) -> Result<Authorization> {
         _ => None,
     };
     Ok(Authorization {
-        status: map_status(charge.status),
+        status: map_status(charge.status)?,
         amount: Some(from_kasapay_money(charge.amount)?),
         data: charge.raw.json().unwrap_or_else(|| serde_json::json!({})),
         redirect,
@@ -482,9 +490,12 @@ mod tests {
     fn a_provider_still_working_is_pending_not_requires_more() {
         use kasapay_core::Status;
 
-        assert_eq!(map_status(Status::Pending), AuthorizationStatus::Pending);
         assert_eq!(
-            map_status(Status::RequiresAction),
+            map_status(Status::Pending).expect("known variant"),
+            AuthorizationStatus::Pending
+        );
+        assert_eq!(
+            map_status(Status::RequiresAction).expect("known variant"),
             AuthorizationStatus::RequiresMore
         );
     }
@@ -496,8 +507,14 @@ mod tests {
         // Both are a session this attempt will never get money out of;
         // `Authorized::Failed`'s "closed, a new one is the retry" is true of
         // either one.
-        assert_eq!(map_status(Status::Canceled), AuthorizationStatus::Error);
-        assert_eq!(map_status(Status::Failed), AuthorizationStatus::Error);
+        assert_eq!(
+            map_status(Status::Canceled).expect("known variant"),
+            AuthorizationStatus::Error
+        );
+        assert_eq!(
+            map_status(Status::Failed).expect("known variant"),
+            AuthorizationStatus::Error
+        );
     }
 
     #[test]
@@ -505,19 +522,36 @@ mod tests {
         use kasapay_core::Status;
 
         assert_eq!(
-            map_status(Status::Authorized),
+            map_status(Status::Authorized).expect("known variant"),
             AuthorizationStatus::Authorized
         );
         assert_eq!(
-            map_status(Status::Captured),
+            map_status(Status::Captured).expect("known variant"),
             AuthorizationStatus::Authorized
         );
         assert_eq!(
-            map_status(Status::RequiresAction),
+            map_status(Status::RequiresAction).expect("known variant"),
             AuthorizationStatus::RequiresMore
         );
-        assert_eq!(map_status(Status::Pending), AuthorizationStatus::Pending);
-        assert_eq!(map_status(Status::Failed), AuthorizationStatus::Error);
-        assert_eq!(map_status(Status::Canceled), AuthorizationStatus::Error);
+        assert_eq!(
+            map_status(Status::Pending).expect("known variant"),
+            AuthorizationStatus::Pending
+        );
+        assert_eq!(
+            map_status(Status::Failed).expect("known variant"),
+            AuthorizationStatus::Error
+        );
+        assert_eq!(
+            map_status(Status::Canceled).expect("known variant"),
+            AuthorizationStatus::Error
+        );
     }
+
+    // tezgah#169: the wildcard arm that used to default an unrecognised
+    // `Status` to `RequiresMore` now errors instead. Not tested by
+    // constructing one, on purpose — `Status` is `#[non_exhaustive]` and its
+    // six variants above are exactly the ones this match already names, so
+    // nothing outside kasapay-core can build a seventh to hand it. What is
+    // tested is everything the wildcard is *not*: the six known variants
+    // above still map exactly as #168 decided.
 }
