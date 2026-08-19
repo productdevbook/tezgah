@@ -459,6 +459,16 @@ static TOLERATED: &[(Method, &str, &str)] = &[
         "/store/downloads",
         "ownership is the token's to prove, not an id in the path or body",
     ),
+    // Same gap as `/store/carts/{id}/complete` above: needs a live
+    // `RecurringProvider` to construct `subscription::Renewals`, which
+    // `subscription::repoint_card` takes so a `past_due` contract can retry
+    // through it. `owned` — the same check `pause`/`resume`/`skip`/`cancel`
+    // above already prove — runs before `repoint_card` is ever reached.
+    (
+        Method::Post,
+        "/store/subscriptions/{id}/card",
+        "needs a RecurringProvider fixture this test does not build",
+    ),
 ];
 
 fn tolerated(method: Method, path: &str) -> bool {

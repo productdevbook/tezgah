@@ -1216,6 +1216,119 @@ pub async fn skip_next(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: SubscriptionId) -> Re
     Ok(changed)
 }
 
+/// Points a contract at a different saved card — the fix for a dead one
+/// dunning cannot ask for on its own.
+///
+/// The new holder has to be this contract's own customer's: swapping in
+/// somebody else's saved reference would mean charging their card for this
+/// customer's order, and [`payment::account_holder_by_id`] already refuses a
+/// scrubbed or deleted one by finding nothing.
+///
+/// **A `past_due` contract retries on the spot.** The instrument that was
+/// missing is now here, and a customer who just typed a new card expects it
+/// tried, not queued behind whatever [`decline`] backed off to. This is not a
+/// second retry path — it is [`Renewals::renew`], the identical call dunning's
+/// own queued job would have made, run early instead of waited for. Nothing
+/// about `subscription:{id}:{cycle}:{attempts}` changes: a late-arriving
+/// dunning job for the same attempt still resolves to the run this already
+/// made.
+pub async fn repoint_card(
+    pool: &PgPool,
+    ctx: &Ctx<'_>,
+    id: SubscriptionId,
+    account_holder_id: AccountHolderId,
+    payment_method_reference: String,
+    how: &Renewals,
+) -> Result<Subscription> {
+    if payment_method_reference.trim().is_empty() {
+        return Err(Error::invalid(
+            "a contract needs an instrument to charge, not an empty one",
+        ));
+    }
+
+    let mut tx = scoped(pool, ctx).await?;
+
+    let contract = get(&mut tx, ctx, id).await?;
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Subscription {
+            id: Some(id.as_uuid()),
+            customer: Some(contract.customer_id.as_uuid()),
+        },
+    )?;
+
+    if !contract.is_live() {
+        return Err(Error::conflict("that contract is not one that renews"));
+    }
+
+    let holder = payment::account_holder_by_id(&mut tx, ctx, account_holder_id)
+        .await?
+        .ok_or_else(|| Error::not_found("account holder"))?;
+    if holder.customer_id != Some(contract.customer_id) {
+        return Err(Error::conflict(
+            "that account holder belongs to a different customer",
+        ));
+    }
+
+    let changed = sqlx::query_as::<_, Subscription>(&format!(
+        "update subscription
+         set account_holder_id = $3, payment_method_reference = $4
+         where scope = $1 and id = $2
+         returning {SUBSCRIPTION_COLUMNS}"
+    ))
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .bind(account_holder_id.as_uuid())
+    .bind(&payment_method_reference)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    record(
+        &mut tx,
+        ctx,
+        id,
+        "card_repointed",
+        serde_json::json!({ "account_holder_id": account_holder_id }),
+    )
+    .await?;
+
+    ctx.audit(
+        &mut tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "subscription",
+            entity_id: id.as_uuid(),
+            summary: serde_json::json!({ "account_holder_id": account_holder_id }),
+        },
+    )
+    .await?;
+
+    ctx.emit(
+        &mut tx,
+        Event {
+            name: "subscription.card_repointed",
+            entity_id: id.as_uuid(),
+            payload: serde_json::json!({ "account_holder_id": account_holder_id }),
+        },
+    )
+    .await?;
+
+    let was_past_due = changed.status == "past_due";
+    tx.commit().await?;
+
+    if !was_past_due {
+        return Ok(changed);
+    }
+
+    how.renew(pool, ctx, id).await?;
+
+    let mut tx = scoped(pool, ctx).await?;
+    let refreshed = get(&mut tx, ctx, id).await?;
+    tx.commit().await?;
+    Ok(refreshed)
+}
+
 /// Swaps what a contract is for, writing a new version of its lines rather
 /// than editing the version it had — the pattern stage one set for a price
 /// that moves mid-contract.

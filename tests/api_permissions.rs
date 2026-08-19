@@ -207,6 +207,19 @@ static TOLERATED: &[(Method, &str, &str)] = &[
         "/admin/subscriptions/{id}/renew",
         "needs a RecurringProvider fixture this test does not build",
     ),
+    // Same gap as `renew` above: `subscription::repoint_card` takes a
+    // `&Renewals` too, since a `past_due` contract retries through the
+    // identical call.
+    (
+        Method::Post,
+        "/admin/subscriptions/{id}/card",
+        "needs a RecurringProvider fixture this test does not build",
+    ),
+    (
+        Method::Post,
+        "/store/subscriptions/{id}/card",
+        "needs a RecurringProvider fixture this test does not build",
+    ),
     // Needs a live `PaymentProvider` to construct `checkout::Checkout`; same
     // shape of gap as `renew` above.
     (

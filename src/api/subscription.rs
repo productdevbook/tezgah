@@ -15,7 +15,8 @@ use sqlx::PgPool;
 
 use crate::error::Result;
 use crate::id::{
-    CustomerId, OrderId, SellingPlanGroupId, SellingPlanId, SubscriptionId, VariantId,
+    AccountHolderId, CustomerId, OrderId, SellingPlanGroupId, SellingPlanId, SubscriptionId,
+    VariantId,
 };
 use crate::money::{Currency, Money};
 use crate::page::{Cursor, Page, Paging};
@@ -536,6 +537,41 @@ pub async fn skip_subscription(
     ))
 }
 
+/// What replacing a contract's card takes on either surface: the new
+/// reference and the instrument under it. `subscription::repoint_card` checks
+/// the reference is this contract's own customer's.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RepointCard {
+    pub account_holder_id: AccountHolderId,
+    pub payment_method_reference: String,
+}
+
+/// Points a contract at a different saved card, by hand — support fixing what
+/// a customer's own retry could not, or could not wait for.
+pub async fn repoint_subscription_card(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: SubscriptionId,
+    body: RepointCard,
+    how: &subscription::Renewals,
+    pool: &PgPool,
+) -> Result<SubscriptionView> {
+    subscription::get(tx, ctx, id).await?;
+
+    Ok(SubscriptionView::from(
+        subscription::repoint_card(
+            pool,
+            ctx,
+            id,
+            body.account_holder_id,
+            body.payment_method_reference,
+            how,
+        )
+        .await?,
+    ))
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SwapLine {
@@ -695,6 +731,34 @@ pub async fn skip_my_subscription(
     ))
 }
 
+/// A shopper pointing their own contract at a card they just saved through
+/// [`save_my_account_holder`](super::store::save_my_account_holder) —
+/// tokenised with the provider directly, unchanged by any of this. Own
+/// subscription and own account holder are both asked about:
+/// [`owned`] here, [`subscription::repoint_card`] for the reference itself.
+pub async fn repoint_my_subscription_card(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: SubscriptionId,
+    body: RepointCard,
+    how: &subscription::Renewals,
+    pool: &PgPool,
+) -> Result<SubscriptionView> {
+    owned(tx, ctx, id).await?;
+
+    Ok(SubscriptionView::from(
+        subscription::repoint_card(
+            pool,
+            ctx,
+            id,
+            body.account_holder_id,
+            body.payment_method_reference,
+            how,
+        )
+        .await?,
+    ))
+}
+
 pub(super) static ROUTES: &[Route] = &[
     Route {
         surface: Surface::Admin,
@@ -834,6 +898,14 @@ pub(super) static ROUTES: &[Route] = &[
     },
     Route {
         surface: Surface::Admin,
+        method: Method::Post,
+        path: "/admin/subscriptions/{id}/card",
+        action: Action::Write,
+        domain: "subscription",
+        summary: "Point a contract at a different saved card",
+    },
+    Route {
+        surface: Surface::Admin,
         method: Method::Get,
         path: "/admin/subscriptions/due-deliveries",
         action: Action::View,
@@ -887,5 +959,13 @@ pub(super) static ROUTES: &[Route] = &[
         action: Action::Write,
         domain: "subscription",
         summary: "Pass over my next period without billing it",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Post,
+        path: "/store/subscriptions/{id}/card",
+        action: Action::Write,
+        domain: "subscription",
+        summary: "Point mine at a different saved card",
     },
 ];

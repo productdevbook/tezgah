@@ -1298,6 +1298,194 @@ async fn erasing_a_customer_with_a_live_contract_declines_its_next_renewal() {
 }
 
 // ---------------------------------------------------------------------------
+// #197: pointing a contract at a different card
+// ---------------------------------------------------------------------------
+
+/// The point of dunning being able to ask at all: a customer types a new
+/// card, and the retry it exists for runs on the spot rather than waiting for
+/// the queued job's own schedule.
+#[tokio::test]
+async fn repointing_a_past_due_contract_to_a_working_card_retries_it_immediately() {
+    let shop = Shop::open().await;
+    let seeded = a_contract(&shop, dec!(10), None).await;
+    let ctx = shop.ctx();
+
+    let refusing = Renewals::new(Arc::new(Refusing), seeded.location_id);
+    refusing
+        .renew(&shop.pool, &ctx, seeded.id)
+        .await
+        .expect("the first attempt to run and be refused");
+    assert_eq!(read(&shop, seeded.id).await.status, "past_due");
+
+    let mut tx = shop.begin().await;
+    let fresh = payment::save_account_holder(
+        &mut tx,
+        &ctx,
+        payment::NewAccountHolder {
+            provider_code: "bank".into(),
+            customer_id: Some(seeded.customer_id),
+            external_id: format!("cus_{}", Uuid::now_v7().simple()),
+            email: None,
+            data: serde_json::json!({}),
+        },
+    )
+    .await
+    .expect("a fresh account holder");
+    tx.commit().await.expect("to commit");
+
+    let standing = Renewals::new(Arc::new(Standing), seeded.location_id);
+    let repointed = subscription::repoint_card(
+        &shop.pool,
+        &ctx,
+        seeded.id,
+        fresh.id,
+        "pm_a_new_card".into(),
+        &standing,
+    )
+    .await
+    .expect("the card to be repointed and the retry to run");
+
+    assert_eq!(
+        repointed.status, "active",
+        "a working card, repointed onto a past_due contract, did not come back"
+    );
+    assert_eq!(repointed.dunning_attempts, 0);
+    assert_eq!(repointed.account_holder_id, Some(fresh.id));
+    assert_eq!(
+        repointed.payment_method_reference.as_deref(),
+        Some("pm_a_new_card")
+    );
+    assert_eq!(billed_cycles(&shop, seeded.id).await, vec![1]);
+
+    shop.close().await;
+}
+
+/// A contract that is not waiting on anything is not retried just because its
+/// card changed — that would bill a period nobody is due yet. `Refusing`
+/// makes the point: if the repoint reached for a charge here, the contract
+/// would end up `past_due` rather than staying `active`.
+#[tokio::test]
+async fn repointing_a_contract_that_is_not_past_due_does_not_charge_it() {
+    let shop = Shop::open().await;
+    let seeded = a_contract(&shop, dec!(10), None).await;
+    let ctx = shop.ctx();
+
+    let mut tx = shop.begin().await;
+    let fresh = payment::save_account_holder(
+        &mut tx,
+        &ctx,
+        payment::NewAccountHolder {
+            provider_code: "bank".into(),
+            customer_id: Some(seeded.customer_id),
+            external_id: format!("cus_{}", Uuid::now_v7().simple()),
+            email: None,
+            data: serde_json::json!({}),
+        },
+    )
+    .await
+    .expect("a fresh account holder");
+    tx.commit().await.expect("to commit");
+
+    let refusing = Renewals::new(Arc::new(Refusing), seeded.location_id);
+    let repointed = subscription::repoint_card(
+        &shop.pool,
+        &ctx,
+        seeded.id,
+        fresh.id,
+        "pm_a_new_card".into(),
+        &refusing,
+    )
+    .await
+    .expect("the card to be repointed");
+
+    assert_eq!(
+        repointed.status, "active",
+        "a contract with nothing owed yet was billed for changing its card"
+    );
+    assert_eq!(orders(&shop).await, 0);
+
+    shop.close().await;
+}
+
+/// The reference has to be this contract's own customer's — never
+/// another customer's saved card, whoever is asking.
+#[tokio::test]
+async fn repointing_to_another_customers_holder_is_refused() {
+    let shop = Shop::open().await;
+    let mine = a_contract(&shop, dec!(10), None).await;
+    let theirs = a_contract(&shop, dec!(10), None).await;
+    let ctx = shop.ctx();
+
+    let standing = Renewals::new(Arc::new(Standing), mine.location_id);
+    let refused = subscription::repoint_card(
+        &shop.pool,
+        &ctx,
+        mine.id,
+        theirs.holder_id,
+        "pm_someone_elses".into(),
+        &standing,
+    )
+    .await
+    .expect_err("a contract was pointed at a card that is not its customer's");
+
+    assert!(refused.is_conflict());
+    assert_eq!(
+        read(&shop, mine.id).await.account_holder_id,
+        Some(mine.holder_id),
+        "the refused call still moved the reference"
+    );
+
+    shop.close().await;
+}
+
+/// A holder scrubbed by GDPR erasure — or removed once nothing live named it
+/// — is gone as far as a new contract is concerned: `account_holder_by_id`
+/// finds nothing, and repointing onto a tombstone answers `not_found` rather
+/// than resurrecting one.
+#[tokio::test]
+async fn repointing_to_a_scrubbed_holder_is_refused() {
+    let shop = Shop::open().await;
+    let seeded = a_contract(&shop, dec!(10), None).await;
+    let ctx = shop.ctx();
+
+    let mut tx = shop.begin().await;
+    let spare = payment::save_account_holder(
+        &mut tx,
+        &ctx,
+        payment::NewAccountHolder {
+            provider_code: "bank".into(),
+            customer_id: Some(seeded.customer_id),
+            external_id: format!("cus_{}", Uuid::now_v7().simple()),
+            email: None,
+            data: serde_json::json!({}),
+        },
+    )
+    .await
+    .expect("a spare account holder");
+    // Not named by the live contract, so nothing stops it being removed.
+    payment::delete_account_holder(&mut tx, &ctx, spare.id)
+        .await
+        .expect("the spare to be deletable");
+    tx.commit().await.expect("to commit");
+
+    let standing = Renewals::new(Arc::new(Standing), seeded.location_id);
+    let refused = subscription::repoint_card(
+        &shop.pool,
+        &ctx,
+        seeded.id,
+        spare.id,
+        "pm_a_ghost".into(),
+        &standing,
+    )
+    .await
+    .expect_err("a contract was pointed at a scrubbed holder");
+
+    assert!(refused.is_not_found());
+
+    shop.close().await;
+}
+
+// ---------------------------------------------------------------------------
 // Who is asking
 // ---------------------------------------------------------------------------
 
