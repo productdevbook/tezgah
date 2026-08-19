@@ -3145,7 +3145,7 @@ pub async fn variant_images(
         return Ok(by_variant);
     }
 
-    let wanted: Vec<Uuid> = variant_ids.iter().map(VariantId::as_uuid).collect();
+    let wanted: Vec<Uuid> = variant_ids.iter().map(|id| id.as_uuid()).collect();
     let rows: Vec<VariantImageRow> = sqlx::query_as(
         "select l.variant_id, i.id, i.product_id, i.url, i.alt_text, i.rank, i.created_at
          from product_variant_image l
