@@ -208,13 +208,15 @@ writes an order, and the provider is not in your database.
 - [x] store API: catalogue, cart, checkout, orders, customer, returns
 - [x] admin API: everything else
 - [ ] OpenAPI generated from the code, snapshotted, client types generated —
-      generated and snapshotted (`tests/openapi.rs`). Client-type generation
-      is now verified, by doing it, and does not work: the document declares
-      483 operations and **zero schemas** — no request bodies, no response
-      bodies, no `components/schemas` — so a generated client types every
-      payload as `unknown`. [`client/`](client) keeps the generated paths for
-      what they are worth and transcribes the payloads from `src/api/*.rs` by
-      hand. productdevbook/tezgah#202.
+      generated and snapshotted (`tests/openapi.rs`). `src/api/openapi.rs` now
+      derives request and response schemas from the same `Serialize`/
+      `Deserialize` Rust types the handlers already take and return
+      (`schemars`), keeping `Page<T>` to one shared schema regardless of `T`
+      rather than one copy per list. Only the payout domain's 6 operations
+      carry a schema so far — the mechanism, proved on a whole domain, request
+      and response bodies both. The other operations still answer `200` with
+      no body schema, and [`client/`](client) still transcribes the rest of
+      the payloads from `src/api/*.rs` by hand. productdevbook/tezgah#202.
 - [x] every route declares its permission, and a matrix test proves it —
       `tests/api_permissions.rs` calls 355 of the 446 routes in `routes()`
       against a host that denies everything and asserts `denied`; 91 are

@@ -6250,7 +6250,79 @@ export interface paths {
 }
 export type webhooks = Record<string, never>;
 export interface components {
-    schemas: never;
+    schemas: {
+        BalanceView: {
+            amount: string;
+            currency_code: string;
+        };
+        /**
+         * Format: uuid
+         * @description Identifies one category.
+         */
+        CategoryId: string;
+        /**
+         * Format: uuid
+         * @description Identifies one commission rule.
+         */
+        CommissionRuleId: string;
+        CommissionRuleView: {
+            category_id: components["schemas"]["CategoryId"] | null;
+            currency_code: string | null;
+            id: components["schemas"]["CommissionRuleId"];
+            kind: string;
+            value: string;
+        };
+        CreatePayout: {
+            currency_code: string;
+            metadata?: unknown;
+            reference: string;
+            /** Format: uuid */
+            reference_id: string;
+        };
+        /**
+         * Format: uuid
+         * @description Identifies one order.
+         */
+        OrderId: string;
+        Page: {
+            items: unknown[];
+            next?: string | null;
+        };
+        /**
+         * Format: uuid
+         * @description Identifies one payout.
+         */
+        PayoutId: string;
+        /**
+         * Format: uuid
+         * @description Identifies one payout line.
+         */
+        PayoutLineId: string;
+        PayoutLineView: {
+            amount: string;
+            currency_code: string;
+            id: components["schemas"]["PayoutLineId"];
+            order_id: components["schemas"]["OrderId"] | null;
+            payout_id: components["schemas"]["PayoutId"] | null;
+            reference: string;
+            /** Format: uuid */
+            reference_id: string | null;
+        };
+        PayoutView: {
+            amount: string;
+            currency_code: string;
+            id: components["schemas"]["PayoutId"];
+            reference: string;
+            /** Format: uuid */
+            reference_id: string;
+        };
+        SetCommissionRule: {
+            category_id?: components["schemas"]["CategoryId"] | null;
+            currency_code?: string | null;
+            kind: string;
+            value: string | number;
+        };
+    };
     responses: never;
     parameters: never;
     requestBodies: never;
@@ -7532,7 +7604,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["CommissionRuleView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -7564,14 +7640,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetCommissionRule"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["CommissionRuleView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -13072,7 +13154,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["PayoutLineView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -14048,7 +14134,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["BalanceView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -14087,7 +14175,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["PayoutView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -14119,14 +14211,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePayout"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PayoutView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {

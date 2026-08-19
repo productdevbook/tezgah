@@ -26,7 +26,7 @@ fn paging(after: Option<&str>, limit: Option<u32>) -> Result<Paging> {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct CommissionRuleView {
     pub id: CommissionRuleId,
     pub category_id: Option<CategoryId>,
@@ -47,7 +47,7 @@ impl From<payout::CommissionRule> for CommissionRuleView {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SetCommissionRule {
     pub category_id: Option<CategoryId>,
@@ -105,7 +105,7 @@ pub async fn remove_commission_rule(
     payout::remove_commission_rule(tx, ctx, id).await
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct PayoutLineView {
     pub id: PayoutLineId,
     pub order_id: Option<OrderId>,
@@ -149,7 +149,7 @@ pub async fn order_payout_lines(
     })
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct PayoutView {
     pub id: PayoutId,
     pub amount: rust_decimal::Decimal,
@@ -178,7 +178,7 @@ pub async fn payouts(tx: &mut Tx<'_>, ctx: &Ctx<'_>, query: ListQuery) -> Result
     })
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreatePayout {
     pub currency_code: String,
@@ -207,7 +207,7 @@ pub async fn create_payout(
     .into())
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct BalanceView {
     pub amount: rust_decimal::Decimal,
     pub currency_code: String,

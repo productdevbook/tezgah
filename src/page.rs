@@ -134,6 +134,32 @@ impl<T> IntoIterator for Page<T> {
     }
 }
 
+/// Written by hand rather than derived: a derive names the schema after `T`,
+/// which would give every list its own `Page_of_X` and the document 67 copies
+/// of one envelope. This one names itself `Page` regardless of `T` and says
+/// nothing about what `items` holds — `src/api/openapi.rs` overlays the real
+/// item schema per operation with `allOf`.
+impl<T> schemars::JsonSchema for Page<T> {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "Page".into()
+    }
+
+    fn schema_id() -> std::borrow::Cow<'static, str> {
+        "tezgah::page::Page".into()
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "items": { "type": "array", "items": true },
+                "next": { "type": ["string", "null"] },
+            },
+            "required": ["items"],
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

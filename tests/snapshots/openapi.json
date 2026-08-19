@@ -1,5 +1,245 @@
 {
   "components": {
+    "schemas": {
+      "BalanceView": {
+        "properties": {
+          "amount": {
+            "pattern": "^-?\\d+(\\.\\d+)?$",
+            "type": "string"
+          },
+          "currency_code": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount",
+          "currency_code"
+        ],
+        "type": "object"
+      },
+      "CategoryId": {
+        "description": "Identifies one category.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "CommissionRuleId": {
+        "description": "Identifies one commission rule.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "CommissionRuleView": {
+        "properties": {
+          "category_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CategoryId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "currency_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/CommissionRuleId"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "value": {
+            "pattern": "^-?\\d+(\\.\\d+)?$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "category_id",
+          "kind",
+          "value",
+          "currency_code"
+        ],
+        "type": "object"
+      },
+      "CreatePayout": {
+        "additionalProperties": false,
+        "properties": {
+          "currency_code": {
+            "type": "string"
+          },
+          "metadata": true,
+          "reference": {
+            "type": "string"
+          },
+          "reference_id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "currency_code",
+          "reference",
+          "reference_id"
+        ],
+        "type": "object"
+      },
+      "OrderId": {
+        "description": "Identifies one order.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "Page": {
+        "properties": {
+          "items": {
+            "items": true,
+            "type": "array"
+          },
+          "next": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "PayoutId": {
+        "description": "Identifies one payout.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "PayoutLineId": {
+        "description": "Identifies one payout line.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "PayoutLineView": {
+        "properties": {
+          "amount": {
+            "pattern": "^-?\\d+(\\.\\d+)?$",
+            "type": "string"
+          },
+          "currency_code": {
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/PayoutLineId"
+          },
+          "order_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrderId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "payout_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PayoutId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reference": {
+            "type": "string"
+          },
+          "reference_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "order_id",
+          "payout_id",
+          "amount",
+          "currency_code",
+          "reference",
+          "reference_id"
+        ],
+        "type": "object"
+      },
+      "PayoutView": {
+        "properties": {
+          "amount": {
+            "pattern": "^-?\\d+(\\.\\d+)?$",
+            "type": "string"
+          },
+          "currency_code": {
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/PayoutId"
+          },
+          "reference": {
+            "type": "string"
+          },
+          "reference_id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "amount",
+          "currency_code",
+          "reference",
+          "reference_id"
+        ],
+        "type": "object"
+      },
+      "SetCommissionRule": {
+        "additionalProperties": false,
+        "properties": {
+          "category_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CategoryId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "currency_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "value": {
+            "pattern": "^-?\\d+(\\.\\d+)?([eE]\\d+)?$",
+            "type": [
+              "string",
+              "number"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "value"
+        ],
+        "type": "object"
+      }
+    },
     "securitySchemes": {
       "adminBearer": {
         "description": "A back office's token. tezgah does not issue it; the host's authorizer reads it.",
@@ -1186,6 +1426,27 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/CommissionRuleView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -1212,8 +1473,25 @@
       "post": {
         "operationId": "postAdminCommissionRules",
         "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetCommissionRule"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommissionRuleView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -6323,6 +6601,27 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/PayoutLineView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -7217,6 +7516,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BalanceView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -7247,6 +7553,27 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/PayoutView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -7273,8 +7600,25 @@
       "post": {
         "operationId": "postAdminPayouts",
         "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePayout"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayoutView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {

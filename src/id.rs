@@ -28,6 +28,7 @@ macro_rules! ids {
         #[doc = concat!("Identifies one ", $label, ".")]
         #[derive(
             Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+            schemars::JsonSchema,
         )]
         #[serde(transparent)]
         pub struct $name(Uuid);
