@@ -68,8 +68,8 @@ use crate::order::{
 };
 use crate::payment::{
     self, Authorization, AuthorizationStatus, AuthorizeRequest, Authorized, Installment,
-    LookupProvider, NewCollection, NewSession, PaymentProvider, SessionRequest, SessionResponse,
-    SessionStatus, SurchargeBearer,
+    NewCollection, NewSession, PaymentProvider, SessionRequest, SessionResponse, SessionStatus,
+    SurchargeBearer,
 };
 use crate::ports::{Action, AuditEntry, Ctx, Event, Permit, Resource, Tx, scoped};
 use crate::workflow::{self, Answer, Failure, Outcome, Prepared, ReachingStep, Step, Workflow};

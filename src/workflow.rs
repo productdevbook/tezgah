@@ -1127,8 +1127,6 @@ async fn invoke_reaching(
     input: &Value,
     row: &StepRow,
 ) -> std::result::Result<StepResult, Stop> {
-    let Claim { id, at, worker } = held;
-
     if row.attempts >= row.max_attempts {
         return Err(Stop::Refused(Failure::Final(Error::conflict(
             "this step has already used every attempt it had",
@@ -1145,17 +1143,7 @@ async fn invoke_reaching(
         })?;
         (parse_prepared(&envelope)?, row.attempts)
     } else {
-        prepare_phase(
-            pool,
-            ctx,
-            id,
-            at,
-            worker,
-            step.as_ref(),
-            input,
-            row.max_attempts,
-        )
-        .await?
+        prepare_phase(pool, ctx, held, step.as_ref(), input, row.max_attempts).await?
     };
 
     let answer = if resuming {
@@ -1172,7 +1160,7 @@ async fn invoke_reaching(
             // `called`, and either this pass tries again shortly or, once
             // attempts are gone, unwind compensates it — never a blind retry
             // of the call the runner cannot see the result of.
-            let attempts_now = match stall(pool, ctx, id, at, worker, resuming).await {
+            let attempts_now = match stall(pool, ctx, held, resuming).await {
                 Ok(Some(attempts)) => attempts,
                 Ok(None) => return Err(Stop::Lost),
                 Err(err) => return Err(Stop::Refused(Failure::Final(err))),
@@ -1188,18 +1176,19 @@ async fn invoke_reaching(
         }
     };
 
-    record_phase(
-        pool,
-        ctx,
-        id,
-        at,
-        step.as_ref(),
-        &prepared,
-        answer,
-        attempts_now,
-        row.max_attempts,
-    )
-    .await
+    let attempts = Attempts {
+        now: attempts_now,
+        max: row.max_attempts,
+    };
+    record_phase(pool, ctx, held, step.as_ref(), &prepared, answer, attempts).await
+}
+
+/// How far a [`ReachingStep`] row has gone, for `record_phase` to decide
+/// whether a failure there still has room to try again.
+#[derive(Clone, Copy)]
+struct Attempts {
+    now: i32,
+    max: i32,
 }
 
 fn envelope(prepared: &Prepared) -> Value {
@@ -1234,13 +1223,12 @@ fn parse_prepared(value: &Value) -> std::result::Result<Prepared, Stop> {
 async fn prepare_phase(
     pool: &PgPool,
     ctx: &Ctx<'_>,
-    id: WorkflowRunId,
-    at: i32,
-    worker: &str,
+    held: Claim<'_>,
     step: &dyn ReachingStep,
     input: &Value,
     max_attempts: i32,
 ) -> std::result::Result<(Prepared, i32), Stop> {
+    let Claim { id, at, worker } = held;
     loop {
         let leased = Utc::now() + LEASE;
         let mut tx = scoped(pool, ctx)
@@ -1327,14 +1315,8 @@ async fn prepare_phase(
 /// bumping `attempts` only when resuming — a fresh `call` already had its
 /// attempt counted by `prepare`'s own commit. `None` means this worker no
 /// longer holds the row: somebody else's business now.
-async fn stall(
-    pool: &PgPool,
-    ctx: &Ctx<'_>,
-    id: WorkflowRunId,
-    at: i32,
-    worker: &str,
-    bump: bool,
-) -> Result<Option<i32>> {
+async fn stall(pool: &PgPool, ctx: &Ctx<'_>, held: Claim<'_>, bump: bool) -> Result<Option<i32>> {
+    let Claim { id, at, worker } = held;
     let mut tx = scoped(pool, ctx).await?;
     let attempts: Option<i32> = sqlx::query_scalar(
         "update workflow_step
@@ -1360,14 +1342,13 @@ async fn stall(
 async fn record_phase(
     pool: &PgPool,
     ctx: &Ctx<'_>,
-    id: WorkflowRunId,
-    at: i32,
+    held: Claim<'_>,
     step: &dyn ReachingStep,
     prepared: &Prepared,
     answer: Answer,
-    attempts_now: i32,
-    max_attempts: i32,
+    attempts: Attempts,
 ) -> std::result::Result<StepResult, Stop> {
+    let Claim { id, at, .. } = held;
     let mut tx = scoped(pool, ctx)
         .await
         .map_err(|err| Stop::Refused(Failure::Final(err)))?;
@@ -1420,7 +1401,7 @@ async fn record_phase(
             // a decline `record` recognised while writing the answer down —
             // is never retried, exactly like a `Step`'s.
             drop(tx);
-            if !failure.retryable() || attempts_now >= max_attempts {
+            if !failure.retryable() || attempts.now >= attempts.max {
                 return Err(Stop::Refused(failure));
             }
             Err(Stop::NotYet)

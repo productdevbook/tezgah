@@ -67,8 +67,8 @@ use crate::money::{Currency, Money};
 use crate::order::{self, NewOrder, NewOrderLine, NewTaxLine, OrderAddress, TaxSnapshot};
 use crate::page::{Cursor, Page, Paging};
 use crate::payment::{
-    self, Authorization, AuthorizationStatus, Authorized, LookupProvider, NewCollection,
-    NewSession, PaymentProvider, RecurringProvider, StoredChargeRequest,
+    self, Authorization, AuthorizationStatus, Authorized, NewCollection, NewSession,
+    RecurringProvider, StoredChargeRequest,
 };
 use crate::ports::{Action, AuditEntry, Ctx, Event, JobSpec, Permit, Resource, Tx, scoped};
 use crate::workflow::{self, Answer, Failure, Outcome, Prepared, ReachingStep, Step, Workflow};
