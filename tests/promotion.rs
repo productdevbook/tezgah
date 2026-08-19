@@ -129,7 +129,7 @@ async fn adjusted_lines(
     .fetch_all(&mut **tx)
     .await
     .expect("the stored adjustments");
-    rows.sort_by(|a, b| a.0.cmp(&b.0));
+    rows.sort_by_key(|row| row.0);
     rows
 }
 
