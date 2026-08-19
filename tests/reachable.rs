@@ -621,9 +621,10 @@ fn every_route_handler_is_declared_in_routes() {
         ),
         (
             "openapi",
-            1,
-            "`document` builds the OpenAPI paper from ROUTES; a host serves \
-             it, and it is not itself one of them",
+            2,
+            "`document` builds the OpenAPI paper from ROUTES and \
+             `schema_collisions` is what tests/openapi.rs checks it against; \
+             a host serves the former over HTTP and calls neither as a route",
         ),
     ];
 

@@ -63,31 +63,23 @@ fn the_document_matches_what_was_agreed() {
     );
 }
 
-// TEMP(measurement): forces a failure so CI's log shows how many names
-// collide across the two generators today and how many of those disagree,
-// plus proof the assertion below actually fails on a genuine divergence
-// rather than passing regardless of what schema_collisions() returns. This
-// probe and this comment are removed before the branch is finished.
+/// One name collides across both generators today — an id newtype — and it
+/// agrees, the only kind `document()` (see its own comment) trusts to
+/// resolve by letting the request definition win. Zero disagree. This is
+/// what makes that a build failure instead of an assumption: it fails the
+/// day any colliding name's two schemas diverge, whatever the count becomes.
 #[test]
 fn colliding_names_agree_across_generators() {
-    let mut collisions = tezgah::api::openapi::schema_collisions();
-    let total = collisions.len();
-    let disagreeing = collisions
-        .iter()
-        .filter(|(_, request, response)| request != response)
-        .count();
-    collisions.push((
-        "__temp_injected_probe__".to_owned(),
-        serde_json::json!({ "type": "string" }),
-        serde_json::json!({ "type": "number" }),
-    ));
-
-    for (name, request, response) in &collisions {
+    for (name, request, response) in tezgah::api::openapi::schema_collisions() {
         assert_eq!(
             request, response,
-            "MEASURE: {total} names collide across generators today, \
-             {disagreeing} of them disagree (not counting this injected \
-             probe). {name} disagrees here."
+            "{name} means two different things depending on direction: \
+             document() lets the request definition win on the assumption \
+             that a colliding name's schema does not depend on direction. \
+             {name}'s two schemas disagree, so that assumption just failed — \
+             give it two names in components/schemas instead (one per \
+             direction, with a one-line reason for the split), or fix the \
+             type so both generators agree."
         );
     }
 }
