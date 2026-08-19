@@ -62,8 +62,13 @@ sites and a build taking every core has taken it off the air before. Never run
 `cargo build`, `cargo test`, `cargo check`, `cargo clippy` or `cargo nextest`.
 `cargo fmt --all` is allowed. CI is the only verification there is.
 
-So the loop is: write → `cargo fmt --all` → commit → `git pull --rebase && git
-push origin main` → read CI. Red is not a setback, it is the feedback.
+So the loop is: write → format → commit → `git pull --rebase && git push
+origin main` → read CI.
+
+**Format your own files, not the tree.** `cargo fmt --all` reformats whatever
+another agent has left half-written, and those hunks then land in your commit
+or have to be reverted by hand. Name the files you touched:
+`rustfmt --edition 2024 src/thing.rs tests/thing.rs`. Red is not a setback, it is the feedback.
 
 **Poll for the result yourself, with a shell loop.** Do not wait to be told:
 
