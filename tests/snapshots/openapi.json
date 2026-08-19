@@ -6308,6 +6308,45 @@
         "x-tezgah-permission": "view"
       }
     },
+    "/admin/orders/{id}/returns/shipping-options": {
+      "get": {
+        "operationId": "getAdminOrdersByIdReturnsShippingOptions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Which shipping options a return may ship back on",
+        "tags": [
+          "fulfilment"
+        ],
+        "x-tezgah-permission": "view"
+      }
+    },
     "/admin/orders/{id}/shipping-methods": {
       "get": {
         "operationId": "getAdminOrdersByIdShippingMethods",

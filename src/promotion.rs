@@ -1173,7 +1173,37 @@ pub async fn claim(
         ));
     }
 
-    take(tx, ctx, promotion_id, customer_id, spend).await
+    take(tx, ctx, promotion_id, customer_id, spend).await?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Settle,
+            entity: "promotion",
+            entity_id: promotion_id.as_uuid(),
+            summary: serde_json::json!({
+                "spent": spend.amount.to_string(),
+                "currency": spend.currency.as_str(),
+                "customer_id": customer_id.map(CustomerId::as_uuid),
+            }),
+        },
+    )
+    .await?;
+
+    ctx.emit(
+        tx,
+        Event {
+            name: "promotion.claimed",
+            entity_id: promotion_id.as_uuid(),
+            payload: serde_json::json!({
+                "customer_id": customer_id.map(CustomerId::as_uuid),
+            }),
+        },
+    )
+    .await?;
+
+    Ok(())
 }
 
 /// Gives a claim back, for a checkout that did not become an order.
@@ -1332,34 +1362,6 @@ async fn take(
         )
         .await?;
     }
-
-    ctx.audit(
-        tx,
-        AuditEntry {
-            actor: ctx.actor.clone(),
-            action: Action::Settle,
-            entity: "promotion",
-            entity_id: promotion_id.as_uuid(),
-            summary: serde_json::json!({
-                "spent": spend.amount.to_string(),
-                "currency": spend.currency.as_str(),
-                "customer_id": customer_id.map(CustomerId::as_uuid),
-            }),
-        },
-    )
-    .await?;
-
-    ctx.emit(
-        tx,
-        Event {
-            name: "promotion.claimed",
-            entity_id: promotion_id.as_uuid(),
-            payload: serde_json::json!({
-                "customer_id": customer_id.map(CustomerId::as_uuid),
-            }),
-        },
-    )
-    .await?;
 
     Ok(())
 }
