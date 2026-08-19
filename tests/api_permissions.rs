@@ -432,6 +432,7 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
                 campaign_id: None,
                 usage_limit: None,
                 customer_usage_limit: None,
+                metadata: None,
             }
         )
     );
@@ -535,6 +536,7 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
                 description: None,
                 starts_at: None,
                 ends_at: None,
+                metadata: None,
             }
         )
     );

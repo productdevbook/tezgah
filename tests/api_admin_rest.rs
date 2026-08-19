@@ -56,6 +56,7 @@ async fn promotion(tx: &mut Tx<'_>, ctx: &Ctx<'_>, code: &str) -> PromotionId {
             campaign_id: None,
             usage_limit: None,
             customer_usage_limit: None,
+            metadata: None,
         },
     )
     .await
