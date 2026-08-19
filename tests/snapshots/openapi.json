@@ -14137,6 +14137,45 @@
         "x-tezgah-permission": "write"
       }
     },
+    "/admin/subscriptions/{id}/card": {
+      "post": {
+        "operationId": "postAdminSubscriptionsByIdCard",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Point a contract at a different saved card",
+        "tags": [
+          "subscription"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
     "/admin/subscriptions/{id}/deliver": {
       "post": {
         "operationId": "postAdminSubscriptionsByIdDeliver",
@@ -17687,6 +17726,45 @@
           }
         ],
         "summary": "Stop mine at the end of this period",
+        "tags": [
+          "subscription"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/store/subscriptions/{id}/card": {
+      "post": {
+        "operationId": "postStoreSubscriptionsByIdCard",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "publishableKey": []
+          }
+        ],
+        "summary": "Point mine at a different saved card",
         "tags": [
           "subscription"
         ],
