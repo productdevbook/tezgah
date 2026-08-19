@@ -16695,7 +16695,7 @@
             "publishableKey": []
           }
         ],
-        "summary": "List the categories a shopper may browse",
+        "summary": "List the categories a shopper may browse, optionally in a locale",
         "tags": [
           "catalogue"
         ],
@@ -17178,7 +17178,7 @@
             "publishableKey": []
           }
         ],
-        "summary": "List the reasons a return may be given",
+        "summary": "List the reasons a return may be given, optionally in a locale",
         "tags": [
           "order"
         ],
