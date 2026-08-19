@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 
+import { z } from "zod"
+
 import { ApiError, get } from "@/api/client"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -23,7 +25,9 @@ import { PageHeading } from "@/screens/page-heading"
 export function Overview() {
   const host = useQuery({
     queryKey: ["host"],
-    queryFn: ({ signal }) => get<unknown>("/admin/currencies", { signal, query: { limit: 1 } }),
+    // Only whether anybody answers; the shape is deliberately not asserted.
+    queryFn: ({ signal }) =>
+      get("/admin/currencies", { signal, schema: z.unknown(), query: { limit: 1 } }),
     retry: false,
   })
 

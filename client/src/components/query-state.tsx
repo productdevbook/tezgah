@@ -79,6 +79,11 @@ function Failure({ error, onRetry }: { error: unknown; onRetry: () => void }) {
       title: "The request did not go through",
       description: api?.message ?? "The host answered with an error.",
     },
+    drifted: {
+      title: "The panel and the crate disagree",
+      description:
+        "The host answered, and the answer is not the shape this panel expects. Its types are transcribed from the Rust by hand, so the crate has moved and this has not.",
+    },
   }[api?.kind ?? "refused"]
 
   return (
@@ -88,13 +93,20 @@ function Failure({ error, onRetry }: { error: unknown; onRetry: () => void }) {
         <EmptyDescription>{said.description}</EmptyDescription>
       </EmptyHeader>
       <EmptyContent>
-        <div className="flex items-center gap-2">
-          <Button size="sm" onClick={onRetry}>
-            Try again
-          </Button>
-          {api?.code ? (
-            <code className="text-muted-foreground text-xs">{api.code}</code>
+        <div className="flex flex-col items-center gap-2">
+          {api?.kind === "drifted" ? (
+            <code className="bg-muted max-w-lg rounded px-2 py-1 text-left text-xs break-words">
+              {api.message}
+            </code>
           ) : null}
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={onRetry}>
+              Try again
+            </Button>
+            {api?.code ? (
+              <code className="text-muted-foreground text-xs">{api.code}</code>
+            ) : null}
+          </div>
         </div>
       </EmptyContent>
     </Empty>

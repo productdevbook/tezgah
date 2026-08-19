@@ -2,14 +2,22 @@ import { Navigate } from "@tanstack/react-router"
 
 import { sectionBySlug } from "@/lib/nav"
 import { Inventory } from "@/screens/inventory"
+import { Customers } from "@/screens/customers"
 import { NotBuilt } from "@/screens/not-built"
 import { Orders } from "@/screens/orders"
 import { Products } from "@/screens/products"
+import { Promotions } from "@/screens/promotions"
+import { Store } from "@/screens/store"
+import { Subscriptions } from "@/screens/subscriptions"
 
 const BUILT: Record<string, () => React.ReactElement> = {
   products: Products,
   orders: Orders,
   inventory: Inventory,
+  customers: Customers,
+  promotions: Promotions,
+  subscriptions: Subscriptions,
+  store: Store,
 }
 
 /**
