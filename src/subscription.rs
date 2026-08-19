@@ -70,7 +70,7 @@ use crate::payment::{
     self, AuthorizationStatus, Authorized, NewCollection, NewSession, RecurringProvider,
     StoredChargeRequest,
 };
-use crate::ports::{Action, AuditEntry, Ctx, Event, JobSpec, Permit, Resource, Tx};
+use crate::ports::{Action, AuditEntry, Ctx, Event, JobSpec, Permit, Resource, Tx, scoped};
 use crate::workflow::{self, Failure, Outcome, Step, Workflow};
 use crate::{credit, inventory, pricing, store, tax};
 
@@ -1823,20 +1823,6 @@ impl Renewals {
             run,
         })
     }
-}
-
-/// A transaction with this scope announced on it, which is the only kind the
-/// policies admit.
-async fn scoped(
-    pool: &PgPool,
-    ctx: &Ctx<'_>,
-) -> Result<sqlx::Transaction<'static, sqlx::Postgres>> {
-    let mut tx = pool.begin().await?;
-    sqlx::query("select set_config('app.scope', $1, true)")
-        .bind(ctx.scope.0.to_string())
-        .execute(&mut *tx)
-        .await?;
-    Ok(tx)
 }
 
 /// The card said no: the contract goes `past_due` and the next attempt is

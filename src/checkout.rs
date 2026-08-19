@@ -70,7 +70,7 @@ use crate::payment::{
     self, AuthorizationStatus, AuthorizeRequest, Authorized, NewCollection, NewSession,
     PaymentProvider, SessionRequest,
 };
-use crate::ports::{Action, AuditEntry, Ctx, Event, Permit, Resource, Tx};
+use crate::ports::{Action, AuditEntry, Ctx, Event, Permit, Resource, Tx, scoped};
 use crate::workflow::{self, Failure, Outcome, Step, Workflow};
 use crate::{cart, catalogue, credit, inventory, promotion, subscription};
 
@@ -243,11 +243,7 @@ impl Checkout {
 /// The key is the cart's, not the caller's: two requests for one cart have to
 /// collide even when whoever sent them forgot to say so.
 async fn idempotency_key(pool: &PgPool, ctx: &Ctx<'_>, cart_id: CartId) -> Result<String> {
-    let mut tx = pool.begin().await?;
-    sqlx::query("select set_config('app.scope', $1, true)")
-        .bind(ctx.scope.0.to_string())
-        .execute(&mut *tx)
-        .await?;
+    let mut tx = scoped(pool, ctx).await?;
 
     let key: Option<Option<String>> =
         sqlx::query_scalar("select idempotency_key from cart where scope = $1 and id = $2")

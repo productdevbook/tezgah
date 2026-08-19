@@ -61,7 +61,7 @@ use uuid::Uuid;
 use crate::error::{Error, Result};
 use crate::id::WorkflowRunId;
 use crate::page::{Cursor, Page, Paging};
-use crate::ports::{Action, Ctx, Permit, Resource, Tx};
+use crate::ports::{Action, Ctx, Permit, Resource, Tx, scoped};
 
 /// Most steps one run may be read back with. A workflow is written down in
 /// source, so this is a ceiling on a mistake rather than on a shop's data.
@@ -506,18 +506,6 @@ pub async fn start(
     input: Value,
 ) -> Result<WorkflowRunId> {
     claim(pool, ctx, workflow, transaction_key, input).await
-}
-
-async fn scoped(
-    pool: &PgPool,
-    ctx: &Ctx<'_>,
-) -> Result<sqlx::Transaction<'static, sqlx::Postgres>> {
-    let mut tx = pool.begin().await?;
-    sqlx::query("select set_config('app.scope', $1, true)")
-        .bind(ctx.scope.0.to_string())
-        .execute(&mut *tx)
-        .await?;
-    Ok(tx)
 }
 
 /// Folds a uuid into the one integer an advisory lock is named by. Only the

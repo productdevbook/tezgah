@@ -304,3 +304,18 @@ impl<'a> Ctx<'a> {
         self.host.enqueue(tx, job).await
     }
 }
+
+/// A transaction with this scope announced on it, which is the only kind the
+/// row-level security policies admit. `checkout`, `subscription` and
+/// `workflow` each hold a `PgPool` rather than a caller's transaction — a
+/// step of theirs runs later, or on its own — and every one of them opens a
+/// transaction through here rather than querying the pool directly, so an
+/// unscoped read never has the chance to answer with silence instead of a row.
+pub(crate) async fn scoped(pool: &sqlx::PgPool, ctx: &Ctx<'_>) -> Result<Tx<'static>> {
+    let mut tx = pool.begin().await?;
+    sqlx::query("select set_config('app.scope', $1, true)")
+        .bind(ctx.scope.0.to_string())
+        .execute(&mut *tx)
+        .await?;
+    Ok(tx)
+}
