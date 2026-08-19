@@ -1344,6 +1344,18 @@ async fn prepare_phase(
 async fn stall(pool: &PgPool, ctx: &Ctx<'_>, held: Claim<'_>, bump: bool) -> Result<Option<i32>> {
     let Claim { id, at, worker } = held;
     let mut tx = scoped(pool, ctx).await?;
+    // TEMPORARY #158 debugging: CI cannot be reproduced locally, and the
+    // symptom (a called row's own driver losing its own claim) does not
+    // match anything in the code as read. Remove before merging.
+    let before: Option<(String, i32, Option<String>, Option<DateTime<Utc>>)> = sqlx::query_as(
+        "select state, attempts, locked_by, lease_until from workflow_step
+         where run_id = $1 and ordering = $2",
+    )
+    .bind(id.as_uuid())
+    .bind(at)
+    .fetch_optional(&mut *tx)
+    .await?;
+    eprintln!("stall(): held.worker={worker:?} bump={bump} row-before={before:?}");
     let attempts: Option<i32> = sqlx::query_scalar(
         "update workflow_step
          set lease_until = null, locked_by = null,
@@ -1357,6 +1369,7 @@ async fn stall(pool: &PgPool, ctx: &Ctx<'_>, held: Claim<'_>, bump: bool) -> Res
     .bind(bump)
     .fetch_optional(&mut *tx)
     .await?;
+    eprintln!("stall(): matched={}", attempts.is_some());
     tx.commit().await?;
     Ok(attempts)
 }
