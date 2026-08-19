@@ -1251,3 +1251,172 @@ async fn an_order_whose_money_was_taken_is_refunded_before_it_is_cancelled() {
 
     shop.close().await;
 }
+
+// ---------------------------------------------------------------------------
+// #193: enabling and disabling a provider
+// ---------------------------------------------------------------------------
+
+/// `register_provider`'s upsert used to preserve `is_enabled` on conflict no
+/// matter what was asked for, so nothing could ever turn a provider off or
+/// back on. A second provider proves the insert path still starts on; the
+/// dedicated enable/disable calls prove the write actually lands and that
+/// disabling one refuses only a new session, leaving what it already
+/// collected alone.
+#[tokio::test]
+async fn a_second_provider_can_be_enabled_and_a_disabled_one_only_refuses_a_new_session() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+
+    let paid = authorized_payment(&shop, try_(dec!(100.00))).await;
+    {
+        let mut tx = shop.begin().await;
+        payment::capture_only(&mut tx, &ctx, paid, try_(dec!(100.00)), None)
+            .await
+            .expect("to capture while the provider is still on");
+        tx.commit().await.expect("to commit");
+    }
+
+    let mut tx = shop.begin().await;
+
+    let second = payment::register_provider(&mut tx, &ctx, "fake-2")
+        .await
+        .expect("a second provider");
+    assert!(second.is_enabled, "a freshly registered provider starts on");
+
+    payment::set_provider_enabled(&mut tx, &ctx, second.id, false)
+        .await
+        .expect("to turn it off");
+    let off = payment::provider_by_code(&mut tx, &ctx, "fake-2")
+        .await
+        .expect("the provider");
+    assert!(!off.is_enabled, "disabling a provider did not persist");
+
+    payment::set_provider_enabled(&mut tx, &ctx, second.id, true)
+        .await
+        .expect("to turn it back on");
+    let on_again = payment::provider_by_code(&mut tx, &ctx, "fake-2")
+        .await
+        .expect("the provider");
+    assert!(
+        on_again.is_enabled,
+        "re-enabling a provider did not persist"
+    );
+
+    let original = payment::provider_by_code(&mut tx, &ctx, PROVIDER)
+        .await
+        .expect("the original provider");
+    payment::set_provider_enabled(&mut tx, &ctx, original.id, false)
+        .await
+        .expect("to turn the original provider off");
+
+    let collection = payment::create_collection(
+        &mut tx,
+        &ctx,
+        NewCollection {
+            amount: try_(dec!(50.00)),
+            cart_id: None,
+            metadata: None,
+        },
+    )
+    .await
+    .expect("a collection");
+
+    let refused = payment::create_session(
+        &mut tx,
+        &ctx,
+        NewSession {
+            collection_id: collection.id,
+            provider_code: PROVIDER.to_owned(),
+            amount: try_(dec!(50.00)),
+            context: None,
+            installment_count: None,
+        },
+    )
+    .await;
+    assert!(refused.is_err(), "a disabled provider opened a new session");
+
+    payment::refund_only(&mut tx, &ctx, paid, try_(dec!(10.00)), None, None)
+        .await
+        .expect("a payment captured before the provider was disabled still refunds");
+
+    tx.commit().await.expect("to commit");
+    shop.close().await;
+}
+
+// ---------------------------------------------------------------------------
+// #194: deleting a saved card reference
+// ---------------------------------------------------------------------------
+
+/// A deleted holder no longer answers to its old lookups, and a customer who
+/// tokenises the same card again with the provider gets a clean new row
+/// rather than a conflict with the one they just removed.
+#[tokio::test]
+async fn a_deleted_account_holder_is_gone_from_its_own_lookups_but_a_new_one_can_replace_it() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    payment::register_provider(&mut tx, &ctx, PROVIDER)
+        .await
+        .expect("a provider");
+    let customer = common::a_customer(&mut tx, &ctx).await;
+
+    let holder = payment::save_account_holder(
+        &mut tx,
+        &ctx,
+        payment::NewAccountHolder {
+            provider_code: PROVIDER.into(),
+            customer_id: Some(customer),
+            external_id: "cus_1".into(),
+            email: Some("shopper@example.test".into()),
+            data: json!({ "brand": "visa" }),
+        },
+    )
+    .await
+    .expect("an account holder");
+
+    payment::delete_account_holder(&mut tx, &ctx, holder.id)
+        .await
+        .expect("to delete it");
+
+    assert!(
+        payment::account_holder_by_id(&mut tx, &ctx, holder.id)
+            .await
+            .expect("the lookup to run")
+            .is_none(),
+        "a deleted holder still answered to its own id"
+    );
+    assert!(
+        payment::account_holder(&mut tx, &ctx, PROVIDER, customer)
+            .await
+            .expect("the lookup to run")
+            .is_none(),
+        "a deleted holder still answered to its customer and provider"
+    );
+
+    // The provider handed back a new token for the same shopper; nothing
+    // about the row just scrubbed should stand in its way.
+    let replacement = payment::save_account_holder(
+        &mut tx,
+        &ctx,
+        payment::NewAccountHolder {
+            provider_code: PROVIDER.into(),
+            customer_id: Some(customer),
+            external_id: "cus_2".into(),
+            email: Some("shopper@example.test".into()),
+            data: json!({ "brand": "visa" }),
+        },
+    )
+    .await
+    .expect("a replacement account holder");
+    assert_ne!(replacement.id, holder.id);
+
+    let found = payment::account_holder(&mut tx, &ctx, PROVIDER, customer)
+        .await
+        .expect("the lookup to run")
+        .expect("the replacement to be found");
+    assert_eq!(found.id, replacement.id);
+
+    tx.commit().await.expect("to commit");
+    shop.close().await;
+}

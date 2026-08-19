@@ -74,8 +74,8 @@ use tezgah::catalogue::{self, NewProduct, NewVariant};
 use tezgah::credit;
 use tezgah::fulfilment;
 use tezgah::id::{
-    AddressId, CartId, CustomerId, OrderEntitlementId, OrderId, PaymentCollectionId, SellingPlanId,
-    SubscriptionId,
+    AccountHolderId, AddressId, CartId, CustomerId, OrderEntitlementId, OrderId,
+    PaymentCollectionId, SellingPlanId, SubscriptionId,
 };
 use tezgah::money::{Currency, Money};
 use tezgah::order::{self, NewOrder, NewOrderLine};
@@ -228,6 +228,7 @@ struct Shopper {
     collection_id: PaymentCollectionId,
     subscription_id: SubscriptionId,
     entitlement_id: OrderEntitlementId,
+    account_holder_id: AccountHolderId,
 }
 
 async fn a_shopper(
@@ -298,6 +299,19 @@ async fn a_shopper(
     let collection =
         store::create_payment_collection(tx, &ctx, StartPayment { cart_id: cart.id }).await?;
 
+    let account_holder = tezgah::payment::save_account_holder(
+        tx,
+        &ctx,
+        tezgah::payment::NewAccountHolder {
+            provider_code: "mock".into(),
+            customer_id: Some(id),
+            external_id: format!("cus_{}", uuid::Uuid::now_v7().simple()),
+            email: Some(email.into()),
+            data: serde_json::json!({}),
+        },
+    )
+    .await?;
+
     let contract = subscription::create(
         tx,
         &ctx,
@@ -365,6 +379,7 @@ async fn a_shopper(
         collection_id: collection.id,
         subscription_id: contract.id,
         entitlement_id: OrderEntitlementId::from_uuid(entitlement_id),
+        account_holder_id: account_holder.id,
     })
 }
 
@@ -1175,6 +1190,17 @@ async fn every_owned_store_route_refuses_the_other_shoppers_resource() -> tezgah
         theirs: store::delete_my_address(&mut tx, &ctx_b, a.address_id)
     );
     store::delete_my_address(&mut tx, &ctx_a, a.address_id).await?;
+
+    // Same shape as the address above: B reaching for A's saved card is
+    // refused before A's own removal of it runs.
+    owned!(
+        Method::Delete,
+        "/store/customers/me/account-holders/{id}",
+        is_denied,
+        mine: async { Ok::<(), tezgah::Error>(()) },
+        theirs: store::delete_my_account_holder(&mut tx, &ctx_b, a.account_holder_id)
+    );
+    store::delete_my_account_holder(&mut tx, &ctx_a, a.account_holder_id).await?;
 
     // ----------------------------------------------------- token-gated ---
     // Not customer-id checks — see `TOLERATED` — but still exercised: the

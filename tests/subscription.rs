@@ -31,7 +31,7 @@ use tezgah::ports::{
 };
 use tezgah::subscription::{self, NewLine, NewPlan, NewPlanGroup, NewSubscription, Renewals};
 use tezgah::workflow::State;
-use tezgah::{Paging, credit, inventory, pricing};
+use tezgah::{Paging, credit, customer, inventory, pricing};
 use uuid::Uuid;
 
 fn try_() -> Currency {
@@ -1226,6 +1226,73 @@ async fn a_provider_still_working_does_not_start_dunning() {
     let after = read(&shop, seeded.id).await;
     assert_eq!(after.status, "active");
     assert_eq!(after.dunning_attempts, 0);
+
+    shop.close().await;
+}
+
+// ---------------------------------------------------------------------------
+// #194: deleting the card a contract charges
+// ---------------------------------------------------------------------------
+
+/// A shopper's own "remove my card" is refused while a contract still needs
+/// it — a clear answer now, rather than a subscription that quietly stops
+/// renewing weeks later. Once the contract is cancelled, the same call
+/// succeeds.
+#[tokio::test]
+async fn a_card_a_live_contract_names_cannot_be_deleted_until_the_contract_is_not_live() {
+    let shop = Shop::open().await;
+    let seeded = a_contract(&shop, dec!(10), None).await;
+    let ctx = shop.ctx();
+
+    let mut tx = shop.begin().await;
+    let refused = payment::delete_account_holder(&mut tx, &ctx, seeded.holder_id)
+        .await
+        .expect_err("a card an active contract names was deleted anyway");
+    assert!(refused.is_conflict());
+
+    subscription::cancel(&mut tx, &ctx, seeded.id, false, None)
+        .await
+        .expect("to cancel the contract");
+
+    payment::delete_account_holder(&mut tx, &ctx, seeded.holder_id)
+        .await
+        .expect("the card to be deletable once nothing live names it");
+
+    tx.commit().await.expect("to commit");
+    shop.close().await;
+}
+
+/// GDPR erasure is not this: `customer::erase` is not a choice tezgah gets to
+/// refuse on a subscription's behalf, so it scrubs the card regardless of
+/// what still names it — and the next renewal declines exactly as it would
+/// for a card the bank itself refused, through the same dunning path
+/// `a_declined_charge_leaves_the_contract_past_due_with_a_retry_queued`
+/// proves above.
+#[tokio::test]
+async fn erasing_a_customer_with_a_live_contract_declines_its_next_renewal() {
+    let shop = Shop::open().await;
+    let seeded = a_contract(&shop, dec!(10), None).await;
+    let ctx = shop.ctx();
+
+    let mut tx = shop.begin().await;
+    customer::erase(&mut tx, &ctx, seeded.customer_id)
+        .await
+        .expect("to erase the customer");
+    tx.commit().await.expect("to commit");
+
+    let renewals = Renewals::new(Arc::new(Standing), seeded.location_id);
+    let renewed = renewals
+        .renew(&shop.pool, &shop.ctx(), seeded.id)
+        .await
+        .expect("the renewal to run and be declined");
+
+    assert!(
+        renewed.declined,
+        "erasing the customer's card did not decline the renewal it was named on"
+    );
+
+    let after = read(&shop, seeded.id).await;
+    assert_eq!(after.status, "past_due");
 
     shop.close().await;
 }

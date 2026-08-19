@@ -37,15 +37,16 @@ use tezgah::api::{
     inventory_lot, order_basket, payout, routes, store, subscription, tax_identity,
 };
 use tezgah::id::{
-    AddressId, AgreementVersionId, CampaignId, CartCreditId, CartId, CategoryId, ClaimId,
-    CollectionId, CommissionRuleId, CustomerGroupId, CustomerId, DigitalContentId, ExchangeId,
-    FulfillmentId, FulfillmentSetId, GiftCardId, InventoryItemId, InventoryLotId, LineItemId,
-    OptionId, OrderBasketId, OrderChangeId, OrderEntitlementId, OrderId, OrderInvoiceId,
-    PaymentCollectionId, PaymentId, PriceId, PriceListId, PriceSetId, ProductId, ProductImageId,
-    ProductTagId, ProductTypeId, PromotionId, PublishableKeyId, RegionId, ReservationId, ReturnId,
-    SalesChannelId, SellingPlanGroupId, SellingPlanId, ServiceZoneId, ShippingOptionId,
-    ShippingProfileId, StockLocationId, StockTransferId, StoreCreditId, SubscriptionId, TaxRateId,
-    TaxRegionId, VariantId, WorkflowRunId,
+    AccountHolderId, AddressId, AgreementVersionId, CampaignId, CartCreditId, CartId, CategoryId,
+    ClaimId, CollectionId, CommissionRuleId, CustomerGroupId, CustomerId, DigitalContentId,
+    ExchangeId, FulfillmentId, FulfillmentSetId, GiftCardId, InventoryItemId, InventoryLotId,
+    LineItemId, OptionId, OrderBasketId, OrderChangeId, OrderEntitlementId, OrderId,
+    OrderInvoiceId, PaymentCollectionId, PaymentId, PaymentProviderId, PriceId, PriceListId,
+    PriceSetId, ProductId, ProductImageId, ProductTagId, ProductTypeId, PromotionId,
+    PublishableKeyId, RegionId, ReservationId, ReturnId, SalesChannelId, SellingPlanGroupId,
+    SellingPlanId, ServiceZoneId, ShippingOptionId, ShippingProfileId, StockLocationId,
+    StockTransferId, StoreCreditId, SubscriptionId, TaxRateId, TaxRegionId, VariantId,
+    WorkflowRunId,
 };
 use tezgah::ports::{Action, Actor};
 
@@ -2133,6 +2134,25 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
     );
     denied!(
         Method::Post,
+        "/admin/payments/payment-providers",
+        admin_order::register_payment_provider(
+            &mut tx,
+            &ctx,
+            admin_order::RegisterPaymentProvider { code: "x".into() }
+        )
+    );
+    denied!(
+        Method::Post,
+        "/admin/payments/payment-providers/{id}/disable",
+        admin_order::disable_payment_provider(&mut tx, &ctx, PaymentProviderId::new())
+    );
+    denied!(
+        Method::Post,
+        "/admin/payments/payment-providers/{id}/enable",
+        admin_order::enable_payment_provider(&mut tx, &ctx, PaymentProviderId::new())
+    );
+    denied!(
+        Method::Post,
         "/admin/payment-collections",
         admin_order::create_payment_collection(
             &mut tx,
@@ -3379,6 +3399,11 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
                 email: None,
             }
         )
+    );
+    denied!(
+        Method::Delete,
+        "/store/customers/me/account-holders/{id}",
+        store::delete_my_account_holder(&mut tx, &ctx, AccountHolderId::new())
     );
     denied!(
         Method::Get,

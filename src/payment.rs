@@ -823,7 +823,7 @@ pub async fn register_provider(tx: &mut Tx<'_>, ctx: &Ctx<'_>, code: &str) -> Re
     let provider = sqlx::query_as::<_, Provider>(
         "insert into payment_provider (id, scope, code)
          values ($1, $2, $3)
-         on conflict (scope, code) do update set is_enabled = payment_provider.is_enabled
+         on conflict (scope, code) do update set is_enabled = true
          returning id, code, is_enabled",
     )
     .bind(id.as_uuid())
@@ -840,6 +840,45 @@ pub async fn register_provider(tx: &mut Tx<'_>, ctx: &Ctx<'_>, code: &str) -> Re
             entity: "payment_provider",
             entity_id: provider.id.as_uuid(),
             summary: serde_json::json!({ "code": provider.code }),
+        },
+    )
+    .await?;
+
+    Ok(provider)
+}
+
+/// Stops (or resumes) offering a provider without deleting its row: payments
+/// already collected through it keep a real provider to point at, and
+/// [`create_session`] is where a disabled provider is actually refused —
+/// nothing here reaches into a payment already taken.
+pub async fn set_provider_enabled(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: PaymentProviderId,
+    enabled: bool,
+) -> Result<Provider> {
+    let _: Permit = ctx.permit(Action::Write, Resource::Pricing)?;
+
+    let provider = sqlx::query_as::<_, Provider>(
+        "update payment_provider set is_enabled = $3
+         where scope = $1 and id = $2
+         returning id, code, is_enabled",
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .bind(enabled)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("payment provider"))?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "payment_provider",
+            entity_id: id.as_uuid(),
+            summary: serde_json::json!({ "is_enabled": enabled }),
         },
     )
     .await?;
@@ -1731,7 +1770,8 @@ pub async fn save_account_holder(
     // customer, never taken from another one.
     let existing_owner: Option<Option<uuid::Uuid>> = sqlx::query_scalar(
         "select customer_id from account_holder
-         where scope = $1 and payment_provider_id = $2 and external_id = $3",
+         where scope = $1 and payment_provider_id = $2 and external_id = $3
+           and deleted_at is null",
     )
     .bind(ctx.scope.0)
     .bind(provider.id.as_uuid())
@@ -1811,6 +1851,7 @@ pub async fn account_holder(
         "select id, payment_provider_id, customer_id, external_id, email, data, created_at
          from account_holder
          where scope = $1 and payment_provider_id = $2 and customer_id = $3
+           and deleted_at is null
          order by created_at desc, id
          limit 2",
     )
@@ -1831,6 +1872,10 @@ pub async fn account_holder(
 
 /// The holder a contract names, which is the shape anything charging a stored
 /// instrument should be reaching for.
+///
+/// `None` for a deleted holder too — a contract charging a stored instrument
+/// that is gone is refused in-process rather than sent to the provider with
+/// nothing real to name.
 pub async fn account_holder_by_id(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -1841,12 +1886,118 @@ pub async fn account_holder_by_id(
     Ok(sqlx::query_as::<_, AccountHolder>(
         "select id, payment_provider_id, customer_id, external_id, email, data, created_at
          from account_holder
-         where scope = $1 and id = $2",
+         where scope = $1 and id = $2 and deleted_at is null",
     )
     .bind(ctx.scope.0)
     .bind(id.as_uuid())
     .fetch_optional(&mut **tx)
     .await?)
+}
+
+/// Removes a customer's own reference to a saved card. The instrument lives
+/// at the provider — kasapay's, or the host's, to actually remove — so this
+/// only clears tezgah's side of it: email, the provider's data and the
+/// external id that names the customer there. The row survives, because
+/// `subscription.account_holder_id` references it `on delete restrict` and a
+/// contract naming this holder needs something to keep pointing at.
+///
+/// Refused outright while an active or `past_due` subscription still names
+/// this holder — a shopper removing their only card should get a clear
+/// answer now, not a subscription that quietly stops renewing weeks later.
+/// The subscription has to be cancelled or paused first. GDPR erasure
+/// ([`scrub_account_holders_for_customer`]) is not this function and does
+/// not ask this question — see it for why.
+pub async fn delete_account_holder(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: AccountHolderId,
+) -> Result<()> {
+    let _: Permit = ctx.permit(Action::Delete, Resource::Customer { id: None })?;
+
+    let named_by_a_live_subscription: Option<Uuid> = sqlx::query_scalar(
+        "select id from subscription
+         where scope = $1 and account_holder_id = $2 and status in ('active', 'past_due')
+         limit 1",
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    if named_by_a_live_subscription.is_some() {
+        return Err(Error::conflict(
+            "this card is still named by an active subscription; cancel or pause it first",
+        ));
+    }
+
+    let done = sqlx::query(
+        "update account_holder
+             set email = null, data = '{}'::jsonb,
+                 external_id = 'deleted-' || id::text,
+                 deleted_at = coalesce(deleted_at, $3)
+         where scope = $1 and id = $2",
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .bind(ctx.now())
+    .execute(&mut **tx)
+    .await?;
+
+    if done.rows_affected() == 0 {
+        return Err(Error::not_found("account holder"));
+    }
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Delete,
+            entity: "account_holder",
+            entity_id: id.as_uuid(),
+            summary: serde_json::json!({ "deleted": true }),
+        },
+    )
+    .await?;
+
+    Ok(())
+}
+
+/// Every account holder a customer has, scrubbed the same way
+/// [`delete_account_holder`] scrubs one. `customer::erase` calls this for the
+/// customer it just anonymised, so a provider reference and a real email do
+/// not survive under a `customer_id` that no longer names anybody.
+///
+/// Unlike [`delete_account_holder`] this does not ask whether an active
+/// subscription still names the holder, and does not touch the subscription
+/// either: erasure is a right the customer has regardless of a contract's
+/// convenience, not a choice tezgah gets to refuse or arbitrate. What was
+/// scrubbed can no longer be charged, so the subscription's own renewal finds
+/// nothing to charge and is declined exactly as it would be for a card the
+/// provider itself refused — the existing dunning path carries it to
+/// `past_due`, and on to cancelled if it runs out of attempts, without this
+/// function reaching into `subscription` to say so twice.
+///
+/// `pub(crate)`: `erase` already asked once, for the whole customer, before
+/// reaching here.
+pub(crate) async fn scrub_account_holders_for_customer(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    customer_id: CustomerId,
+) -> Result<()> {
+    sqlx::query(
+        "update account_holder
+             set email = null, data = '{}'::jsonb,
+                 external_id = 'deleted-' || id::text,
+                 deleted_at = coalesce(deleted_at, $3)
+         where scope = $1 and customer_id = $2",
+    )
+    .bind(ctx.scope.0)
+    .bind(customer_id.as_uuid())
+    .bind(ctx.now())
+    .execute(&mut **tx)
+    .await?;
+
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------

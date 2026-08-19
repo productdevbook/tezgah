@@ -3,6 +3,7 @@ mod common;
 use common::Shop;
 use tezgah::customer::{self, CustomerPatch, NewAddress, NewCustomer};
 use tezgah::page::Paging;
+use tezgah::payment;
 
 #[tokio::test]
 async fn a_guest_and_an_account_are_the_same_table() -> tezgah::Result<()> {
@@ -262,6 +263,63 @@ async fn another_scope_sees_none_of_it() -> tezgah::Result<()> {
     assert!(customer::export(&mut theirs, &ctx, who.id).await.is_err());
     theirs.rollback().await.ok();
 
+    shop.close().await;
+    Ok(())
+}
+
+/// #194: `erase` used to leave `account_holder` — a real email and the
+/// provider's own reference to a saved card — sitting under a customer it had
+/// just anonymised everywhere else.
+#[tokio::test]
+async fn erase_scrubs_the_account_holder_the_customer_saved() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+
+    let who = customer::create(&mut tx, &ctx, NewCustomer::account("erase-me@example.com")).await?;
+
+    payment::register_provider(&mut tx, &ctx, "mock").await?;
+    let holder = payment::save_account_holder(
+        &mut tx,
+        &ctx,
+        payment::NewAccountHolder {
+            provider_code: "mock".into(),
+            customer_id: Some(who.id),
+            external_id: "cus_erase_me".into(),
+            email: Some("erase-me@example.com".into()),
+            data: serde_json::json!({ "brand": "visa" }),
+        },
+    )
+    .await?;
+
+    customer::erase(&mut tx, &ctx, who.id).await?;
+
+    assert!(
+        payment::account_holder_by_id(&mut tx, &ctx, holder.id)
+            .await?
+            .is_none(),
+        "the account holder still answers to its own lookup after erase"
+    );
+
+    let (email, external_id, data): (Option<String>, String, serde_json::Value) = sqlx::query_as(
+        "select email, external_id, data from account_holder where scope = $1 and id = $2",
+    )
+    .bind(shop.here.0)
+    .bind(holder.id.as_uuid())
+    .fetch_one(&mut *tx)
+    .await?;
+    assert!(email.is_none(), "the real email survived erase");
+    assert_ne!(
+        external_id, "cus_erase_me",
+        "the provider's own reference survived erase"
+    );
+    assert_eq!(
+        data,
+        serde_json::json!({}),
+        "the provider's stored data survived erase"
+    );
+
+    tx.rollback().await.ok();
     shop.close().await;
     Ok(())
 }

@@ -14,6 +14,7 @@ use sqlx::FromRow;
 use crate::error::{Error, Result};
 use crate::id::{AddressId, CustomerGroupId, CustomerId};
 use crate::page::{Cursor, Page, Paging};
+use crate::payment;
 use crate::ports::{Action, AuditEntry, Ctx, Event, Permit, Resource, Tx};
 
 const COLUMNS: &str = "id, email, first_name, last_name, phone, company_name, has_account, \
@@ -1039,6 +1040,12 @@ pub async fn erase(tx: &mut Tx<'_>, ctx: &Ctx<'_>, customer_id: CustomerId) -> R
         .bind(customer_id.as_uuid())
         .execute(&mut **tx)
         .await?;
+
+    // The saved-card reference at a provider is not tezgah's data to keep
+    // once the customer that owns it is gone: the token itself stays with
+    // the provider (kasapay's, or the host's, to remove), but the email and
+    // the reference to it must not survive under the id this just erased.
+    payment::scrub_account_holders_for_customer(tx, ctx, customer_id).await?;
 
     ctx.audit(
         tx,

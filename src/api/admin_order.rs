@@ -21,8 +21,9 @@ use crate::error::{Error, Result};
 use crate::fulfilment;
 use crate::id::{
     ClaimId, ExchangeId, FulfillmentId, FulfillmentSetId, InventoryItemId, LineItemId,
-    OrderChangeId, OrderId, OrderItemId, PaymentCollectionId, PaymentId, PaymentSessionId,
-    RefundReasonId, ReturnId, ServiceZoneId, ShippingOptionId, ShippingProfileId, StockLocationId,
+    OrderChangeId, OrderId, OrderItemId, PaymentCollectionId, PaymentId, PaymentProviderId,
+    PaymentSessionId, RefundReasonId, ReturnId, ServiceZoneId, ShippingOptionId, ShippingProfileId,
+    StockLocationId,
 };
 use crate::money::{Currency, Money};
 use crate::order;
@@ -2661,6 +2662,55 @@ pub async fn payment_providers(tx: &mut Tx<'_>, ctx: &Ctx<'_>) -> Result<Vec<Pro
         .collect())
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RegisterPaymentProvider {
+    pub code: String,
+}
+
+pub async fn register_payment_provider(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    input: RegisterPaymentProvider,
+) -> Result<ProviderView> {
+    let row = payment::register_provider(tx, ctx, &input.code).await?;
+    Ok(ProviderView {
+        id: row.id.as_uuid(),
+        code: row.code,
+        is_enabled: row.is_enabled,
+    })
+}
+
+/// Stops offering a provider whose card network started declining
+/// everything. [`payment::create_session`] is what actually refuses a new
+/// session against a disabled provider; a payment already collected keeps
+/// its provider row and is untouched.
+pub async fn disable_payment_provider(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: PaymentProviderId,
+) -> Result<ProviderView> {
+    let row = payment::set_provider_enabled(tx, ctx, id, false).await?;
+    Ok(ProviderView {
+        id: row.id.as_uuid(),
+        code: row.code,
+        is_enabled: row.is_enabled,
+    })
+}
+
+pub async fn enable_payment_provider(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: PaymentProviderId,
+) -> Result<ProviderView> {
+    let row = payment::set_provider_enabled(tx, ctx, id, true).await?;
+    Ok(ProviderView {
+        id: row.id.as_uuid(),
+        code: row.code,
+        is_enabled: row.is_enabled,
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Payment collections
 // ---------------------------------------------------------------------------
@@ -4385,6 +4435,27 @@ pub(super) static ROUTES: &[Route] = &[
         View,
         "payment",
         "Which payment providers this shop has on"
+    ),
+    route!(
+        Post,
+        "/admin/payments/payment-providers",
+        Write,
+        "payment",
+        "Register a payment provider"
+    ),
+    route!(
+        Post,
+        "/admin/payments/payment-providers/{id}/disable",
+        Write,
+        "payment",
+        "Stop offering a payment provider without disturbing its payments"
+    ),
+    route!(
+        Post,
+        "/admin/payments/payment-providers/{id}/enable",
+        Write,
+        "payment",
+        "Resume offering a disabled payment provider"
     ),
     // Payment collections
     route!(

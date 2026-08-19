@@ -2260,6 +2260,39 @@ pub async fn save_my_account_holder(
     Ok(AccountHolderView::from(holder, provider_code))
 }
 
+async fn my_account_holder(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: AccountHolderId,
+    action: Action,
+) -> Result<payment::AccountHolder> {
+    signed_in(ctx)?;
+
+    let found = payment::account_holder_by_id(tx, ctx, id)
+        .await?
+        .ok_or_else(|| Error::not_found("account holder"))?;
+    ctx.permit(
+        action,
+        Resource::Customer {
+            id: found.customer_id.map(|c| c.as_uuid()),
+        },
+    )?;
+    Ok(found)
+}
+
+/// Removes a shopper's own saved-card reference. The card itself is not
+/// touched — it lives at the provider, kasapay's or the host's to remove —
+/// this only deletes tezgah's reference to it, the way [`delete_my_address`]
+/// deletes an address rather than a place.
+pub async fn delete_my_account_holder(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: AccountHolderId,
+) -> Result<()> {
+    my_account_holder(tx, ctx, id, Action::Delete).await?;
+    payment::delete_account_holder(tx, ctx, id).await
+}
+
 // ---------------------------------------------------------------------------
 // Orders
 // ---------------------------------------------------------------------------
@@ -2974,6 +3007,14 @@ pub(super) static ROUTES: &[Route] = &[
         action: Action::Write,
         domain: "payment",
         summary: "Save a card reference tokenised with a provider directly",
+    },
+    Route {
+        surface: Surface::Store,
+        method: Method::Delete,
+        path: "/store/customers/me/account-holders/{id}",
+        action: Action::Delete,
+        domain: "payment",
+        summary: "Remove a card reference of one's own",
     },
     Route {
         surface: Surface::Store,
