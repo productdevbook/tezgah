@@ -310,6 +310,7 @@ async fn a_seeded_shop() -> (Shop, (VariantId, uuid::Uuid), (VariantId, uuid::Uu
             rank: None,
             is_active: None,
             is_internal: None,
+            external_id: None,
             metadata: None,
         },
     )
@@ -542,6 +543,7 @@ async fn a_refund_uses_the_rate_its_own_capture_earned_at_not_the_blended_one() 
             rank: None,
             is_active: None,
             is_internal: None,
+            external_id: None,
             metadata: None,
         },
     )

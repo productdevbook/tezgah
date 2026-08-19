@@ -1011,7 +1011,7 @@ async fn a_variant_shows_its_own_images_and_falls_back_to_the_products() {
         .await
         .expect("a batch read");
     assert_eq!(by_variant.get(&red.id).map(Vec::len), Some(1));
-    assert!(by_variant.get(&blue.id).is_none());
+    assert!(!by_variant.contains_key(&blue.id));
 
     // Attaching an image already belonging to a different product is refused.
     let other = catalogue::create_product(&mut tx, &ctx, draft("cicim", "A cicim"))
