@@ -341,6 +341,11 @@ fn a_domain_reaches_only_for_the_kernel_and_what_is_declared_shared() {
         // collection, so it reaches both. Neither reaches back: an order knows
         // it has a credit line, not what minted it.
         ("credit", &["order", "payment"][..]),
+        // #194: erase's own scope is the customer, but a saved-card
+        // reference at a provider is part of what erasing one means, so it
+        // reaches payment::scrub_account_holders_for_customer to cover it.
+        // Nothing reaches back: payment does not know a customer was erased.
+        ("customer", &["payment"][..]),
         // A file is catalogue until it is bought and order state afterwards, so
         // it reaches both and neither reaches back: the day `order` wants to
         // know what a line entitled somebody to, it asks through a surface.
