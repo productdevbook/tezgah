@@ -1634,7 +1634,8 @@ fn amounts_for(
             tax_code: line.tax_code.clone(),
             provider: None,
             provider_transaction_id: None,
-            calculated_at: chrono::Utc::now(),
+            // Overwritten by the only caller right after this returns.
+            calculated_at: Default::default(),
             address: TaxableAddress::default(),
             tax_id: None,
             tax_id_evidence: None,

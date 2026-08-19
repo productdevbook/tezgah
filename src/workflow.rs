@@ -718,7 +718,7 @@ async fn lease_run(pool: &PgPool, ctx: &Ctx<'_>, id: WorkflowRunId, worker: &str
                    and locked_by is distinct from $3)",
     )
     .bind(id.as_uuid())
-    .bind(Utc::now() + LEASE)
+    .bind(ctx.now() + LEASE)
     .bind(worker)
     .fetch_one(&mut *tx)
     .await?;
@@ -1049,7 +1049,7 @@ async fn invoke_direct(
     }
 
     loop {
-        let leased = Utc::now() + LEASE;
+        let leased = ctx.now() + LEASE;
 
         let mut claim_tx = scoped(pool, ctx)
             .await
@@ -1274,7 +1274,7 @@ async fn prepare_phase(
 ) -> std::result::Result<(Prepared, i32), Stop> {
     let Claim { id, at, worker } = held;
     loop {
-        let leased = Utc::now() + LEASE;
+        let leased = ctx.now() + LEASE;
         let mut claim_tx = scoped(pool, ctx)
             .await
             .map_err(|err| Stop::Refused(Failure::Final(err)))?;
@@ -1994,7 +1994,7 @@ async fn take(
          select distinct run_id from leased",
     )
     .bind(names)
-    .bind(Utc::now() + LEASE)
+    .bind(ctx.now() + LEASE)
     .bind(&worker)
     .fetch_optional(&mut *tx)
     .await?;
@@ -2022,7 +2022,7 @@ async fn touch(pool: &PgPool, ctx: &Ctx<'_>, id: WorkflowRunId, worker: &str) ->
            and locked_by = $3",
     )
     .bind(id.as_uuid())
-    .bind(Utc::now() + LEASE)
+    .bind(ctx.now() + LEASE)
     .bind(worker)
     .execute(&mut *tx)
     .await?;

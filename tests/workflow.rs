@@ -16,7 +16,7 @@ use async_trait::async_trait;
 use common::Shop;
 use parking_lot::Mutex;
 use serde_json::{Value, json};
-use tezgah::ports::{Ctx, Tx};
+use tezgah::ports::{Actor, Ctx, Tx};
 use tezgah::workflow::{
     self, Answer, Failure, Outcome, Prepared, ReachingStep, State, Step, Workflow,
 };
@@ -1096,6 +1096,132 @@ async fn a_lease_expired_called_step_is_claimable_and_still_reads_called() {
     assert!(
         seen(&log).is_empty(),
         "the driver must not have invoked the step as if it were pending"
+    );
+
+    shop.close().await;
+}
+
+/// A `ReachingStep` whose `call` never returns — what a worker dying between
+/// `prepare` committing and `call` answering leaves behind — and whose
+/// `resume` settles it once a fresh driver asks instead of replaying `call`.
+struct Stuck {
+    log: Log,
+}
+
+#[async_trait]
+impl ReachingStep for Stuck {
+    fn name(&self) -> &'static str {
+        "stuck"
+    }
+
+    async fn prepare(
+        &self,
+        _tx: &mut Tx<'_>,
+        _ctx: &Ctx<'_>,
+        _input: &Value,
+    ) -> std::result::Result<Prepared, Failure> {
+        Ok(Prepared {
+            idempotency_key: "reclaimed-lease-1".into(),
+            data: json!({}),
+        })
+    }
+
+    async fn call(
+        &self,
+        _ctx: &Ctx<'_>,
+        _prepared: &Prepared,
+    ) -> std::result::Result<Answer, Failure> {
+        std::future::pending::<()>().await;
+        unreachable!("the driver that gets here is abandoned before it returns")
+    }
+
+    async fn resume(
+        &self,
+        _ctx: &Ctx<'_>,
+        _prepared: &Prepared,
+    ) -> std::result::Result<Answer, Failure> {
+        self.log.lock().push("resumed".to_string());
+        Ok(Answer(json!({"settled": true})))
+    }
+
+    async fn record(
+        &self,
+        _tx: &mut Tx<'_>,
+        _ctx: &Ctx<'_>,
+        _prepared: &Prepared,
+        _answer: Answer,
+    ) -> std::result::Result<Outcome, Failure> {
+        Ok(Outcome::new(json!({"done": true}), json!({})))
+    }
+}
+
+/// #166: a lease expiring is exactly the shape `Clock` was built to make
+/// testable without sleeping. A driver whose `Clock` is stopped an hour in
+/// the past writes a `lease_until` that is already behind Postgres's own
+/// clock the moment it commits — proving a dead worker's step is reclaimed
+/// takes a fake clock, not the real 300 seconds, and not a `lease_until`
+/// written by hand.
+#[tokio::test]
+async fn a_stale_drivers_lease_is_reclaimed_without_waiting_it_out() {
+    let shop = Shop::open().await;
+    let log = log();
+
+    let flow = Workflow::new("reclaimed-lease").reaching_step(Stuck { log: log.clone() });
+
+    let stale = common::Recorder::at(chrono::Utc::now() - chrono::Duration::hours(1));
+    let stale_ctx = shop.ctx_as(Actor::System, stale.as_ref());
+
+    // `call` never returns; `prepare` has already committed by the time this
+    // timeout fires, so what is left behind is exactly what a dead worker
+    // leaves — written by the engine itself, not by hand.
+    let _ = tokio::time::timeout(
+        Duration::from_millis(700),
+        workflow::run(
+            &shop.pool,
+            &stale_ctx,
+            &flow,
+            "reclaimed-lease-1",
+            json!({}),
+        ),
+    )
+    .await;
+
+    let mut tx = shop.begin().await;
+    let (state, lease_until): (String, Option<chrono::DateTime<chrono::Utc>>) = sqlx::query_as(
+        "select s.state, s.lease_until from workflow_step s
+         join workflow_run r on r.id = s.run_id
+         where r.transaction_key = 'reclaimed-lease-1' and s.ordering = 0",
+    )
+    .fetch_one(&mut *tx)
+    .await
+    .expect("the row prepare left behind");
+    tx.commit().await.expect("to commit");
+
+    assert_eq!(state, "called", "prepare committed before call hung");
+    let lease_until = lease_until.expect("prepare_phase to have leased the row");
+    assert!(
+        lease_until < chrono::Utc::now(),
+        "a driver an hour behind must write a lease that is already expired, \
+         not one still LEASE seconds out"
+    );
+
+    // A fresh driver, on a normal clock, reclaims it — no sleep, no manual
+    // SQL, just `ctx.now()` disagreeing with what the stale driver wrote.
+    let run = workflow::run(
+        &shop.pool,
+        &shop.ctx(),
+        &flow,
+        "reclaimed-lease-1",
+        json!({}),
+    )
+    .await
+    .expect("the second driver to finish what the first left stuck");
+
+    assert_eq!(run.state, State::Done, "{:?}", run.failure);
+    assert_eq!(
+        seen(&log),
+        ["resumed"],
+        "the fresh driver must have resumed the called row, not replayed call"
     );
 
     shop.close().await;

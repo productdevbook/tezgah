@@ -135,6 +135,43 @@ async fn tax_is_taken_out_of_a_price_that_includes_it() {
     shop.close().await;
 }
 
+/// #166: `calculate`'s own `calculated_at` is `ctx.now()`, not a fresh read
+/// of the wall clock — a tax snapshot must stamp the moment its caller asked
+/// for it, not whatever moment `chrono` happens to answer with while the row
+/// is being built. A `Clock` stopped somewhere nobody would call it by
+/// accident proves which one it is.
+#[tokio::test]
+async fn a_calculated_line_is_stamped_with_the_callers_instant() {
+    let shop = Shop::open().await;
+    let stale = common::Recorder::at(chrono::Utc::now() - chrono::Duration::days(400));
+    let ctx = shop.ctx_as(Actor::System, stale.as_ref());
+    let mut tx = shop.begin().await;
+
+    seed_currency(&mut tx, shop.here.0).await;
+    a_flat_eighteen(&mut tx, &ctx).await;
+
+    let lines = tax::calculate(
+        &mut tx,
+        &ctx,
+        &one_line(dec!(100)),
+        &to_turkey(),
+        None,
+        false,
+    )
+    .await
+    .expect("a calculation");
+
+    assert_eq!(lines.len(), 1);
+    assert_eq!(
+        lines[0].calculated_at,
+        ctx.now(),
+        "calculated_at must be the caller's instant, not the wall clock's"
+    );
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
 #[tokio::test]
 async fn a_combinable_province_rate_sits_on_top_of_the_country_rate() {
     let shop = Shop::open().await;
