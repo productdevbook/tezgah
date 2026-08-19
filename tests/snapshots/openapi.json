@@ -288,11 +288,50 @@
             "adminBearer": []
           }
         ],
-        "summary": "Set a campaign's spend or usage budget",
+        "summary": "Set a campaign's spend, usage or per-attribute budget",
         "tags": [
           "promotion"
         ],
         "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/campaigns/{id}/budget/usage": {
+      "get": {
+        "operationId": "getAdminCampaignsByIdBudgetUsage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "List how much of a per-attribute budget each attribute value has used",
+        "tags": [
+          "promotion"
+        ],
+        "x-tezgah-permission": "view"
       }
     },
     "/admin/campaigns/{id}/promotions": {
@@ -7700,6 +7739,174 @@
         "x-tezgah-permission": "view"
       }
     },
+    "/admin/product-categories/{id}/translations": {
+      "get": {
+        "operationId": "getAdminProductCategoriesByIdTranslations",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "List a category's translations",
+        "tags": [
+          "catalogue"
+        ],
+        "x-tezgah-permission": "view"
+      },
+      "post": {
+        "operationId": "postAdminProductCategoriesByIdTranslations",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Write a category's translation into one locale",
+        "tags": [
+          "catalogue"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/product-categories/{id}/translations/{locale}": {
+      "delete": {
+        "operationId": "deleteAdminProductCategoriesByIdTranslationsByLocale",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "locale",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Drop a category's translation for one locale",
+        "tags": [
+          "catalogue"
+        ],
+        "x-tezgah-permission": "delete"
+      },
+      "get": {
+        "operationId": "getAdminProductCategoriesByIdTranslationsByLocale",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "locale",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Read a category in one locale, saying where it fell back",
+        "tags": [
+          "catalogue"
+        ],
+        "x-tezgah-permission": "view"
+      }
+    },
     "/admin/product-options/{id}/values": {
       "post": {
         "operationId": "postAdminProductOptionsByIdValues",
@@ -10839,6 +11046,174 @@
         "x-tezgah-permission": "write"
       }
     },
+    "/admin/return-reasons/{id}/translations": {
+      "get": {
+        "operationId": "getAdminReturnReasonsByIdTranslations",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "List a return reason's translations",
+        "tags": [
+          "order"
+        ],
+        "x-tezgah-permission": "view"
+      },
+      "post": {
+        "operationId": "postAdminReturnReasonsByIdTranslations",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Write a return reason's translation into one locale",
+        "tags": [
+          "order"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/return-reasons/{id}/translations/{locale}": {
+      "delete": {
+        "operationId": "deleteAdminReturnReasonsByIdTranslationsByLocale",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "locale",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Drop a return reason's translation for one locale",
+        "tags": [
+          "order"
+        ],
+        "x-tezgah-permission": "delete"
+      },
+      "get": {
+        "operationId": "getAdminReturnReasonsByIdTranslationsByLocale",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "locale",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Read a return reason in one locale, saying where it fell back",
+        "tags": [
+          "order"
+        ],
+        "x-tezgah-permission": "view"
+      }
+    },
     "/admin/returns": {
       "get": {
         "operationId": "getAdminReturns",
@@ -12079,6 +12454,174 @@
           "fulfilment"
         ],
         "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/shipping-options/{id}/translations": {
+      "get": {
+        "operationId": "getAdminShippingOptionsByIdTranslations",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "List a shipping option's translations",
+        "tags": [
+          "fulfilment"
+        ],
+        "x-tezgah-permission": "view"
+      },
+      "post": {
+        "operationId": "postAdminShippingOptionsByIdTranslations",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Write a shipping option's translation into one locale",
+        "tags": [
+          "fulfilment"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/shipping-options/{id}/translations/{locale}": {
+      "delete": {
+        "operationId": "deleteAdminShippingOptionsByIdTranslationsByLocale",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "locale",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Drop a shipping option's translation for one locale",
+        "tags": [
+          "fulfilment"
+        ],
+        "x-tezgah-permission": "delete"
+      },
+      "get": {
+        "operationId": "getAdminShippingOptionsByIdTranslationsByLocale",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "locale",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Read a shipping option in one locale, saying where it fell back",
+        "tags": [
+          "fulfilment"
+        ],
+        "x-tezgah-permission": "view"
       }
     },
     "/admin/shipping-profiles": {
@@ -15785,6 +16328,53 @@
         "x-tezgah-permission": "view"
       }
     },
+    "/store/product-categories/{id}/translations/{locale}": {
+      "get": {
+        "operationId": "getStoreProductCategoriesByIdTranslationsByLocale",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "locale",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "publishableKey": []
+          }
+        ],
+        "summary": "Read a browsable category in one locale, falling back to the shop's own",
+        "tags": [
+          "catalogue"
+        ],
+        "x-tezgah-permission": "view"
+      }
+    },
     "/store/product-options": {
       "get": {
         "operationId": "getStoreProductOptions",
@@ -16268,6 +16858,53 @@
         "x-tezgah-permission": "view"
       }
     },
+    "/store/return-reasons/{id}/translations/{locale}": {
+      "get": {
+        "operationId": "getStoreReturnReasonsByIdTranslationsByLocale",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "locale",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "publishableKey": []
+          }
+        ],
+        "summary": "Read a return reason in one locale, falling back to the shop's own",
+        "tags": [
+          "order"
+        ],
+        "x-tezgah-permission": "view"
+      }
+    },
     "/store/returns": {
       "post": {
         "operationId": "postStoreReturns",
@@ -16365,6 +17002,53 @@
           "fulfilment"
         ],
         "x-tezgah-permission": "write"
+      }
+    },
+    "/store/shipping-options/{id}/translations/{locale}": {
+      "get": {
+        "operationId": "getStoreShippingOptionsByIdTranslationsByLocale",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "locale",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "publishableKey": []
+          }
+        ],
+        "summary": "Read a shipping option's name in one locale, falling back to the shop's own",
+        "tags": [
+          "fulfilment"
+        ],
+        "x-tezgah-permission": "view"
       }
     },
     "/store/subscriptions": {
