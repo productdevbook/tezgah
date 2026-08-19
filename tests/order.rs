@@ -1159,6 +1159,164 @@ async fn an_order_that_has_shipped_cannot_be_cancelled() -> tezgah::Result<()> {
 }
 
 #[tokio::test]
+async fn a_shipping_address_can_be_corrected_and_the_old_snapshot_stays_put() -> tezgah::Result<()>
+{
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    seed_currency(&mut tx, shop.here).await;
+
+    let placed = order::create(&mut tx, &ctx, an_order(vec![a_line(1, dec!(10))])).await?;
+    let before = order::get(&mut tx, &ctx, placed.id).await?;
+    let old_shipping = before.shipping_address_id.expect("an address to correct");
+
+    let corrected = order::update_address(
+        &mut tx,
+        &ctx,
+        placed.id,
+        order::AddressKind::Shipping,
+        &OrderAddress {
+            address_1: Some("2 Corrected Street".into()),
+            city: Some("Istanbul".into()),
+            country_code: Some("TR".into()),
+            ..OrderAddress::default()
+        },
+    )
+    .await?;
+
+    let new_shipping = corrected
+        .shipping_address_id
+        .expect("the order still has a shipping address");
+    assert_ne!(
+        new_shipping, old_shipping,
+        "a correction repoints the order rather than mutating the old row"
+    );
+    assert_eq!(corrected.billing_address_id, before.billing_address_id);
+
+    // The old snapshot is exactly what write_address's own comment promises:
+    // frozen, not deleted, not mutated in place.
+    let kept: Option<String> =
+        sqlx::query_scalar("select address_1 from order_address where scope = $1 and id = $2")
+            .bind(shop.here.0)
+            .bind(old_shipping)
+            .fetch_one(&mut *tx)
+            .await
+            .expect("the old row to still be there");
+    assert_eq!(kept.as_deref(), Some("1 Example Street"));
+
+    assert!(
+        shop.host.audited("order_address"),
+        "the correction left an audit row"
+    );
+    let payloads = shop.host.payloads_of("order.address_updated");
+    let payload = payloads.last().expect("the correction emitted an event");
+    assert_eq!(payload["previous"], serde_json::json!(old_shipping));
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn an_orders_email_can_be_corrected() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    seed_currency(&mut tx, shop.here).await;
+
+    let placed = order::create(&mut tx, &ctx, an_order(vec![a_line(1, dec!(10))])).await?;
+    assert_eq!(placed.email.as_deref(), Some("shopper@example.com"));
+
+    let refused = order::update_email(&mut tx, &ctx, placed.id, "not an address")
+        .await
+        .expect_err("a value with no @ is not an e-mail address");
+    assert_eq!(refused.code(), "invalid");
+
+    let corrected = order::update_email(&mut tx, &ctx, placed.id, "Fixed@Example.com").await?;
+    assert_eq!(corrected.email.as_deref(), Some("fixed@example.com"));
+    assert!(shop.host.audited("order"));
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn once_a_parcel_has_shipped_its_address_cannot_be_corrected_but_billing_can()
+-> tezgah::Result<()> {
+    use tezgah::fulfilment::{self, NewFulfillment, NewFulfillmentItem};
+
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    seed_currency(&mut tx, shop.here).await;
+
+    let (_, location, placed, _) = a_held_order(&mut tx, &ctx, shop.here, 10, 2).await;
+    let order_now = order::get(&mut tx, &ctx, placed).await?;
+    let items = order::items(&mut tx, &ctx, placed, order_now.version).await?;
+    let item = items.first().expect("an item").id;
+
+    let parcel = fulfilment::create_fulfillment(
+        &mut tx,
+        &ctx,
+        placed,
+        NewFulfillment {
+            location_id: location,
+            shipping_option_id: None,
+            provider_id: None,
+            requires_shipping: true,
+            created_by: None,
+            address: None,
+            data: None,
+            items: vec![NewFulfillmentItem {
+                order_item_id: item,
+                inventory_item_id: None,
+                title: "A thing".into(),
+                sku: None,
+                barcode: None,
+                quantity: 2,
+            }],
+        },
+    )
+    .await?;
+
+    fulfilment::mark_packed(&mut tx, &ctx, placed, parcel.id).await?;
+    fulfilment::mark_shipped(&mut tx, &ctx, placed, parcel.id, None).await?;
+
+    let new_address = OrderAddress {
+        address_1: Some("Somewhere else entirely".into()),
+        city: Some("Ankara".into()),
+        country_code: Some("TR".into()),
+        ..OrderAddress::default()
+    };
+
+    let refused = order::update_address(
+        &mut tx,
+        &ctx,
+        placed,
+        order::AddressKind::Shipping,
+        &new_address,
+    )
+    .await
+    .expect_err("the parcel is already on its way to the address on record");
+    assert!(refused.is_conflict());
+
+    // Billing carries no parcel, so it is corrected as freely as ever.
+    order::update_address(
+        &mut tx,
+        &ctx,
+        placed,
+        order::AddressKind::Billing,
+        &new_address,
+    )
+    .await?;
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
+}
+
+#[tokio::test]
 async fn a_fulfilment_takes_the_stock_off_the_shelf_and_cancelling_puts_it_back()
 -> tezgah::Result<()> {
     use tezgah::fulfilment::{self, NewFulfillment, NewFulfillmentItem};

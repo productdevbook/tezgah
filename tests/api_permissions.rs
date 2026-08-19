@@ -2510,6 +2510,38 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
         admin_order::archive_order(&mut tx, &ctx, OrderId::new())
     );
     denied!(
+        Method::Patch,
+        "/admin/orders/{id}/shipping-address",
+        admin_order::update_order_shipping_address(
+            &mut tx,
+            &ctx,
+            OrderId::new(),
+            admin_order::AddressIn::default()
+        )
+    );
+    denied!(
+        Method::Patch,
+        "/admin/orders/{id}/billing-address",
+        admin_order::update_order_billing_address(
+            &mut tx,
+            &ctx,
+            OrderId::new(),
+            admin_order::AddressIn::default()
+        )
+    );
+    denied!(
+        Method::Patch,
+        "/admin/orders/{id}/email",
+        admin_order::update_order_email(
+            &mut tx,
+            &ctx,
+            OrderId::new(),
+            admin_order::UpdateEmail {
+                email: "shopper@example.com".into(),
+            }
+        )
+    );
+    denied!(
         Method::Get,
         "/admin/orders/{id}/items",
         admin_order::order_items(&mut tx, &ctx, OrderId::new(), None)

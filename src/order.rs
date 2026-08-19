@@ -533,6 +533,175 @@ async fn write_address(
     Ok(id)
 }
 
+/// Which address on the order [`update_address`] is replacing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AddressKind {
+    Shipping,
+    Billing,
+}
+
+impl AddressKind {
+    const fn column(self) -> &'static str {
+        match self {
+            AddressKind::Shipping => "shipping_address_id",
+            AddressKind::Billing => "billing_address_id",
+        }
+    }
+
+    const fn as_str(self) -> &'static str {
+        match self {
+            AddressKind::Shipping => "shipping",
+            AddressKind::Billing => "billing",
+        }
+    }
+}
+
+/// Corrects an order's shipping or billing address.
+///
+/// `order_address` rows stay frozen on purpose — the comment on
+/// [`write_address`] is why — so this writes a fresh row and repoints the
+/// order at it rather than mutating the old one. The old row is left where it
+/// is, unreferenced: it is the correction's own history, findable by the id
+/// the audit entry below names as `previous`.
+///
+/// A parcel already on its way to the old shipping address makes a
+/// correction here a lie rather than a fix, so that case is refused; a
+/// return is the honest way to send a replacement somewhere else. Billing
+/// carries no such risk and is never blocked by it.
+pub async fn update_address(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order_id: OrderId,
+    kind: AddressKind,
+    address: &OrderAddress,
+) -> Result<Order> {
+    let order = read(tx, ctx, Action::Write, order_id).await?;
+
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Order {
+            id: order_id.as_uuid(),
+            customer: order.customer_id.map(CustomerId::as_uuid),
+        },
+    )?;
+
+    if order.status()?.is_final() {
+        return Err(Error::conflict("that order is closed"));
+    }
+    if kind == AddressKind::Shipping
+        && crate::fulfilment::anything_shipped(tx, ctx, order_id).await?
+    {
+        return Err(Error::conflict(
+            "a parcel has already left for that address; a return covers where it went, not this",
+        ));
+    }
+
+    let previous = match kind {
+        AddressKind::Shipping => order.shipping_address_id,
+        AddressKind::Billing => order.billing_address_id,
+    };
+
+    let new_id = write_address(tx, ctx, order.customer_id, address).await?;
+    let column = kind.column();
+
+    let updated = sqlx::query_as::<_, Order>(&format!(
+        r#"update "order" set {column} = $3 where scope = $1 and id = $2 returning {ORDER_COLUMNS}"#
+    ))
+    .bind(ctx.scope.0)
+    .bind(order_id.as_uuid())
+    .bind(new_id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("order"))?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "order_address",
+            entity_id: new_id.as_uuid(),
+            summary: serde_json::json!({
+                "order": order_id,
+                "kind": kind.as_str(),
+                "previous": previous,
+            }),
+        },
+    )
+    .await?;
+
+    ctx.emit(
+        tx,
+        Event {
+            name: "order.address_updated",
+            entity_id: order_id.as_uuid(),
+            payload: serde_json::json!({
+                "kind": kind.as_str(),
+                "address": new_id,
+                "previous": previous,
+            }),
+        },
+    )
+    .await?;
+
+    Ok(updated)
+}
+
+/// Corrects the address a confirmation, an invoice or a shipping notice is
+/// sent to. No parcel follows it, so unlike [`update_address`] nothing here
+/// checks whether one has already shipped.
+pub async fn update_email(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    order_id: OrderId,
+    email: &str,
+) -> Result<Order> {
+    let order = read(tx, ctx, Action::Write, order_id).await?;
+
+    let _: Permit = ctx.permit(
+        Action::Write,
+        Resource::Order {
+            id: order_id.as_uuid(),
+            customer: order.customer_id.map(CustomerId::as_uuid),
+        },
+    )?;
+
+    if order.status()?.is_final() {
+        return Err(Error::conflict("that order is closed"));
+    }
+
+    let email = email.trim().to_lowercase();
+    if !email.contains('@') {
+        return Err(Error::invalid("that is not an e-mail address"));
+    }
+
+    let previous = order.email.clone();
+
+    let updated = sqlx::query_as::<_, Order>(&format!(
+        r#"update "order" set email = $3 where scope = $1 and id = $2 returning {ORDER_COLUMNS}"#
+    ))
+    .bind(ctx.scope.0)
+    .bind(order_id.as_uuid())
+    .bind(&email)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::not_found("order"))?;
+
+    ctx.audit(
+        tx,
+        AuditEntry {
+            actor: ctx.actor.clone(),
+            action: Action::Write,
+            entity: "order",
+            entity_id: order_id.as_uuid(),
+            summary: serde_json::json!({ "field": "email", "previous": previous, "updated": email }),
+        },
+    )
+    .await?;
+
+    Ok(updated)
+}
+
 /// What a promotion took off a line or a shipping method, as the order will
 /// keep it. The amount is in the order's currency; there is no second one to
 /// disagree with it.

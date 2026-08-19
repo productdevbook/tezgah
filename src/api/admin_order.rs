@@ -1264,6 +1264,85 @@ pub async fn archive_order(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: OrderId) -> Resul
     move_order(tx, ctx, id, order::OrderStatus::Archived).await
 }
 
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AddressIn {
+    pub company: Option<String>,
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
+    pub address_1: Option<String>,
+    pub address_2: Option<String>,
+    pub city: Option<String>,
+    pub province: Option<String>,
+    pub postal_code: Option<String>,
+    pub country_code: Option<String>,
+    pub phone: Option<String>,
+}
+
+impl AddressIn {
+    fn address(self) -> order::OrderAddress {
+        order::OrderAddress {
+            company: self.company,
+            first_name: self.first_name,
+            last_name: self.last_name,
+            address_1: self.address_1,
+            address_2: self.address_2,
+            city: self.city,
+            province: self.province,
+            postal_code: self.postal_code,
+            country_code: self.country_code,
+            phone: self.phone,
+        }
+    }
+}
+
+/// Corrects the address a parcel is sent to. `order::update_address` is
+/// where a shipment already on its way refuses this.
+pub async fn update_order_shipping_address(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderId,
+    input: AddressIn,
+) -> Result<OrderView> {
+    Ok(
+        order::update_address(tx, ctx, id, order::AddressKind::Shipping, &input.address())
+            .await?
+            .into(),
+    )
+}
+
+/// Corrects the order's billing address. Nothing physical follows it, so
+/// unlike the shipping address this is never refused for having shipped.
+pub async fn update_order_billing_address(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderId,
+    input: AddressIn,
+) -> Result<OrderView> {
+    Ok(
+        order::update_address(tx, ctx, id, order::AddressKind::Billing, &input.address())
+            .await?
+            .into(),
+    )
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateEmail {
+    pub email: String,
+}
+
+/// Corrects the address a confirmation, an invoice or a shipping notice is
+/// sent to.
+pub async fn update_order_email(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: OrderId,
+    input: UpdateEmail,
+) -> Result<OrderView> {
+    Ok(order::update_email(tx, ctx, id, &input.email).await?.into())
+}
+
 pub async fn order_line_items(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
@@ -3933,6 +4012,27 @@ pub(super) static ROUTES: &[Route] = &[
         Write,
         "order",
         "Archive a completed order"
+    ),
+    route!(
+        Patch,
+        "/admin/orders/{id}/shipping-address",
+        Write,
+        "order",
+        "Correct the address a parcel is going to"
+    ),
+    route!(
+        Patch,
+        "/admin/orders/{id}/billing-address",
+        Write,
+        "order",
+        "Correct the order's billing address"
+    ),
+    route!(
+        Patch,
+        "/admin/orders/{id}/email",
+        Write,
+        "order",
+        "Correct the order's e-mail address"
     ),
     route!(
         Get,
