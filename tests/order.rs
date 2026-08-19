@@ -810,6 +810,202 @@ async fn a_cancelled_order_gives_the_stock_it_held_back() -> tezgah::Result<()> 
     Ok(())
 }
 
+/// The same shape as [`a_held_order`], with one reservation per line rather
+/// than one line total — the case #159 measured at 351 queries for 50 lines.
+async fn a_held_order_with_lines(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    scope: Scope,
+    stocked: i32,
+    line_quantity: i32,
+    lines: usize,
+) -> (InventoryItemId, StockLocationId, tezgah::id::OrderId) {
+    let (item, location, variant) = a_shelf(tx, ctx, scope, stocked).await;
+
+    let cart = Uuid::now_v7();
+    sqlx::query(r#"insert into cart (id, scope, currency_code) values ($1, $2, 'TRY')"#)
+        .bind(cart)
+        .bind(scope.0)
+        .execute(&mut **tx)
+        .await
+        .expect("a cart");
+
+    let mut order_lines = Vec::with_capacity(lines);
+    for _ in 0..lines {
+        let cart_line = LineItemId::new();
+        sqlx::query(
+            "insert into cart_line_item
+                 (id, scope, cart_id, product_title, quantity, unit_price, currency_code)
+             values ($1, $2, $3, 'a thing', $4, 10, 'TRY')",
+        )
+        .bind(cart_line.as_uuid())
+        .bind(scope.0)
+        .bind(cart)
+        .bind(line_quantity)
+        .execute(&mut **tx)
+        .await
+        .expect("a cart line");
+
+        inventory::reserve(
+            tx,
+            ctx,
+            item,
+            location,
+            line_quantity,
+            Some(cart_line),
+            false,
+            None,
+        )
+        .await
+        .expect("the checkout to hold the stock");
+
+        let mut line = a_line(line_quantity, dec!(10));
+        line.variant_id = Some(variant);
+        line.reserved_for = Some(cart_line);
+        order_lines.push(line);
+    }
+
+    let placed = order::create(tx, ctx, an_order(order_lines))
+        .await
+        .expect("an order");
+
+    (item, location, placed.id)
+}
+
+/// #159: `unwind` fanned a per-line, per-reservation loop out into 351
+/// queries for a 50-line order. This does not count queries — see the pull
+/// request body for why a query-counter was not worth the dependency it would
+/// have taken — but it does count the one thing a batched release must not
+/// lose on the way: an audit row and a `stock.released` event for every
+/// reservation it gives back, not one for the order.
+#[tokio::test]
+async fn cancelling_a_many_line_order_gives_back_every_reservation_once() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    seed_currency(&mut tx, shop.here).await;
+
+    const LINES: usize = 20;
+    let (item, location, placed) =
+        a_held_order_with_lines(&mut tx, &ctx, shop.here, 1000, 1, LINES).await;
+
+    let held = inventory::level(&mut tx, &ctx, item, location).await?;
+    assert_eq!(held.reserved_quantity, LINES as i32);
+
+    let canceled = order::cancel(&mut tx, &ctx, placed).await?;
+    assert_eq!(canceled.status()?, OrderStatus::Canceled);
+
+    let after = inventory::level(&mut tx, &ctx, item, location).await?;
+    assert_eq!(after.reserved_quantity, 0, "a cancelled order still holds");
+    assert_eq!(after.stocked_quantity, 1000, "nothing left the shelf");
+
+    let released = shop
+        .host
+        .audits
+        .lock()
+        .iter()
+        .filter(|(entity, _)| *entity == "reservation_item")
+        .count();
+    assert_eq!(
+        released, LINES,
+        "one audit row per reservation released, not one per order"
+    );
+
+    let events = shop
+        .host
+        .events
+        .lock()
+        .iter()
+        .filter(|name| **name == "stock.released")
+        .count();
+    assert_eq!(events, LINES, "one event per reservation released");
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
+}
+
+/// Two connections cancelling the same order at once: the row lock
+/// `hold_order` takes serializes them, so exactly one should go through and
+/// the other should see a conflict rather than a partial or doubled release
+/// — proven with two transactions genuinely open together, not one after the
+/// other.
+#[tokio::test]
+async fn two_concurrent_cancellations_of_one_order_agree_on_a_winner() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+
+    let mut setup = shop.begin().await;
+    let ctx = shop.ctx();
+    seed_currency(&mut setup, shop.here).await;
+    let (item, location, placed) =
+        a_held_order_with_lines(&mut setup, &ctx, shop.here, 10, 3, 1).await;
+    setup.commit().await.expect("the order to stay");
+
+    let gate = Arc::new(tokio::sync::Barrier::new(2));
+    let there = gate.clone();
+
+    let first = async {
+        let mut tx = shop.begin().await;
+        gate.wait().await;
+        let out = order::cancel(&mut tx, &shop.ctx(), placed).await;
+        match &out {
+            Ok(_) => tx.commit().await.expect("to keep it"),
+            Err(_) => tx.rollback().await.expect("to give it back"),
+        }
+        out
+    };
+    let second = async {
+        let mut tx = shop.begin().await;
+        there.wait().await;
+        let out = order::cancel(&mut tx, &shop.ctx(), placed).await;
+        match &out {
+            Ok(_) => tx.commit().await.expect("to keep it"),
+            Err(_) => tx.rollback().await.expect("to give it back"),
+        }
+        out
+    };
+
+    let (first, second) = tokio::join!(first, second);
+    let outcomes = [first, second];
+
+    let succeeded = outcomes.iter().filter(|out| out.is_ok()).count();
+    assert_eq!(
+        succeeded, 1,
+        "exactly one of two concurrent cancellations should win"
+    );
+    let losers: Vec<_> = outcomes
+        .iter()
+        .filter_map(|out| out.as_ref().err())
+        .collect();
+    assert_eq!(losers.len(), 1);
+    assert!(
+        losers[0].is_conflict(),
+        "the loser should see a conflict, not a partial release: {}",
+        losers[0].report()
+    );
+
+    let mut tx = shop.begin().await;
+    let after = inventory::level(&mut tx, &shop.ctx(), item, location).await?;
+    assert_eq!(after.reserved_quantity, 0, "released exactly once");
+    assert_eq!(after.stocked_quantity, 10, "nothing left the shelf");
+
+    let released = shop
+        .host
+        .audits
+        .lock()
+        .iter()
+        .filter(|(entity, _)| *entity == "reservation_item")
+        .count();
+    assert_eq!(
+        released, 1,
+        "the one reservation was released exactly once, not twice"
+    );
+
+    tx.rollback().await.ok();
+    shop.close().await;
+    Ok(())
+}
+
 /// The cheap path has to do the whole thing too: a host that moves the status
 /// is cancelling, whatever it called the call.
 #[tokio::test]

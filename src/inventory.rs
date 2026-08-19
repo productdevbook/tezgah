@@ -1714,25 +1714,127 @@ pub async fn release_cart(
             .fetch_all(&mut **tx)
             .await?;
 
-    let mut released = 0;
-    for line in lines {
-        released += release_line(tx, ctx, LineItemId::from_uuid(line)).await?;
-    }
-    Ok(released)
+    let line_ids: Vec<LineItemId> = lines.into_iter().map(LineItemId::from_uuid).collect();
+    release_lines(tx, ctx, &line_ids).await
 }
 
 /// Gives back every hold a line has. Nothing left the shelf, so `stocked`
-/// does not move.
+/// does not move. One line's worth of [`release_lines`].
 pub async fn release_line(tx: &mut Tx<'_>, ctx: &Ctx<'_>, line_item_id: LineItemId) -> Result<u64> {
+    release_lines(tx, ctx, std::slice::from_ref(&line_item_id)).await
+}
+
+/// Gives back every hold a batch of lines has, in one pass over the
+/// reservations and lot claims rather than a per-line, per-reservation fan-out
+/// of queries. `release_line` is this called with a single line.
+///
+/// The audit row and `stock.released` event stay one per reservation — that
+/// pairing is what #150/#153/#154 added so a release could be traced back to
+/// which reservation gave which quantity back, and a single rolled-up row
+/// would answer "how much" but not "which ones". `AuditSink` and `EventSink`
+/// are the host's own traits, one entry at a time by design (`ports.rs`), so
+/// batching those calls would mean widening a port for one caller rather than
+/// something this change can decide alone.
+pub async fn release_lines(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    line_item_ids: &[LineItemId],
+) -> Result<u64> {
     let _: Permit = ctx.permit(Action::Write, Resource::Inventory { id: None })?;
 
-    let held = line_reservations(tx, ctx, line_item_id).await?;
-    for reservation in &held {
-        let claims = lot_claims(tx, ctx, reservation.id).await?;
-        take_reservation(tx, ctx, reservation.id).await?;
-        unreserve(tx, ctx, reservation).await?;
-        unreserve_lots(tx, ctx, &claims).await?;
+    if line_item_ids.is_empty() {
+        return Ok(0);
+    }
 
+    let line_ids: Vec<uuid::Uuid> = line_item_ids.iter().map(|id| id.as_uuid()).collect();
+
+    let held = sqlx::query_as::<_, Reservation>(&format!(
+        "select {RESERVATION_COLUMNS} from reservation_item
+         where scope = $1 and (cart_line_item_id = any($2) or order_line_item_id = any($2))
+         order by created_at, id"
+    ))
+    .bind(ctx.scope.0)
+    .bind(&line_ids)
+    .fetch_all(&mut **tx)
+    .await?;
+
+    if held.is_empty() {
+        return Ok(0);
+    }
+
+    let reservation_ids: Vec<uuid::Uuid> = held.iter().map(|r| r.id.as_uuid()).collect();
+
+    // Read before the delete: `reservation_lot` cascades with `reservation_item`.
+    let claims: Vec<LotClaim> = sqlx::query_as(
+        "select inventory_lot_id, quantity from reservation_lot
+         where scope = $1 and reservation_item_id = any($2)",
+    )
+    .bind(ctx.scope.0)
+    .bind(&reservation_ids)
+    .fetch_all(&mut **tx)
+    .await?;
+
+    let deleted = sqlx::query("delete from reservation_item where scope = $1 and id = any($2)")
+        .bind(ctx.scope.0)
+        .bind(&reservation_ids)
+        .execute(&mut **tx)
+        .await?;
+
+    if deleted.rows_affected() != reservation_ids.len() as u64 {
+        return Err(Error::conflict(
+            "a reservation this release was about to give back is already gone",
+        ));
+    }
+
+    // Aggregated in the statement itself: two reservations against the same
+    // item and location must fold into one delta, or an `update … from` with
+    // two source rows matching one target row would apply only one of them,
+    // arbitrarily.
+    let item_ids: Vec<uuid::Uuid> = held.iter().map(|r| r.inventory_item_id.as_uuid()).collect();
+    let location_ids: Vec<uuid::Uuid> = held.iter().map(|r| r.location_id.as_uuid()).collect();
+    let quantities: Vec<i32> = held.iter().map(|r| r.quantity).collect();
+
+    sqlx::query(
+        "with deltas as (
+             select item_id, location_id, sum(qty) as qty
+             from unnest($2::uuid[], $3::uuid[], $4::int[]) as t(item_id, location_id, qty)
+             group by item_id, location_id
+         )
+         update inventory_level as l
+         set reserved_quantity = l.reserved_quantity - d.qty
+         from deltas d
+         where l.scope = $1 and l.inventory_item_id = d.item_id and l.location_id = d.location_id",
+    )
+    .bind(ctx.scope.0)
+    .bind(&item_ids)
+    .bind(&location_ids)
+    .bind(&quantities)
+    .execute(&mut **tx)
+    .await?;
+
+    if !claims.is_empty() {
+        let lot_ids: Vec<uuid::Uuid> = claims.iter().map(|c| c.inventory_lot_id).collect();
+        let lot_quantities: Vec<i32> = claims.iter().map(|c| c.quantity).collect();
+
+        sqlx::query(
+            "with deltas as (
+                 select lot_id, sum(qty) as qty
+                 from unnest($2::uuid[], $3::int[]) as t(lot_id, qty)
+                 group by lot_id
+             )
+             update inventory_lot as l
+             set reserved_quantity = greatest(l.reserved_quantity - d.qty, 0)
+             from deltas d
+             where l.scope = $1 and l.id = d.lot_id",
+        )
+        .bind(ctx.scope.0)
+        .bind(&lot_ids)
+        .bind(&lot_quantities)
+        .execute(&mut **tx)
+        .await?;
+    }
+
+    for reservation in &held {
         ctx.audit(
             tx,
             AuditEntry {

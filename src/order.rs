@@ -1405,9 +1405,9 @@ async fn unwind(tx: &mut Tx<'_>, ctx: &Ctx<'_>, order: &Order, from: OrderStatus
 
     crate::fulfilment::cancel_open_fulfillments(tx, ctx, order.id).await?;
 
-    for line in line_items(tx, ctx, order.id).await? {
-        crate::inventory::release_line(tx, ctx, line.id).await?;
-    }
+    let lines = line_items(tx, ctx, order.id).await?;
+    let line_ids: Vec<LineItemId> = lines.iter().map(|line| line.id).collect();
+    crate::inventory::release_lines(tx, ctx, &line_ids).await?;
 
     release_promotions(tx, ctx, order).await?;
 

@@ -1718,9 +1718,8 @@ async fn erase_order(tx: &mut Tx<'_>, ctx: &Ctx<'_>, order_id: OrderId) -> Resul
             .bind(order_id.as_uuid())
             .fetch_all(&mut **tx)
             .await?;
-    for line in lines {
-        inventory::release_line(tx, ctx, LineItemId::from_uuid(line)).await?;
-    }
+    let line_ids: Vec<LineItemId> = lines.into_iter().map(LineItemId::from_uuid).collect();
+    inventory::release_lines(tx, ctx, &line_ids).await?;
 
     for table in [
         "order_status_history",

@@ -9,7 +9,7 @@ mod common;
 
 use common::Shop;
 use tezgah::fulfilment;
-use tezgah::id::{InventoryItemId, OrderId, OrderItemId, StockLocationId, VariantId};
+use tezgah::id::{InventoryItemId, LineItemId, OrderId, OrderItemId, StockLocationId, VariantId};
 use tezgah::inventory;
 use tezgah::page::Paging;
 use tezgah::ports::{Ctx, Scope, Tx};
@@ -1576,5 +1576,93 @@ async fn a_reservation_cannot_reach_another_scopes_line_item() {
         "a reservation in one scope referenced a line item in another"
     );
 
+    shop.close().await;
+}
+
+/// Two lines, two reservations, one lot: `release_lines` gives the lot back
+/// the sum of both claims rather than one claim's quantity twice or the
+/// other's not at all — the same folding `unreserve_lots`'s batched update
+/// has to do that a naive per-row `update … from` would get wrong.
+#[tokio::test]
+async fn releasing_two_lines_against_the_same_lot_gives_back_their_sum() {
+    let shop = Shop::open().await;
+    let (item, location, _) = lot_seed(
+        &shop,
+        inventory::AllocationStrategy::Fifo,
+        inventory::TrackingMode::Lot,
+    )
+    .await;
+
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+    let lot = inventory::receive_lot(
+        &mut tx,
+        &ctx,
+        item,
+        location,
+        inventory::NewLot {
+            lot_code: "shared".into(),
+            expires_at: None,
+            received_at: None,
+            quantity: 10,
+            supplier_reference: None,
+        },
+    )
+    .await
+    .expect("a lot");
+
+    let cart = uuid::Uuid::now_v7();
+    sqlx::query(r#"insert into cart (id, scope, currency_code) values ($1, $2, 'TRY')"#)
+        .bind(cart)
+        .bind(shop.here.0)
+        .execute(&mut *tx)
+        .await
+        .expect("a cart");
+
+    let mut lines = Vec::new();
+    for quantity in [2, 3] {
+        let line_id = LineItemId::new();
+        sqlx::query(
+            "insert into cart_line_item
+                 (id, scope, cart_id, product_title, quantity, unit_price, currency_code)
+             values ($1, $2, $3, 'a thing', $4, 10, 'TRY')",
+        )
+        .bind(line_id.as_uuid())
+        .bind(shop.here.0)
+        .bind(cart)
+        .bind(quantity)
+        .execute(&mut *tx)
+        .await
+        .expect("a cart line");
+
+        inventory::reserve_from_lot(&mut tx, &ctx, lot.id, quantity, Some(line_id), None)
+            .await
+            .expect("the lot to hold it");
+        lines.push(line_id);
+    }
+
+    let held = inventory::lot(&mut tx, &ctx, lot.id)
+        .await
+        .expect("the lot");
+    assert_eq!(held.reserved_quantity, 5, "both claims against one lot");
+
+    let released = inventory::release_lines(&mut tx, &ctx, &lines)
+        .await
+        .expect("both reservations to release");
+    assert_eq!(released, 2);
+
+    let after = inventory::lot(&mut tx, &ctx, lot.id)
+        .await
+        .expect("the lot");
+    assert_eq!(
+        after.reserved_quantity, 0,
+        "the sum of both claims came back, not just the last one"
+    );
+    let level = inventory::level(&mut tx, &ctx, item, location)
+        .await
+        .expect("a level");
+    assert_eq!(level.reserved_quantity, 0);
+
+    tx.rollback().await.ok();
     shop.close().await;
 }

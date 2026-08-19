@@ -737,6 +737,117 @@ async fn a_swept_cart_gives_back_what_it_reserved() -> tezgah::Result<()> {
     Ok(())
 }
 
+/// Two lines held against the *same* item and location, so a batched release
+/// has to fold their deltas into one before writing the level rather than
+/// letting the second overwrite the first — the failure mode a naive
+/// `update … from` with two matching source rows would have. Audit rows and
+/// events still come out one per reservation, not one per level touched.
+#[tokio::test]
+async fn a_swept_cart_folds_two_holds_on_one_item_into_one_release() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+
+    let location = inventory::create_stock_location(
+        &mut tx,
+        &ctx,
+        inventory::NewStockLocation {
+            name: format!("warehouse {}", uuid::Uuid::now_v7()),
+            address: None,
+        },
+    )
+    .await?;
+    let item = inventory::create_inventory_item(
+        &mut tx,
+        &ctx,
+        inventory::NewInventoryItem {
+            sku: Some(format!("sku-{}", uuid::Uuid::now_v7())),
+            title: Some("a mug".into()),
+            requires_shipping: true,
+        },
+    )
+    .await?;
+    inventory::set_stock(&mut tx, &ctx, item.id, location.id, 10, 0).await?;
+
+    let variant = a_variant(&mut tx, &ctx, "mug").await?;
+    inventory::attach_inventory_item(&mut tx, &ctx, variant, item.id, 1).await?;
+
+    let now = chrono::Utc::now();
+    let cart = cart::create(
+        &mut tx,
+        &ctx,
+        NewCart {
+            expires_at: Some(now - chrono::Duration::hours(1)),
+            ..NewCart::guest(lira()?)
+        },
+    )
+    .await?;
+
+    let mut lines = Vec::new();
+    for quantity in [2, 3] {
+        let line = cart::add_line(
+            &mut tx,
+            &ctx,
+            cart.id,
+            AddLine {
+                variant_id: variant,
+                quantity,
+                unit_price: money(dec!(19.99))?,
+                is_tax_inclusive: false,
+                selling_plan_id: None,
+            },
+        )
+        .await?;
+        inventory::reserve(
+            &mut tx,
+            &ctx,
+            item.id,
+            location.id,
+            quantity,
+            Some(line.id),
+            false,
+            None,
+        )
+        .await?;
+        lines.push(line.id);
+    }
+
+    let held = inventory::level(&mut tx, &ctx, item.id, location.id).await?;
+    assert_eq!((held.reserved_quantity, held.available_quantity), (5, 5));
+
+    let gone = cart::expire(&mut tx, &ctx, now).await?;
+    assert_eq!(gone, vec![cart.id]);
+
+    let after = inventory::level(&mut tx, &ctx, item.id, location.id).await?;
+    assert_eq!(
+        (after.reserved_quantity, after.available_quantity),
+        (0, 10),
+        "both holds' quantities, not just the last one written, came off the level"
+    );
+
+    let released = shop
+        .host
+        .audits
+        .lock()
+        .iter()
+        .filter(|(entity, _)| *entity == "reservation_item")
+        .count();
+    assert_eq!(released, lines.len(), "one audit row per reservation");
+
+    let events = shop
+        .host
+        .events
+        .lock()
+        .iter()
+        .filter(|name| **name == "stock.released")
+        .count();
+    assert_eq!(events, lines.len(), "one event per reservation");
+
+    tx.rollback().await.ok();
+    shop.close().await;
+    Ok(())
+}
+
 #[tokio::test]
 async fn another_scope_cannot_reach_the_cart() -> tezgah::Result<()> {
     let shop = Shop::open().await;
