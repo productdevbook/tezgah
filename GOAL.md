@@ -242,7 +242,28 @@ writes an order, and the provider is not in your database.
 
 ### 15. Proof
 
-- [ ] a scope cannot see another's rows — a generated test per table
+- [x] a scope cannot see another's rows — a generated test per table —
+      `tests/isolation.rs` reads the catalogue for its 143 registered tables
+      rather than a list kept by hand, seeds one row per table through a
+      real non-superuser role under forced row-level security, then asks a
+      second scope's own connection to `select`, `update` and `delete` that
+      row: all three must come back empty, and the run names the table if
+      one does not. A companion test keeps the seeder honest —
+      `NOT_YET_SEEDED` is empty and may only shrink, so a table the seeder
+      cannot fill fails the run instead of quietly sitting outside the
+      check. Measured against a fresh migration head, all 143 registered
+      tables seed and all 143 come back empty from another scope; none
+      needed the seeder taught anything new, and none leaked.
+      `tests/schema.rs` carries the half this is not: two catalogue-wide
+      checks that row-level security is forced and a policy exists at all
+      (config, not behaviour), plus three hand-written cases against one
+      table, `workflow_run` — an unset scope, a write refused into somebody
+      else's — for shapes a generated seeder does not reach. A third
+      generated sweep, `only_the_named_exception_crosses_a_scope`, checks
+      every single-column foreign key that could name a row outside its own
+      scope and finds none does except the two migrations register on
+      purpose (`order.basket_id`, `cart.basket_id`) — and that even those
+      grant a reference, not a read.
 - [x] a customer cannot reach another customer's row on the storefront —
       `tests/api_store_cross_tenant.rs` seeds two shoppers, each with a cart,
       an order, an address, a payment collection, a subscription and a
