@@ -1,159 +1,157 @@
-import { useState, type FormEvent } from "react"
+import { zodResolver } from "@hookform/resolvers/zod"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { Link, useNavigate } from "@tanstack/react-router"
+import { useNavigate } from "@tanstack/react-router"
+import { useForm } from "react-hook-form"
+import { z } from "zod"
 
 import { post } from "@/api/client"
-import {
-  createCurrency,
-  currency,
-  type CreateCurrency,
-} from "@/api/schemas"
+import { createCurrency, currency, type CreateCurrency } from "@/api/schemas"
+import { FormField } from "@/components/form/form"
 import { FormError } from "@/components/form-error"
-import { PageHeading } from "@/components/page-heading"
+import { RouteFocusModal } from "@/components/modals/route-focus-modal"
+import { useRouteModal } from "@/components/modals/route-modal-context"
+import { RouteModalForm } from "@/components/modals/route-modal-form"
 import { Button } from "@/components/ui/button"
-import { Field, FieldError, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { useT } from "@/panel/i18n"
 
-const EMPTY_FORM = {
-  code: "",
-  numeric_code: "",
-  exponent: "2",
-  symbol: "",
-  symbol_native: "",
-  name: "",
-}
+/**
+ * The exponent is a whole number in an input that holds a string, and
+ * `numeric_code` is optional — so what the form collects is not what the API
+ * takes, and the conversion is in `onSubmit` rather than spread through the
+ * fields.
+ */
+const fields = createCurrency
+  .omit({ exponent: true, numeric_code: true })
+  .extend({
+    numeric_code: z.string().trim(),
+    exponent: z
+      .string()
+      .trim()
+      .refine(
+        (value) => /^[0-4]$/.test(value),
+        "a currency's exponent is between 0 and 4"
+      ),
+  })
+
+type Fields = z.infer<typeof fields>
 
 export function NewCurrency() {
-  const client = useQueryClient()
   const navigate = useNavigate()
-  const [form, setForm] = useState(EMPTY_FORM)
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+
+  return (
+    <RouteFocusModal onClose={() => void navigate({ to: "/store/currencies" })}>
+      <Body />
+    </RouteFocusModal>
+  )
+}
+
+function Body() {
+  const t = useT()
+  const client = useQueryClient()
+  const { close, succeed } = useRouteModal()
+
+  const form = useForm<Fields>({
+    resolver: zodResolver(fields),
+    defaultValues: {
+      code: "",
+      numeric_code: "",
+      exponent: "2",
+      symbol: "",
+      symbol_native: "",
+      name: "",
+    },
+  })
 
   const mutation = useMutation({
     mutationFn: (body: CreateCurrency) =>
       post("/admin/currencies", { schema: currency, body }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ["currencies"] })
-      void navigate({ to: "/store/currencies" })
+      succeed()
     },
   })
 
-  function submit(event: FormEvent) {
-    event.preventDefault()
-    const parsed = createCurrency.safeParse({
-      code: form.code,
-      numeric_code:
-        form.numeric_code.trim() === "" ? undefined : form.numeric_code,
-      exponent: Number(form.exponent),
-      symbol: form.symbol,
-      symbol_native: form.symbol_native,
-      name: form.name,
-    })
-    if (!parsed.success) {
-      const errors: Record<string, string> = {}
-      for (const issue of parsed.error.issues)
-        errors[String(issue.path[0])] = issue.message
-      setFieldErrors(errors)
-      return
-    }
-    setFieldErrors({})
-    mutation.mutate(parsed.data)
-  }
-
   return (
-    <div className="max-w-xl space-y-4">
-      <PageHeading
-        title="Enable a currency"
-        subtitle="tezgah keeps no built-in list. Enabling one twice corrects it rather than conflicting."
+    <RouteModalForm
+      form={form}
+      onSubmit={(values) =>
+        mutation.mutateAsync({
+          code: values.code,
+          numeric_code:
+            values.numeric_code.trim() === "" ? undefined : values.numeric_code,
+          exponent: Number(values.exponent),
+          symbol: values.symbol,
+          symbol_native: values.symbol_native,
+          name: values.name,
+        })
+      }
+    >
+      <RouteFocusModal.Header
+        title="New currency"
+        description="The exponent is how many decimal places this currency is written with — a formatting fact, not a multiplier: nothing here is stored in minor units."
       />
-      <form className="space-y-4" onSubmit={submit}>
-        {mutation.isError ? <FormError error={mutation.error} /> : null}
-        <div className="grid grid-cols-2 gap-4">
-          <Field data-invalid={!!fieldErrors.code}>
-            <FieldLabel htmlFor="currency-code">Code</FieldLabel>
-            <Input
-              id="currency-code"
-              value={form.code}
-              onChange={(e) => setForm({ ...form, code: e.target.value })}
-              placeholder="USD"
-              maxLength={3}
-              aria-invalid={!!fieldErrors.code}
-            />
-            <FieldError>{fieldErrors.code}</FieldError>
-          </Field>
-          <Field data-invalid={!!fieldErrors.exponent}>
-            <FieldLabel htmlFor="currency-exponent">Exponent</FieldLabel>
-            <Input
-              id="currency-exponent"
-              type="number"
-              min={0}
-              max={4}
-              value={form.exponent}
-              onChange={(e) => setForm({ ...form, exponent: e.target.value })}
-              aria-invalid={!!fieldErrors.exponent}
-            />
-            <FieldError>{fieldErrors.exponent}</FieldError>
-          </Field>
-        </div>
-        <Field data-invalid={!!fieldErrors.name}>
-          <FieldLabel htmlFor="currency-name">Name</FieldLabel>
-          <Input
-            id="currency-name"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            placeholder="US Dollar"
-            aria-invalid={!!fieldErrors.name}
-          />
-          <FieldError>{fieldErrors.name}</FieldError>
-        </Field>
-        <div className="grid grid-cols-2 gap-4">
-          <Field data-invalid={!!fieldErrors.symbol}>
-            <FieldLabel htmlFor="currency-symbol">Symbol</FieldLabel>
-            <Input
-              id="currency-symbol"
-              value={form.symbol}
-              onChange={(e) => setForm({ ...form, symbol: e.target.value })}
-              placeholder="$"
-              aria-invalid={!!fieldErrors.symbol}
-            />
-            <FieldError>{fieldErrors.symbol}</FieldError>
-          </Field>
-          <Field data-invalid={!!fieldErrors.symbol_native}>
-            <FieldLabel htmlFor="currency-symbol-native">Native symbol</FieldLabel>
-            <Input
-              id="currency-symbol-native"
-              value={form.symbol_native}
-              onChange={(e) => setForm({ ...form, symbol_native: e.target.value })}
-              placeholder="$"
-              aria-invalid={!!fieldErrors.symbol_native}
-            />
-            <FieldError>{fieldErrors.symbol_native}</FieldError>
-          </Field>
-        </div>
-        <Field>
-          <FieldLabel htmlFor="currency-numeric">Numeric code (optional)</FieldLabel>
-          <Input
-            id="currency-numeric"
-            value={form.numeric_code}
-            onChange={(e) => setForm({ ...form, numeric_code: e.target.value })}
-            placeholder="840"
-            maxLength={3}
-          />
-        </Field>
-        <div className="flex items-center gap-2">
-          <Button type="submit" disabled={mutation.isPending}>
-            {mutation.isPending ? "Enabling…" : "Enable currency"}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            nativeButton={false}
-            render={<Link to="/store/currencies" />}
+      <RouteFocusModal.Body>
+        <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
+          {mutation.isError ? <FormError error={mutation.error} /> : null}
+          <FormField control={form.control} name="code" label="Code">
+            {(field) => (
+              <Input
+                id={field.name}
+                className="uppercase"
+                placeholder="TRY"
+                {...field}
+              />
+            )}
+          </FormField>
+          <FormField control={form.control} name="name" label="Name">
+            {(field) => (
+              <Input id={field.name} placeholder="Turkish lira" {...field} />
+            )}
+          </FormField>
+          <FormField control={form.control} name="symbol" label="Symbol">
+            {(field) => <Input id={field.name} {...field} />}
+          </FormField>
+          <FormField
+            control={form.control}
+            name="symbol_native"
+            label="Native symbol"
+            description="What somebody writing in this currency's own language types."
           >
-            Cancel
-          </Button>
+            {(field) => <Input id={field.name} {...field} />}
+          </FormField>
+          <FormField
+            control={form.control}
+            name="exponent"
+            label="Exponent"
+            description="0 to 4. Two for most; zero for a currency with no subunit."
+          >
+            {(field) => (
+              <Input id={field.name} inputMode="numeric" {...field} />
+            )}
+          </FormField>
+          <FormField
+            control={form.control}
+            name="numeric_code"
+            label="Numeric code"
+            description="ISO 4217's number for it. Optional."
+          >
+            {(field) => (
+              <Input id={field.name} inputMode="numeric" {...field} />
+            )}
+          </FormField>
         </div>
-      </form>
-    </div>
+      </RouteFocusModal.Body>
+      <RouteFocusModal.Footer>
+        <Button type="button" variant="outline" onClick={close}>
+          {t("actions.cancel")}
+        </Button>
+        <Button type="submit" disabled={form.formState.isSubmitting}>
+          {form.formState.isSubmitting
+            ? t("actions.saving")
+            : t("actions.create")}
+        </Button>
+      </RouteFocusModal.Footer>
+    </RouteModalForm>
   )
 }

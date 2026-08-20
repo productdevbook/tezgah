@@ -68,14 +68,6 @@ export function ProductDetail({
             >
               {item.status}
             </Badge>
-            <Button
-              variant="outline"
-              size="sm"
-              nativeButton={false}
-              render={<Link to="/products/$id/edit" params={{ id: item.id }} />}
-            >
-              Edit
-            </Button>
             <DeleteAction
               path="/admin/products/{id}"
               params={{ id: item.id }}

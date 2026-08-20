@@ -1,13 +1,12 @@
 import { Link } from "@tanstack/react-router"
 
 import { salesChannel } from "@/api/schemas"
+import { ActionMenu } from "@/components/action-menu"
 import { DeleteAction } from "@/components/delete-action"
-import { DetailField, FieldGrid, Empty } from "@/components/detail-fields"
-import { DetailHeader } from "@/components/detail-header"
-import { QueryState } from "@/components/query-state"
+import { Mono } from "@/components/detail-fields"
+import { DetailPage } from "@/components/detail-page"
+import { Section, SectionRow, SectionRows } from "@/components/section"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
 import { dateTime, useDetail } from "@/lib/detail"
 
 export function SalesChannelDetail({ id }: { id: string }) {
@@ -19,55 +18,64 @@ export function SalesChannelDetail({ id }: { id: string }) {
   )
 
   return (
-    <div className="max-w-3xl space-y-4">
-      <QueryState
-        query={result}
-        empty={{ title: "No sales channel", description: "Nothing to show." }}
-      >
-        {(item) => (
-          <>
-            <DetailHeader back="sales channels" title={item.name}>
-              <Badge variant={item.is_disabled ? "outline" : "default"}>
-                {item.is_disabled ? "disabled" : "selling"}
-              </Badge>
-              <Button
-                variant="outline"
-                size="sm"
-                nativeButton={false}
-                render={
-                  <Link to="/store/sales-channels/$id/edit" params={{ id: item.id }} />
-                }
-              >
-                Edit
-              </Button>
-              <DeleteAction
-                path="/admin/sales-channels/{id}"
-                params={{ id: item.id }}
-                invalidateKey={["sales-channels"]}
-                kind="sales channel"
-                name={item.name}
-              />
-            </DetailHeader>
-            <Card>
-              <CardContent>
-                <FieldGrid>
-                  <DetailField label="ID">
-                    <span className="font-mono text-xs">{item.id}</span>
-                  </DetailField>
-                  <DetailField label="Name">{item.name}</DetailField>
-                  <DetailField label="State">
-                    {item.is_disabled ? "disabled" : "selling"}
-                  </DetailField>
-                  <DetailField label="Created">{dateTime(item.created_at)}</DetailField>
-                  <DetailField label="Description" full>
-                    {item.description ?? <Empty />}
-                  </DetailField>
-                </FieldGrid>
-              </CardContent>
-            </Card>
-          </>
-        )}
-      </QueryState>
-    </div>
+    <DetailPage
+      query={result}
+      empty={{ title: "No sales channel", description: "Nothing to show." }}
+      back="sales channels"
+      title={(item) => item.name}
+      actions={(item) => (
+        <>
+          <Badge variant={item.is_disabled ? "outline" : "default"}>
+            {item.is_disabled ? "disabled" : "selling"}
+          </Badge>
+          <DeleteAction
+            path="/admin/sales-channels/{id}"
+            params={{ id: item.id }}
+            invalidateKey={["sales-channels"]}
+            kind="sales channel"
+            name={item.name}
+          />
+        </>
+      )}
+      main={(item) => (
+        <Section
+          title="The channel"
+          actions={
+            <ActionMenu
+              groups={[
+                [
+                  {
+                    label: "Edit",
+                    render: (
+                      <Link
+                        to="/store/sales-channels/$id/edit"
+                        params={{ id: item.id }}
+                      />
+                    ),
+                  },
+                ],
+              ]}
+            />
+          }
+        >
+          <SectionRows>
+            <SectionRow label="Name" value={item.name} />
+            <SectionRow label="Description" value={item.description} />
+            <SectionRow
+              label="State"
+              value={item.is_disabled ? "Disabled" : "Selling"}
+            />
+          </SectionRows>
+        </Section>
+      )}
+      side={(item) => (
+        <Section title="Details">
+          <SectionRows>
+            <SectionRow label="ID" value={<Mono>{item.id}</Mono>} />
+            <SectionRow label="Created" value={dateTime(item.created_at)} />
+          </SectionRows>
+        </Section>
+      )}
+    />
   )
 }

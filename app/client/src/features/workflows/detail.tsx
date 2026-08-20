@@ -9,11 +9,11 @@ import {
   type WorkflowStep,
   type WorkflowStepState,
 } from "@/api/schemas"
-import { DetailField, FieldGrid, Empty } from "@/components/detail-fields"
-import { DetailHeader } from "@/components/detail-header"
+import { Empty, Mono } from "@/components/detail-fields"
+import { DetailPage } from "@/components/detail-page"
 import { QueryState } from "@/components/query-state"
+import { Section, SectionRow, SectionRows } from "@/components/section"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent } from "@/components/ui/card"
 import {
   Table,
   TableBody,
@@ -24,7 +24,9 @@ import {
 } from "@/components/ui/table"
 import { dateTime, useDetail } from "@/lib/detail"
 
-function runTone(state: WorkflowRunState): "default" | "secondary" | "outline" | "destructive" {
+function runTone(
+  state: WorkflowRunState
+): "default" | "secondary" | "outline" | "destructive" {
   if (state === "done") return "default"
   if (state === "failed") return "destructive"
   if (state === "running" || state === "compensating") return "secondary"
@@ -42,7 +44,8 @@ function stepTone(
 ): "default" | "secondary" | "outline" | "destructive" {
   if (state === "done") return "default"
   if (state === "failed") return "destructive"
-  if (state === "invoking" || state === "called" || state === "compensating") return "secondary"
+  if (state === "invoking" || state === "called" || state === "compensating")
+    return "secondary"
   return "outline"
 }
 
@@ -59,7 +62,12 @@ const STEP_MEANING: Record<WorkflowStepState, string> = {
 }
 
 export function WorkflowDetail({ id }: { id: string }) {
-  const run = useDetail(["workflow-runs"], "/admin/workflows-executions/{id}", workflowRun, id)
+  const run = useDetail(
+    ["workflow-runs"],
+    "/admin/workflows-executions/{id}",
+    workflowRun,
+    id
+  )
   const steps = useQuery({
     queryKey: ["workflow-runs", id, "steps"],
     queryFn: ({ signal }) =>
@@ -71,36 +79,39 @@ export function WorkflowDetail({ id }: { id: string }) {
   })
 
   return (
-    <div className="max-w-3xl space-y-4">
-      <QueryState query={run} empty={{ title: "No run", description: "Nothing to show." }}>
-        {(item) => (
-          <>
-            <DetailHeader back="workflows" title={`Run ${item.id}`}>
-              <Badge variant={runTone(item.state)}>{item.state}</Badge>
-            </DetailHeader>
-            <Card>
-              <CardContent>
-                <FieldGrid>
-                  <DetailField label="ID">
-                    <span className="font-mono text-xs">{item.id}</span>
-                  </DetailField>
-                  <DetailField label="State">{item.state}</DetailField>
-                  <DetailField label="Failure" full>
-                    {item.failure ?? <Empty />}
-                  </DetailField>
-                </FieldGrid>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent>
-                <h2 className="mb-3 text-sm font-medium">Steps</h2>
-                <StepsTable steps={steps} />
-              </CardContent>
-            </Card>
-          </>
-        )}
-      </QueryState>
-    </div>
+    <DetailPage
+      query={run}
+      empty={{ title: "No run", description: "Nothing to show." }}
+      back="workflows"
+      title={(item) => `Run ${item.id}`}
+      actions={(item) => (
+        <Badge variant={runTone(item.state)}>{item.state}</Badge>
+      )}
+      main={() => (
+        <Section
+          title="Steps"
+          description="Each declares how to undo itself, so a failure late in the run walks back through everything before it."
+        >
+          <StepsTable steps={steps} />
+        </Section>
+      )}
+      side={(item) => (
+        <>
+          <Section title="The run">
+            <SectionRows>
+              <SectionRow label="State" value={item.state} />
+              <SectionRow label="Failure" value={item.failure} />
+            </SectionRows>
+          </Section>
+
+          <Section title="Details">
+            <SectionRows>
+              <SectionRow label="ID" value={<Mono>{item.id}</Mono>} />
+            </SectionRows>
+          </Section>
+        </>
+      )}
+    />
   )
 }
 
@@ -123,30 +134,33 @@ function StepsTable({ steps }: { steps: UseQueryResult<WorkflowStep[]> }) {
           </TableHeader>
           <TableBody>
             {[...items]
-              .sort((a, b) => a.group_ordering - b.group_ordering || a.ordering - b.ordering)
+              .sort(
+                (a, b) =>
+                  a.group_ordering - b.group_ordering || a.ordering - b.ordering
+              )
               .map((step) => (
                 <TableRow key={step.id}>
                   <TableCell>
                     <div className="font-medium">{step.name}</div>
                     {step.failure ? (
-                      <div className="text-destructive mt-0.5 max-w-sm truncate text-xs">
+                      <div className="mt-0.5 max-w-sm truncate text-xs text-destructive">
                         {step.failure}
                       </div>
                     ) : null}
                   </TableCell>
                   <TableCell>
                     <Badge variant={stepTone(step.state)}>{step.state}</Badge>
-                    <div className="text-muted-foreground mt-0.5 text-xs">
+                    <div className="mt-0.5 text-xs text-muted-foreground">
                       {STEP_MEANING[step.state]}
                     </div>
                   </TableCell>
                   <TableCell className="text-right font-mono text-xs">
                     {step.attempts}/{step.max_attempts}
                   </TableCell>
-                  <TableCell className="text-muted-foreground text-xs">
+                  <TableCell className="text-xs text-muted-foreground">
                     {dateTime(step.run_after)}
                   </TableCell>
-                  <TableCell className="text-muted-foreground text-xs">
+                  <TableCell className="text-xs text-muted-foreground">
                     {step.lease_until ? dateTime(step.lease_until) : <Empty />}
                   </TableCell>
                 </TableRow>

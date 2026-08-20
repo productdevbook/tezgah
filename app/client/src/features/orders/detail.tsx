@@ -21,13 +21,18 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { DetailField, FieldGrid, Empty } from "@/components/detail-fields"
-import { DetailHeader } from "@/components/detail-header"
+import { Empty, Mono } from "@/components/detail-fields"
+import { DetailPage } from "@/components/detail-page"
 import { FormError } from "@/components/form-error"
 import { QueryState } from "@/components/query-state"
+import {
+  Section,
+  SectionBody,
+  SectionRow,
+  SectionRows,
+} from "@/components/section"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
 import { Field, FieldError, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import {
@@ -40,7 +45,14 @@ import {
 } from "@/components/ui/table"
 import { dateTime, useDetail } from "@/lib/detail"
 
-const SETTLED = ["captured", "paid", "refunded", "fulfilled", "shipped", "delivered"]
+const SETTLED = [
+  "captured",
+  "paid",
+  "refunded",
+  "fulfilled",
+  "shipped",
+  "delivered",
+]
 const STUCK = ["canceled", "cancelled", "requires_more", "failed", "declined"]
 
 function tone(status: string): "default" | "outline" | "destructive" {
@@ -53,76 +65,120 @@ export function OrderDetail({ id }: { id: string }) {
   const result = useDetail(["orders"], "/admin/orders/{id}", order, id)
 
   return (
-    <div className="max-w-3xl space-y-4">
-      <QueryState query={result} empty={{ title: "No order", description: "Nothing to show." }}>
-        {(item) => (
-          <>
-            <DetailHeader
-              back="orders"
-              title={item.display_id ? `Order #${item.display_id}` : "Order"}
-              subtitle={item.email ?? undefined}
-            >
-              {item.is_draft ? <Badge variant="outline">draft</Badge> : null}
-            </DetailHeader>
-            <Card>
-              <CardContent>
-                {/*
-                  An order carries three statuses that move independently —
-                  itself, its money and its parcels — so all three get their
-                  own field rather than folding into one.
-                */}
-                <FieldGrid>
-                  <DetailField label="Order status">
-                    <Badge variant={tone(item.status)}>{item.status}</Badge>
-                  </DetailField>
-                  <DetailField label="Payment status">
-                    <Badge variant={tone(item.payment_status)}>{item.payment_status}</Badge>
-                  </DetailField>
-                  <DetailField label="Fulfilment status">
-                    <Badge variant={tone(item.fulfillment_status)}>
-                      {item.fulfillment_status}
-                    </Badge>
-                  </DetailField>
-                  <DetailField label="Draft">{item.is_draft ? "yes" : "no"}</DetailField>
-                  <DetailField label="ID">
-                    <span className="font-mono text-xs">{item.id}</span>
-                  </DetailField>
-                  <DetailField label="Display number">
-                    {item.display_id ?? <Empty />}
-                  </DetailField>
-                  <DetailField label="Email">{item.email ?? <Empty />}</DetailField>
-                  <DetailField label="Currency">
-                    <span className="font-mono text-xs uppercase">{item.currency_code}</span>
-                  </DetailField>
-                  <DetailField label="Version">{item.version}</DetailField>
-                  <DetailField label="Payment collection">
-                    {item.payment_collection_id ?? <Empty />}
-                  </DetailField>
-                  <DetailField label="Basket">{item.basket_id ?? <Empty />}</DetailField>
-                  <DetailField label="Created">{dateTime(item.created_at)}</DetailField>
-                  <DetailField label="Completed">
-                    {item.completed_at ? dateTime(item.completed_at) : <Empty />}
-                  </DetailField>
-                  <DetailField label="Canceled">
-                    {item.canceled_at ? dateTime(item.canceled_at) : <Empty />}
-                  </DetailField>
-                </FieldGrid>
-              </CardContent>
-            </Card>
+    <DetailPage
+      query={result}
+      empty={{ title: "No order", description: "Nothing to show." }}
+      back="orders"
+      title={(item) =>
+        item.display_id ? `Order #${item.display_id}` : "Order"
+      }
+      subtitle={(item) => item.email ?? undefined}
+      actions={(item) => (
+        <>
+          <Badge variant={tone(item.status)}>{item.status}</Badge>
+          {item.is_draft ? <Badge variant="outline">draft</Badge> : null}
+        </>
+      )}
+      main={(item) => (
+        <>
+          <Section
+            title="Where it stands"
+            description="Three statuses that move independently — the order, its money and its parcels — so none of them is folded into the others."
+          >
+            <SectionRows>
+              <SectionRow
+                label="Order"
+                value={<Badge variant={tone(item.status)}>{item.status}</Badge>}
+              />
+              <SectionRow
+                label="Payment"
+                value={
+                  <Badge variant={tone(item.payment_status)}>
+                    {item.payment_status}
+                  </Badge>
+                }
+              />
+              <SectionRow
+                label="Fulfilment"
+                value={
+                  <Badge variant={tone(item.fulfillment_status)}>
+                    {item.fulfillment_status}
+                  </Badge>
+                }
+              />
+            </SectionRows>
+          </Section>
 
-            <Card>
-              <CardContent className="space-y-3">
-                <h2 className="text-sm font-medium">Entitlements</h2>
-                <Entitlements
-                  orderId={id}
-                  orderLabel={item.display_id ? `order #${item.display_id}` : "this order"}
-                />
-              </CardContent>
-            </Card>
-          </>
-        )}
-      </QueryState>
-    </div>
+          <Section
+            title="Entitlements"
+            description="What this order granted a right to, and whether that right still stands."
+          >
+            <SectionBody>
+              <Entitlements
+                orderId={id}
+                orderLabel={
+                  item.display_id ? `order #${item.display_id}` : "this order"
+                }
+              />
+            </SectionBody>
+          </Section>
+        </>
+      )}
+      side={(item) => (
+        <>
+          <Section title="Who it is for">
+            <SectionRows>
+              <SectionRow label="Email" value={item.email} />
+              <SectionRow
+                label="Currency"
+                value={<Mono>{item.currency_code.toUpperCase()}</Mono>}
+              />
+            </SectionRows>
+          </Section>
+
+          <Section
+            title="What it is attached to"
+            description="A basket is a marketplace checkout: one payment across several sellers, one order each."
+          >
+            <SectionRows>
+              <SectionRow
+                label="Payment collection"
+                value={
+                  item.payment_collection_id ? (
+                    <Mono>{item.payment_collection_id}</Mono>
+                  ) : null
+                }
+              />
+              <SectionRow
+                label="Basket"
+                value={item.basket_id ? <Mono>{item.basket_id}</Mono> : null}
+              />
+            </SectionRows>
+          </Section>
+
+          <Section
+            title="Details"
+            description="The version rises with every edit; earlier versions keep what the order looked like then."
+          >
+            <SectionRows>
+              <SectionRow label="ID" value={<Mono>{item.id}</Mono>} />
+              <SectionRow label="Number" value={item.display_id} />
+              <SectionRow label="Version" value={item.version} />
+              <SectionRow label="Draft" value={item.is_draft ? "Yes" : "No"} />
+              <SectionRow label="Created" value={dateTime(item.created_at)} />
+              <SectionRow
+                label="Completed"
+                value={item.completed_at ? dateTime(item.completed_at) : null}
+              />
+              <SectionRow
+                label="Canceled"
+                value={item.canceled_at ? dateTime(item.canceled_at) : null}
+              />
+            </SectionRows>
+          </Section>
+        </>
+      )}
+    />
   )
 }
 
@@ -131,7 +187,13 @@ export function OrderDetail({ id }: { id: string }) {
  * server-side rather than paging it, so this reads once rather than through
  * `usePagedList`.
  */
-function Entitlements({ orderId, orderLabel }: { orderId: string; orderLabel: string }) {
+function Entitlements({
+  orderId,
+  orderLabel,
+}: {
+  orderId: string
+  orderLabel: string
+}) {
   const client = useQueryClient()
   const query = useQuery({
     queryKey: ["orders", orderId, "entitlements"],
@@ -174,7 +236,9 @@ function Entitlements({ orderId, orderLabel }: { orderId: string; orderLabel: st
                       </TableCell>
                       <TableCell>
                         {row.download_count}
-                        {row.max_downloads !== null ? ` / ${row.max_downloads}` : null}
+                        {row.max_downloads !== null
+                          ? ` / ${row.max_downloads}`
+                          : null}
                       </TableCell>
                       <TableCell>{dateTime(row.granted_at)}</TableCell>
                       <TableCell>
@@ -266,11 +330,12 @@ function RevokeEntitlementsAction({
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>
-            Revoke {activeCount} entitlement{activeCount === 1 ? "" : "s"} for {orderLabel}?
+            Revoke {activeCount} entitlement{activeCount === 1 ? "" : "s"} for{" "}
+            {orderLabel}?
           </AlertDialogTitle>
           <AlertDialogDescription>
-            Takes back every digital right {orderLabel} currently grants. It cannot be
-            undone from here.
+            Takes back every digital right {orderLabel} currently grants. It
+            cannot be undone from here.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <Field data-invalid={!!reasonError}>

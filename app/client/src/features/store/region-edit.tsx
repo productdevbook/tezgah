@@ -1,132 +1,153 @@
-import { useState, type FormEvent } from "react"
+import { zodResolver } from "@hookform/resolvers/zod"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { Link, useNavigate } from "@tanstack/react-router"
+import { useNavigate } from "@tanstack/react-router"
+import { useForm } from "react-hook-form"
+import { z } from "zod"
 
 import { patch } from "@/api/client"
-import { region, updateRegion, type Region, type UpdateRegion } from "@/api/schemas"
+import { region, updateRegion, type Region } from "@/api/schemas"
+import { FormField } from "@/components/form/form"
 import { FormError } from "@/components/form-error"
 import { RouteDrawer } from "@/components/modals/route-drawer"
+import { useRouteModal } from "@/components/modals/route-modal-context"
+import { RouteModalForm } from "@/components/modals/route-modal-form"
 import { QueryState } from "@/components/query-state"
 import { Button } from "@/components/ui/button"
-import { Field, FieldError, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { useDetail } from "@/lib/detail"
+import { useT } from "@/panel/i18n"
+
+const fields = z.object({
+  name: z.string().trim().min(1, "a name is needed"),
+  currency_code: z
+    .string()
+    .trim()
+    .length(3, "a currency code is three letters"),
+  is_tax_inclusive: z.boolean(),
+  has_automatic_taxes: z.boolean(),
+})
+
+type Fields = z.infer<typeof fields>
 
 /**
- * `/store/regions/$id/edit` — the trailing-underscore escape `region-detail.tsx`
- * already takes, for the same reason: a full page, not a `/store` tab.
- *
  * `tezgah::api` has no route to delete a region, only one to take a country
- * out of it (`server/README.md`) — so this screen, unlike the other four,
- * offers no delete action.
+ * out of it — so this screen, unlike the other four, offers no delete.
  */
 export function EditRegion({ id }: { id: string }) {
+  const navigate = useNavigate()
   const result = useDetail(["regions"], "/admin/regions/{id}", region, id)
 
   return (
-    <RouteDrawer>
+    <RouteDrawer
+      onClose={() =>
+        void navigate({ to: "/store/regions/$id", params: { id } })
+      }
+    >
       <RouteDrawer.Header title="Edit region" />
-      <RouteDrawer.Body>
-      <QueryState query={result} empty={{ title: "No region", description: "Nothing to show." }}>
-        {(item) => <RegionForm item={item} />}
-      </QueryState>
-    </RouteDrawer.Body>
+      {result.data ? (
+        <Body item={result.data} />
+      ) : (
+        <RouteDrawer.Body>
+          <QueryState
+            query={result}
+            empty={{ title: "No region", description: "Nothing to show." }}
+          >
+            {() => null}
+          </QueryState>
+        </RouteDrawer.Body>
+      )}
     </RouteDrawer>
   )
 }
 
-function RegionForm({ item }: { item: Region }) {
+function Body({ item }: { item: Region }) {
+  const t = useT()
   const client = useQueryClient()
-  const navigate = useNavigate()
-  const [form, setForm] = useState({
-    name: item.name,
-    currency_code: item.currency_code,
-    is_tax_inclusive: item.is_tax_inclusive,
-    has_automatic_taxes: item.has_automatic_taxes,
-  })
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const { close, succeed } = useRouteModal()
 
-  const mutation = useMutation({
-    mutationFn: (body: UpdateRegion) =>
-      patch("/admin/regions/{id}", { schema: region, params: { id: item.id }, body }),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: ["regions"] })
-      void navigate({ to: "/store/regions/$id", params: { id: item.id } })
+  const form = useForm<Fields>({
+    resolver: zodResolver(fields),
+    defaultValues: {
+      name: item.name,
+      currency_code: item.currency_code,
+      is_tax_inclusive: item.is_tax_inclusive,
+      has_automatic_taxes: item.has_automatic_taxes,
     },
   })
 
-  function submit(event: FormEvent) {
-    event.preventDefault()
-    const parsed = updateRegion.safeParse(form)
-    if (!parsed.success) {
-      const errors: Record<string, string> = {}
-      for (const issue of parsed.error.issues)
-        errors[String(issue.path[0])] = issue.message
-      setFieldErrors(errors)
-      return
-    }
-    setFieldErrors({})
-    mutation.mutate(parsed.data)
-  }
+  const mutation = useMutation({
+    mutationFn: (body: z.input<typeof updateRegion>) =>
+      patch("/admin/regions/{id}", {
+        schema: region,
+        params: { id: item.id },
+        body,
+      }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["regions"] })
+      succeed()
+    },
+  })
 
   return (
-    <>
-      <form className="space-y-4" onSubmit={submit}>
-        {mutation.isError ? <FormError error={mutation.error} /> : null}
-        <Field data-invalid={!!fieldErrors.name}>
-          <FieldLabel htmlFor="region-name">Name</FieldLabel>
-          <Input
-            id="region-name"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            aria-invalid={!!fieldErrors.name}
-          />
-          <FieldError>{fieldErrors.name}</FieldError>
-        </Field>
-        <Field data-invalid={!!fieldErrors.currency_code}>
-          <FieldLabel htmlFor="region-currency">Currency code</FieldLabel>
-          <Input
-            id="region-currency"
-            value={form.currency_code}
-            onChange={(e) => setForm({ ...form, currency_code: e.target.value })}
-            maxLength={3}
-            aria-invalid={!!fieldErrors.currency_code}
-          />
-          <FieldError>{fieldErrors.currency_code}</FieldError>
-        </Field>
-        <Field orientation="horizontal">
-          <Switch
-            id="region-tax-inclusive"
-            checked={form.is_tax_inclusive}
-            onCheckedChange={(checked) => setForm({ ...form, is_tax_inclusive: checked })}
-          />
-          <FieldLabel htmlFor="region-tax-inclusive">Prices include tax</FieldLabel>
-        </Field>
-        <Field orientation="horizontal">
-          <Switch
-            id="region-automatic-taxes"
-            checked={form.has_automatic_taxes}
-            onCheckedChange={(checked) =>
-              setForm({ ...form, has_automatic_taxes: checked })
-            }
-          />
-          <FieldLabel htmlFor="region-automatic-taxes">Automatic taxes</FieldLabel>
-        </Field>
-        <div className="flex items-center gap-2">
-          <Button type="submit" disabled={mutation.isPending}>
-            {mutation.isPending ? "Saving…" : "Save"}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            nativeButton={false}
-            render={<Link to="/store/regions/$id" params={{ id: item.id }} />}
+    <RouteModalForm
+      form={form}
+      onSubmit={(values) => mutation.mutateAsync(values)}
+    >
+      <RouteDrawer.Body>
+        <div className="flex flex-col gap-6">
+          {mutation.isError ? <FormError error={mutation.error} /> : null}
+          <FormField control={form.control} name="name" label="Name">
+            {(field) => <Input id={field.name} {...field} />}
+          </FormField>
+          <FormField
+            control={form.control}
+            name="currency_code"
+            label="Currency code"
           >
-            Cancel
-          </Button>
+            {(field) => (
+              <Input id={field.name} className="uppercase" {...field} />
+            )}
+          </FormField>
+          <FormField
+            control={form.control}
+            name="is_tax_inclusive"
+            label="Prices include tax"
+            description="What a shopper here is shown: a price with tax already in it, or one that gains tax at the till."
+          >
+            {(field) => (
+              <Switch
+                id={field.name}
+                checked={field.value}
+                onCheckedChange={(checked) => field.onChange(checked)}
+              />
+            )}
+          </FormField>
+          <FormField
+            control={form.control}
+            name="has_automatic_taxes"
+            label="Work tax out automatically"
+          >
+            {(field) => (
+              <Switch
+                id={field.name}
+                checked={field.value}
+                onCheckedChange={(checked) => field.onChange(checked)}
+              />
+            )}
+          </FormField>
         </div>
-      </form>
-    </>
+      </RouteDrawer.Body>
+      <RouteDrawer.Footer>
+        <Button type="button" variant="outline" onClick={close}>
+          {t("actions.cancel")}
+        </Button>
+        <Button type="submit" disabled={form.formState.isSubmitting}>
+          {form.formState.isSubmitting
+            ? t("actions.saving")
+            : t("actions.save")}
+        </Button>
+      </RouteDrawer.Footer>
+    </RouteModalForm>
   )
 }

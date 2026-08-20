@@ -101,10 +101,14 @@ function Body() {
         <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
           {mutation.isError ? <FormError error={mutation.error} /> : null}
           <FormField control={form.control} name="handle" label="Handle">
-            {(field) => <Input id={field.name} {...field} placeholder="denim-jacket" />}
+            {(field) => (
+              <Input id={field.name} {...field} placeholder="denim-jacket" />
+            )}
           </FormField>
           <FormField control={form.control} name="title" label="Title">
-            {(field) => <Input id={field.name} {...field} placeholder="Denim jacket" />}
+            {(field) => (
+              <Input id={field.name} {...field} placeholder="Denim jacket" />
+            )}
           </FormField>
           <FormField control={form.control} name="subtitle" label="Subtitle">
             {(field) => <Input id={field.name} {...field} />}

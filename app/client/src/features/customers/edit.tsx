@@ -1,139 +1,139 @@
-import { useState, type FormEvent } from "react"
+import { zodResolver } from "@hookform/resolvers/zod"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { Link, useNavigate } from "@tanstack/react-router"
+import { useNavigate } from "@tanstack/react-router"
+import { useForm } from "react-hook-form"
+import { z } from "zod"
 
 import { patch } from "@/api/client"
-import { customer, updateCustomer, type Customer, type UpdateCustomer } from "@/api/schemas"
+import { customer, updateCustomer, type Customer } from "@/api/schemas"
+import { FormField } from "@/components/form/form"
 import { FormError } from "@/components/form-error"
 import { RouteDrawer } from "@/components/modals/route-drawer"
+import { useRouteModal } from "@/components/modals/route-modal-context"
+import { RouteModalForm } from "@/components/modals/route-modal-form"
 import { QueryState } from "@/components/query-state"
 import { Button } from "@/components/ui/button"
-import { Field, FieldError, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { useDetail } from "@/lib/detail"
+import { useT } from "@/panel/i18n"
 
-/** `/customers/$id/edit` — the same address shape as `/products/$id/edit`. */
+/**
+ * What the form collects: a text input holds `""` and never `null`, and the
+ * API wants `null` to mean "clear it". The conversion lives in `onSubmit`.
+ */
+const fields = z.object({
+  email: z.string().trim(),
+  first_name: z.string().trim(),
+  last_name: z.string().trim(),
+  phone: z.string().trim(),
+  company_name: z.string().trim(),
+})
+
+type Fields = z.infer<typeof fields>
+
+const orNull = (value: string) => (value.trim() === "" ? null : value)
+
 export function EditCustomer({ id }: { id: string }) {
+  const navigate = useNavigate()
   const result = useDetail(["customers"], "/admin/customers/{id}", customer, id)
 
   return (
-    <RouteDrawer>
+    <RouteDrawer
+      onClose={() => void navigate({ to: "/customers/$id", params: { id } })}
+    >
       <RouteDrawer.Header title="Edit customer" />
-      <RouteDrawer.Body>
-      <QueryState
-        query={result}
-        empty={{ title: "No customer", description: "Nothing to show." }}
-      >
-        {(item) => <CustomerForm item={item} />}
-      </QueryState>
-    </RouteDrawer.Body>
+      {result.data ? (
+        <Body item={result.data} />
+      ) : (
+        <RouteDrawer.Body>
+          <QueryState
+            query={result}
+            empty={{ title: "No customer", description: "Nothing to show." }}
+          >
+            {() => null}
+          </QueryState>
+        </RouteDrawer.Body>
+      )}
     </RouteDrawer>
   )
 }
 
-function CustomerForm({ item }: { item: Customer }) {
+function Body({ item }: { item: Customer }) {
+  const t = useT()
   const client = useQueryClient()
-  const navigate = useNavigate()
-  const [form, setForm] = useState({
-    first_name: item.first_name ?? "",
-    last_name: item.last_name ?? "",
-    email: item.email ?? "",
-    phone: item.phone ?? "",
-    company_name: item.company_name ?? "",
-  })
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const { close, succeed } = useRouteModal()
 
-  const mutation = useMutation({
-    mutationFn: (body: UpdateCustomer) =>
-      patch("/admin/customers/{id}", { schema: customer, params: { id: item.id }, body }),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: ["customers"] })
-      void navigate({ to: "/customers/$id", params: { id: item.id } })
+  const form = useForm<Fields>({
+    resolver: zodResolver(fields),
+    defaultValues: {
+      email: item.email ?? "",
+      first_name: item.first_name ?? "",
+      last_name: item.last_name ?? "",
+      phone: item.phone ?? "",
+      company_name: item.company_name ?? "",
     },
   })
 
-  function submit(event: FormEvent) {
-    event.preventDefault()
-    const empty = (v: string) => (v.trim() === "" ? null : v)
-    const parsed = updateCustomer.safeParse({
-      first_name: empty(form.first_name),
-      last_name: empty(form.last_name),
-      email: empty(form.email),
-      phone: empty(form.phone),
-      company_name: empty(form.company_name),
-    })
-    if (!parsed.success) {
-      const errors: Record<string, string> = {}
-      for (const issue of parsed.error.issues)
-        errors[String(issue.path[0])] = issue.message
-      setFieldErrors(errors)
-      return
-    }
-    setFieldErrors({})
-    mutation.mutate(parsed.data)
-  }
+  const mutation = useMutation({
+    mutationFn: (body: z.input<typeof updateCustomer>) =>
+      patch("/admin/customers/{id}", {
+        schema: customer,
+        params: { id: item.id },
+        body,
+      }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["customers"] })
+      succeed()
+    },
+  })
 
   return (
-    <>
-      <form className="space-y-4" onSubmit={submit}>
-        {mutation.isError ? <FormError error={mutation.error} /> : null}
-        <Field data-invalid={!!fieldErrors.email}>
-          <FieldLabel htmlFor="customer-email">Email</FieldLabel>
-          <Input
-            id="customer-email"
-            type="email"
-            value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
-            aria-invalid={!!fieldErrors.email}
-          />
-          <FieldError>{fieldErrors.email}</FieldError>
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="customer-first-name">First name</FieldLabel>
-          <Input
-            id="customer-first-name"
-            value={form.first_name}
-            onChange={(e) => setForm({ ...form, first_name: e.target.value })}
-          />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="customer-last-name">Last name</FieldLabel>
-          <Input
-            id="customer-last-name"
-            value={form.last_name}
-            onChange={(e) => setForm({ ...form, last_name: e.target.value })}
-          />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="customer-phone">Phone</FieldLabel>
-          <Input
-            id="customer-phone"
-            value={form.phone}
-            onChange={(e) => setForm({ ...form, phone: e.target.value })}
-          />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="customer-company">Company</FieldLabel>
-          <Input
-            id="customer-company"
-            value={form.company_name}
-            onChange={(e) => setForm({ ...form, company_name: e.target.value })}
-          />
-        </Field>
-        <div className="flex items-center gap-2">
-          <Button type="submit" disabled={mutation.isPending}>
-            {mutation.isPending ? "Saving…" : "Save"}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            nativeButton={false}
-            render={<Link to="/customers/$id" params={{ id: item.id }} />}
+    <RouteModalForm
+      form={form}
+      onSubmit={(values) =>
+        mutation.mutateAsync({
+          email: orNull(values.email),
+          first_name: orNull(values.first_name),
+          last_name: orNull(values.last_name),
+          phone: orNull(values.phone),
+          company_name: orNull(values.company_name),
+        })
+      }
+    >
+      <RouteDrawer.Body>
+        <div className="flex flex-col gap-6">
+          {mutation.isError ? <FormError error={mutation.error} /> : null}
+          <FormField control={form.control} name="email" label="Email">
+            {(field) => <Input id={field.name} type="email" {...field} />}
+          </FormField>
+          <FormField
+            control={form.control}
+            name="first_name"
+            label="First name"
           >
-            Cancel
-          </Button>
+            {(field) => <Input id={field.name} {...field} />}
+          </FormField>
+          <FormField control={form.control} name="last_name" label="Last name">
+            {(field) => <Input id={field.name} {...field} />}
+          </FormField>
+          <FormField control={form.control} name="phone" label="Phone">
+            {(field) => <Input id={field.name} {...field} />}
+          </FormField>
+          <FormField control={form.control} name="company_name" label="Company">
+            {(field) => <Input id={field.name} {...field} />}
+          </FormField>
         </div>
-      </form>
-    </>
+      </RouteDrawer.Body>
+      <RouteDrawer.Footer>
+        <Button type="button" variant="outline" onClick={close}>
+          {t("actions.cancel")}
+        </Button>
+        <Button type="submit" disabled={form.formState.isSubmitting}>
+          {form.formState.isSubmitting
+            ? t("actions.saving")
+            : t("actions.save")}
+        </Button>
+      </RouteDrawer.Footer>
+    </RouteModalForm>
   )
 }

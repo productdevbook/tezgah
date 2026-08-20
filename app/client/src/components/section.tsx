@@ -86,3 +86,8 @@ export function SectionRow({
 export function SectionRows({ children }: { children: ReactNode }) {
   return <div className="divide-y">{children}</div>
 }
+
+/** A section whose body is not a list of facts — a table, a form, a lookup. */
+export function SectionBody({ children }: { children: ReactNode }) {
+  return <div className="px-6 py-4">{children}</div>
+}

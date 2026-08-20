@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router"
+import { Outlet, createFileRoute } from "@tanstack/react-router"
 import { z } from "zod"
 
 import { StoreSalesChannels } from "@/features/store/sales-channels"
@@ -10,15 +10,22 @@ export const Route = createFileRoute("/store/sales-channels")({
   component: RouteComponent,
 })
 
+/**
+ * The `<Outlet />` is what this tab's `new` route draws into — a creation
+ * form is a focus modal over the list, not a page that replaces it.
+ */
 export function RouteComponent() {
   const { after } = Route.useSearch()
   const navigate = Route.useNavigate()
   return (
-    <StoreSalesChannels
-      after={after}
-      onAfterChange={(next) =>
-        void navigate({ search: (prev) => ({ ...prev, after: next }) })
-      }
-    />
+    <>
+      <StoreSalesChannels
+        after={after}
+        onAfterChange={(next) =>
+          void navigate({ search: (prev) => ({ ...prev, after: next }) })
+        }
+      />
+      <Outlet />
+    </>
   )
 }

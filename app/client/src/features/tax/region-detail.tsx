@@ -1,53 +1,64 @@
 import { taxRegion } from "@/api/schemas"
-import { DetailField, FieldGrid, Empty } from "@/components/detail-fields"
-import { DetailHeader } from "@/components/detail-header"
-import { QueryState } from "@/components/query-state"
-import { Card, CardContent } from "@/components/ui/card"
+import { Mono } from "@/components/detail-fields"
+import { DetailPage } from "@/components/detail-page"
+import { Section, SectionRow, SectionRows } from "@/components/section"
 import { dateTime, useDetail } from "@/lib/detail"
 
 export function TaxRegionDetail({ id }: { id: string }) {
-  const result = useDetail(["tax-regions"], "/admin/tax-regions/{id}", taxRegion, id)
+  const result = useDetail(
+    ["tax-regions"],
+    "/admin/tax-regions/{id}",
+    taxRegion,
+    id
+  )
 
   return (
-    <div className="max-w-3xl space-y-4">
-      <QueryState
-        query={result}
-        empty={{ title: "No tax region", description: "Nothing to show." }}
-      >
-        {(item) => (
-          <>
-            <DetailHeader back="tax regions" title={item.country_code.toUpperCase()} />
-            <Card>
-              <CardContent>
-                <FieldGrid>
-                  <DetailField label="ID">
-                    <span className="font-mono text-xs">{item.id}</span>
-                  </DetailField>
-                  <DetailField label="Country">
-                    <span className="font-mono text-xs uppercase">{item.country_code}</span>
-                  </DetailField>
-                  <DetailField label="Province">
-                    {item.province_code ? (
-                      <span className="font-mono text-xs uppercase">{item.province_code}</span>
-                    ) : (
-                      <Empty />
-                    )}
-                  </DetailField>
-                  <DetailField label="Provider">{item.provider ?? <Empty />}</DetailField>
-                  <DetailField label="Parent region">
-                    {item.parent_id ? (
-                      <span className="font-mono text-xs">{item.parent_id}</span>
-                    ) : (
-                      <Empty />
-                    )}
-                  </DetailField>
-                  <DetailField label="Created">{dateTime(item.created_at)}</DetailField>
-                </FieldGrid>
-              </CardContent>
-            </Card>
-          </>
-        )}
-      </QueryState>
-    </div>
+    <DetailPage
+      query={result}
+      empty={{ title: "No tax region", description: "Nothing to show." }}
+      back="tax regions"
+      title={(item) => item.country_code.toUpperCase()}
+      main={(item) => (
+        <Section
+          title="Where it applies"
+          description="Tax regions nest: a province's rates sit under its country's."
+        >
+          <SectionRows>
+            <SectionRow
+              label="Country"
+              value={<Mono>{item.country_code.toUpperCase()}</Mono>}
+            />
+            <SectionRow
+              label="Province"
+              value={
+                item.province_code ? (
+                  <Mono>{item.province_code.toUpperCase()}</Mono>
+                ) : null
+              }
+            />
+            <SectionRow
+              label="Parent region"
+              value={item.parent_id ? <Mono>{item.parent_id}</Mono> : null}
+            />
+          </SectionRows>
+        </Section>
+      )}
+      side={(item) => (
+        <>
+          <Section title="Who works the tax out">
+            <SectionRows>
+              <SectionRow label="Provider" value={item.provider} />
+            </SectionRows>
+          </Section>
+
+          <Section title="Details">
+            <SectionRows>
+              <SectionRow label="ID" value={<Mono>{item.id}</Mono>} />
+              <SectionRow label="Created" value={dateTime(item.created_at)} />
+            </SectionRows>
+          </Section>
+        </>
+      )}
+    />
   )
 }
