@@ -7379,6 +7379,8 @@ export interface components {
         Page: {
             items: unknown[];
             next?: string | null;
+            /** @description How many rows match, when the caller asked for a count and the list can answer one. Absent or null means nobody asked — never zero, which is a real answer. */
+            total?: number | null;
         };
         /**
          * @description The two parameters every paged list takes, described once.

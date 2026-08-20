@@ -22,7 +22,8 @@ export const GetAdminPriceListsQueryParams = zod.object({
 
 export const GetAdminPriceListsResponse = zod.object({
   "items": zod.array(zod.unknown()),
-  "next": zod.string().nullish()
+  "next": zod.string().nullish(),
+  "total": zod.int().nullish().describe('How many rows match, when the caller asked for a count and the list can answer one. Absent or null means nobody asked — never zero, which is a real answer.')
 }).and(zod.object({
   "items": zod.array(zod.object({
   "created_at": zod.iso.datetime({"offset":true}),
@@ -126,7 +127,8 @@ export const getAdminPriceSetsByIdPricesResponseTwoItemsItemAmountRegExp = new R
 
 export const GetAdminPriceSetsByIdPricesResponse = zod.object({
   "items": zod.array(zod.unknown()),
-  "next": zod.string().nullish()
+  "next": zod.string().nullish(),
+  "total": zod.int().nullish().describe('How many rows match, when the caller asked for a count and the list can answer one. Absent or null means nobody asked — never zero, which is a real answer.')
 }).and(zod.object({
   "items": zod.array(zod.object({
   "amount": zod.string().regex(getAdminPriceSetsByIdPricesResponseTwoItemsItemAmountRegExp),

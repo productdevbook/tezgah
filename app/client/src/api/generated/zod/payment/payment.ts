@@ -50,7 +50,8 @@ export const getAdminPaymentCollectionsByIdPaymentSessionsResponseTwoItemsItemAm
 
 export const GetAdminPaymentCollectionsByIdPaymentSessionsResponse = zod.object({
   "items": zod.array(zod.unknown()),
-  "next": zod.string().nullish()
+  "next": zod.string().nullish(),
+  "total": zod.int().nullish().describe('How many rows match, when the caller asked for a count and the list can answer one. Absent or null means nobody asked — never zero, which is a real answer.')
 }).and(zod.object({
   "items": zod.array(zod.object({
   "amount": zod.object({
@@ -79,7 +80,8 @@ export const PostAdminPaymentCollectionsByIdPaymentSessionsResponse = zod.unknow
  */
 export const GetAdminPaymentWebhooksResponse = zod.object({
   "items": zod.array(zod.unknown()),
-  "next": zod.string().nullish()
+  "next": zod.string().nullish(),
+  "total": zod.int().nullish().describe('How many rows match, when the caller asked for a count and the list can answer one. Absent or null means nobody asked — never zero, which is a real answer.')
 }).and(zod.object({
   "items": zod.array(zod.object({
   "attempts": zod.int(),
@@ -109,7 +111,8 @@ export const getAdminPaymentsResponseTwoItemsItemAmountAmountRegExp = new RegExp
 
 export const GetAdminPaymentsResponse = zod.object({
   "items": zod.array(zod.unknown()),
-  "next": zod.string().nullish()
+  "next": zod.string().nullish(),
+  "total": zod.int().nullish().describe('How many rows match, when the caller asked for a count and the list can answer one. Absent or null means nobody asked — never zero, which is a real answer.')
 }).and(zod.object({
   "items": zod.array(zod.object({
   "amount": zod.object({
@@ -204,7 +207,8 @@ export const PostAdminPaymentsByIdRefundResponse = zod.unknown()
  */
 export const GetAdminRefundReasonsResponse = zod.object({
   "items": zod.array(zod.unknown()),
-  "next": zod.string().nullish()
+  "next": zod.string().nullish(),
+  "total": zod.int().nullish().describe('How many rows match, when the caller asked for a count and the list can answer one. Absent or null means nobody asked — never zero, which is a real answer.')
 }).and(zod.object({
   "items": zod.array(zod.object({
   "code": zod.string(),

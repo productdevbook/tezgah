@@ -130,8 +130,17 @@ export function DataTable<T extends RowData>({
                 : undefined
             }
           />
-          {paged.hasPrevious || page.next ? (
+          {paged.hasPrevious || page.next || page.total !== undefined ? (
             <div className="flex items-center justify-end gap-2 border-t px-6 py-3">
+              {/* Only when the API answered one. A cursor page does not know
+                  how many rows are behind it, so most lists say nothing here
+                  rather than counting what is on screen and calling it a
+                  total. */}
+              {page.total !== undefined && page.total !== null ? (
+                <span className="mr-auto text-sm text-muted-foreground">
+                  {page.items.length} of {page.total.toLocaleString()}
+                </span>
+              ) : null}
               <Button
                 variant="outline"
                 size="sm"

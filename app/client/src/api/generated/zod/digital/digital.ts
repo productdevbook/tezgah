@@ -133,7 +133,8 @@ export const PostStoreDownloadsResponse = zod.object({
  */
 export const GetStoreEntitlementsResponse = zod.object({
   "items": zod.array(zod.unknown()),
-  "next": zod.string().nullish()
+  "next": zod.string().nullish(),
+  "total": zod.int().nullish().describe('How many rows match, when the caller asked for a count and the list can answer one. Absent or null means nobody asked — never zero, which is a real answer.')
 }).and(zod.object({
   "items": zod.array(zod.object({
   "digital_content_id": zod.uuid().describe('Identifies one digital content.'),

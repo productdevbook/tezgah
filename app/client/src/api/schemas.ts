@@ -69,9 +69,21 @@ import {
 
 /** `src/page.rs` — `Page<T>`. `next` is the cursor; absent on the last page. */
 export const page = <T extends z.ZodTypeAny>(item: T) =>
-  z.object({ items: z.array(item), next: z.string().nullable() })
+  z.object({
+    items: z.array(item),
+    next: z.string().nullable(),
+    // Absent unless the caller asked and the list can answer, so `.optional()`
+    // as well as nullable. Zero is a real count and stays distinguishable from
+    // "nobody asked" — a screen showing "0 of 0" for an uncounted list would
+    // be inventing the second number.
+    total: z.number().nullable().optional(),
+  })
 
-export type Page<T> = { items: T[]; next: string | null }
+export type Page<T> = {
+  items: T[]
+  next: string | null
+  total?: number | null
+}
 
 // — generated: GET .../{id} documents the item alone, so that response is
 // the canonical schema for the type — the corresponding list is the same
