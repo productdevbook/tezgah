@@ -569,7 +569,7 @@ async fn delete_inventory_item(
 async fn list_customers(
     State(state): State<AppState>,
     Extension(caller): Extension<Caller>,
-    Query(query): Query<admin_rest::List>,
+    Query(query): Query<admin_rest::ListCustomers>,
 ) -> Result<Json<tezgah::page::Page<admin_rest::CustomerView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
     let ctx = ctx_for(&state, &caller);

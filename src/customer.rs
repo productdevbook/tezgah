@@ -13,7 +13,7 @@ use sqlx::FromRow;
 
 use crate::error::{Error, Result};
 use crate::id::{AddressId, CustomerGroupId, CustomerId};
-use crate::page::{Cursor, Page, Paging};
+use crate::page::{Cursor, Page, Paging, Search};
 use crate::payment;
 use crate::ports::{Action, AuditEntry, Ctx, Event, Permit, Resource, Tx};
 
@@ -236,18 +236,43 @@ pub async fn by_email(tx: &mut Tx<'_>, ctx: &Ctx<'_>, email: &str) -> Result<Cus
     .ok_or_else(|| Error::not_found("customer"))
 }
 
-pub async fn list(tx: &mut Tx<'_>, ctx: &Ctx<'_>, paging: Paging) -> Result<Page<Customer>> {
+/// What narrows a listing of customers.
+///
+/// One field today, and a struct anyway: the alternative is a positional
+/// argument that every caller and every test has to be changed for the day a
+/// second one arrives — which is what this commit had to do to the two lists
+/// that took theirs positionally.
+#[derive(Debug, Clone, Default)]
+pub struct CustomerFilter {
+    /// Matched against e-mail, first and last name, and company — the four
+    /// ways somebody asks for a person. A guest with none of them set is
+    /// findable through the order they left, not here.
+    pub search: Option<Search>,
+}
+
+pub async fn list(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    filter: CustomerFilter,
+    paging: Paging,
+) -> Result<Page<Customer>> {
     let _: Permit = ctx.permit(Action::View, Resource::Customer { id: None })?;
 
     let rows = sqlx::query_as::<_, Customer>(&format!(
         "select {COLUMNS} from customer
          where scope = $1
            and deleted_at is null
-           and ($2::timestamptz is null or (created_at, id) > ($2, $3))
+           and ($2::text is null
+                or email ilike $2
+                or first_name ilike $2
+                or last_name ilike $2
+                or company_name ilike $2)
+           and ($3::timestamptz is null or (created_at, id) > ($3, $4))
          order by created_at, id
-         limit $4"
+         limit $5"
     ))
     .bind(ctx.scope.0)
+    .bind(filter.search.as_ref().map(Search::pattern))
     .bind(paging.after.map(|c| c.at))
     .bind(paging.after.map(|c| c.id))
     .bind(paging.probe())

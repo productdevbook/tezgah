@@ -1,8 +1,8 @@
 mod common;
 
 use common::Shop;
-use tezgah::customer::{self, CustomerPatch, NewAddress, NewCustomer};
-use tezgah::page::Paging;
+use tezgah::customer::{self, CustomerFilter, CustomerPatch, NewAddress, NewCustomer};
+use tezgah::page::{Paging, Search};
 use tezgah::payment;
 
 #[tokio::test]
@@ -18,7 +18,8 @@ async fn a_guest_and_an_account_are_the_same_table() -> tezgah::Result<()> {
     assert!(member.has_account);
     assert_eq!(member.email.as_deref(), Some("ada@example.com"));
 
-    let listed = customer::list(&mut tx, &ctx, Paging::first(10)).await?;
+    let listed =
+        customer::list(&mut tx, &ctx, CustomerFilter::default(), Paging::first(10)).await?;
     assert_eq!(listed.len(), 2);
     assert!(shop.host.audited("customer"));
 
@@ -256,9 +257,14 @@ async fn another_scope_sees_none_of_it() -> tezgah::Result<()> {
     let ctx = shop.theirs();
     assert!(customer::get(&mut theirs, &ctx, who.id).await.is_err());
     assert!(
-        customer::list(&mut theirs, &ctx, Paging::first(10))
-            .await?
-            .is_empty()
+        customer::list(
+            &mut theirs,
+            &ctx,
+            CustomerFilter::default(),
+            Paging::first(10)
+        )
+        .await?
+        .is_empty()
     );
     assert!(customer::export(&mut theirs, &ctx, who.id).await.is_err());
     theirs.rollback().await.ok();
@@ -320,6 +326,54 @@ async fn erase_scrubs_the_account_holder_the_customer_saved() -> tezgah::Result<
     );
 
     tx.rollback().await.ok();
+    shop.close().await;
+    Ok(())
+}
+
+/// The four ways somebody asks for a person, and the one that is not here.
+#[tokio::test]
+async fn a_customer_is_found_by_the_four_things_they_are_called() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let ada = customer::create(
+        &mut tx,
+        &ctx,
+        NewCustomer {
+            email: Some("ada@example.com".into()),
+            first_name: Some("Ada".into()),
+            last_name: Some("Lovelace".into()),
+            company_name: Some("Analytical Engines".into()),
+            ..NewCustomer::default()
+        },
+    )
+    .await?;
+
+    customer::create(
+        &mut tx,
+        &ctx,
+        NewCustomer {
+            email: Some("grace@example.com".into()),
+            ..NewCustomer::default()
+        },
+    )
+    .await?;
+
+    let searching = |text: &str| CustomerFilter {
+        search: Search::new(text),
+    };
+
+    for wanted in ["ADA@", "ada", "lovelace", "analytical"] {
+        let found = customer::list(&mut tx, &ctx, searching(wanted), Paging::first(10)).await?;
+        assert_eq!(found.len(), 1, "{wanted} finds exactly Ada");
+        assert_eq!(found.items[0].id, ada.id);
+    }
+
+    let nobody = customer::list(&mut tx, &ctx, searching("nobody"), Paging::first(10)).await?;
+    assert!(nobody.is_empty());
+
+    tx.rollback().await.expect("to roll back");
     shop.close().await;
     Ok(())
 }

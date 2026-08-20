@@ -115,13 +115,45 @@ pub struct UpdateCustomer {
     pub metadata: Option<serde_json::Value>,
 }
 
+/// Customers have a search box and the other twenty-odd lists sharing [`List`]
+/// do not, so they get a query type of their own rather than a `q` those
+/// twenty-odd would accept and silently ignore — `deny_unknown_fields` is what
+/// makes refusing it the honest answer there.
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ListCustomers {
+    pub after: Option<String>,
+    pub limit: Option<u32>,
+    /// Matched against e-mail, first and last name, and company. Blank is not
+    /// a search.
+    pub q: Option<String>,
+}
+
+impl ListCustomers {
+    fn paging(&self) -> Result<Paging> {
+        List {
+            after: self.after.clone(),
+            limit: self.limit,
+        }
+        .paging()
+    }
+}
+
 pub async fn list_customers(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
-    query: List,
+    query: ListCustomers,
 ) -> Result<Page<CustomerView>> {
     Ok(map(
-        customer::list(tx, ctx, query.paging()?).await?,
+        customer::list(
+            tx,
+            ctx,
+            customer::CustomerFilter {
+                search: query.q.as_deref().and_then(crate::page::Search::new),
+            },
+            query.paging()?,
+        )
+        .await?,
         CustomerView::from,
     ))
 }

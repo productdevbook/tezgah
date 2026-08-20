@@ -1040,6 +1040,9 @@ async fn drop_action(
 pub struct ListOrders {
     pub after: Option<String>,
     pub limit: Option<u32>,
+    /// What a back office typed into its search box, matched against the
+    /// e-mail on an order and its display number. Blank is not a search.
+    pub q: Option<String>,
     pub customer_id: Option<crate::id::CustomerId>,
 }
 
@@ -1062,8 +1065,11 @@ pub async fn list_orders(
     let page = order::list(
         tx,
         ctx,
-        query.customer_id,
-        Some(false),
+        order::OrderFilter {
+            customer: query.customer_id,
+            drafts: Some(false),
+            search: query.q.as_deref().and_then(crate::page::Search::new),
+        },
         query.listing().paging()?,
     )
     .await?;
@@ -1527,8 +1533,11 @@ pub async fn list_draft_orders(
     let page = order::list(
         tx,
         ctx,
-        query.customer_id,
-        Some(true),
+        order::OrderFilter {
+            customer: query.customer_id,
+            drafts: Some(true),
+            search: query.q.as_deref().and_then(crate::page::Search::new),
+        },
         query.listing().paging()?,
     )
     .await?;

@@ -2350,8 +2350,14 @@ pub async fn list_my_orders(
     let page = order::list(
         tx,
         ctx,
-        Some(who),
-        Some(false),
+        // No search on the storefront's own orders: a shopper has a handful
+        // and pages through them, and a box that filtered somebody's own list
+        // would be a way to ask this route questions rather than read it.
+        order::OrderFilter {
+            customer: Some(who),
+            drafts: Some(false),
+            search: None,
+        },
         paging(query.after.as_deref(), query.limit)?,
     )
     .await?;

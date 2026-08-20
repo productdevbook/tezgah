@@ -142,8 +142,8 @@ fn no_schema_name_was_disambiguated_by_a_number() {
 /// Rust.
 ///
 /// This counts the routes that describe their query string, and the count may
-/// only go up. It is a floor rather than an equality so that wiring a fourth
-/// list does not fail this test; it is here at all so that the three cannot
+/// only go up. It is a floor rather than an equality so that wiring the next
+/// list does not fail this test; it is here at all so that the four cannot
 /// quietly become none.
 #[test]
 fn the_lists_that_filter_say_what_they_filter_on() {
@@ -167,7 +167,7 @@ fn the_lists_that_filter_say_what_they_filter_on() {
     }
 
     assert!(
-        described >= 3,
+        described >= 4,
         "only {described} operations describe a query parameter; \
          `QUERIES` in src/api/openapi.rs is what grows this"
     );
