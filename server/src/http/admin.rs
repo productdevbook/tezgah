@@ -18,8 +18,12 @@
 //! `/admin/orders/{id}/payout-lines`, `/admin/payouts` and
 //! `/admin/payout-balance/{currency_code}` — none of the three has a screen
 //! in `client/` yet, so nothing calls them but this binary's own startup
-//! count. Everything else `tezgah::api` offers stays unbound; nothing here
-//! was chosen for this binary beyond what those needs cover.
+//! count. Past all of that, editing a row a screen already lists:
+//! `PATCH /admin/regions/{id}` (`admin_rest::update_region`). `tezgah::api`
+//! has no route to delete a region itself — only one to take a country out
+//! of one — so there is no `DELETE /admin/regions/{id}` here to bind.
+//! Everything else `tezgah::api` offers stays unbound; nothing here was
+//! chosen for this binary beyond what those needs cover.
 //!
 //! # Why a bearer token, and why it is the whole of this
 //!
@@ -90,6 +94,7 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         ("GET", "/admin/subscriptions/{id}"),
         ("GET", "/admin/regions"),
         ("GET", "/admin/regions/{id}"),
+        ("PATCH", "/admin/regions/{id}"),
         ("GET", "/admin/sales-channels"),
         ("GET", "/admin/sales-channels/{id}"),
         ("GET", "/admin/currencies"),
@@ -137,7 +142,7 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         .route("/admin/subscriptions", get(list_subscriptions))
         .route("/admin/subscriptions/{id}", get(get_subscription))
         .route("/admin/regions", get(list_regions).post(create_region))
-        .route("/admin/regions/{id}", get(get_region))
+        .route("/admin/regions/{id}", get(get_region).patch(update_region))
         .route(
             "/admin/sales-channels",
             get(list_sales_channels).post(create_sales_channel),
@@ -390,6 +395,18 @@ async fn get_region(
     let mut tx = begin(&state.pool, state.scope).await?;
     let ctx = ctx_for(&state);
     let region = admin_rest::get_region(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(region))
+}
+
+async fn update_region(
+    State(state): State<AppState>,
+    Path(id): Path<RegionId>,
+    Json(body): Json<admin_rest::UpdateRegion>,
+) -> Result<Json<admin_rest::RegionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let region = admin_rest::update_region(&mut tx, &ctx, id, body).await?;
     tx.commit().await?;
     Ok(Json(region))
 }

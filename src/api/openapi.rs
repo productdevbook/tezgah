@@ -264,6 +264,11 @@ static BODIES: &[Body] = &[
         response: Some(schema_of::<admin_rest::RegionView>),
     },
     Body {
+        operation_id: "patchAdminRegionsById",
+        request: Some(schema_of::<admin_rest::UpdateRegion>),
+        response: Some(schema_of::<admin_rest::RegionView>),
+    },
+    Body {
         operation_id: "getAdminSalesChannels",
         request: None,
         response: Some(page_of::<admin_rest::SalesChannelView>),

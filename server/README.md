@@ -169,7 +169,7 @@ receives the `Action` on every call, so a second token (or a role
 by hand, and says exactly how many out loud at startup:
 
 ```
-bound 48 of 483 declared routes
+bound 49 of 483 declared routes
   GET    /store/products
   GET    /store/products/{handle}
   POST   /store/carts
@@ -190,6 +190,7 @@ bound 48 of 483 declared routes
   GET    /admin/subscriptions/{id}
   GET    /admin/regions
   GET    /admin/regions/{id}
+  PATCH  /admin/regions/{id}
   GET    /admin/sales-channels
   GET    /admin/sales-channels/{id}
   GET    /admin/currencies
@@ -250,6 +251,14 @@ inventory level — the smallest set that gets a fresh install to something a
 storefront can check out from. `tezgah-server seed` (above) does the first
 five of those in one command; the rest — a real catalogue — go in through
 these routes, by hand or by whatever the panel or a script does with them.
+
+**Editing a row.** None of the seven screens could change what they list,
+past the twelve creating writes above — `tezgah::api` has an update for some
+domains and not others, and this binary binds only where it does. Regions
+gets one: `PATCH /admin/regions/{id}` changes a region's name, currency or
+tax inclusiveness (`admin_rest::update_region`, `Action::Write`). There is no
+`DELETE /admin/regions/{id}` to bind — `tezgah::api` only has one to remove a
+country from a region, not to remove the region itself.
 
 **Past the panel: reads with no screen yet.** An order basket's own record
 and the two scope-local lists under it (`order_basket::get_basket`,

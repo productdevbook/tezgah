@@ -1314,7 +1314,7 @@ pub async fn get_region(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: RegionId) -> Result<
     Ok(RegionView::from(store::region(tx, ctx, id).await?))
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UpdateRegion {
     pub name: Option<String>,
