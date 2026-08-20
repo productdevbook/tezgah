@@ -3,6 +3,8 @@ import { Mono } from "@/components/detail-fields"
 import { DetailPage } from "@/components/detail-page"
 import { Section, SectionRow, SectionRows } from "@/components/section"
 import { Badge } from "@/components/ui/badge"
+import { GetAdminGiftCardsByIdTransactionsResponse } from "@/api/generated/zod/credit/credit"
+import { Movements } from "@/features/credit/movements"
 import { dateTime, useDetail } from "@/lib/detail"
 
 export function GiftCardDetail({ id }: { id: string }) {
@@ -25,34 +27,42 @@ export function GiftCardDetail({ id }: { id: string }) {
         </Badge>
       )}
       main={(item) => (
-        <Section title="The balance">
-          <SectionRows>
-            <SectionRow
-              label="Now"
-              value={
-                <Mono>
-                  {item.balance} {item.currency_code.toUpperCase()}
-                </Mono>
-              }
-            />
-            <SectionRow
-              label="Issued with"
-              value={
-                <Mono>
-                  {item.initial_balance} {item.currency_code.toUpperCase()}
-                </Mono>
-              }
-            />
-            <SectionRow
-              label="Expires"
-              value={item.expires_at ? dateTime(item.expires_at) : null}
-            />
-            <SectionRow
-              label="Disabled"
-              value={item.disabled_at ? dateTime(item.disabled_at) : null}
-            />
-          </SectionRows>
-        </Section>
+        <>
+          <Section title="The balance">
+            <SectionRows>
+              <SectionRow
+                label="Now"
+                value={
+                  <Mono>
+                    {item.balance} {item.currency_code.toUpperCase()}
+                  </Mono>
+                }
+              />
+              <SectionRow
+                label="Issued with"
+                value={
+                  <Mono>
+                    {item.initial_balance} {item.currency_code.toUpperCase()}
+                  </Mono>
+                }
+              />
+              <SectionRow
+                label="Expires"
+                value={item.expires_at ? dateTime(item.expires_at) : null}
+              />
+              <SectionRow
+                label="Disabled"
+                value={item.disabled_at ? dateTime(item.disabled_at) : null}
+              />
+            </SectionRows>
+          </Section>
+
+          <Movements
+            path="/admin/gift-cards/{id}/transactions"
+            id={item.id}
+            schema={GetAdminGiftCardsByIdTransactionsResponse}
+          />
+        </>
       )}
       side={(item) => (
         <>

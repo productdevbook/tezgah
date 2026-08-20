@@ -366,7 +366,10 @@ In `app/`:
       `/records` — but nothing delivers them, and a product image is still a
       URL somebody else hosts
 - [ ] the rest of the route table: 113 of 483 bound by hand, 228 drawn by the
-      panel
+      panel. Counted from the other side: of the 77 `/admin/…/{id}/…`
+      sub-routes, 70 were drawn by no screen and ten of those were already
+      bound — the panel had simply never asked. Those ten are drawn now, and
+      the other 60 need binding first
 - [ ] tracing, metrics, a request log, readiness apart from liveness, a CORS
       policy, a rate limit
 
