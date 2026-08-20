@@ -18,8 +18,13 @@
 //! `/admin/orders/{id}/payout-lines`, `/admin/payouts` and
 //! `/admin/payout-balance/{currency_code}` — none of the three has a screen
 //! in `client/` yet, so nothing calls them but this binary's own startup
-//! count. Everything else `tezgah::api` offers stays unbound; nothing here
-//! was chosen for this binary beyond what those needs cover.
+//! count. Past all of that, editing and deleting a row a screen already
+//! lists: `PATCH /admin/promotions/{id}` (`admin_rest::update_promotion`,
+//! `Action::Write`) and `DELETE /admin/promotions/{id}`
+//! (`admin_rest::delete_promotion`, `Action::Delete` — a withdrawal, not an
+//! erasure: the discounts a promotion already granted stay on the orders
+//! that used them). Everything else `tezgah::api` offers stays unbound;
+//! nothing here was chosen for this binary beyond what those needs cover.
 //!
 //! # Why a bearer token, and why it is the whole of this
 //!
@@ -86,6 +91,8 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         ("GET", "/admin/customers/{id}"),
         ("GET", "/admin/promotions"),
         ("GET", "/admin/promotions/{id}"),
+        ("PATCH", "/admin/promotions/{id}"),
+        ("DELETE", "/admin/promotions/{id}"),
         ("GET", "/admin/subscriptions"),
         ("GET", "/admin/subscriptions/{id}"),
         ("GET", "/admin/regions"),
@@ -133,7 +140,12 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         .route("/admin/customers", get(list_customers))
         .route("/admin/customers/{id}", get(get_customer))
         .route("/admin/promotions", get(list_promotions))
-        .route("/admin/promotions/{id}", get(get_promotion))
+        .route(
+            "/admin/promotions/{id}",
+            get(get_promotion)
+                .patch(update_promotion)
+                .delete(delete_promotion),
+        )
         .route("/admin/subscriptions", get(list_subscriptions))
         .route("/admin/subscriptions/{id}", get(get_subscription))
         .route("/admin/regions", get(list_regions).post(create_region))
@@ -348,6 +360,29 @@ async fn get_promotion(
     let promotion = admin_rest::get_promotion(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(promotion))
+}
+
+async fn update_promotion(
+    State(state): State<AppState>,
+    Path(id): Path<PromotionId>,
+    Json(body): Json<admin_rest::UpdatePromotion>,
+) -> Result<Json<admin_rest::PromotionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let promotion = admin_rest::update_promotion(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(promotion))
+}
+
+async fn delete_promotion(
+    State(state): State<AppState>,
+    Path(id): Path<PromotionId>,
+) -> Result<StatusCode, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    admin_rest::delete_promotion(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn list_subscriptions(

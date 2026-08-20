@@ -241,6 +241,16 @@ static BODIES: &[Body] = &[
         request: None,
         response: Some(schema_of::<admin_rest::PromotionView>),
     },
+    Body {
+        operation_id: "patchAdminPromotionsById",
+        request: Some(schema_of::<admin_rest::UpdatePromotion>),
+        response: Some(schema_of::<admin_rest::PromotionView>),
+    },
+    Body {
+        operation_id: "deleteAdminPromotionsById",
+        request: None,
+        response: None,
+    },
     // ------------------------------------------------------- subscription
     Body {
         operation_id: "getAdminSubscriptions",

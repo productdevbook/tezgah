@@ -169,7 +169,7 @@ receives the `Action` on every call, so a second token (or a role
 by hand, and says exactly how many out loud at startup:
 
 ```
-bound 48 of 483 declared routes
+bound 50 of 483 declared routes
   GET    /store/products
   GET    /store/products/{handle}
   POST   /store/carts
@@ -186,6 +186,8 @@ bound 48 of 483 declared routes
   GET    /admin/customers/{id}
   GET    /admin/promotions
   GET    /admin/promotions/{id}
+  PATCH  /admin/promotions/{id}
+  DELETE /admin/promotions/{id}
   GET    /admin/subscriptions
   GET    /admin/subscriptions/{id}
   GET    /admin/regions
@@ -250,6 +252,15 @@ inventory level — the smallest set that gets a fresh install to something a
 storefront can check out from. `tezgah-server seed` (above) does the first
 five of those in one command; the rest — a real catalogue — go in through
 these routes, by hand or by whatever the panel or a script does with them.
+
+**Editing and deleting a row.** None of the seven screens could change or
+remove what they list, past the twelve creating writes above — `tezgah::api`
+has an update and a delete for some domains and not others, and this binary
+binds only where it does. Promotions gets both: `PATCH
+/admin/promotions/{id}` (`admin_rest::update_promotion`, `Action::Write`) and
+`DELETE /admin/promotions/{id}` (`admin_rest::delete_promotion`,
+`Action::Delete` — a withdrawal: the discounts a promotion already granted
+stay on the orders that used them).
 
 **Past the panel: reads with no screen yet.** An order basket's own record
 and the two scope-local lists under it (`order_basket::get_basket`,
