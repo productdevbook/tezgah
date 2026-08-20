@@ -59,6 +59,57 @@ impl Cursor {
     }
 }
 
+/// What somebody typed into a search box.
+///
+/// A back office with forty thousand orders cannot find one by paging to it,
+/// and until this there was nothing else to find it with: every list took a
+/// cursor and a limit and nothing else. This is the narrow answer — the words
+/// a person types, matched against the few columns a person would recognise
+/// the row by — not a query language and not an index. What each list matches
+/// is written where that list is, because "searchable" is a claim about
+/// columns rather than about strings.
+///
+/// It is a type rather than a `String` for one reason, and it is not
+/// ceremony: the pattern below has to escape what the operator typed. A shop
+/// searching for `50%` off means the two characters, and `%` is the wildcard
+/// that would otherwise match every row in the table.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Search(String);
+
+impl Search {
+    /// `None` for a blank box, and for one holding only spaces: an empty
+    /// search is not a search, and treating it as one would quietly show a
+    /// filtered list that filtered nothing.
+    pub fn new(text: &str) -> Option<Self> {
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        Some(Search(trimmed.to_owned()))
+    }
+
+    /// What goes into an `ilike`. `%` and `_` are Postgres's own wildcards and
+    /// `\` is its escape, so all three are escaped before the pattern is
+    /// wrapped — otherwise a search for `_` matches every row of one
+    /// character, and a search for `%` matches everything there is.
+    pub fn pattern(&self) -> String {
+        let mut escaped = String::with_capacity(self.0.len() + 2);
+        escaped.push('%');
+        for character in self.0.chars() {
+            if matches!(character, '%' | '_' | '\\') {
+                escaped.push('\\');
+            }
+            escaped.push(character);
+        }
+        escaped.push('%');
+        escaped
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 /// What a caller asks for.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Paging {
@@ -200,5 +251,32 @@ mod tests {
 
         let page = Page::build(vec![1u8, 2], Paging::first(3), |_| cursor());
         assert!(page.next.is_none());
+    }
+
+    #[test]
+    fn a_blank_box_is_not_a_search() {
+        assert_eq!(Search::new(""), None);
+        assert_eq!(Search::new("   "), None);
+        assert_eq!(Search::new(" denim "), Search::new("denim"));
+    }
+
+    #[test]
+    fn the_operators_own_wildcards_are_escaped() {
+        // Without this, "50%" is "50 followed by anything", which is every
+        // row that starts with 50 — and "_" is every row of one character.
+        let search = Search::new("50%").expect("not blank");
+        assert_eq!(search.pattern(), "%50\\%%");
+
+        let underscore = Search::new("a_b").expect("not blank");
+        assert_eq!(underscore.pattern(), "%a\\_b%");
+
+        let backslash = Search::new("a\\b").expect("not blank");
+        assert_eq!(backslash.pattern(), "%a\\\\b%");
+    }
+
+    #[test]
+    fn an_ordinary_word_is_wrapped_and_nothing_else() {
+        let search = Search::new("denim jacket").expect("not blank");
+        assert_eq!(search.pattern(), "%denim jacket%");
     }
 }

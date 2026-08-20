@@ -910,6 +910,11 @@ pub struct ListProducts {
     /// The shopper's language; a product with no translation for it answers
     /// with its own columns rather than refusing.
     pub locale: Option<String>,
+    /// What a shopper typed. Matched against the product's own title, handle
+    /// and subtitle — its columns, not the translation overlaid on the way
+    /// out, so a search in one language does not find a product listed in
+    /// another. Naming that here rather than leaving it to be discovered.
+    pub q: Option<String>,
 }
 
 /// Overlays a translation onto a product view, in place. A translation's own
@@ -943,6 +948,7 @@ pub async fn list_products(
         product_type: query.type_id,
         tag: query.tag_id,
         channels: Some(channels),
+        search: query.q.as_deref().and_then(crate::page::Search::new),
     };
 
     let page = catalogue::products(
