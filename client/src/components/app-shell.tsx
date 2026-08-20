@@ -22,11 +22,11 @@ import { COVERAGE, GROUPS, type Section } from "@/lib/nav"
 import { forget } from "@/lib/token"
 
 /**
- * The seven built sections each have their own top-level route (their slug
- * is that route's path, by construction); everything else falls through to
- * the single `/$section` catch-all. One switch, rather than typing `Link`'s
- * `to` from a runtime string, because the router's route union is closed and
- * a template string can't join it.
+ * Every built section has its own top-level route (their slug is that
+ * route's path, by construction); everything else falls through to the
+ * single `/$section` catch-all. One switch, rather than typing `Link`'s `to`
+ * from a runtime string, because the router's route union is closed and a
+ * template string can't join it.
  */
 function SectionLink({
   slug,
@@ -86,6 +86,24 @@ function SectionLink({
           {children}
         </SidebarMenuButton>
       )
+    case "payouts":
+      return (
+        <SidebarMenuButton isActive={active} tooltip={title} render={<Link to="/payouts" />}>
+          {children}
+        </SidebarMenuButton>
+      )
+    case "workflows":
+      return (
+        <SidebarMenuButton isActive={active} tooltip={title} render={<Link to="/workflows" />}>
+          {children}
+        </SidebarMenuButton>
+      )
+    case "baskets":
+      return (
+        <SidebarMenuButton isActive={active} tooltip={title} render={<Link to="/baskets" />}>
+          {children}
+        </SidebarMenuButton>
+      )
     default:
       return (
         <SidebarMenuButton
@@ -118,6 +136,12 @@ function isActiveSection(
       return Boolean(matchRoute({ to: "/subscriptions", fuzzy: true }))
     case "store":
       return Boolean(matchRoute({ to: "/store", fuzzy: true }))
+    case "payouts":
+      return Boolean(matchRoute({ to: "/payouts", fuzzy: true }))
+    case "workflows":
+      return Boolean(matchRoute({ to: "/workflows", fuzzy: true }))
+    case "baskets":
+      return Boolean(matchRoute({ to: "/baskets", fuzzy: true }))
     default:
       return Boolean(
         matchRoute({ to: "/$section", params: { section: section.slug }, fuzzy: true })

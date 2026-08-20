@@ -77,10 +77,11 @@ one had a screen wired to it yet.
 ## Coverage
 
 The sidebar reads `src/lib/nav.ts`, which carries the number of admin
-operations each section's tag declares. Seven sections have screens — products,
-orders, inventory, customers, promotions, subscriptions and store — which is
-330 of the 483 operations. The rest say how many they are not drawing yet,
-because those operations exist and work; only the screen is missing.
+operations each section's tag declares. Ten sections have screens — products,
+orders, inventory, customers, promotions, subscriptions, store, payouts,
+workflows and baskets — which is 346 of the 483 operations. The rest say how
+many they are not drawing yet, because those operations exist and work; only
+the screen is missing.
 
 Tables are TanStack Table v9, with no feature registered. Nothing sorts or
 filters on the client on purpose: every list handler takes a cursor and a
@@ -106,7 +107,7 @@ points back at the list) or call `useNavigate()` after a mutation succeeds,
 the same way `components/app-shell.tsx` already builds the sidebar's own
 links — pointing at a fixed address is markup, not state, and forcing it
 through the route as a pre-built prop would only move the same import without
-removing it. The seven built sections each have a real route; the other ten
+removing it. The ten built sections each have a real route; the other seven
 fall through to `src/routes/$section.tsx`, which is what `NotBuilt` used to be
 reached through — a static route always wins the match over a dynamic one, so
 a slug that gains a screen just needs a file added here.
@@ -131,12 +132,12 @@ gets to show.
 ### A row is a route too
 
 `/products/$id`, `/orders/$id`, `/inventory/$id`, `/customers/$id`,
-`/promotions/$id`, `/subscriptions/$id`, `/store/regions/$id` and
-`/store/sales-channels/$id` are the eight `GET .../{id}` operations bound
-alongside their lists — `src/features/<domain>/detail.tsx`, one screen each,
-reading every field the response carries rather than the subset its list
-column happened to need. Their route files take the same trailing-underscore
-escape the `new` routes do (`routes/products_.$id.tsx`,
+`/promotions/$id`, `/subscriptions/$id`, `/store/regions/$id`,
+`/store/sales-channels/$id` and `/workflows/$id` are the nine `GET .../{id}`
+operations bound alongside their lists — `src/features/<domain>/detail.tsx`,
+one screen each, reading every field the response carries rather than the
+subset its list column happened to need. Their route files take the same
+trailing-underscore escape the `new` routes do (`routes/products_.$id.tsx`,
 `routes/store_.regions.$id.tsx`), for the same reason: a list's own route is
 not a layout, and `/store`'s tabs are chrome a single record's page does not
 want. `components/data-table.tsx`'s `rowLink` is what gets a table row there:
@@ -146,6 +147,11 @@ which a middle click or "open in new tab" would do nothing with. Going back
 does not re-open page one: nothing about `rowLink` touches the list's own
 `after`, so `DetailHeader`'s "Back" is `router.history.back()`, landing on
 whatever page of the list was open when the row was clicked.
+
+`/baskets/$id` takes the same trailing-underscore route (`routes/baskets_.$id.tsx`)
+but is not reached from a row: `order_basket` has no list endpoint, so
+`/baskets` is a search box instead, and submitting it is what navigates —
+see "Baskets have no list" below.
 
 ### The store's tabs are routes, not `Tabs` state
 
@@ -160,12 +166,36 @@ switching client state — `nativeButton={false}` tells Base UI the element
 underneath is the anchor, not a button it renders itself. `/store` on its own
 names no tab, so `routes/store.index.tsx` redirects to `/store/currencies`.
 
+`/payouts` and `/payouts/commission-rules` (`components/payouts-tabs.tsx`),
+and `/workflows` and `/workflows/dead-letters` (`components/workflows-tabs.tsx`),
+take the same shape — except `/store` names no tab of its own and redirects,
+while a scope's own payouts and a run's own executions are real content, so
+`routes/payouts.index.tsx` and `routes/workflows.index.tsx` render their tab
+directly instead of redirecting to a sibling.
+
+### Baskets have no list
+
+`order_basket` (5 operations) has no `GET /admin/order-baskets` — the crate
+does not carry one; `src/api/order_basket.rs` says a shopper never asks for a
+basket by id, the checkout that opened it hands the order numbers back, so
+whoever needs one already has it. `/baskets` (`src/features/baskets/search.tsx`)
+is a search box rather than a table, and says so rather than showing an empty
+list; submitting it navigates to `/baskets/$id`, the same detail screen a row
+would have opened if this section had rows. Its two sub-lists, carts and
+orders, are real `Page<T>` endpoints and keep their own cursors in the
+detail route's own `validateSearch` (`cartsAfter`, `ordersAfter`), the same
+as any other paginated list.
+
 ### Pagination lives in the URL
 
 Every paginated route's `validateSearch` carries `after` (products also
-`status`), so the page a screen shows is always the one named in its own
-address — `/products?status=draft&after=<cursor>` is a link somebody else can
-open to the same page. `src/lib/paged.ts`'s `usePagedList` still keeps a
+`status`, workflow executions also `state`), so the page a screen shows is
+always the one named in its own address — `/products?status=draft&after=<cursor>`
+is a link somebody else can open to the same page. The same is true of a
+lookup that is not itself a list's own filter: `/payouts`'s balance and
+order-lines widgets keep the currency code, the order id and the lines
+cursor in its own search params too, because a balance somebody looked up is
+still a page worth linking to. `src/lib/paged.ts`'s `usePagedList` still keeps a
 back-stack, but only in memory, and only for the "Back" button's benefit: the
 API hands out a cursor forward and nothing that walks back, so the stack is
 what makes that button work, not what decides where the list is now — the

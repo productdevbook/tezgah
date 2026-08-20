@@ -182,3 +182,152 @@ export type PublishableKey = z.infer<typeof publishableKey>
  */
 export const issuedKey = publishableKey.extend({ token: z.string() })
 export type IssuedKey = z.infer<typeof issuedKey>
+
+/** `src/api/payout.rs` — `CommissionRuleView`. Not documented — see above. */
+export const commissionRule = z.object({
+  id: z.string(),
+  category_id: z.string().nullable(),
+  kind: z.enum(["fixed", "percentage"]),
+  value: z.string(),
+  currency_code: z.string().nullable(),
+})
+export type CommissionRule = z.infer<typeof commissionRule>
+
+/** `src/api/payout.rs` — `PayoutLineView`. Not documented — see above. */
+export const payoutLine = z.object({
+  id: z.string(),
+  order_id: z.string().nullable(),
+  payout_id: z.string().nullable(),
+  amount: z.string(),
+  currency_code: z.string(),
+  reference: z.string(),
+  reference_id: z.string().nullable(),
+})
+export type PayoutLine = z.infer<typeof payoutLine>
+
+/** `src/api/payout.rs` — `PayoutView`. Not documented — see above. */
+export const payout = z.object({
+  id: z.string(),
+  amount: z.string(),
+  currency_code: z.string(),
+  reference: z.string(),
+  reference_id: z.string(),
+})
+export type Payout = z.infer<typeof payout>
+
+/** `src/api/payout.rs` — `BalanceView`. Not documented — see above. */
+export const payoutBalance = z.object({
+  amount: z.string(),
+  currency_code: z.string(),
+})
+export type PayoutBalance = z.infer<typeof payoutBalance>
+
+/**
+ * `src/api/admin_rest.rs`'s `run_state` — the six states a run itself moves
+ * through. Not documented — see above.
+ */
+export const workflowRunState = z.enum([
+  "running",
+  "compensating",
+  "waiting",
+  "done",
+  "reverted",
+  "failed",
+])
+export type WorkflowRunState = z.infer<typeof workflowRunState>
+
+/** `src/api/admin_rest.rs` — `WorkflowRunSummaryView`. Not documented — see above. */
+export const workflowRunSummary = z.object({
+  id: z.string(),
+  name: z.string(),
+  transaction_key: z.string(),
+  state: workflowRunState,
+  failure: z.string().nullable(),
+  created_at: z.string(),
+  finished_at: z.string().nullable(),
+})
+export type WorkflowRunSummary = z.infer<typeof workflowRunSummary>
+
+/** `src/api/admin_rest.rs` — `WorkflowRunView`. Not documented — see above. */
+export const workflowRun = z.object({
+  id: z.string(),
+  state: workflowRunState,
+  failure: z.string().nullable(),
+})
+export type WorkflowRun = z.infer<typeof workflowRun>
+
+/**
+ * `src/workflow.rs` — the nine states a single step moves through, `called`
+ * and `waiting` split out from `pending` for the two-phase steps that ask
+ * something outside the run to call back. `skipped` is not a failure: it is
+ * `Outcome::skipped`, a step that had nothing to do, and carries no
+ * `compensate` when the run unwinds. `compensating` and `reverted` are the
+ * trace of that unwind on a step that did write something.
+ */
+export const workflowStepState = z.enum([
+  "pending",
+  "invoking",
+  "called",
+  "waiting",
+  "done",
+  "skipped",
+  "compensating",
+  "reverted",
+  "failed",
+])
+export type WorkflowStepState = z.infer<typeof workflowStepState>
+
+/**
+ * `src/api/admin_rest.rs` — `WorkflowStepView`. Not `output`: that is what
+ * the runner needs to resume a step, not what a person debugging one reads.
+ * Not documented — see above.
+ */
+export const workflowStep = z.object({
+  id: z.string(),
+  name: z.string(),
+  ordering: z.number().int(),
+  group_ordering: z.number().int(),
+  state: workflowStepState,
+  attempts: z.number().int(),
+  max_attempts: z.number().int(),
+  failure: z.string().nullable(),
+  run_after: z.string(),
+  lease_until: z.string().nullable(),
+})
+export type WorkflowStep = z.infer<typeof workflowStep>
+
+/** `src/api/admin_rest.rs` — `WorkflowDeadLetterView`. Not documented — see above. */
+export const workflowDeadLetter = z.object({
+  id: z.string(),
+  run_id: z.string(),
+  step_name: z.string(),
+  failure: z.string(),
+  created_at: z.string(),
+})
+export type WorkflowDeadLetter = z.infer<typeof workflowDeadLetter>
+
+/** `src/api/order_basket.rs` — `BasketView`. Not documented — see above. */
+export const orderBasket = z.object({
+  id: z.string(),
+  display_id: z.number().int().nullable(),
+  customer_id: z.string().nullable(),
+  currency_code: z.string(),
+  payment_collection_id: z.string().nullable(),
+  email: z.string().nullable(),
+  completed_at: z.string().nullable(),
+})
+export type OrderBasket = z.infer<typeof orderBasket>
+
+/**
+ * `src/api/store.rs` — `CartView`. `GET /admin/order-baskets/{id}/carts` is
+ * the only admin route this panel reads it from; not documented — see above.
+ */
+export const cart = z.object({
+  id: z.string(),
+  customer_id: z.string().nullable(),
+  email: z.string().nullable(),
+  region_id: z.string().nullable(),
+  currency_code: z.string(),
+  completed_at: z.string().nullable(),
+})
+export type Cart = z.infer<typeof cart>
