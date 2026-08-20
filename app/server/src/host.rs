@@ -67,6 +67,12 @@ impl Authorizer for ServerHost {
             // nothing here to compare that would refuse anything. The cart id
             // is the credential, which is what a guest cart is.
             Actor::Guest { .. } => Ok(Permit::granted()),
+
+            // `Actor` is `#[non_exhaustive]`, so a kind added to the crate
+            // arrives here as something this binary has never heard of.
+            // Refusing is the only safe answer: granting by default would let
+            // a new kind of caller through a door nobody decided to open.
+            _ => Err(tezgah::Error::denied()),
         }
     }
 }

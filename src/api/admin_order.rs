@@ -1046,6 +1046,8 @@ pub struct ListOrders {
     /// Which end first. Left out, this surface answers newest-first: an
     /// operator opening Orders wants today's, not the first the shop took.
     pub order: Option<crate::page::Order>,
+    /// Which column. `created` is the default; `email` is the other one.
+    pub by: Option<crate::page::By>,
     pub customer_id: Option<crate::id::CustomerId>,
 }
 
@@ -1073,6 +1075,7 @@ pub async fn list_orders(
             drafts: Some(false),
             search: query.q.as_deref().and_then(crate::page::Search::new),
             order: query.order.unwrap_or(crate::page::Order::Newest),
+            by: query.by.unwrap_or_default(),
         },
         query.listing().paging()?,
     )
@@ -1542,6 +1545,7 @@ pub async fn list_draft_orders(
             drafts: Some(true),
             search: query.q.as_deref().and_then(crate::page::Search::new),
             order: query.order.unwrap_or(crate::page::Order::Newest),
+            by: query.by.unwrap_or_default(),
         },
         query.listing().paging()?,
     )

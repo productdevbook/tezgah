@@ -2,7 +2,7 @@ mod common;
 
 use common::Shop;
 use tezgah::customer::{self, CustomerFilter, CustomerPatch, NewAddress, NewCustomer};
-use tezgah::page::{Paging, Search};
+use tezgah::page::{By, Paging, Search};
 use tezgah::payment;
 
 #[tokio::test]
@@ -373,6 +373,58 @@ async fn a_customer_is_found_by_the_four_things_they_are_called() -> tezgah::Res
 
     let nobody = customer::list(&mut tx, &ctx, searching("nobody"), Paging::first(10)).await?;
     assert!(nobody.is_empty());
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
+}
+
+/// The second ordering, and the half that is easy to get wrong: a page
+/// ordered by e-mail has to resume from an e-mail.
+#[tokio::test]
+async fn a_list_ordered_by_email_pages_by_email() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    // Written in an order that is not alphabetical, so ordering cannot pass
+    // by accident.
+    for address in ["rob@example.com", "ada@example.com", "kim@example.com"] {
+        customer::create(&mut tx, &ctx, NewCustomer::account(address)).await?;
+    }
+
+    let by_email = CustomerFilter {
+        by: By::Email,
+        ..CustomerFilter::default()
+    };
+
+    let first = customer::list(&mut tx, &ctx, by_email.clone(), Paging::first(2)).await?;
+    assert_eq!(
+        first
+            .items
+            .iter()
+            .map(|c| c.email.as_deref().unwrap_or_default())
+            .collect::<Vec<_>>(),
+        vec!["ada@example.com", "kim@example.com"]
+    );
+
+    let next = first.next.as_ref().expect("another page");
+    let rest = customer::list(
+        &mut tx,
+        &ctx,
+        by_email,
+        Paging::after(tezgah::page::Cursor::decode(next)?, 2),
+    )
+    .await?;
+
+    assert_eq!(
+        rest.items
+            .iter()
+            .map(|c| c.email.as_deref().unwrap_or_default())
+            .collect::<Vec<_>>(),
+        vec!["rob@example.com"],
+        "the second page resumed from an address, not from a timestamp"
+    );
 
     tx.rollback().await.expect("to roll back");
     shop.close().await;

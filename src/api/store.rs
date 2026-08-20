@@ -2365,8 +2365,10 @@ pub async fn list_my_orders(
             drafts: Some(false),
             search: None,
             // Newest first even here: a shopper looking at their orders is
-            // looking for the one they just placed.
+            // looking for the one they just placed. By time and not by
+            // address — every one of them has the same address.
             order: crate::page::Order::Newest,
+            by: crate::page::By::Created,
         },
         paging(query.after.as_deref(), query.limit)?,
     )

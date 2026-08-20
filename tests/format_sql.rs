@@ -153,10 +153,12 @@ const TOLERATED: [(&str, &str); 17] = [
          `catalogue::unlink`, `order::bump`, `fulfilment::move_quantities`; an \
          element of a literal tuple/array in the same function — \
          `order::insert_line_money`'s `LineMoney::tables()`, the per-owner \
-         loop in `tax.rs`; and, in `catalogue::products`, one of two column \
-         names written out in full in that function, picked by a `match` on \
-         `page::By`, a closed enum with a variant per column a list here can \
-         be ordered by. None of the three is a value a caller chose",
+         loop in `tax.rs`; and, in `catalogue::products`, `order::list` and \
+         `customer::list`, one of two or three column names written out in \
+         full in that function, picked by a `match` on `page::By` — a closed \
+         enum with a variant per column a list here can be ordered by, and \
+         every arm covered so a variant added without a column is a compile \
+         error. None of the three shapes is a value a caller chose",
     ),
     (
         "ceiling",

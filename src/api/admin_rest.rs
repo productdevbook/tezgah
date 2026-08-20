@@ -129,6 +129,8 @@ pub struct ListCustomers {
     pub q: Option<String>,
     /// Which end first. Left out, this surface answers newest-first.
     pub order: Option<crate::page::Order>,
+    /// Which column. `created` is the default; `email` is the other one.
+    pub by: Option<crate::page::By>,
 }
 
 impl ListCustomers {
@@ -153,6 +155,7 @@ pub async fn list_customers(
             customer::CustomerFilter {
                 search: query.q.as_deref().and_then(crate::page::Search::new),
                 order: query.order.unwrap_or(crate::page::Order::Newest),
+                by: query.by.unwrap_or_default(),
             },
             query.paging()?,
         )

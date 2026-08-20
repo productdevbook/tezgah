@@ -192,7 +192,8 @@ async fn register(
     .await?;
     tx.commit().await?;
 
-    crate::shopper::attach_credential(&state.pool, made.id, &body.email, &body.password).await?;
+    crate::shopper::attach_credential(&state.pool, made.id.as_uuid(), &body.email, &body.password)
+        .await?;
 
     let issued = crate::shopper::sign_in(&state.pool, &body.email, &body.password).await?;
     Ok(Json(ShopperSession {
