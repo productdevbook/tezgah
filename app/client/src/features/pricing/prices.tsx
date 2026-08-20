@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/table"
 import { usePagedList } from "@/lib/paged"
 import { savePrices, type PriceChange } from "@/features/pricing/grid"
+import { PriceRules } from "@/features/pricing/rules"
 
 const columns: Columns<Price> = [
   {
@@ -45,7 +46,10 @@ const columns: Columns<Price> = [
   {
     header: "Rules",
     accessorKey: "rules_count",
-    meta: { className: "text-right font-mono text-xs" },
+    cell: ({ row }) => (
+      <PriceRules priceId={row.original.id} count={row.original.rules_count} />
+    ),
+    meta: { className: "text-right" },
   },
 ]
 
@@ -257,8 +261,8 @@ function Grid({ rows, onSaved }: { rows: Price[]; onSaved: () => void }) {
                   )}
                 </TableCell>
                 <TableCell>{row.title ?? <Empty />}</TableCell>
-                <TableCell className="text-right font-mono text-xs">
-                  {row.rules_count}
+                <TableCell className="text-right">
+                  <PriceRules priceId={row.id} count={row.rules_count} />
                 </TableCell>
               </TableRow>
             )
