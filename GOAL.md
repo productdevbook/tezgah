@@ -331,9 +331,9 @@ In the library:
 - [ ] search on orders and customers — the catalogue has one (`page::Search`,
       `ilike`, no index); both of the others take their filters as positional
       arguments rather than a struct, so it is a signature change
-- [ ] sorting, on any list — every paged query ends `order by created_at`, and
-      a cursor names a row in that ordering, so a second ordering needs the
-      cursor to carry its own key rather than a timestamp
+- [ ] sorting on the lists past `catalogue` — the cursor carries a key now, so
+      the shape is settled and each list needs a column and a `page::By`
+      variant rather than a design
 - [ ] the query string of the other 480 operations in the document — three
       describe theirs (#254); the rest still answer with their path
       parameters alone

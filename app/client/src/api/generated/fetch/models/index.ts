@@ -20,6 +20,7 @@ export * from './bundleComponentId';
 export * from './bundleComponentView';
 export * from './bundlePriceComponentView';
 export * from './bundlePriceView';
+export * from './by';
 export * from './campaignId';
 export * from './cartCreditId';
 export * from './cartCreditView';

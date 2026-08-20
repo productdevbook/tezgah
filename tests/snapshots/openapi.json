@@ -438,6 +438,21 @@
         ],
         "type": "object"
       },
+      "By": {
+        "description": "Which column a list is ordered by.\n\nOne variant per column any list here can be ordered by, rather than a\nstring a caller picks: the column name is interpolated into SQL, and a\nclosed set is what makes that safe to read as well as to run.\n\nA list that offers a second ordering needs a cursor that can resume from\nit — which is why [`Cursor`] carries a key rather than a timestamp. The\ntwo go together: adding a variant here without teaching the list to bind\nthe matching key gives an ordering that pages back to the beginning.",
+        "oneOf": [
+          {
+            "const": "created",
+            "description": "When the row was written. What every list did before there was a\nchoice, and what a list with nothing better to offer still does.",
+            "type": "string"
+          },
+          {
+            "const": "title",
+            "description": "What a person reads the row as — a product's title.",
+            "type": "string"
+          }
+        ]
+      },
       "CampaignId": {
         "description": "Identifies one campaign.",
         "format": "uuid",
@@ -2687,6 +2702,17 @@
               "string",
               "null"
             ]
+          },
+          "by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/By"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which column. `created` is the default and `title` is the other one an\noperator asks for; a cursor from one ordering means nothing under the\nother, so changing this starts the list again."
           },
           "category": {
             "anyOf": [
@@ -17871,6 +17897,22 @@
                 "string",
                 "null"
               ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "by",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/By"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Which column. `created` is the default and `title` is the other one an\noperator asks for; a cursor from one ordering means nothing under the\nother, so changing this starts the list again."
             }
           },
           {

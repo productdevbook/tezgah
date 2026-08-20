@@ -17,11 +17,13 @@ than a feeling: 16,451 lines of TSX across 67 screens against 128,585 lines
 and 34 locales, and the shortfall lines up with a handful of specific
 absences. Some of them have moved since — what follows is where each stands.
 
-**Nothing filters, searches or sorts** — because the API offers none of it.
-`Paging` carries a cursor and a limit, there is one filter type in the whole
-crate, and every paged query ends `order by created_at`. A sortable header
-here would be claiming something about the pages that are not on screen. This
-one cannot be fixed in the panel.
+**Filtering and searching where the API offers them; sorting on one list.**
+Products, orders and customers have a search box in their address; products
+also chooses between newest-first and by-title, because that is the one list
+the crate can order two ways. Every other list orders by when a row was
+written, and the panel offers no control that would say otherwise — a
+sortable header on a list the API cannot sort is a claim about the pages that
+are not on screen.
 
 **Translation is a dictionary with almost nothing in it.** `panel/i18n`
 holds English and Turkish and the compiler enforces that they match, and what

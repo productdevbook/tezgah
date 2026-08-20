@@ -6384,6 +6384,19 @@ export interface components {
             total: string;
         };
         /**
+         * @description Which column a list is ordered by.
+         *
+         *     One variant per column any list here can be ordered by, rather than a
+         *     string a caller picks: the column name is interpolated into SQL, and a
+         *     closed set is what makes that safe to read as well as to run.
+         *
+         *     A list that offers a second ordering needs a cursor that can resume from
+         *     it — which is why [`Cursor`] carries a key rather than a timestamp. The
+         *     two go together: adding a variant here without teaching the list to bind
+         *     the matching key gives an ordering that pages back to the beginning.
+         */
+        By: "created" | "title";
+        /**
          * Format: uuid
          * @description Identifies one campaign.
          */
@@ -7013,6 +7026,12 @@ export interface components {
         };
         ListProducts: {
             after?: string | null;
+            /**
+             * @description Which column. `created` is the default and `title` is the other one an
+             *     operator asks for; a cursor from one ordering means nothing under the
+             *     other, so changing this starts the list again.
+             */
+            by?: components["schemas"]["By"] | null;
             category?: components["schemas"]["CategoryId"] | null;
             collection?: components["schemas"]["CollectionId"] | null;
             /** Format: uint32 */
@@ -18786,6 +18805,7 @@ export interface operations {
         parameters: {
             query?: {
                 after?: string | null;
+                by?: components["schemas"]["By"] | null;
                 category?: components["schemas"]["CategoryId"] | null;
                 collection?: components["schemas"]["CollectionId"] | null;
                 limit?: number | null;

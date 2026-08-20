@@ -5,6 +5,7 @@
  * A commerce engine for Rust: products, carts, orders, payments, inventory, and a workflow runner that unwinds what it started.
  * OpenAPI spec version: 0.0.0
  */
+import type { By } from './by';
 import type { CategoryId } from './categoryId';
 import type { CollectionId } from './collectionId';
 import type { Order } from './order';
@@ -17,6 +18,12 @@ export type GetAdminProductsParams = {
  * @nullable
  */
 after?: string | null;
+/**
+ * Which column. `created` is the default and `title` is the other one an
+ * operator asks for; a cursor from one ordering means nothing under the
+ * other, so changing this starts the list again.
+ */
+by?: By | null;
 category?: CategoryId | null;
 collection?: CollectionId | null;
 /**

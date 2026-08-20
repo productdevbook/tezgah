@@ -276,6 +276,7 @@ export const getAdminProductsQueryLimitMin = 0;
 
 export const GetAdminProductsQueryParams = zod.object({
   "after": zod.string().nullish(),
+  "by": zod.union([zod.union([zod.literal("created").describe('When the row was written. What every list did before there was a\nchoice, and what a list with nothing better to offer still does.'),zod.literal("title").describe('What a person reads the row as — a product\'s title.')]).describe('Which column a list is ordered by.\n\nOne variant per column any list here can be ordered by, rather than a\nstring a caller picks: the column name is interpolated into SQL, and a\nclosed set is what makes that safe to read as well as to run.\n\nA list that offers a second ordering needs a cursor that can resume from\nit — which is why [`Cursor`] carries a key rather than a timestamp. The\ntwo go together: adding a variant here without teaching the list to bind\nthe matching key gives an ordering that pages back to the beginning.'),zod.null()]).optional(),
   "category": zod.union([zod.uuid().describe('Identifies one category.'),zod.null()]).optional(),
   "collection": zod.union([zod.uuid().describe('Identifies one collection.'),zod.null()]).optional(),
   "limit": zod.int().min(getAdminProductsQueryLimitMin).nullish(),

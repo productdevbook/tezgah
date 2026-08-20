@@ -90,11 +90,11 @@ ships a shop somebody else runs.
 and `ProductFilter.search` gave the catalogue a search box — title, handle and
 subtitle, `ilike`, no index. Orders and customers still have none, and both
 take their filters as positional arguments rather than a struct, so giving
-them one is a signature change across their callers. Nothing sorts at all:
-every paged query in the crate ends `order by created_at`, and a cursor names
-a row in that ordering, so a second ordering needs the cursor to carry its own
-key rather than a timestamp. That is the piece with real design in it, and it
-is not done.
+them one is a signature change across their callers. One list sorts two ways: a cursor
+carries a key now — a timestamp or a text — so a page ordered by title
+resumes from a title, and `catalogue::products` takes `by=title`. The design
+that was named as missing is done; what is left is applying it, which is a
+column and a variant per list rather than a shape to work out.
 
 **The document described no query parameter at all until #254**, so every
 filter the crate already supported was invisible to it — `"parameters": []`

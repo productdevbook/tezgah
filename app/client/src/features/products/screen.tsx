@@ -68,25 +68,29 @@ export function Products({
   status,
   after,
   q,
+  by,
   onStatusChange,
   onAfterChange,
   onQChange,
+  onByChange,
 }: {
   status: ProductStatus | "all"
   after: string | undefined
   q: string | undefined
+  by: "created" | "title"
   onStatusChange: (status: ProductStatus | "all") => void
   onAfterChange: (after: string | undefined) => void
   onQChange: (q: string | undefined) => void
+  onByChange: (by: "created" | "title") => void
 }) {
   const paged = usePagedList(
-    ["products", status, q ?? ""],
+    ["products", status, q ?? "", by],
     "/admin/products",
     product,
     {
       after,
       onAfterChange,
-      query: { status: status === "all" ? undefined : status, q },
+      query: { status: status === "all" ? undefined : status, q, by },
     }
   )
 
@@ -101,6 +105,20 @@ export function Products({
           onChange={onQChange}
           placeholder="Search title, handle, subtitle"
         />
+        <Select
+          value={by}
+          onValueChange={(value) => onByChange(value as "created" | "title")}
+        >
+          <SelectTrigger className="w-36" size="sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {/* Two, because the API offers two. A third option here would be
+                a claim about pages that are not on screen. */}
+            <SelectItem value="created">Newest first</SelectItem>
+            <SelectItem value="title">By title</SelectItem>
+          </SelectContent>
+        </Select>
         <Select
           value={status}
           onValueChange={(v) => onStatusChange(v as ProductStatus | "all")}
