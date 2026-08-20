@@ -361,7 +361,9 @@ pub fn document() -> Value {
     // The same name can come out of both generators — every id an operation's
     // body and its view share, today — and it is only ever safe because an id
     // newtype's schema does not depend on contract; request definitions win
-    // the clash, on trust that it is one of those and not, say, a Decimal.
+    // the clash. That is enforced, not trusted: tests/openapi.rs's
+    // colliding_names_agree_across_generators calls schema_collisions() below
+    // and fails the build the day a colliding name's two schemas disagree.
     let mut components: Map<String, Value> = Map::new();
     for (name, schema) in request_gen.definitions() {
         components.insert(name.clone(), schema.clone());
@@ -402,6 +404,40 @@ pub fn document() -> Value {
             "schemas": components,
         },
     })
+}
+
+/// Every name [`BODIES`] makes both generators define, paired with what each
+/// one says it is. `document()` trusts a colliding name to mean the same
+/// thing on a request as on a response; this is what a caller checks that
+/// trust against, rather than reading it off `document()`'s own merged
+/// output, which has already picked a side and cannot say what the discarded
+/// one was.
+pub fn schema_collisions() -> Vec<(String, Value, Value)> {
+    let (mut request_gen, mut response_gen) = schemas();
+    for body in BODIES {
+        if let Some(request) = body.request {
+            request(&mut request_gen);
+        }
+        if let Some(response) = body.response {
+            response(&mut response_gen);
+        }
+    }
+
+    let responded: std::collections::BTreeMap<String, Value> = response_gen
+        .definitions()
+        .iter()
+        .map(|(name, schema)| (name.clone(), schema.clone()))
+        .collect();
+
+    request_gen
+        .definitions()
+        .iter()
+        .filter_map(|(name, requested)| {
+            responded
+                .get(name)
+                .map(|answered| (name.clone(), requested.clone(), answered.clone()))
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -525,47 +561,5 @@ mod tests {
             types.contains(&"string") && types.contains(&"number"),
             "a request Decimal must accept both string and number: {value}"
         );
-    }
-
-    /// `document()` resolves a name two generators both define by letting the
-    /// request definition win, on trust that the only names that ever
-    /// collide are id newtypes — whose schema does not depend on direction —
-    /// "and not, say, a `Decimal`" (tezgah#202). This is what turns that
-    /// trust into something that fails instead of drifting quietly: if a
-    /// colliding name's two schemas ever disagree, the discrepancy is a
-    /// finding to stop and report, not something for `document()` to paper
-    /// over by picking a side.
-    #[test]
-    fn colliding_names_agree_across_generators() {
-        let (mut request_gen, mut response_gen) = schemas();
-        for body in BODIES {
-            if let Some(request) = body.request {
-                request(&mut request_gen);
-            }
-            if let Some(response) = body.response {
-                response(&mut response_gen);
-            }
-        }
-
-        let responded: std::collections::BTreeMap<&str, &Value> = response_gen
-            .definitions()
-            .iter()
-            .map(|(name, schema)| (name.as_str(), schema))
-            .collect();
-
-        for (name, requested) in request_gen.definitions() {
-            let Some(answered) = responded.get(name.as_str()) else {
-                continue;
-            };
-            assert_eq!(
-                requested, *answered,
-                "{name} means two different things depending on direction: \
-                 document() lets the request definition win on the assumption \
-                 that a colliding name is always an id newtype. {name} is not \
-                 one, or its schema depends on direction — either way, that \
-                 assumption just failed and document() needs to stop picking \
-                 a side silently."
-            );
-        }
     }
 }

@@ -63,6 +63,27 @@ fn the_document_matches_what_was_agreed() {
     );
 }
 
+/// One name collides across both generators today — an id newtype — and it
+/// agrees, the only kind `document()` (see its own comment) trusts to
+/// resolve by letting the request definition win. Zero disagree. This is
+/// what makes that a build failure instead of an assumption: it fails the
+/// day any colliding name's two schemas diverge, whatever the count becomes.
+#[test]
+fn colliding_names_agree_across_generators() {
+    for (name, request, response) in tezgah::api::openapi::schema_collisions() {
+        assert_eq!(
+            request, response,
+            "{name} means two different things depending on direction: \
+             document() lets the request definition win on the assumption \
+             that a colliding name's schema does not depend on direction. \
+             {name}'s two schemas disagree, so that assumption just failed — \
+             give it two names in components/schemas instead (one per \
+             direction, with a one-line reason for the split), or fix the \
+             type so both generators agree."
+        );
+    }
+}
+
 #[test]
 fn the_snapshot_is_valid_json_and_says_which_openapi_it_is() {
     let held = std::fs::read_to_string(snapshot()).expect("the snapshot to be readable");
