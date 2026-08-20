@@ -713,6 +713,10 @@ pub struct ListProducts {
     /// is not `Order`'s own default, because the default is right for a
     /// storefront walking a catalogue and backwards for a back office.
     pub order: Option<crate::page::Order>,
+    /// Which column. `created` is the default and `title` is the other one an
+    /// operator asks for; a cursor from one ordering means nothing under the
+    /// other, so changing this starts the list again.
+    pub by: Option<crate::page::By>,
 }
 
 pub async fn list_products(
@@ -729,6 +733,7 @@ pub async fn list_products(
         channels: None,
         search: query.q.as_deref().and_then(crate::page::Search::new),
         order: query.order.unwrap_or(crate::page::Order::Newest),
+        by: query.by.unwrap_or_default(),
     };
     let page = catalogue::products(
         tx,
