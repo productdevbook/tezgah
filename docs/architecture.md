@@ -85,15 +85,20 @@ ships a shop somebody else runs.
 
 ### The library
 
-**Only one list can be searched, and nothing can be sorted.** `page::Search`
-and `ProductFilter.search` gave the catalogue a search box — title, handle and
-subtitle, `ilike`, no index. Orders and customers still have none, and both
-take their filters as positional arguments rather than a struct, so giving
-them one is a signature change across their callers. One list sorts two ways: a cursor
-carries a key now — a timestamp or a text — so a page ordered by title
-resumes from a title, and `catalogue::products` takes `by=title`. The design
-that was named as missing is done; what is left is applying it, which is a
-column and a variant per list rather than a shape to work out.
+**Three lists can be searched, sorted and counted. The rest can do none of
+it.** Products by title, handle and subtitle; orders by e-mail and display
+number; customers by e-mail, name and company. All `ilike`, none indexed —
+which is the next thing to be wrong about them, and it will be wrong at a size
+this repository can measure rather than guess.
+
+Each also takes `order` and `by`, because a cursor carries a key rather than
+a timestamp: a page ordered by title resumes from a title. And each answers a
+`total` when asked, from a `count(*)` reading the same predicate macro the
+page reads — one fact, one place.
+
+What the other lists want is that same extraction, list by list: a filter
+struct, a macro both queries share, a column and a variant. Small, mechanical,
+and not free — sixty-odd times.
 
 **The document described no query parameter at all until #254**, so every
 filter the crate already supported was invisible to it — `"parameters": []`
@@ -104,16 +109,16 @@ catalogue passed CI without changing a byte of the snapshot, and a snapshot
 that cannot notice a new filter is not watching the thing it was meant to
 watch.
 
-**`Page<T>` carries a count when it is asked for, on one list.** `items` and
+**`Page<T>` carries a count when it is asked for, on the three lists that
+filter.** `items` and
 `next` by design — a cursor page does not know how many rows are behind it —
 plus `total`, which is `null` unless the caller said `count=true` and the
 list can answer. Null and zero stay distinguishable: zero is a real answer.
 
-`GET /admin/products` answers one. Its predicates moved into a
-`product_filter!` macro that both queries read, because a count assembled
-from a second copy of the where clause is one fact with two answers and would
-drift the day a filter changed. Every other list still says `null`, and each
-gaining one is that same extraction — small, but not free.
+Products, orders and customers answer one. Each moved its predicates into a
+macro that both queries read, because a count assembled from a second copy of
+the where clause is one fact with two answers and would drift the day a
+filter changed. Every other list still says `null`.
 
 **A provider's callback is received, and nothing acts on it.**
 `POST /webhooks/payments/{provider}` is declared on its own surface —

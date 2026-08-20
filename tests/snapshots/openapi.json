@@ -2795,6 +2795,13 @@
             ],
             "description": "Which column. `created` is the default; `email` is the other one."
           },
+          "count": {
+            "description": "Asks how many customers match, as well as this page of them. Off\nunless asked: it is a second query over the whole match.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "limit": {
             "format": "uint32",
             "minimum": 0,
@@ -2843,6 +2850,13 @@
               }
             ],
             "description": "Which column. `created` is the default; `email` is the other one."
+          },
+          "count": {
+            "description": "Asks how many orders match, as well as this page of them. Off unless\nasked: it is a second query over the whole match.",
+            "type": [
+              "boolean",
+              "null"
+            ]
           },
           "customer_id": {
             "anyOf": [
@@ -9164,6 +9178,18 @@
           },
           {
             "in": "query",
+            "name": "count",
+            "required": false,
+            "schema": {
+              "description": "Asks how many customers match, as well as this page of them. Off\nunless asked: it is a second query over the whole match.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
@@ -13517,6 +13543,18 @@
                 }
               ],
               "description": "Which column. `created` is the default; `email` is the other one."
+            }
+          },
+          {
+            "in": "query",
+            "name": "count",
+            "required": false,
+            "schema": {
+              "description": "Asks how many orders match, as well as this page of them. Off unless\nasked: it is a second query over the whole match.",
+              "type": [
+                "boolean",
+                "null"
+              ]
             }
           },
           {

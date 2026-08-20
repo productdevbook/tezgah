@@ -430,3 +430,50 @@ async fn a_list_ordered_by_email_pages_by_email() -> tezgah::Result<()> {
     shop.close().await;
     Ok(())
 }
+
+/// A count that ignores the search would tell a back office it has four
+/// hundred customers on a screen showing the one it searched for.
+#[tokio::test]
+async fn a_counted_page_counts_what_the_search_matched() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+
+    for who in ["ada@example.com", "grace@example.com", "alan@example.test"] {
+        customer::create(&mut tx, &ctx, NewCustomer::account(who)).await?;
+    }
+
+    let quiet = customer::list(&mut tx, &ctx, CustomerFilter::default(), Paging::first(2)).await?;
+    assert_eq!(quiet.len(), 2);
+    assert_eq!(quiet.total, None, "a list nobody counted came back counted");
+
+    let all = customer::list(
+        &mut tx,
+        &ctx,
+        CustomerFilter::default(),
+        Paging::first(2).counting(),
+    )
+    .await?;
+    assert_eq!(all.len(), 2, "the count must not change the page");
+    assert_eq!(all.total, Some(3));
+
+    let searched = customer::list(
+        &mut tx,
+        &ctx,
+        CustomerFilter {
+            search: Search::new("example.com"),
+            ..CustomerFilter::default()
+        },
+        Paging::first(2).counting(),
+    )
+    .await?;
+    assert_eq!(
+        searched.total,
+        Some(2),
+        "the count ignored the search the page applied"
+    );
+
+    tx.rollback().await.ok();
+    shop.close().await;
+    Ok(())
+}

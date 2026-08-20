@@ -105,7 +105,7 @@ export function Orders({
   const paged = usePagedList(["orders", q ?? "", by], "/admin/orders", order, {
     after,
     onAfterChange,
-    query: { q, by },
+    query: { q, by, count: "true" },
   })
   return (
     <div className="space-y-4">

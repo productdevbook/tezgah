@@ -54,6 +54,24 @@ use crate::money::{Currency, Money};
 use crate::page::{By, Cursor, Order as Direction, Page, Paging, Search};
 use crate::ports::{Action, Actor, AuditEntry, Ctx, Event, Permit, Resource, Tx};
 
+/// The three predicates an order list filters on, written once because two
+/// queries ask them: the page, and the `count(*)` behind `Paging::counting`.
+///
+/// `$1`..`$4`: scope, customer, drafts, search. A caller binds all four
+/// whichever query it is running.
+macro_rules! order_filter {
+    () => {
+        "
+           where scope = $1
+             and ($2::uuid is null or customer_id = $2)
+             and ($3::boolean is null or is_draft = $3)
+             and ($4::text is null
+                  or email ilike $4
+                  or display_id::text ilike $4)
+"
+    };
+}
+
 const ORDER_COLUMNS: &str = "id, display_id, region_id, sales_channel_id, customer_id, \
                              shipping_address_id, billing_address_id, payment_collection_id, \
                              basket_id, subscription_id, email, currency_code, locale, version, \
@@ -1353,17 +1371,18 @@ pub async fn list(
     let after_text = paging.after.as_ref().and_then(|c| c.text_key());
 
     let rows = sqlx::query_as::<_, Order>(&format!(
-        r#"select {ORDER_COLUMNS} from "order"
-           where scope = $1
-             and ($2::uuid is null or customer_id = $2)
-             and ($3::boolean is null or is_draft = $3)
-             and ($4::text is null
-                  or email ilike $4
-                  or display_id::text ilike $4)
-             and ($5::timestamptz is null or (created_at, id) {beyond} ($5, $6))
+        concat!(
+            r#"select {ORDER_COLUMNS} from "order""#,
+            order_filter!(),
+            r#"             and ($5::timestamptz is null or (created_at, id) {beyond} ($5, $6))
              and ($7::text is null or ({column}::text, id) {beyond} ($7, $6))
            order by {column} {direction}, id {direction}
            limit $8"#
+        ),
+        ORDER_COLUMNS = ORDER_COLUMNS,
+        beyond = beyond,
+        direction = direction,
+        column = column,
     ))
     .bind(ctx.scope.0)
     .bind(filter.customer.map(CustomerId::as_uuid))
@@ -1379,10 +1398,31 @@ pub async fn list(
     // The cursor names the column the page was ordered by, so the next page
     // resumes from the same one. An order with no e-mail sorts under the
     // empty string, which is where it also appears in the list.
-    Ok(Page::build(rows, paging, |row| match filter.by {
+    // The same three predicates, from the same macro, without the cursor and
+    // without the limit.
+    let total = if paging.counts() {
+        let (count,): (i64,) =
+            sqlx::query_as(concat!(r#"select count(*) from "order""#, order_filter!()))
+                .bind(ctx.scope.0)
+                .bind(filter.customer.map(CustomerId::as_uuid))
+                .bind(filter.drafts)
+                .bind(filter.search.as_ref().map(Search::pattern))
+                .fetch_one(&mut **tx)
+                .await?;
+        Some(count)
+    } else {
+        None
+    };
+
+    let page = Page::build(rows, paging, |row| match filter.by {
         By::Created | By::Title => Cursor::at(row.created_at, row.id.as_uuid()),
         By::Email => Cursor::text(row.email.clone().unwrap_or_default(), row.id.as_uuid()),
-    }))
+    });
+
+    Ok(match total {
+        Some(total) => page.counting(total),
+        None => page,
+    })
 }
 
 /// This scope's own orders under one basket. The permit is asked by
