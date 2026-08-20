@@ -1,16 +1,50 @@
-# tezgah
+<h1 align="center">tezgah</h1>
 
-A commerce engine as a Rust library — the shop behind the shop. Catalogue,
-pricing, stock, carts, checkout, orders, payments, fulfilment, subscriptions
-and a marketplace, with an HTTP surface for an admin panel and a storefront.
+<p align="center">
+  A commerce backend you can run — or a Rust library you can embed.
+</p>
 
-It is a library rather than a service. It owns tables in *your* Postgres and
-runs in *your* transaction, so an order and whatever else that request wrote
-commit together or not at all. No second database to restore, no sidecar to
-keep alive, no HTTP hop between your handler and your stock.
+<p align="center">
+  <a href="https://github.com/productdevbook/tezgah/actions/workflows/ci.yml"><img src="https://github.com/productdevbook/tezgah/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-blue.svg" alt="MIT"></a>
+  <img src="https://img.shields.io/badge/rust-1.88%2B-orange.svg" alt="Rust 1.88+">
+  <img src="https://img.shields.io/badge/postgres-15%2B-336791.svg" alt="Postgres 15+">
+</p>
 
-**Status: early.** Nothing is stable, there is no release, and the version is
-`0.0.0` on purpose.
+Catalogue, pricing, stock, carts, checkout, orders, payments, fulfilment,
+subscriptions and marketplaces — over one Postgres, with a workflow runner that
+walks back everything it started when a later step fails.
+
+There are two ways in, and they are the same engine.
+
+## Run it
+
+Two images, `linux/amd64` and `linux/arm64`, built from this repository:
+
+```sh
+curl -O https://raw.githubusercontent.com/productdevbook/tezgah/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/productdevbook/tezgah/main/.env.example
+cp .env.example .env      # set POSTGRES_PASSWORD and ADMIN_TOKEN
+docker compose up -d
+```
+
+The panel is on `http://localhost:8080`, the API on `:8081`. Migrations run on
+boot. **Leave `ADMIN_TOKEN` unset and the admin surface is not served at all** —
+a missing token closes the door rather than leaving it ajar.
+
+[`docs/self-hosting.md`](docs/self-hosting.md) is the longer version: what each
+variable does, what to back up, and what tezgah deliberately leaves to you.
+
+## Or embed it
+
+It is a library first. It owns tables in *your* Postgres and runs in *your*
+transaction, so an order and whatever else that request wrote commit together or
+not at all. No second database to restore, no sidecar to keep alive, no HTTP hop
+between your handler and your stock. The server above is a thin host over
+exactly the same crate — [`server/`](server) is about as much code as it takes,
+and yours can be too.
+
+**Status: early.** Nothing is stable and the API will move under you.
 
 ## What it does
 
@@ -38,7 +72,7 @@ keep alive, no HTTP hop between your handler and your stock.
 Every one of these is reachable from a route; that is checked by a test rather
 than asserted here.
 
-## Getting started
+## Embedding it
 
 Postgres 15 or later, and a `sqlx` pool.
 
@@ -117,17 +151,18 @@ does not serve it. The generated document is committed at
 [`tests/snapshots/openapi.json`](tests/snapshots/openapi.json), so a change to
 the API is a change to a file somebody reviews.
 
-Handlers are plain functions taking a pool or a transaction and a `Ctx`. There
-is no framework here: bring axum, or actix, or whatever you already run.
+Handlers are plain functions taking a pool or a transaction and a `Ctx`. The
+crate itself pulls in no framework: bring axum, or actix, or whatever you
+already run.
 
-**[`server/`](server)** is one such host, shipped in this repository for
-whoever wants to self-host tezgah rather than embed it in something larger: a
-binary reading `PORT` and `DATABASE_URL` from its environment, running
-migrations at startup, and binding a read-only admin surface behind a bearer
-token plus the shopping flow the client panel needs. Its own README carries
-the route table and every environment variable. `examples/shop` stays the
-smallest way to see the library called directly, with no server around it at
-all.
+[`server/`](server) is one worked answer, and the one the published image runs
+— the same handlers behind axum, reading `PORT` and `DATABASE_URL` from its
+environment, migrating at startup, serving the shopping flow and a read-only
+admin surface behind a bearer token. It binds **15 of the 483** routes the
+table declares, says so in its startup log, and its own README lists every one.
+It is a workspace member rather than a dependency, so embedding tezgah pulls in
+none of it — and `examples/shop` stays the smallest way to see the library
+called directly, with no server around it at all.
 
 ## What it asks of you
 
