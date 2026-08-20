@@ -6,8 +6,11 @@
  * OpenAPI spec version: 0.0.0
  */
 import type {
+  CreateProduct,
+  CreateVariant,
   GetAdminProducts200,
-  ProductView
+  ProductView,
+  VariantView
 } from '../models';
 
 import { apiMutator } from '../../../mutator';
@@ -1683,7 +1686,7 @@ export const getAdminProducts = async ( options?: Parameters<typeof apiMutator>[
 
 
 export type postAdminProductsResponse200 = {
-  data: void
+  data: ProductView
   status: 200
 }
 
@@ -1722,14 +1725,14 @@ export const getPostAdminProductsUrl = () => {
 /**
  * @summary Create a product
  */
-export const postAdminProducts = async ( options?: Parameters<typeof apiMutator>[1]): Promise<postAdminProductsResponse> => {
+export const postAdminProducts = async (createProduct: CreateProduct, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminProductsResponse> => {
 
   return apiMutator<postAdminProductsResponse>(getPostAdminProductsUrl(),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createProduct)
   }
 );}
 
@@ -3307,7 +3310,7 @@ export const getAdminProductsByIdVariants = async (id: string, options?: Paramet
 
 
 export type postAdminProductsByIdVariantsResponse200 = {
-  data: void
+  data: VariantView
   status: 200
 }
 
@@ -3346,14 +3349,15 @@ export const getPostAdminProductsByIdVariantsUrl = (id: string,) => {
 /**
  * @summary Create a variant of a product
  */
-export const postAdminProductsByIdVariants = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminProductsByIdVariantsResponse> => {
+export const postAdminProductsByIdVariants = async (id: string,
+    createVariant: CreateVariant, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminProductsByIdVariantsResponse> => {
 
   return apiMutator<postAdminProductsByIdVariantsResponse>(getPostAdminProductsByIdVariantsUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createVariant)
   }
 );}
 

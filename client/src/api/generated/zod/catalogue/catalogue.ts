@@ -300,7 +300,63 @@ export const GetAdminProductsResponse = zod.object({
 /**
  * @summary Create a product
  */
-export const PostAdminProductsResponse = zod.unknown()
+export const postAdminProductsBodyHeightRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+export const postAdminProductsBodyLengthRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+export const postAdminProductsBodyWeightRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+export const postAdminProductsBodyWidthRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+
+
+export const PostAdminProductsBody = zod.object({
+  "description": zod.string().nullish(),
+  "external_id": zod.string().nullish(),
+  "handle": zod.string(),
+  "height": zod.union([zod.string().regex(postAdminProductsBodyHeightRegExpOne),zod.number()]).nullish(),
+  "hs_code": zod.string().nullish(),
+  "is_discountable": zod.boolean().nullish(),
+  "length": zod.union([zod.string().regex(postAdminProductsBodyLengthRegExpOne),zod.number()]).nullish(),
+  "material": zod.string().nullish(),
+  "metadata": zod.unknown().optional(),
+  "origin_country": zod.string().nullish(),
+  "product_collection_id": zod.union([zod.uuid().describe('Identifies one collection.'),zod.null()]).optional(),
+  "product_type_id": zod.union([zod.uuid().describe('Identifies one type.'),zod.null()]).optional(),
+  "status": zod.union([zod.enum(['draft', 'proposed', 'published', 'archived', 'rejected']).describe('Where a product is in its life. `draft` is invisible, `published` is for\nsale, `archived` is kept for the orders that already name it. `proposed`\nand `rejected` are a marketplace\'s review of a seller\'s submission —\ninvisible the same as `draft`, but reached only through\n[`submit_for_review`], [`approve_product`] and [`reject_product`], not\nthrough a plain edit.'),zod.null()]).optional(),
+  "subtitle": zod.string().nullish(),
+  "thumbnail_url": zod.string().nullish(),
+  "title": zod.string(),
+  "weight": zod.union([zod.string().regex(postAdminProductsBodyWeightRegExpOne),zod.number()]).nullish(),
+  "width": zod.union([zod.string().regex(postAdminProductsBodyWidthRegExpOne),zod.number()]).nullish()
+})
+
+export const postAdminProductsResponseHeightRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+export const postAdminProductsResponseLengthRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+export const postAdminProductsResponseWeightRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+export const postAdminProductsResponseWidthRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PostAdminProductsResponse = zod.object({
+  "created_at": zod.iso.datetime({"offset":true}),
+  "description": zod.string().nullable(),
+  "external_id": zod.string().nullable(),
+  "handle": zod.string(),
+  "height": zod.string().regex(postAdminProductsResponseHeightRegExp).nullable(),
+  "hs_code": zod.string().nullable(),
+  "id": zod.uuid().describe('Identifies one product.'),
+  "is_discountable": zod.boolean(),
+  "length": zod.string().regex(postAdminProductsResponseLengthRegExp).nullable(),
+  "material": zod.string().nullable(),
+  "metadata": zod.unknown(),
+  "origin_country": zod.string().nullable(),
+  "product_collection_id": zod.union([zod.uuid().describe('Identifies one collection.'),zod.null()]),
+  "product_type_id": zod.union([zod.uuid().describe('Identifies one type.'),zod.null()]),
+  "rejected_reason": zod.string().nullable(),
+  "status": zod.enum(['draft', 'proposed', 'published', 'archived', 'rejected']).describe('Where a product is in its life. `draft` is invisible, `published` is for\nsale, `archived` is kept for the orders that already name it. `proposed`\nand `rejected` are a marketplace\'s review of a seller\'s submission —\ninvisible the same as `draft`, but reached only through\n[`submit_for_review`], [`approve_product`] and [`reject_product`], not\nthrough a plain edit.'),
+  "subtitle": zod.string().nullable(),
+  "thumbnail_url": zod.string().nullable(),
+  "title": zod.string(),
+  "updated_at": zod.iso.datetime({"offset":true}),
+  "weight": zod.string().regex(postAdminProductsResponseWeightRegExp).nullable(),
+  "width": zod.string().regex(postAdminProductsResponseWidthRegExp).nullable()
+}).describe('A product as its own shop sees it: the status included, because deciding\nwhat to do next is the whole point of the screen this feeds.')
 
 /**
  * @summary Write and delete many products in one call
@@ -602,7 +658,67 @@ export const PostAdminProductsByIdVariantsParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminProductsByIdVariantsResponse = zod.unknown()
+export const postAdminProductsByIdVariantsBodyHeightRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+export const postAdminProductsByIdVariantsBodyLengthRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+export const postAdminProductsByIdVariantsBodyWeightRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+export const postAdminProductsByIdVariantsBodyWidthRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+
+
+export const PostAdminProductsByIdVariantsBody = zod.object({
+  "allows_backorder": zod.boolean().nullish(),
+  "barcode": zod.string().nullish(),
+  "ean": zod.string().nullish(),
+  "height": zod.union([zod.string().regex(postAdminProductsByIdVariantsBodyHeightRegExpOne),zod.number()]).nullish(),
+  "hs_code": zod.string().nullish(),
+  "is_giftcard": zod.boolean().nullish().describe('Whether selling this sells money rather than goods.'),
+  "length": zod.union([zod.string().regex(postAdminProductsByIdVariantsBodyLengthRegExpOne),zod.number()]).nullish(),
+  "manages_inventory": zod.boolean().nullish(),
+  "material": zod.string().nullish(),
+  "metadata": zod.unknown().optional(),
+  "mid_code": zod.string().nullish(),
+  "origin_country": zod.string().nullish(),
+  "rank": zod.int().nullish(),
+  "requires_shipping": zod.boolean().nullish().describe('Whether a line selling this needs a shipping address. Defaults to\n`true`: not tracking a variant\'s stock is not the same fact as it\nbeing a digital good.'),
+  "sku": zod.string().nullish(),
+  "title": zod.string(),
+  "upc": zod.string().nullish(),
+  "weight": zod.union([zod.string().regex(postAdminProductsByIdVariantsBodyWeightRegExpOne),zod.number()]).nullish(),
+  "width": zod.union([zod.string().regex(postAdminProductsByIdVariantsBodyWidthRegExpOne),zod.number()]).nullish(),
+  "withdrawal_exclusion": zod.string().nullish().describe('Why buying this is outside the right of withdrawal.')
+})
+
+export const postAdminProductsByIdVariantsResponseHeightRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+export const postAdminProductsByIdVariantsResponseLengthRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+export const postAdminProductsByIdVariantsResponseWeightRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+export const postAdminProductsByIdVariantsResponseWidthRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PostAdminProductsByIdVariantsResponse = zod.object({
+  "allows_backorder": zod.boolean(),
+  "barcode": zod.string().nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "ean": zod.string().nullable(),
+  "height": zod.string().regex(postAdminProductsByIdVariantsResponseHeightRegExp).nullable(),
+  "hs_code": zod.string().nullable(),
+  "id": zod.uuid().describe('Identifies one variant.'),
+  "is_giftcard": zod.boolean(),
+  "length": zod.string().regex(postAdminProductsByIdVariantsResponseLengthRegExp).nullable(),
+  "manages_inventory": zod.boolean(),
+  "material": zod.string().nullable(),
+  "metadata": zod.unknown(),
+  "mid_code": zod.string().nullable(),
+  "origin_country": zod.string().nullable(),
+  "product_id": zod.uuid().describe('Identifies one product.'),
+  "rank": zod.int(),
+  "requires_shipping": zod.boolean(),
+  "sku": zod.string().nullable(),
+  "title": zod.string(),
+  "upc": zod.string().nullable(),
+  "updated_at": zod.iso.datetime({"offset":true}),
+  "weight": zod.string().regex(postAdminProductsByIdVariantsResponseWeightRegExp).nullable(),
+  "width": zod.string().regex(postAdminProductsByIdVariantsResponseWidthRegExp).nullable(),
+  "withdrawal_exclusion": zod.string().nullable()
+})
 
 /**
  * @summary Make every combination of the options that is not excluded

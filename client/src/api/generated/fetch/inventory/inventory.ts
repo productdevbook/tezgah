@@ -6,8 +6,13 @@
  * OpenAPI spec version: 0.0.0
  */
 import type {
+  CreateInventoryItem,
+  CreateStockLocation,
   GetAdminInventoryItems200,
-  InventoryItemView
+  InventoryItemView,
+  InventoryLevelView,
+  SetStock,
+  StockLocationView
 } from '../models';
 
 import { apiMutator } from '../../../mutator';
@@ -65,7 +70,7 @@ export const getAdminInventoryItems = async ( options?: Parameters<typeof apiMut
 
 
 export type postAdminInventoryItemsResponse200 = {
-  data: void
+  data: InventoryItemView
   status: 200
 }
 
@@ -104,14 +109,14 @@ export const getPostAdminInventoryItemsUrl = () => {
 /**
  * @summary Create an inventory item
  */
-export const postAdminInventoryItems = async ( options?: Parameters<typeof apiMutator>[1]): Promise<postAdminInventoryItemsResponse> => {
+export const postAdminInventoryItems = async (createInventoryItem: CreateInventoryItem, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminInventoryItemsResponse> => {
 
   return apiMutator<postAdminInventoryItemsResponse>(getPostAdminInventoryItemsUrl(),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createInventoryItem)
   }
 );}
 
@@ -325,7 +330,7 @@ export const getAdminInventoryItemsByIdLocationLevels = async (id: string, optio
 
 
 export type postAdminInventoryItemsByIdLocationLevelsResponse200 = {
-  data: void
+  data: InventoryLevelView
   status: 200
 }
 
@@ -364,14 +369,15 @@ export const getPostAdminInventoryItemsByIdLocationLevelsUrl = (id: string,) => 
 /**
  * @summary Set the counted stock at one location
  */
-export const postAdminInventoryItemsByIdLocationLevels = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminInventoryItemsByIdLocationLevelsResponse> => {
+export const postAdminInventoryItemsByIdLocationLevels = async (id: string,
+    setStock: SetStock, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminInventoryItemsByIdLocationLevelsResponse> => {
 
   return apiMutator<postAdminInventoryItemsByIdLocationLevelsResponse>(getPostAdminInventoryItemsByIdLocationLevelsUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(setStock)
   }
 );}
 
@@ -1475,7 +1481,7 @@ export const getAdminStockLocations = async ( options?: Parameters<typeof apiMut
 
 
 export type postAdminStockLocationsResponse200 = {
-  data: void
+  data: StockLocationView
   status: 200
 }
 
@@ -1514,14 +1520,14 @@ export const getPostAdminStockLocationsUrl = () => {
 /**
  * @summary Create a stock location
  */
-export const postAdminStockLocations = async ( options?: Parameters<typeof apiMutator>[1]): Promise<postAdminStockLocationsResponse> => {
+export const postAdminStockLocations = async (createStockLocation: CreateStockLocation, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminStockLocationsResponse> => {
 
   return apiMutator<postAdminStockLocationsResponse>(getPostAdminStockLocationsUrl(),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createStockLocation)
   }
 );}
 

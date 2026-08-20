@@ -6,8 +6,14 @@
  * OpenAPI spec version: 0.0.0
  */
 import type {
+  CreateCurrency,
+  CreatePublishableKey,
+  CreateRegion,
+  CreateSalesChannel,
+  CurrencyView,
   GetAdminRegions200,
   GetAdminSalesChannels200,
+  IssuedKeyView,
   RegionView,
   SalesChannelView
 } from '../models';
@@ -67,7 +73,7 @@ export const getAdminCurrencies = async ( options?: Parameters<typeof apiMutator
 
 
 export type postAdminCurrenciesResponse200 = {
-  data: void
+  data: CurrencyView
   status: 200
 }
 
@@ -106,14 +112,14 @@ export const getPostAdminCurrenciesUrl = () => {
 /**
  * @summary Enable a currency for the shop
  */
-export const postAdminCurrencies = async ( options?: Parameters<typeof apiMutator>[1]): Promise<postAdminCurrenciesResponse> => {
+export const postAdminCurrencies = async (createCurrency: CreateCurrency, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminCurrenciesResponse> => {
 
   return apiMutator<postAdminCurrenciesResponse>(getPostAdminCurrenciesUrl(),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createCurrency)
   }
 );}
 
@@ -327,7 +333,7 @@ export const getAdminPublishableApiKeys = async ( options?: Parameters<typeof ap
 
 
 export type postAdminPublishableApiKeysResponse200 = {
-  data: void
+  data: IssuedKeyView
   status: 200
 }
 
@@ -366,14 +372,14 @@ export const getPostAdminPublishableApiKeysUrl = () => {
 /**
  * @summary Issue a storefront key, whose token is returned once
  */
-export const postAdminPublishableApiKeys = async ( options?: Parameters<typeof apiMutator>[1]): Promise<postAdminPublishableApiKeysResponse> => {
+export const postAdminPublishableApiKeys = async (createPublishableKey: CreatePublishableKey, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminPublishableApiKeysResponse> => {
 
   return apiMutator<postAdminPublishableApiKeysResponse>(getPostAdminPublishableApiKeysUrl(),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createPublishableKey)
   }
 );}
 
@@ -693,7 +699,7 @@ export const getAdminRegions = async ( options?: Parameters<typeof apiMutator>[1
 
 
 export type postAdminRegionsResponse200 = {
-  data: void
+  data: RegionView
   status: 200
 }
 
@@ -732,14 +738,14 @@ export const getPostAdminRegionsUrl = () => {
 /**
  * @summary Create a region
  */
-export const postAdminRegions = async ( options?: Parameters<typeof apiMutator>[1]): Promise<postAdminRegionsResponse> => {
+export const postAdminRegions = async (createRegion: CreateRegion, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminRegionsResponse> => {
 
   return apiMutator<postAdminRegionsResponse>(getPostAdminRegionsUrl(),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createRegion)
   }
 );}
 
@@ -1059,7 +1065,7 @@ export const getAdminSalesChannels = async ( options?: Parameters<typeof apiMuta
 
 
 export type postAdminSalesChannelsResponse200 = {
-  data: void
+  data: SalesChannelView
   status: 200
 }
 
@@ -1098,14 +1104,14 @@ export const getPostAdminSalesChannelsUrl = () => {
 /**
  * @summary Create a sales channel
  */
-export const postAdminSalesChannels = async ( options?: Parameters<typeof apiMutator>[1]): Promise<postAdminSalesChannelsResponse> => {
+export const postAdminSalesChannels = async (createSalesChannel: CreateSalesChannel, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminSalesChannelsResponse> => {
 
   return apiMutator<postAdminSalesChannelsResponse>(getPostAdminSalesChannelsUrl(),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createSalesChannel)
   }
 );}
 

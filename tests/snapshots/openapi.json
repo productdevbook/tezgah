@@ -71,6 +71,67 @@
         ],
         "type": "object"
       },
+      "AddPrice": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "pattern": "^-?\\d+(\\.\\d+)?([eE]\\d+)?$",
+            "type": [
+              "string",
+              "number"
+            ]
+          },
+          "currency_code": {
+            "description": "ISO 4217, checked here rather than at the database.",
+            "type": "string"
+          },
+          "max_quantity": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "min_quantity": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "price_list_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriceListId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "price_set_id": {
+            "$ref": "#/components/schemas/PriceSetId"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/PriceRuleInput"
+            },
+            "type": "array"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "price_set_id",
+          "amount",
+          "currency_code"
+        ],
+        "type": "object"
+      },
       "AddShippingAction": {
         "additionalProperties": false,
         "properties": {
@@ -633,6 +694,67 @@
         ],
         "type": "object"
       },
+      "CreateCurrency": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "exponent": {
+            "format": "int16",
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "numeric_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "symbol_native": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "exponent",
+          "symbol",
+          "symbol_native",
+          "name"
+        ],
+        "type": "object"
+      },
+      "CreateInventoryItem": {
+        "additionalProperties": false,
+        "properties": {
+          "requires_shipping": {
+            "type": "boolean"
+          },
+          "sku": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "requires_shipping"
+        ],
+        "type": "object"
+      },
       "CreateOrder": {
         "additionalProperties": false,
         "properties": {
@@ -720,6 +842,379 @@
           "currency_code",
           "reference",
           "reference_id"
+        ],
+        "type": "object"
+      },
+      "CreateProduct": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "external_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "handle": {
+            "type": "string"
+          },
+          "height": {
+            "pattern": "^-?\\d+(\\.\\d+)?([eE]\\d+)?$",
+            "type": [
+              "string",
+              "number",
+              "null"
+            ]
+          },
+          "hs_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "is_discountable": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "length": {
+            "pattern": "^-?\\d+(\\.\\d+)?([eE]\\d+)?$",
+            "type": [
+              "string",
+              "number",
+              "null"
+            ]
+          },
+          "material": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "metadata": true,
+          "origin_country": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "product_collection_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CollectionId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "product_type_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProductTypeId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProductStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "thumbnail_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "weight": {
+            "pattern": "^-?\\d+(\\.\\d+)?([eE]\\d+)?$",
+            "type": [
+              "string",
+              "number",
+              "null"
+            ]
+          },
+          "width": {
+            "pattern": "^-?\\d+(\\.\\d+)?([eE]\\d+)?$",
+            "type": [
+              "string",
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "handle",
+          "title"
+        ],
+        "type": "object"
+      },
+      "CreatePublishableKey": {
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "type": "object"
+      },
+      "CreateRegion": {
+        "additionalProperties": false,
+        "properties": {
+          "currency_code": {
+            "type": "string"
+          },
+          "has_automatic_taxes": {
+            "default": true,
+            "type": "boolean"
+          },
+          "is_tax_inclusive": {
+            "default": false,
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "payment_providers": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "currency_code"
+        ],
+        "type": "object"
+      },
+      "CreateSalesChannel": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "is_disabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "CreateStockLocation": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StockLocationAddressIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "CreateVariant": {
+        "additionalProperties": false,
+        "properties": {
+          "allows_backorder": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "barcode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ean": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "height": {
+            "pattern": "^-?\\d+(\\.\\d+)?([eE]\\d+)?$",
+            "type": [
+              "string",
+              "number",
+              "null"
+            ]
+          },
+          "hs_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "is_giftcard": {
+            "description": "Whether selling this sells money rather than goods.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "length": {
+            "pattern": "^-?\\d+(\\.\\d+)?([eE]\\d+)?$",
+            "type": [
+              "string",
+              "number",
+              "null"
+            ]
+          },
+          "manages_inventory": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "material": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "metadata": true,
+          "mid_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "origin_country": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rank": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "requires_shipping": {
+            "description": "Whether a line selling this needs a shipping address. Defaults to\n`true`: not tracking a variant's stock is not the same fact as it\nbeing a digital good.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "sku": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "upc": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "weight": {
+            "pattern": "^-?\\d+(\\.\\d+)?([eE]\\d+)?$",
+            "type": [
+              "string",
+              "number",
+              "null"
+            ]
+          },
+          "width": {
+            "pattern": "^-?\\d+(\\.\\d+)?([eE]\\d+)?$",
+            "type": [
+              "string",
+              "number",
+              "null"
+            ]
+          },
+          "withdrawal_exclusion": {
+            "description": "Why buying this is outside the right of withdrawal.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "type": "object"
+      },
+      "CurrencyView": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "exponent": {
+            "format": "int16",
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "symbol",
+          "name",
+          "exponent"
         ],
         "type": "object"
       },
@@ -940,6 +1435,55 @@
         ],
         "type": "object"
       },
+      "InventoryLevelId": {
+        "description": "Identifies one inventory level.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "InventoryLevelView": {
+        "properties": {
+          "available_quantity": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/InventoryLevelId"
+          },
+          "incoming_quantity": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "inventory_item_id": {
+            "$ref": "#/components/schemas/InventoryItemId"
+          },
+          "location_id": {
+            "$ref": "#/components/schemas/StockLocationId"
+          },
+          "reserved_quantity": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "stocked_quantity": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "inventory_item_id",
+          "location_id",
+          "stocked_quantity",
+          "reserved_quantity",
+          "incoming_quantity",
+          "available_quantity",
+          "created_at"
+        ],
+        "type": "object"
+      },
       "InvoiceView": {
         "properties": {
           "created_at": {
@@ -1023,6 +1567,47 @@
           "currency_code",
           "replaces_invoice_id",
           "created_at"
+        ],
+        "type": "object"
+      },
+      "IssuedKeyView": {
+        "description": "The only response the token appears in. It is not stored and cannot be\nfetched again.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/PublishableKeyId"
+          },
+          "last_used_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revoked_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "revoked_at",
+          "last_used_at",
+          "created_at",
+          "token"
         ],
         "type": "object"
       },
@@ -1117,6 +1702,18 @@
         "required": [
           "order_line_item_id",
           "quantity"
+        ],
+        "type": "object"
+      },
+      "LinkPriceSet": {
+        "additionalProperties": false,
+        "properties": {
+          "price_set_id": {
+            "$ref": "#/components/schemas/PriceSetId"
+          }
+        },
+        "required": [
+          "price_set_id"
         ],
         "type": "object"
       },
@@ -1690,6 +2287,132 @@
         ],
         "type": "object"
       },
+      "PriceId": {
+        "description": "Identifies one price.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "PriceListId": {
+        "description": "Identifies one price list.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "PriceRuleInput": {
+        "additionalProperties": false,
+        "properties": {
+          "attribute": {
+            "type": "string"
+          },
+          "operator": {
+            "type": "string"
+          },
+          "priority": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "attribute",
+          "value",
+          "operator"
+        ],
+        "type": "object"
+      },
+      "PriceSetId": {
+        "description": "Identifies one price set.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "PriceSetView": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/PriceSetId"
+          }
+        },
+        "required": [
+          "id",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "PriceView": {
+        "properties": {
+          "amount": {
+            "pattern": "^-?\\d+(\\.\\d+)?$",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "currency_code": {
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/PriceId"
+          },
+          "max_quantity": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "min_quantity": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "price_list_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriceListId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "price_set_id": {
+            "$ref": "#/components/schemas/PriceSetId"
+          },
+          "rules_count": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "price_set_id",
+          "price_list_id",
+          "title",
+          "amount",
+          "currency_code",
+          "min_quantity",
+          "max_quantity",
+          "rules_count",
+          "created_at"
+        ],
+        "type": "object"
+      },
       "ProductId": {
         "description": "Identifies one product.",
         "format": "uuid",
@@ -1959,6 +2682,11 @@
           "body"
         ],
         "type": "object"
+      },
+      "PublishableKeyId": {
+        "description": "Identifies one publishable key.",
+        "format": "uuid",
+        "type": "string"
       },
       "PutReturnReasonTranslation": {
         "additionalProperties": false,
@@ -2670,6 +3398,28 @@
         ],
         "type": "object"
       },
+      "SetStock": {
+        "additionalProperties": false,
+        "properties": {
+          "incoming_quantity": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "location_id": {
+            "$ref": "#/components/schemas/StockLocationId"
+          },
+          "stocked_quantity": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "location_id",
+          "stocked_quantity",
+          "incoming_quantity"
+        ],
+        "type": "object"
+      },
       "ShippingMethodView": {
         "properties": {
           "amount": {
@@ -2711,10 +3461,91 @@
         "format": "uuid",
         "type": "string"
       },
+      "StockLocationAddressIn": {
+        "additionalProperties": false,
+        "description": "Where a location is. The country is what makes it the origin of a supply,\nso it is required and the rest of the address is not.",
+        "properties": {
+          "address_1": {
+            "type": "string"
+          },
+          "address_2": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "city": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "company": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "country_code": {
+            "type": "string"
+          },
+          "phone": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "postal_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "province": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "address_1",
+          "country_code"
+        ],
+        "type": "object"
+      },
       "StockLocationId": {
         "description": "Identifies one stock location.",
         "format": "uuid",
         "type": "string"
+      },
+      "StockLocationView": {
+        "properties": {
+          "address_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/StockLocationId"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "address_id",
+          "created_at"
+        ],
+        "type": "object"
       },
       "StoreOrderView": {
         "properties": {
@@ -3009,6 +3840,153 @@
         "description": "Identifies one variant.",
         "format": "uuid",
         "type": "string"
+      },
+      "VariantView": {
+        "properties": {
+          "allows_backorder": {
+            "type": "boolean"
+          },
+          "barcode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "ean": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "height": {
+            "pattern": "^-?\\d+(\\.\\d+)?$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hs_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/VariantId"
+          },
+          "is_giftcard": {
+            "type": "boolean"
+          },
+          "length": {
+            "pattern": "^-?\\d+(\\.\\d+)?$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "manages_inventory": {
+            "type": "boolean"
+          },
+          "material": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "metadata": true,
+          "mid_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "origin_country": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "product_id": {
+            "$ref": "#/components/schemas/ProductId"
+          },
+          "rank": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "requires_shipping": {
+            "type": "boolean"
+          },
+          "sku": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "upc": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "weight": {
+            "pattern": "^-?\\d+(\\.\\d+)?$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "width": {
+            "pattern": "^-?\\d+(\\.\\d+)?$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "withdrawal_exclusion": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "product_id",
+          "title",
+          "sku",
+          "barcode",
+          "ean",
+          "upc",
+          "weight",
+          "length",
+          "height",
+          "width",
+          "material",
+          "hs_code",
+          "origin_country",
+          "mid_code",
+          "manages_inventory",
+          "allows_backorder",
+          "rank",
+          "withdrawal_exclusion",
+          "is_giftcard",
+          "requires_shipping",
+          "metadata",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
       },
       "WithdrawalNoticeView": {
         "properties": {
@@ -4633,8 +5611,25 @@
       "post": {
         "operationId": "postAdminCurrencies",
         "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCurrency"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrencyView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -7519,8 +8514,25 @@
       "post": {
         "operationId": "postAdminInventoryItems",
         "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateInventoryItem"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryItemView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -7708,8 +8720,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetStock"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryLevelView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -11719,6 +12748,13 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceSetView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -11825,8 +12861,25 @@
       "post": {
         "operationId": "postAdminPrices",
         "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddPrice"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -13379,6 +14432,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkPriceSet"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "The call succeeded."
@@ -13458,8 +14521,25 @@
       "post": {
         "operationId": "postAdminProducts",
         "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProduct"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -14675,8 +15755,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateVariant"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VariantView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -15196,8 +16293,25 @@
       "post": {
         "operationId": "postAdminPublishableApiKeys",
         "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePublishableKey"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssuedKeyView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -15534,8 +16648,25 @@
       "post": {
         "operationId": "postAdminRegions",
         "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRegion"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegionView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -17003,8 +18134,25 @@
       "post": {
         "operationId": "postAdminSalesChannels",
         "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSalesChannel"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SalesChannelView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -17965,8 +19113,25 @@
       "post": {
         "operationId": "postAdminStockLocations",
         "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateStockLocation"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StockLocationView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {

@@ -11,12 +11,41 @@ import * as zod from 'zod';
 /**
  * @summary List published versions
  */
-export const GetAdminAgreementsResponse = zod.unknown()
+export const GetAdminAgreementsResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "body": zod.string(),
+  "body_hash": zod.string().describe('What the acceptance points at, so two copies of a text can be compared\nwithout reading them.'),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "effective_from": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one agreement version.'),
+  "kind": zod.string(),
+  "locale": zod.string()
+}))
+}))
 
 /**
  * @summary Publish a version of a document
  */
-export const PostAdminAgreementsResponse = zod.unknown()
+export const PostAdminAgreementsBody = zod.object({
+  "body": zod.string(),
+  "effective_from": zod.iso.datetime({"offset":true}).nullish(),
+  "kind": zod.string(),
+  "locale": zod.string(),
+  "metadata": zod.unknown().optional()
+})
+
+export const PostAdminAgreementsResponse = zod.object({
+  "body": zod.string(),
+  "body_hash": zod.string().describe('What the acceptance points at, so two copies of a text can be compared\nwithout reading them.'),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "effective_from": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one agreement version.'),
+  "kind": zod.string(),
+  "locale": zod.string()
+})
 
 /**
  * @summary Fetch one published version
@@ -25,17 +54,92 @@ export const GetAdminAgreementsByIdParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminAgreementsByIdResponse = zod.unknown()
+export const GetAdminAgreementsByIdResponse = zod.object({
+  "body": zod.string(),
+  "body_hash": zod.string().describe('What the acceptance points at, so two copies of a text can be compared\nwithout reading them.'),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "effective_from": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one agreement version.'),
+  "kind": zod.string(),
+  "locale": zod.string()
+})
 
 /**
  * @summary List claims
  */
-export const GetAdminClaimsResponse = zod.unknown()
+export const getAdminClaimsResponseTwoItemsItemRefundAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetAdminClaimsResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "claim_type": zod.string(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "display_id": zod.int().nullable(),
+  "id": zod.uuid().describe('Identifies one claim.'),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "order_return_id": zod.union([zod.uuid().describe('Identifies one return.'),zod.null()]),
+  "order_version": zod.int(),
+  "refund_amount": zod.union([zod.object({
+  "amount": zod.string().regex(getAdminClaimsResponseTwoItemsItemRefundAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()])
+}))
+}))
 
 /**
  * @summary Raise a claim
  */
-export const PostAdminClaimsResponse = zod.unknown()
+export const postAdminClaimsBodyCollectDefault = false;
+export const postAdminClaimsBodyFaultyItemImagesDefault = [];
+export const postAdminClaimsBodyRefundAmountOneAmountRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+export const postAdminClaimsBodyReplacementsItemImagesDefault = [];
+
+export const PostAdminClaimsBody = zod.object({
+  "claim_type": zod.enum(['refund', 'replace']),
+  "collect": zod.boolean().default(postAdminClaimsBodyCollectDefault),
+  "faulty": zod.array(zod.object({
+  "images": zod.array(zod.string()).default(postAdminClaimsBodyFaultyItemImagesDefault).describe('Photos of the damage, as URLs into wherever the host keeps files —\ntezgah stores none of its own.'),
+  "note": zod.string().nullish(),
+  "order_line_item_id": zod.uuid().describe('Identifies one line item.'),
+  "quantity": zod.int(),
+  "reason": zod.string().nullish()
+})),
+  "location_id": zod.union([zod.uuid().describe('Identifies one stock location.'),zod.null()]).optional(),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "refund_amount": zod.union([zod.object({
+  "amount": zod.union([zod.string().regex(postAdminClaimsBodyRefundAmountOneAmountRegExpOne),zod.number()]),
+  "currency": zod.string()
+}).describe('An amount as it arrives over the wire. Never a float, and the currency is\ncarried with it so nothing has to guess which shop\'s money this is.'),zod.null()]).optional(),
+  "replacements": zod.array(zod.object({
+  "images": zod.array(zod.string()).default(postAdminClaimsBodyReplacementsItemImagesDefault).describe('Photos of the damage, as URLs into wherever the host keeps files —\ntezgah stores none of its own.'),
+  "note": zod.string().nullish(),
+  "order_line_item_id": zod.uuid().describe('Identifies one line item.'),
+  "quantity": zod.int(),
+  "reason": zod.string().nullish()
+})).optional()
+})
+
+export const postAdminClaimsResponseRefundAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PostAdminClaimsResponse = zod.object({
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "claim_type": zod.string(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "display_id": zod.int().nullable(),
+  "id": zod.uuid().describe('Identifies one claim.'),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "order_return_id": zod.union([zod.uuid().describe('Identifies one return.'),zod.null()]),
+  "order_version": zod.int(),
+  "refund_amount": zod.union([zod.object({
+  "amount": zod.string().regex(postAdminClaimsResponseRefundAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()])
+})
 
 /**
  * @summary Fetch one claim
@@ -44,7 +148,23 @@ export const GetAdminClaimsByIdParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminClaimsByIdResponse = zod.unknown()
+export const getAdminClaimsByIdResponseRefundAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetAdminClaimsByIdResponse = zod.object({
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "claim_type": zod.string(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "display_id": zod.int().nullable(),
+  "id": zod.uuid().describe('Identifies one claim.'),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "order_return_id": zod.union([zod.uuid().describe('Identifies one return.'),zod.null()]),
+  "order_version": zod.int(),
+  "refund_amount": zod.union([zod.object({
+  "amount": zod.string().regex(getAdminClaimsByIdResponseRefundAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()])
+})
 
 /**
  * @summary Cancel a claim
@@ -53,7 +173,23 @@ export const PostAdminClaimsByIdCancelParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminClaimsByIdCancelResponse = zod.unknown()
+export const postAdminClaimsByIdCancelResponseRefundAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PostAdminClaimsByIdCancelResponse = zod.object({
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "claim_type": zod.string(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "display_id": zod.int().nullable(),
+  "id": zod.uuid().describe('Identifies one claim.'),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "order_return_id": zod.union([zod.uuid().describe('Identifies one return.'),zod.null()]),
+  "order_version": zod.int(),
+  "refund_amount": zod.union([zod.object({
+  "amount": zod.string().regex(postAdminClaimsByIdCancelResponseRefundAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()])
+})
 
 /**
  * @summary Write off what went wrong where it stands
@@ -62,7 +198,27 @@ export const PostAdminClaimsByIdClaimItemsParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminClaimsByIdClaimItemsResponse = zod.unknown()
+export const PostAdminClaimsByIdClaimItemsBody = zod.object({
+  "order_line_item_id": zod.uuid().describe('Identifies one line item.'),
+  "quantity": zod.int()
+})
+
+export const postAdminClaimsByIdClaimItemsResponseAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PostAdminClaimsByIdClaimItemsResponse = zod.object({
+  "action": zod.string(),
+  "amount": zod.union([zod.object({
+  "amount": zod.string().regex(postAdminClaimsByIdClaimItemsResponseAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "applied": zod.boolean(),
+  "details": zod.unknown(),
+  "id": zod.uuid(),
+  "order_change_id": zod.union([zod.uuid().describe('Identifies one order change.'),zod.null()]),
+  "ordering": zod.int(),
+  "reference_id": zod.uuid().nullable()
+})
 
 /**
  * @summary Take a written-off line back off
@@ -81,7 +237,27 @@ export const PostAdminClaimsByIdInboundItemsParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminClaimsByIdInboundItemsResponse = zod.unknown()
+export const PostAdminClaimsByIdInboundItemsBody = zod.object({
+  "order_line_item_id": zod.uuid().describe('Identifies one line item.'),
+  "quantity": zod.int()
+})
+
+export const postAdminClaimsByIdInboundItemsResponseAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PostAdminClaimsByIdInboundItemsResponse = zod.object({
+  "action": zod.string(),
+  "amount": zod.union([zod.object({
+  "amount": zod.string().regex(postAdminClaimsByIdInboundItemsResponseAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "applied": zod.boolean(),
+  "details": zod.unknown(),
+  "id": zod.uuid(),
+  "order_change_id": zod.union([zod.uuid().describe('Identifies one order change.'),zod.null()]),
+  "ordering": zod.int(),
+  "reference_id": zod.uuid().nullable()
+})
 
 /**
  * @summary Stop asking for a line back
@@ -100,7 +276,34 @@ export const PostAdminClaimsByIdInboundShippingMethodParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminClaimsByIdInboundShippingMethodResponse = zod.unknown()
+export const postAdminClaimsByIdInboundShippingMethodBodyAmountAmountRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+
+
+export const PostAdminClaimsByIdInboundShippingMethodBody = zod.object({
+  "amount": zod.object({
+  "amount": zod.union([zod.string().regex(postAdminClaimsByIdInboundShippingMethodBodyAmountAmountRegExpOne),zod.number()]),
+  "currency": zod.string()
+}).describe('An amount as it arrives over the wire. Never a float, and the currency is\ncarried with it so nothing has to guess which shop\'s money this is.'),
+  "internal_note": zod.string().nullish(),
+  "name": zod.string()
+})
+
+export const postAdminClaimsByIdInboundShippingMethodResponseAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PostAdminClaimsByIdInboundShippingMethodResponse = zod.object({
+  "action": zod.string(),
+  "amount": zod.union([zod.object({
+  "amount": zod.string().regex(postAdminClaimsByIdInboundShippingMethodResponseAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "applied": zod.boolean(),
+  "details": zod.unknown(),
+  "id": zod.uuid(),
+  "order_change_id": zod.union([zod.uuid().describe('Identifies one order change.'),zod.null()]),
+  "ordering": zod.int(),
+  "reference_id": zod.uuid().nullable()
+})
 
 /**
  * @summary The claim's open change and its actions
@@ -109,7 +312,36 @@ export const GetAdminClaimsByIdItemsParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminClaimsByIdItemsResponse = zod.unknown()
+export const getAdminClaimsByIdItemsResponseActionsItemAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetAdminClaimsByIdItemsResponse = zod.object({
+  "actions": zod.array(zod.object({
+  "action": zod.string(),
+  "amount": zod.union([zod.object({
+  "amount": zod.string().regex(getAdminClaimsByIdItemsResponseActionsItemAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "applied": zod.boolean(),
+  "details": zod.unknown(),
+  "id": zod.uuid(),
+  "order_change_id": zod.union([zod.uuid().describe('Identifies one order change.'),zod.null()]),
+  "ordering": zod.int(),
+  "reference_id": zod.uuid().nullable()
+})),
+  "change": zod.object({
+  "change_type": zod.string(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "description": zod.string().nullable(),
+  "id": zod.uuid().describe('Identifies one order change.'),
+  "order_claim_id": zod.union([zod.uuid().describe('Identifies one claim.'),zod.null()]),
+  "order_exchange_id": zod.union([zod.uuid().describe('Identifies one exchange.'),zod.null()]),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "order_return_id": zod.union([zod.uuid().describe('Identifies one return.'),zod.null()]),
+  "status": zod.string(),
+  "version": zod.int()
+})
+}).describe('A change with its actions, which is the only shape anybody looks at one in.')
 
 /**
  * @summary What was claimed, faulty or replacement, with any photos
@@ -118,7 +350,18 @@ export const GetAdminClaimsByIdLinesParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminClaimsByIdLinesResponse = zod.unknown()
+export const GetAdminClaimsByIdLinesResponseItem = zod.object({
+  "created_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid(),
+  "images": zod.array(zod.string()),
+  "is_additional_item": zod.boolean(),
+  "note": zod.string().nullable(),
+  "order_claim_id": zod.uuid().describe('Identifies one claim.'),
+  "order_line_item_id": zod.uuid().describe('Identifies one line item.'),
+  "quantity": zod.int(),
+  "reason": zod.string().nullable()
+}).describe('One line of a claim: what was wrong with it, or what is being sent\ninstead — [`order::ClaimLine::images`] is what a support agent judges the\ndamage from.')
+export const GetAdminClaimsByIdLinesResponse = zod.array(GetAdminClaimsByIdLinesResponseItem)
 
 /**
  * @summary Add a replacement
@@ -127,7 +370,27 @@ export const PostAdminClaimsByIdOutboundItemsParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminClaimsByIdOutboundItemsResponse = zod.unknown()
+export const PostAdminClaimsByIdOutboundItemsBody = zod.object({
+  "order_line_item_id": zod.uuid().describe('Identifies one line item.'),
+  "quantity": zod.int()
+})
+
+export const postAdminClaimsByIdOutboundItemsResponseAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PostAdminClaimsByIdOutboundItemsResponse = zod.object({
+  "action": zod.string(),
+  "amount": zod.union([zod.object({
+  "amount": zod.string().regex(postAdminClaimsByIdOutboundItemsResponseAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "applied": zod.boolean(),
+  "details": zod.unknown(),
+  "id": zod.uuid(),
+  "order_change_id": zod.union([zod.uuid().describe('Identifies one order change.'),zod.null()]),
+  "ordering": zod.int(),
+  "reference_id": zod.uuid().nullable()
+})
 
 /**
  * @summary Take a replacement off
@@ -146,7 +409,34 @@ export const PostAdminClaimsByIdOutboundShippingMethodParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminClaimsByIdOutboundShippingMethodResponse = zod.unknown()
+export const postAdminClaimsByIdOutboundShippingMethodBodyAmountAmountRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+
+
+export const PostAdminClaimsByIdOutboundShippingMethodBody = zod.object({
+  "amount": zod.object({
+  "amount": zod.union([zod.string().regex(postAdminClaimsByIdOutboundShippingMethodBodyAmountAmountRegExpOne),zod.number()]),
+  "currency": zod.string()
+}).describe('An amount as it arrives over the wire. Never a float, and the currency is\ncarried with it so nothing has to guess which shop\'s money this is.'),
+  "internal_note": zod.string().nullish(),
+  "name": zod.string()
+})
+
+export const postAdminClaimsByIdOutboundShippingMethodResponseAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PostAdminClaimsByIdOutboundShippingMethodResponse = zod.object({
+  "action": zod.string(),
+  "amount": zod.union([zod.object({
+  "amount": zod.string().regex(postAdminClaimsByIdOutboundShippingMethodResponseAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "applied": zod.boolean(),
+  "details": zod.unknown(),
+  "id": zod.uuid(),
+  "order_change_id": zod.union([zod.uuid().describe('Identifies one order change.'),zod.null()]),
+  "ordering": zod.int(),
+  "reference_id": zod.uuid().nullable()
+})
 
 /**
  * @summary Settle the claim's open change
@@ -155,17 +445,117 @@ export const PostAdminClaimsByIdRequestParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminClaimsByIdRequestResponse = zod.unknown()
+export const postAdminClaimsByIdRequestResponseRefundAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PostAdminClaimsByIdRequestResponse = zod.object({
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "claim_type": zod.string(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "display_id": zod.int().nullable(),
+  "id": zod.uuid().describe('Identifies one claim.'),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "order_return_id": zod.union([zod.uuid().describe('Identifies one return.'),zod.null()]),
+  "order_version": zod.int(),
+  "refund_amount": zod.union([zod.object({
+  "amount": zod.string().regex(postAdminClaimsByIdRequestResponseRefundAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()])
+})
 
 /**
  * @summary List draft orders
  */
-export const GetAdminDraftOrdersResponse = zod.unknown()
+export const GetAdminDraftOrdersResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "basket_id": zod.union([zod.uuid().describe('Identifies one order basket.'),zod.null()]).describe('The basket this order was split from, if a checkout that spanned more\nthan one seller-scope opened one.'),
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "completed_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "currency_code": zod.string(),
+  "display_id": zod.int().nullable(),
+  "email": zod.string().nullable(),
+  "fulfillment_status": zod.string(),
+  "id": zod.uuid().describe('Identifies one order.'),
+  "is_draft": zod.boolean(),
+  "payment_collection_id": zod.union([zod.uuid().describe('Identifies one payment collection.'),zod.null()]),
+  "payment_status": zod.string(),
+  "status": zod.string(),
+  "version": zod.int()
+}).describe('An order as a back office sees it. Not `order::Order`: that is a row, it\ngrows a column whenever a migration says so, and it carries the scope.'))
+}))
 
 /**
  * @summary Draw up a draft order
  */
-export const PostAdminDraftOrdersResponse = zod.unknown()
+export const postAdminDraftOrdersBodyLinesItemDiscountRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+export const postAdminDraftOrdersBodyLinesItemIsGiftcardDefault = false;
+export const postAdminDraftOrdersBodyLinesItemIsTaxInclusiveDefault = false;
+export const postAdminDraftOrdersBodyLinesItemRequiresShippingDefault = false;
+export const postAdminDraftOrdersBodyLinesItemTaxRateRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+export const postAdminDraftOrdersBodyLinesItemUnitPriceAmountRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+export const postAdminDraftOrdersBodyShippingItemAmountAmountRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+export const postAdminDraftOrdersBodyShippingItemDiscountRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+export const postAdminDraftOrdersBodyShippingItemIsTaxInclusiveDefault = false;
+export const postAdminDraftOrdersBodyShippingItemTaxRateRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+
+
+export const PostAdminDraftOrdersBody = zod.object({
+  "currency": zod.string(),
+  "customer_id": zod.union([zod.uuid().describe('Identifies one customer.'),zod.null()]).optional(),
+  "email": zod.string().nullish(),
+  "lines": zod.array(zod.object({
+  "discount": zod.union([zod.string().regex(postAdminDraftOrdersBodyLinesItemDiscountRegExpOne),zod.number()]).optional(),
+  "is_giftcard": zod.boolean().default(postAdminDraftOrdersBodyLinesItemIsGiftcardDefault).describe('Whether this line sells a gift card. Said here for the same reason:\na draft order\'s line need name no variant to look the answer up on.'),
+  "is_tax_inclusive": zod.boolean().default(postAdminDraftOrdersBodyLinesItemIsTaxInclusiveDefault),
+  "product_id": zod.uuid().nullish(),
+  "quantity": zod.int(),
+  "requires_shipping": zod.boolean().default(postAdminDraftOrdersBodyLinesItemRequiresShippingDefault),
+  "tax_rate": zod.union([zod.string().regex(postAdminDraftOrdersBodyLinesItemTaxRateRegExpOne),zod.number()]).optional(),
+  "title": zod.string(),
+  "unit_price": zod.object({
+  "amount": zod.union([zod.string().regex(postAdminDraftOrdersBodyLinesItemUnitPriceAmountRegExpOne),zod.number()]),
+  "currency": zod.string()
+}).describe('An amount as it arrives over the wire. Never a float, and the currency is\ncarried with it so nothing has to guess which shop\'s money this is.'),
+  "variant_id": zod.union([zod.uuid().describe('Identifies one variant.'),zod.null()]).optional(),
+  "withdrawal_exclusion": zod.string().nullish().describe('Why this line is outside the right of withdrawal. A draft order is\nwritten by staff who know what they are selling, so it is said here\nrather than looked up.')
+})),
+  "locale": zod.string().nullish(),
+  "metadata": zod.unknown().optional(),
+  "region_id": zod.union([zod.uuid().describe('Identifies one region.'),zod.null()]).optional(),
+  "sales_channel_id": zod.union([zod.uuid().describe('Identifies one sales channel.'),zod.null()]).optional(),
+  "shipping": zod.array(zod.object({
+  "amount": zod.object({
+  "amount": zod.union([zod.string().regex(postAdminDraftOrdersBodyShippingItemAmountAmountRegExpOne),zod.number()]),
+  "currency": zod.string()
+}).describe('An amount as it arrives over the wire. Never a float, and the currency is\ncarried with it so nothing has to guess which shop\'s money this is.'),
+  "discount": zod.union([zod.string().regex(postAdminDraftOrdersBodyShippingItemDiscountRegExpOne),zod.number()]).optional(),
+  "is_tax_inclusive": zod.boolean().default(postAdminDraftOrdersBodyShippingItemIsTaxInclusiveDefault),
+  "name": zod.string(),
+  "shipping_option_id": zod.union([zod.uuid().describe('Identifies one shipping option.'),zod.null()]).optional(),
+  "tax_rate": zod.union([zod.string().regex(postAdminDraftOrdersBodyShippingItemTaxRateRegExpOne),zod.number()]).optional()
+})).optional()
+})
+
+export const PostAdminDraftOrdersResponse = zod.object({
+  "basket_id": zod.union([zod.uuid().describe('Identifies one order basket.'),zod.null()]).describe('The basket this order was split from, if a checkout that spanned more\nthan one seller-scope opened one.'),
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "completed_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "currency_code": zod.string(),
+  "display_id": zod.int().nullable(),
+  "email": zod.string().nullable(),
+  "fulfillment_status": zod.string(),
+  "id": zod.uuid().describe('Identifies one order.'),
+  "is_draft": zod.boolean(),
+  "payment_collection_id": zod.union([zod.uuid().describe('Identifies one payment collection.'),zod.null()]),
+  "payment_status": zod.string(),
+  "status": zod.string(),
+  "version": zod.int()
+}).describe('An order as a back office sees it. Not `order::Order`: that is a row, it\ngrows a column whenever a migration says so, and it carries the scope.')
 
 /**
  * @summary Cancel a draft order
@@ -174,7 +564,22 @@ export const DeleteAdminDraftOrdersByIdParams = zod.object({
   "id": zod.string()
 })
 
-export const DeleteAdminDraftOrdersByIdResponse = zod.unknown()
+export const DeleteAdminDraftOrdersByIdResponse = zod.object({
+  "basket_id": zod.union([zod.uuid().describe('Identifies one order basket.'),zod.null()]).describe('The basket this order was split from, if a checkout that spanned more\nthan one seller-scope opened one.'),
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "completed_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "currency_code": zod.string(),
+  "display_id": zod.int().nullable(),
+  "email": zod.string().nullable(),
+  "fulfillment_status": zod.string(),
+  "id": zod.uuid().describe('Identifies one order.'),
+  "is_draft": zod.boolean(),
+  "payment_collection_id": zod.union([zod.uuid().describe('Identifies one payment collection.'),zod.null()]),
+  "payment_status": zod.string(),
+  "status": zod.string(),
+  "version": zod.int()
+}).describe('An order as a back office sees it. Not `order::Order`: that is a row, it\ngrows a column whenever a migration says so, and it carries the scope.')
 
 /**
  * @summary Fetch one draft order
@@ -183,7 +588,22 @@ export const GetAdminDraftOrdersByIdParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminDraftOrdersByIdResponse = zod.unknown()
+export const GetAdminDraftOrdersByIdResponse = zod.object({
+  "basket_id": zod.union([zod.uuid().describe('Identifies one order basket.'),zod.null()]).describe('The basket this order was split from, if a checkout that spanned more\nthan one seller-scope opened one.'),
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "completed_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "currency_code": zod.string(),
+  "display_id": zod.int().nullable(),
+  "email": zod.string().nullable(),
+  "fulfillment_status": zod.string(),
+  "id": zod.uuid().describe('Identifies one order.'),
+  "is_draft": zod.boolean(),
+  "payment_collection_id": zod.union([zod.uuid().describe('Identifies one payment collection.'),zod.null()]),
+  "payment_status": zod.string(),
+  "status": zod.string(),
+  "version": zod.int()
+}).describe('An order as a back office sees it. Not `order::Order`: that is a row, it\ngrows a column whenever a migration says so, and it carries the scope.')
 
 /**
  * @summary Send a draft out to be paid
@@ -192,7 +612,26 @@ export const PostAdminDraftOrdersByIdConvertToOrderParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminDraftOrdersByIdConvertToOrderResponse = zod.unknown()
+export const PostAdminDraftOrdersByIdConvertToOrderBody = zod.object({
+  "payment_collection_id": zod.uuid().describe('Identifies one payment collection.')
+})
+
+export const PostAdminDraftOrdersByIdConvertToOrderResponse = zod.object({
+  "basket_id": zod.union([zod.uuid().describe('Identifies one order basket.'),zod.null()]).describe('The basket this order was split from, if a checkout that spanned more\nthan one seller-scope opened one.'),
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "completed_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "currency_code": zod.string(),
+  "display_id": zod.int().nullable(),
+  "email": zod.string().nullable(),
+  "fulfillment_status": zod.string(),
+  "id": zod.uuid().describe('Identifies one order.'),
+  "is_draft": zod.boolean(),
+  "payment_collection_id": zod.union([zod.uuid().describe('Identifies one payment collection.'),zod.null()]),
+  "payment_status": zod.string(),
+  "status": zod.string(),
+  "version": zod.int()
+}).describe('An order as a back office sees it. Not `order::Order`: that is a row, it\ngrows a column whenever a migration says so, and it carries the scope.')
 
 /**
  * @summary Decline the edit open on a draft
@@ -201,7 +640,22 @@ export const DeleteAdminDraftOrdersByIdEditParams = zod.object({
   "id": zod.string()
 })
 
-export const DeleteAdminDraftOrdersByIdEditResponse = zod.unknown()
+export const DeleteAdminDraftOrdersByIdEditBody = zod.object({
+  "reason": zod.string().nullish()
+})
+
+export const DeleteAdminDraftOrdersByIdEditResponse = zod.object({
+  "change_type": zod.string(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "description": zod.string().nullable(),
+  "id": zod.uuid().describe('Identifies one order change.'),
+  "order_claim_id": zod.union([zod.uuid().describe('Identifies one claim.'),zod.null()]),
+  "order_exchange_id": zod.union([zod.uuid().describe('Identifies one exchange.'),zod.null()]),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "order_return_id": zod.union([zod.uuid().describe('Identifies one return.'),zod.null()]),
+  "status": zod.string(),
+  "version": zod.int()
+})
 
 /**
  * @summary The edit open on a draft
@@ -210,7 +664,36 @@ export const GetAdminDraftOrdersByIdEditParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminDraftOrdersByIdEditResponse = zod.unknown()
+export const getAdminDraftOrdersByIdEditResponseActionsItemAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetAdminDraftOrdersByIdEditResponse = zod.object({
+  "actions": zod.array(zod.object({
+  "action": zod.string(),
+  "amount": zod.union([zod.object({
+  "amount": zod.string().regex(getAdminDraftOrdersByIdEditResponseActionsItemAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "applied": zod.boolean(),
+  "details": zod.unknown(),
+  "id": zod.uuid(),
+  "order_change_id": zod.union([zod.uuid().describe('Identifies one order change.'),zod.null()]),
+  "ordering": zod.int(),
+  "reference_id": zod.uuid().nullable()
+})),
+  "change": zod.object({
+  "change_type": zod.string(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "description": zod.string().nullable(),
+  "id": zod.uuid().describe('Identifies one order change.'),
+  "order_claim_id": zod.union([zod.uuid().describe('Identifies one claim.'),zod.null()]),
+  "order_exchange_id": zod.union([zod.uuid().describe('Identifies one exchange.'),zod.null()]),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "order_return_id": zod.union([zod.uuid().describe('Identifies one return.'),zod.null()]),
+  "status": zod.string(),
+  "version": zod.int()
+})
+}).describe('A change with its actions, which is the only shape anybody looks at one in.')
 
 /**
  * @summary Open an edit on a draft
@@ -219,7 +702,22 @@ export const PostAdminDraftOrdersByIdEditParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminDraftOrdersByIdEditResponse = zod.unknown()
+export const PostAdminDraftOrdersByIdEditBody = zod.object({
+  "description": zod.string().nullish()
+})
+
+export const PostAdminDraftOrdersByIdEditResponse = zod.object({
+  "change_type": zod.string(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "description": zod.string().nullable(),
+  "id": zod.uuid().describe('Identifies one order change.'),
+  "order_claim_id": zod.union([zod.uuid().describe('Identifies one claim.'),zod.null()]),
+  "order_exchange_id": zod.union([zod.uuid().describe('Identifies one exchange.'),zod.null()]),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "order_return_id": zod.union([zod.uuid().describe('Identifies one return.'),zod.null()]),
+  "status": zod.string(),
+  "version": zod.int()
+})
 
 /**
  * @summary Carry a draft's edit into its next version
@@ -228,7 +726,22 @@ export const PostAdminDraftOrdersByIdEditConfirmParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminDraftOrdersByIdEditConfirmResponse = zod.unknown()
+export const PostAdminDraftOrdersByIdEditConfirmResponse = zod.object({
+  "basket_id": zod.union([zod.uuid().describe('Identifies one order basket.'),zod.null()]).describe('The basket this order was split from, if a checkout that spanned more\nthan one seller-scope opened one.'),
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "completed_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "currency_code": zod.string(),
+  "display_id": zod.int().nullable(),
+  "email": zod.string().nullable(),
+  "fulfillment_status": zod.string(),
+  "id": zod.uuid().describe('Identifies one order.'),
+  "is_draft": zod.boolean(),
+  "payment_collection_id": zod.union([zod.uuid().describe('Identifies one payment collection.'),zod.null()]),
+  "payment_status": zod.string(),
+  "status": zod.string(),
+  "version": zod.int()
+}).describe('An order as a back office sees it. Not `order::Order`: that is a row, it\ngrows a column whenever a migration says so, and it carries the scope.')
 
 /**
  * @summary Add, change or remove a line on a draft's edit
@@ -237,7 +750,36 @@ export const PostAdminDraftOrdersByIdEditItemsParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminDraftOrdersByIdEditItemsResponse = zod.unknown()
+export const postAdminDraftOrdersByIdEditItemsBodyUnitPriceOneAmountRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+
+
+export const PostAdminDraftOrdersByIdEditItemsBody = zod.object({
+  "action": zod.enum(['add', 'update', 'remove', 'write_off']).describe('What a caller may ask a change to do to a line.'),
+  "internal_note": zod.string().nullish(),
+  "order_line_item_id": zod.uuid().describe('Identifies one line item.'),
+  "quantity": zod.int(),
+  "unit_price": zod.union([zod.object({
+  "amount": zod.union([zod.string().regex(postAdminDraftOrdersByIdEditItemsBodyUnitPriceOneAmountRegExpOne),zod.number()]),
+  "currency": zod.string()
+}).describe('An amount as it arrives over the wire. Never a float, and the currency is\ncarried with it so nothing has to guess which shop\'s money this is.'),zod.null()]).optional()
+})
+
+export const postAdminDraftOrdersByIdEditItemsResponseAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PostAdminDraftOrdersByIdEditItemsResponse = zod.object({
+  "action": zod.string(),
+  "amount": zod.union([zod.object({
+  "amount": zod.string().regex(postAdminDraftOrdersByIdEditItemsResponseAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "applied": zod.boolean(),
+  "details": zod.unknown(),
+  "id": zod.uuid(),
+  "order_change_id": zod.union([zod.uuid().describe('Identifies one order change.'),zod.null()]),
+  "ordering": zod.int(),
+  "reference_id": zod.uuid().nullable()
+})
 
 /**
  * @summary Take an action off a draft's edit
@@ -256,7 +798,34 @@ export const PostAdminDraftOrdersByIdEditShippingMethodsParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminDraftOrdersByIdEditShippingMethodsResponse = zod.unknown()
+export const postAdminDraftOrdersByIdEditShippingMethodsBodyAmountAmountRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+
+
+export const PostAdminDraftOrdersByIdEditShippingMethodsBody = zod.object({
+  "amount": zod.object({
+  "amount": zod.union([zod.string().regex(postAdminDraftOrdersByIdEditShippingMethodsBodyAmountAmountRegExpOne),zod.number()]),
+  "currency": zod.string()
+}).describe('An amount as it arrives over the wire. Never a float, and the currency is\ncarried with it so nothing has to guess which shop\'s money this is.'),
+  "internal_note": zod.string().nullish(),
+  "name": zod.string()
+})
+
+export const postAdminDraftOrdersByIdEditShippingMethodsResponseAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PostAdminDraftOrdersByIdEditShippingMethodsResponse = zod.object({
+  "action": zod.string(),
+  "amount": zod.union([zod.object({
+  "amount": zod.string().regex(postAdminDraftOrdersByIdEditShippingMethodsResponseAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "applied": zod.boolean(),
+  "details": zod.unknown(),
+  "id": zod.uuid(),
+  "order_change_id": zod.union([zod.uuid().describe('Identifies one order change.'),zod.null()]),
+  "ordering": zod.int(),
+  "reference_id": zod.uuid().nullable()
+})
 
 /**
  * @summary Take shipping off a draft's edit
@@ -271,12 +840,74 @@ export const DeleteAdminDraftOrdersByIdEditShippingMethodsByActionIdResponse = z
 /**
  * @summary List exchanges
  */
-export const GetAdminExchangesResponse = zod.unknown()
+export const getAdminExchangesResponseTwoItemsItemDifferenceDueOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetAdminExchangesResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "allow_backorder": zod.boolean(),
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "difference_due": zod.union([zod.object({
+  "amount": zod.string().regex(getAdminExchangesResponseTwoItemsItemDifferenceDueOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "display_id": zod.int().nullable(),
+  "id": zod.uuid().describe('Identifies one exchange.'),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "order_return_id": zod.union([zod.uuid().describe('Identifies one return.'),zod.null()]),
+  "order_version": zod.int()
+}))
+}))
 
 /**
  * @summary Request an exchange
  */
-export const PostAdminExchangesResponse = zod.unknown()
+export const postAdminExchangesBodyAllowBackorderDefault = false;
+export const postAdminExchangesBodyDifferenceDueOneAmountRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+
+
+export const PostAdminExchangesBody = zod.object({
+  "allow_backorder": zod.boolean().default(postAdminExchangesBodyAllowBackorderDefault),
+  "difference_due": zod.union([zod.object({
+  "amount": zod.union([zod.string().regex(postAdminExchangesBodyDifferenceDueOneAmountRegExpOne),zod.number()]),
+  "currency": zod.string()
+}).describe('An amount as it arrives over the wire. Never a float, and the currency is\ncarried with it so nothing has to guess which shop\'s money this is.'),zod.null()]).optional(),
+  "location_id": zod.union([zod.uuid().describe('Identifies one stock location.'),zod.null()]).optional(),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "outbound": zod.array(zod.object({
+  "note": zod.string().nullish(),
+  "order_line_item_id": zod.uuid().describe('Identifies one line item.'),
+  "quantity": zod.int()
+})),
+  "returning": zod.array(zod.object({
+  "note": zod.string().nullish(),
+  "order_line_item_id": zod.uuid().describe('Identifies one line item.'),
+  "quantity": zod.int(),
+  "return_reason_id": zod.uuid().nullish()
+}))
+})
+
+export const postAdminExchangesResponseDifferenceDueOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PostAdminExchangesResponse = zod.object({
+  "allow_backorder": zod.boolean(),
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "difference_due": zod.union([zod.object({
+  "amount": zod.string().regex(postAdminExchangesResponseDifferenceDueOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "display_id": zod.int().nullable(),
+  "id": zod.uuid().describe('Identifies one exchange.'),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "order_return_id": zod.union([zod.uuid().describe('Identifies one return.'),zod.null()]),
+  "order_version": zod.int()
+})
 
 /**
  * @summary Fetch one exchange
@@ -285,7 +916,23 @@ export const GetAdminExchangesByIdParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminExchangesByIdResponse = zod.unknown()
+export const getAdminExchangesByIdResponseDifferenceDueOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetAdminExchangesByIdResponse = zod.object({
+  "allow_backorder": zod.boolean(),
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "difference_due": zod.union([zod.object({
+  "amount": zod.string().regex(getAdminExchangesByIdResponseDifferenceDueOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "display_id": zod.int().nullable(),
+  "id": zod.uuid().describe('Identifies one exchange.'),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "order_return_id": zod.union([zod.uuid().describe('Identifies one return.'),zod.null()]),
+  "order_version": zod.int()
+})
 
 /**
  * @summary Cancel an exchange
@@ -294,7 +941,23 @@ export const PostAdminExchangesByIdCancelParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminExchangesByIdCancelResponse = zod.unknown()
+export const postAdminExchangesByIdCancelResponseDifferenceDueOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PostAdminExchangesByIdCancelResponse = zod.object({
+  "allow_backorder": zod.boolean(),
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "difference_due": zod.union([zod.object({
+  "amount": zod.string().regex(postAdminExchangesByIdCancelResponseDifferenceDueOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "display_id": zod.int().nullable(),
+  "id": zod.uuid().describe('Identifies one exchange.'),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "order_return_id": zod.union([zod.uuid().describe('Identifies one return.'),zod.null()]),
+  "order_version": zod.int()
+})
 
 /**
  * @summary Add something coming back
@@ -303,7 +966,27 @@ export const PostAdminExchangesByIdInboundItemsParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminExchangesByIdInboundItemsResponse = zod.unknown()
+export const PostAdminExchangesByIdInboundItemsBody = zod.object({
+  "order_line_item_id": zod.uuid().describe('Identifies one line item.'),
+  "quantity": zod.int()
+})
+
+export const postAdminExchangesByIdInboundItemsResponseAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PostAdminExchangesByIdInboundItemsResponse = zod.object({
+  "action": zod.string(),
+  "amount": zod.union([zod.object({
+  "amount": zod.string().regex(postAdminExchangesByIdInboundItemsResponseAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "applied": zod.boolean(),
+  "details": zod.unknown(),
+  "id": zod.uuid(),
+  "order_change_id": zod.union([zod.uuid().describe('Identifies one order change.'),zod.null()]),
+  "ordering": zod.int(),
+  "reference_id": zod.uuid().nullable()
+})
 
 /**
  * @summary Take something coming back off
@@ -322,7 +1005,34 @@ export const PostAdminExchangesByIdInboundShippingMethodParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminExchangesByIdInboundShippingMethodResponse = zod.unknown()
+export const postAdminExchangesByIdInboundShippingMethodBodyAmountAmountRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+
+
+export const PostAdminExchangesByIdInboundShippingMethodBody = zod.object({
+  "amount": zod.object({
+  "amount": zod.union([zod.string().regex(postAdminExchangesByIdInboundShippingMethodBodyAmountAmountRegExpOne),zod.number()]),
+  "currency": zod.string()
+}).describe('An amount as it arrives over the wire. Never a float, and the currency is\ncarried with it so nothing has to guess which shop\'s money this is.'),
+  "internal_note": zod.string().nullish(),
+  "name": zod.string()
+})
+
+export const postAdminExchangesByIdInboundShippingMethodResponseAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PostAdminExchangesByIdInboundShippingMethodResponse = zod.object({
+  "action": zod.string(),
+  "amount": zod.union([zod.object({
+  "amount": zod.string().regex(postAdminExchangesByIdInboundShippingMethodResponseAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "applied": zod.boolean(),
+  "details": zod.unknown(),
+  "id": zod.uuid(),
+  "order_change_id": zod.union([zod.uuid().describe('Identifies one order change.'),zod.null()]),
+  "ordering": zod.int(),
+  "reference_id": zod.uuid().nullable()
+})
 
 /**
  * @summary The exchange's open change and its actions
@@ -331,7 +1041,36 @@ export const GetAdminExchangesByIdItemsParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminExchangesByIdItemsResponse = zod.unknown()
+export const getAdminExchangesByIdItemsResponseActionsItemAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetAdminExchangesByIdItemsResponse = zod.object({
+  "actions": zod.array(zod.object({
+  "action": zod.string(),
+  "amount": zod.union([zod.object({
+  "amount": zod.string().regex(getAdminExchangesByIdItemsResponseActionsItemAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "applied": zod.boolean(),
+  "details": zod.unknown(),
+  "id": zod.uuid(),
+  "order_change_id": zod.union([zod.uuid().describe('Identifies one order change.'),zod.null()]),
+  "ordering": zod.int(),
+  "reference_id": zod.uuid().nullable()
+})),
+  "change": zod.object({
+  "change_type": zod.string(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "description": zod.string().nullable(),
+  "id": zod.uuid().describe('Identifies one order change.'),
+  "order_claim_id": zod.union([zod.uuid().describe('Identifies one claim.'),zod.null()]),
+  "order_exchange_id": zod.union([zod.uuid().describe('Identifies one exchange.'),zod.null()]),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "order_return_id": zod.union([zod.uuid().describe('Identifies one return.'),zod.null()]),
+  "status": zod.string(),
+  "version": zod.int()
+})
+}).describe('A change with its actions, which is the only shape anybody looks at one in.')
 
 /**
  * @summary Add something going out instead
@@ -340,7 +1079,27 @@ export const PostAdminExchangesByIdOutboundItemsParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminExchangesByIdOutboundItemsResponse = zod.unknown()
+export const PostAdminExchangesByIdOutboundItemsBody = zod.object({
+  "order_line_item_id": zod.uuid().describe('Identifies one line item.'),
+  "quantity": zod.int()
+})
+
+export const postAdminExchangesByIdOutboundItemsResponseAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PostAdminExchangesByIdOutboundItemsResponse = zod.object({
+  "action": zod.string(),
+  "amount": zod.union([zod.object({
+  "amount": zod.string().regex(postAdminExchangesByIdOutboundItemsResponseAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "applied": zod.boolean(),
+  "details": zod.unknown(),
+  "id": zod.uuid(),
+  "order_change_id": zod.union([zod.uuid().describe('Identifies one order change.'),zod.null()]),
+  "ordering": zod.int(),
+  "reference_id": zod.uuid().nullable()
+})
 
 /**
  * @summary Take something going out off
@@ -359,7 +1118,34 @@ export const PostAdminExchangesByIdOutboundShippingMethodParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminExchangesByIdOutboundShippingMethodResponse = zod.unknown()
+export const postAdminExchangesByIdOutboundShippingMethodBodyAmountAmountRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+
+
+export const PostAdminExchangesByIdOutboundShippingMethodBody = zod.object({
+  "amount": zod.object({
+  "amount": zod.union([zod.string().regex(postAdminExchangesByIdOutboundShippingMethodBodyAmountAmountRegExpOne),zod.number()]),
+  "currency": zod.string()
+}).describe('An amount as it arrives over the wire. Never a float, and the currency is\ncarried with it so nothing has to guess which shop\'s money this is.'),
+  "internal_note": zod.string().nullish(),
+  "name": zod.string()
+})
+
+export const postAdminExchangesByIdOutboundShippingMethodResponseAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PostAdminExchangesByIdOutboundShippingMethodResponse = zod.object({
+  "action": zod.string(),
+  "amount": zod.union([zod.object({
+  "amount": zod.string().regex(postAdminExchangesByIdOutboundShippingMethodResponseAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "applied": zod.boolean(),
+  "details": zod.unknown(),
+  "id": zod.uuid(),
+  "order_change_id": zod.union([zod.uuid().describe('Identifies one order change.'),zod.null()]),
+  "ordering": zod.int(),
+  "reference_id": zod.uuid().nullable()
+})
 
 /**
  * @summary Settle the exchange's open change
@@ -368,7 +1154,23 @@ export const PostAdminExchangesByIdRequestParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminExchangesByIdRequestResponse = zod.unknown()
+export const postAdminExchangesByIdRequestResponseDifferenceDueOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PostAdminExchangesByIdRequestResponse = zod.object({
+  "allow_backorder": zod.boolean(),
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "difference_due": zod.union([zod.object({
+  "amount": zod.string().regex(postAdminExchangesByIdRequestResponseDifferenceDueOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "display_id": zod.int().nullable(),
+  "id": zod.uuid().describe('Identifies one exchange.'),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "order_return_id": zod.union([zod.uuid().describe('Identifies one return.'),zod.null()]),
+  "order_version": zod.int()
+})
 
 /**
  * @summary Write down what the authority answered
@@ -377,7 +1179,29 @@ export const PatchAdminInvoicesByIdParams = zod.object({
   "id": zod.string()
 })
 
-export const PatchAdminInvoicesByIdResponse = zod.unknown()
+export const PatchAdminInvoicesByIdBody = zod.object({
+  "status": zod.string()
+})
+
+export const patchAdminInvoicesByIdResponseTotalAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PatchAdminInvoicesByIdResponse = zod.object({
+  "created_at": zod.iso.datetime({"offset":true}),
+  "currency_code": zod.string(),
+  "document_url": zod.string().nullable(),
+  "external_id": zod.string().nullable(),
+  "id": zod.uuid().describe('Identifies one order invoice.'),
+  "issued_at": zod.iso.datetime({"offset":true}).nullable(),
+  "kind": zod.string(),
+  "number": zod.string(),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "order_version": zod.int(),
+  "provider": zod.string().nullable(),
+  "replaces_invoice_id": zod.union([zod.uuid().describe('Identifies one order invoice.'),zod.null()]),
+  "status": zod.string(),
+  "total_amount": zod.string().regex(patchAdminInvoicesByIdResponseTotalAmountRegExp)
+})
 
 /**
  * @summary Fetch one change and its actions
@@ -386,7 +1210,36 @@ export const GetAdminOrderChangesByIdParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminOrderChangesByIdResponse = zod.unknown()
+export const getAdminOrderChangesByIdResponseActionsItemAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetAdminOrderChangesByIdResponse = zod.object({
+  "actions": zod.array(zod.object({
+  "action": zod.string(),
+  "amount": zod.union([zod.object({
+  "amount": zod.string().regex(getAdminOrderChangesByIdResponseActionsItemAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "applied": zod.boolean(),
+  "details": zod.unknown(),
+  "id": zod.uuid(),
+  "order_change_id": zod.union([zod.uuid().describe('Identifies one order change.'),zod.null()]),
+  "ordering": zod.int(),
+  "reference_id": zod.uuid().nullable()
+})),
+  "change": zod.object({
+  "change_type": zod.string(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "description": zod.string().nullable(),
+  "id": zod.uuid().describe('Identifies one order change.'),
+  "order_claim_id": zod.union([zod.uuid().describe('Identifies one claim.'),zod.null()]),
+  "order_exchange_id": zod.union([zod.uuid().describe('Identifies one exchange.'),zod.null()]),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "order_return_id": zod.union([zod.uuid().describe('Identifies one return.'),zod.null()]),
+  "status": zod.string(),
+  "version": zod.int()
+})
+}).describe('A change with its actions, which is the only shape anybody looks at one in.')
 
 /**
  * @summary Decline an edit
@@ -395,7 +1248,22 @@ export const DeleteAdminOrderEditsByIdParams = zod.object({
   "id": zod.string()
 })
 
-export const DeleteAdminOrderEditsByIdResponse = zod.unknown()
+export const DeleteAdminOrderEditsByIdBody = zod.object({
+  "reason": zod.string().nullish()
+})
+
+export const DeleteAdminOrderEditsByIdResponse = zod.object({
+  "change_type": zod.string(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "description": zod.string().nullable(),
+  "id": zod.uuid().describe('Identifies one order change.'),
+  "order_claim_id": zod.union([zod.uuid().describe('Identifies one claim.'),zod.null()]),
+  "order_exchange_id": zod.union([zod.uuid().describe('Identifies one exchange.'),zod.null()]),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "order_return_id": zod.union([zod.uuid().describe('Identifies one return.'),zod.null()]),
+  "status": zod.string(),
+  "version": zod.int()
+})
 
 /**
  * @summary Fetch one edit and its actions
@@ -404,7 +1272,36 @@ export const GetAdminOrderEditsByIdParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminOrderEditsByIdResponse = zod.unknown()
+export const getAdminOrderEditsByIdResponseActionsItemAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetAdminOrderEditsByIdResponse = zod.object({
+  "actions": zod.array(zod.object({
+  "action": zod.string(),
+  "amount": zod.union([zod.object({
+  "amount": zod.string().regex(getAdminOrderEditsByIdResponseActionsItemAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "applied": zod.boolean(),
+  "details": zod.unknown(),
+  "id": zod.uuid(),
+  "order_change_id": zod.union([zod.uuid().describe('Identifies one order change.'),zod.null()]),
+  "ordering": zod.int(),
+  "reference_id": zod.uuid().nullable()
+})),
+  "change": zod.object({
+  "change_type": zod.string(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "description": zod.string().nullable(),
+  "id": zod.uuid().describe('Identifies one order change.'),
+  "order_claim_id": zod.union([zod.uuid().describe('Identifies one claim.'),zod.null()]),
+  "order_exchange_id": zod.union([zod.uuid().describe('Identifies one exchange.'),zod.null()]),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "order_return_id": zod.union([zod.uuid().describe('Identifies one return.'),zod.null()]),
+  "status": zod.string(),
+  "version": zod.int()
+})
+}).describe('A change with its actions, which is the only shape anybody looks at one in.')
 
 /**
  * @summary Carry an edit into the order's next version
@@ -413,7 +1310,22 @@ export const PostAdminOrderEditsByIdConfirmParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminOrderEditsByIdConfirmResponse = zod.unknown()
+export const PostAdminOrderEditsByIdConfirmResponse = zod.object({
+  "basket_id": zod.union([zod.uuid().describe('Identifies one order basket.'),zod.null()]).describe('The basket this order was split from, if a checkout that spanned more\nthan one seller-scope opened one.'),
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "completed_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "currency_code": zod.string(),
+  "display_id": zod.int().nullable(),
+  "email": zod.string().nullable(),
+  "fulfillment_status": zod.string(),
+  "id": zod.uuid().describe('Identifies one order.'),
+  "is_draft": zod.boolean(),
+  "payment_collection_id": zod.union([zod.uuid().describe('Identifies one payment collection.'),zod.null()]),
+  "payment_status": zod.string(),
+  "status": zod.string(),
+  "version": zod.int()
+}).describe('An order as a back office sees it. Not `order::Order`: that is a row, it\ngrows a column whenever a migration says so, and it carries the scope.')
 
 /**
  * @summary Add, change or remove a line on an edit
@@ -422,7 +1334,36 @@ export const PostAdminOrderEditsByIdItemsParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminOrderEditsByIdItemsResponse = zod.unknown()
+export const postAdminOrderEditsByIdItemsBodyUnitPriceOneAmountRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+
+
+export const PostAdminOrderEditsByIdItemsBody = zod.object({
+  "action": zod.enum(['add', 'update', 'remove', 'write_off']).describe('What a caller may ask a change to do to a line.'),
+  "internal_note": zod.string().nullish(),
+  "order_line_item_id": zod.uuid().describe('Identifies one line item.'),
+  "quantity": zod.int(),
+  "unit_price": zod.union([zod.object({
+  "amount": zod.union([zod.string().regex(postAdminOrderEditsByIdItemsBodyUnitPriceOneAmountRegExpOne),zod.number()]),
+  "currency": zod.string()
+}).describe('An amount as it arrives over the wire. Never a float, and the currency is\ncarried with it so nothing has to guess which shop\'s money this is.'),zod.null()]).optional()
+})
+
+export const postAdminOrderEditsByIdItemsResponseAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PostAdminOrderEditsByIdItemsResponse = zod.object({
+  "action": zod.string(),
+  "amount": zod.union([zod.object({
+  "amount": zod.string().regex(postAdminOrderEditsByIdItemsResponseAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "applied": zod.boolean(),
+  "details": zod.unknown(),
+  "id": zod.uuid(),
+  "order_change_id": zod.union([zod.uuid().describe('Identifies one order change.'),zod.null()]),
+  "ordering": zod.int(),
+  "reference_id": zod.uuid().nullable()
+})
 
 /**
  * @summary Take an action off an edit
@@ -441,7 +1382,34 @@ export const PostAdminOrderEditsByIdShippingMethodParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminOrderEditsByIdShippingMethodResponse = zod.unknown()
+export const postAdminOrderEditsByIdShippingMethodBodyAmountAmountRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+
+
+export const PostAdminOrderEditsByIdShippingMethodBody = zod.object({
+  "amount": zod.object({
+  "amount": zod.union([zod.string().regex(postAdminOrderEditsByIdShippingMethodBodyAmountAmountRegExpOne),zod.number()]),
+  "currency": zod.string()
+}).describe('An amount as it arrives over the wire. Never a float, and the currency is\ncarried with it so nothing has to guess which shop\'s money this is.'),
+  "internal_note": zod.string().nullish(),
+  "name": zod.string()
+})
+
+export const postAdminOrderEditsByIdShippingMethodResponseAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PostAdminOrderEditsByIdShippingMethodResponse = zod.object({
+  "action": zod.string(),
+  "amount": zod.union([zod.object({
+  "amount": zod.string().regex(postAdminOrderEditsByIdShippingMethodResponseAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "applied": zod.boolean(),
+  "details": zod.unknown(),
+  "id": zod.uuid(),
+  "order_change_id": zod.union([zod.uuid().describe('Identifies one order change.'),zod.null()]),
+  "ordering": zod.int(),
+  "reference_id": zod.uuid().nullable()
+})
 
 /**
  * @summary Take shipping off an edit
@@ -481,7 +1449,71 @@ export const GetAdminOrdersResponse = zod.object({
 /**
  * @summary Create an order
  */
-export const PostAdminOrdersResponse = zod.unknown()
+export const postAdminOrdersBodyLinesItemDiscountRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+export const postAdminOrdersBodyLinesItemIsGiftcardDefault = false;
+export const postAdminOrdersBodyLinesItemIsTaxInclusiveDefault = false;
+export const postAdminOrdersBodyLinesItemRequiresShippingDefault = false;
+export const postAdminOrdersBodyLinesItemTaxRateRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+export const postAdminOrdersBodyLinesItemUnitPriceAmountRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+export const postAdminOrdersBodyShippingItemAmountAmountRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+export const postAdminOrdersBodyShippingItemDiscountRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+export const postAdminOrdersBodyShippingItemIsTaxInclusiveDefault = false;
+export const postAdminOrdersBodyShippingItemTaxRateRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+
+
+export const PostAdminOrdersBody = zod.object({
+  "currency": zod.string(),
+  "customer_id": zod.union([zod.uuid().describe('Identifies one customer.'),zod.null()]).optional(),
+  "email": zod.string().nullish(),
+  "lines": zod.array(zod.object({
+  "discount": zod.union([zod.string().regex(postAdminOrdersBodyLinesItemDiscountRegExpOne),zod.number()]).optional(),
+  "is_giftcard": zod.boolean().default(postAdminOrdersBodyLinesItemIsGiftcardDefault).describe('Whether this line sells a gift card. Said here for the same reason:\na draft order\'s line need name no variant to look the answer up on.'),
+  "is_tax_inclusive": zod.boolean().default(postAdminOrdersBodyLinesItemIsTaxInclusiveDefault),
+  "product_id": zod.uuid().nullish(),
+  "quantity": zod.int(),
+  "requires_shipping": zod.boolean().default(postAdminOrdersBodyLinesItemRequiresShippingDefault),
+  "tax_rate": zod.union([zod.string().regex(postAdminOrdersBodyLinesItemTaxRateRegExpOne),zod.number()]).optional(),
+  "title": zod.string(),
+  "unit_price": zod.object({
+  "amount": zod.union([zod.string().regex(postAdminOrdersBodyLinesItemUnitPriceAmountRegExpOne),zod.number()]),
+  "currency": zod.string()
+}).describe('An amount as it arrives over the wire. Never a float, and the currency is\ncarried with it so nothing has to guess which shop\'s money this is.'),
+  "variant_id": zod.union([zod.uuid().describe('Identifies one variant.'),zod.null()]).optional(),
+  "withdrawal_exclusion": zod.string().nullish().describe('Why this line is outside the right of withdrawal. A draft order is\nwritten by staff who know what they are selling, so it is said here\nrather than looked up.')
+})),
+  "locale": zod.string().nullish(),
+  "metadata": zod.unknown().optional(),
+  "region_id": zod.union([zod.uuid().describe('Identifies one region.'),zod.null()]).optional(),
+  "sales_channel_id": zod.union([zod.uuid().describe('Identifies one sales channel.'),zod.null()]).optional(),
+  "shipping": zod.array(zod.object({
+  "amount": zod.object({
+  "amount": zod.union([zod.string().regex(postAdminOrdersBodyShippingItemAmountAmountRegExpOne),zod.number()]),
+  "currency": zod.string()
+}).describe('An amount as it arrives over the wire. Never a float, and the currency is\ncarried with it so nothing has to guess which shop\'s money this is.'),
+  "discount": zod.union([zod.string().regex(postAdminOrdersBodyShippingItemDiscountRegExpOne),zod.number()]).optional(),
+  "is_tax_inclusive": zod.boolean().default(postAdminOrdersBodyShippingItemIsTaxInclusiveDefault),
+  "name": zod.string(),
+  "shipping_option_id": zod.union([zod.uuid().describe('Identifies one shipping option.'),zod.null()]).optional(),
+  "tax_rate": zod.union([zod.string().regex(postAdminOrdersBodyShippingItemTaxRateRegExpOne),zod.number()]).optional()
+})).optional()
+})
+
+export const PostAdminOrdersResponse = zod.object({
+  "basket_id": zod.union([zod.uuid().describe('Identifies one order basket.'),zod.null()]).describe('The basket this order was split from, if a checkout that spanned more\nthan one seller-scope opened one.'),
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "completed_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "currency_code": zod.string(),
+  "display_id": zod.int().nullable(),
+  "email": zod.string().nullable(),
+  "fulfillment_status": zod.string(),
+  "id": zod.uuid().describe('Identifies one order.'),
+  "is_draft": zod.boolean(),
+  "payment_collection_id": zod.union([zod.uuid().describe('Identifies one payment collection.'),zod.null()]),
+  "payment_status": zod.string(),
+  "status": zod.string(),
+  "version": zod.int()
+}).describe('An order as a back office sees it. Not `order::Order`: that is a row, it\ngrows a column whenever a migration says so, and it carries the scope.')
 
 /**
  * @summary Fetch one order
@@ -514,7 +1546,15 @@ export const GetAdminOrdersByIdAgreementsParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminOrdersByIdAgreementsResponse = zod.unknown()
+export const GetAdminOrdersByIdAgreementsResponseItem = zod.object({
+  "accepted_at": zod.iso.datetime({"offset":true}),
+  "agreement_version_id": zod.uuid().describe('Identifies one agreement version.'),
+  "body_hash": zod.string(),
+  "id": zod.uuid().describe('Identifies one order agreement.'),
+  "kind": zod.string(),
+  "order_id": zod.uuid().describe('Identifies one order.')
+})
+export const GetAdminOrdersByIdAgreementsResponse = zod.array(GetAdminOrdersByIdAgreementsResponseItem)
 
 /**
  * @summary The text this order's buyer accepted
@@ -524,7 +1564,15 @@ export const GetAdminOrdersByIdAgreementsByKindParams = zod.object({
   "kind": zod.string()
 })
 
-export const GetAdminOrdersByIdAgreementsByKindResponse = zod.unknown()
+export const GetAdminOrdersByIdAgreementsByKindResponse = zod.object({
+  "body": zod.string(),
+  "body_hash": zod.string().describe('What the acceptance points at, so two copies of a text can be compared\nwithout reading them.'),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "effective_from": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one agreement version.'),
+  "kind": zod.string(),
+  "locale": zod.string()
+})
 
 /**
  * @summary Archive a completed order
@@ -533,7 +1581,22 @@ export const PostAdminOrdersByIdArchiveParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminOrdersByIdArchiveResponse = zod.unknown()
+export const PostAdminOrdersByIdArchiveResponse = zod.object({
+  "basket_id": zod.union([zod.uuid().describe('Identifies one order basket.'),zod.null()]).describe('The basket this order was split from, if a checkout that spanned more\nthan one seller-scope opened one.'),
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "completed_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "currency_code": zod.string(),
+  "display_id": zod.int().nullable(),
+  "email": zod.string().nullable(),
+  "fulfillment_status": zod.string(),
+  "id": zod.uuid().describe('Identifies one order.'),
+  "is_draft": zod.boolean(),
+  "payment_collection_id": zod.union([zod.uuid().describe('Identifies one payment collection.'),zod.null()]),
+  "payment_status": zod.string(),
+  "status": zod.string(),
+  "version": zod.int()
+}).describe('An order as a back office sees it. Not `order::Order`: that is a row, it\ngrows a column whenever a migration says so, and it carries the scope.')
 
 /**
  * @summary Correct the order's billing address
@@ -542,7 +1605,35 @@ export const PatchAdminOrdersByIdBillingAddressParams = zod.object({
   "id": zod.string()
 })
 
-export const PatchAdminOrdersByIdBillingAddressResponse = zod.unknown()
+export const PatchAdminOrdersByIdBillingAddressBody = zod.object({
+  "address_1": zod.string().nullish(),
+  "address_2": zod.string().nullish(),
+  "city": zod.string().nullish(),
+  "company": zod.string().nullish(),
+  "country_code": zod.string().nullish(),
+  "first_name": zod.string().nullish(),
+  "last_name": zod.string().nullish(),
+  "phone": zod.string().nullish(),
+  "postal_code": zod.string().nullish(),
+  "province": zod.string().nullish()
+})
+
+export const PatchAdminOrdersByIdBillingAddressResponse = zod.object({
+  "basket_id": zod.union([zod.uuid().describe('Identifies one order basket.'),zod.null()]).describe('The basket this order was split from, if a checkout that spanned more\nthan one seller-scope opened one.'),
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "completed_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "currency_code": zod.string(),
+  "display_id": zod.int().nullable(),
+  "email": zod.string().nullable(),
+  "fulfillment_status": zod.string(),
+  "id": zod.uuid().describe('Identifies one order.'),
+  "is_draft": zod.boolean(),
+  "payment_collection_id": zod.union([zod.uuid().describe('Identifies one payment collection.'),zod.null()]),
+  "payment_status": zod.string(),
+  "status": zod.string(),
+  "version": zod.int()
+}).describe('An order as a back office sees it. Not `order::Order`: that is a row, it\ngrows a column whenever a migration says so, and it carries the scope.')
 
 /**
  * @summary Cancel an order
@@ -551,7 +1642,22 @@ export const PostAdminOrdersByIdCancelParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminOrdersByIdCancelResponse = zod.unknown()
+export const PostAdminOrdersByIdCancelResponse = zod.object({
+  "basket_id": zod.union([zod.uuid().describe('Identifies one order basket.'),zod.null()]).describe('The basket this order was split from, if a checkout that spanned more\nthan one seller-scope opened one.'),
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "completed_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "currency_code": zod.string(),
+  "display_id": zod.int().nullable(),
+  "email": zod.string().nullable(),
+  "fulfillment_status": zod.string(),
+  "id": zod.uuid().describe('Identifies one order.'),
+  "is_draft": zod.boolean(),
+  "payment_collection_id": zod.union([zod.uuid().describe('Identifies one payment collection.'),zod.null()]),
+  "payment_status": zod.string(),
+  "status": zod.string(),
+  "version": zod.int()
+}).describe('An order as a back office sees it. Not `order::Order`: that is a row, it\ngrows a column whenever a migration says so, and it carries the scope.')
 
 /**
  * @summary List the changes made to an order
@@ -560,7 +1666,23 @@ export const GetAdminOrdersByIdChangesParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminOrdersByIdChangesResponse = zod.unknown()
+export const GetAdminOrdersByIdChangesResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "change_type": zod.string(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "description": zod.string().nullable(),
+  "id": zod.uuid().describe('Identifies one order change.'),
+  "order_claim_id": zod.union([zod.uuid().describe('Identifies one claim.'),zod.null()]),
+  "order_exchange_id": zod.union([zod.uuid().describe('Identifies one exchange.'),zod.null()]),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "order_return_id": zod.union([zod.uuid().describe('Identifies one return.'),zod.null()]),
+  "status": zod.string(),
+  "version": zod.int()
+}))
+}))
 
 /**
  * @summary Complete an order
@@ -569,7 +1691,22 @@ export const PostAdminOrdersByIdCompleteParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminOrdersByIdCompleteResponse = zod.unknown()
+export const PostAdminOrdersByIdCompleteResponse = zod.object({
+  "basket_id": zod.union([zod.uuid().describe('Identifies one order basket.'),zod.null()]).describe('The basket this order was split from, if a checkout that spanned more\nthan one seller-scope opened one.'),
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "completed_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "currency_code": zod.string(),
+  "display_id": zod.int().nullable(),
+  "email": zod.string().nullable(),
+  "fulfillment_status": zod.string(),
+  "id": zod.uuid().describe('Identifies one order.'),
+  "is_draft": zod.boolean(),
+  "payment_collection_id": zod.union([zod.uuid().describe('Identifies one payment collection.'),zod.null()]),
+  "payment_status": zod.string(),
+  "status": zod.string(),
+  "version": zod.int()
+}).describe('An order as a back office sees it. Not `order::Order`: that is a row, it\ngrows a column whenever a migration says so, and it carries the scope.')
 
 /**
  * @summary Correct the order's e-mail address
@@ -578,7 +1715,26 @@ export const PatchAdminOrdersByIdEmailParams = zod.object({
   "id": zod.string()
 })
 
-export const PatchAdminOrdersByIdEmailResponse = zod.unknown()
+export const PatchAdminOrdersByIdEmailBody = zod.object({
+  "email": zod.string()
+})
+
+export const PatchAdminOrdersByIdEmailResponse = zod.object({
+  "basket_id": zod.union([zod.uuid().describe('Identifies one order basket.'),zod.null()]).describe('The basket this order was split from, if a checkout that spanned more\nthan one seller-scope opened one.'),
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "completed_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "currency_code": zod.string(),
+  "display_id": zod.int().nullable(),
+  "email": zod.string().nullable(),
+  "fulfillment_status": zod.string(),
+  "id": zod.uuid().describe('Identifies one order.'),
+  "is_draft": zod.boolean(),
+  "payment_collection_id": zod.union([zod.uuid().describe('Identifies one payment collection.'),zod.null()]),
+  "payment_status": zod.string(),
+  "status": zod.string(),
+  "version": zod.int()
+}).describe('An order as a back office sees it. Not `order::Order`: that is a row, it\ngrows a column whenever a migration says so, and it carries the scope.')
 
 /**
  * @summary List the documents issued for an order
@@ -587,7 +1743,26 @@ export const GetAdminOrdersByIdInvoicesParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminOrdersByIdInvoicesResponse = zod.unknown()
+export const getAdminOrdersByIdInvoicesResponseTotalAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetAdminOrdersByIdInvoicesResponseItem = zod.object({
+  "created_at": zod.iso.datetime({"offset":true}),
+  "currency_code": zod.string(),
+  "document_url": zod.string().nullable(),
+  "external_id": zod.string().nullable(),
+  "id": zod.uuid().describe('Identifies one order invoice.'),
+  "issued_at": zod.iso.datetime({"offset":true}).nullable(),
+  "kind": zod.string(),
+  "number": zod.string(),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "order_version": zod.int(),
+  "provider": zod.string().nullable(),
+  "replaces_invoice_id": zod.union([zod.uuid().describe('Identifies one order invoice.'),zod.null()]),
+  "status": zod.string(),
+  "total_amount": zod.string().regex(getAdminOrdersByIdInvoicesResponseTotalAmountRegExp)
+})
+export const GetAdminOrdersByIdInvoicesResponse = zod.array(GetAdminOrdersByIdInvoicesResponseItem)
 
 /**
  * @summary Record that an invoice was issued
@@ -596,7 +1771,40 @@ export const PostAdminOrdersByIdInvoicesParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminOrdersByIdInvoicesResponse = zod.unknown()
+export const postAdminOrdersByIdInvoicesBodyTotalRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+
+
+export const PostAdminOrdersByIdInvoicesBody = zod.object({
+  "currency_code": zod.string(),
+  "document_url": zod.string().nullish(),
+  "external_id": zod.string().nullish(),
+  "issued_at": zod.iso.datetime({"offset":true}).nullish(),
+  "metadata": zod.unknown().optional(),
+  "number": zod.string(),
+  "provider": zod.string().nullish(),
+  "status": zod.string(),
+  "total": zod.union([zod.string().regex(postAdminOrdersByIdInvoicesBodyTotalRegExpOne),zod.number()])
+})
+
+export const postAdminOrdersByIdInvoicesResponseTotalAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PostAdminOrdersByIdInvoicesResponse = zod.object({
+  "created_at": zod.iso.datetime({"offset":true}),
+  "currency_code": zod.string(),
+  "document_url": zod.string().nullable(),
+  "external_id": zod.string().nullable(),
+  "id": zod.uuid().describe('Identifies one order invoice.'),
+  "issued_at": zod.iso.datetime({"offset":true}).nullable(),
+  "kind": zod.string(),
+  "number": zod.string(),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "order_version": zod.int(),
+  "provider": zod.string().nullable(),
+  "replaces_invoice_id": zod.union([zod.uuid().describe('Identifies one order invoice.'),zod.null()]),
+  "status": zod.string(),
+  "total_amount": zod.string().regex(postAdminOrdersByIdInvoicesResponseTotalAmountRegExp)
+})
 
 /**
  * @summary Record the document that reverses an invoice
@@ -606,7 +1814,40 @@ export const PostAdminOrdersByIdInvoicesByInvoiceIdCreditNoteParams = zod.object
   "invoice_id": zod.string()
 })
 
-export const PostAdminOrdersByIdInvoicesByInvoiceIdCreditNoteResponse = zod.unknown()
+export const postAdminOrdersByIdInvoicesByInvoiceIdCreditNoteBodyTotalRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+
+
+export const PostAdminOrdersByIdInvoicesByInvoiceIdCreditNoteBody = zod.object({
+  "currency_code": zod.string(),
+  "document_url": zod.string().nullish(),
+  "external_id": zod.string().nullish(),
+  "issued_at": zod.iso.datetime({"offset":true}).nullish(),
+  "metadata": zod.unknown().optional(),
+  "number": zod.string(),
+  "provider": zod.string().nullish(),
+  "status": zod.string(),
+  "total": zod.union([zod.string().regex(postAdminOrdersByIdInvoicesByInvoiceIdCreditNoteBodyTotalRegExpOne),zod.number()])
+})
+
+export const postAdminOrdersByIdInvoicesByInvoiceIdCreditNoteResponseTotalAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PostAdminOrdersByIdInvoicesByInvoiceIdCreditNoteResponse = zod.object({
+  "created_at": zod.iso.datetime({"offset":true}),
+  "currency_code": zod.string(),
+  "document_url": zod.string().nullable(),
+  "external_id": zod.string().nullable(),
+  "id": zod.uuid().describe('Identifies one order invoice.'),
+  "issued_at": zod.iso.datetime({"offset":true}).nullable(),
+  "kind": zod.string(),
+  "number": zod.string(),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "order_version": zod.int(),
+  "provider": zod.string().nullable(),
+  "replaces_invoice_id": zod.union([zod.uuid().describe('Identifies one order invoice.'),zod.null()]),
+  "status": zod.string(),
+  "total_amount": zod.string().regex(postAdminOrdersByIdInvoicesByInvoiceIdCreditNoteResponseTotalAmountRegExp)
+})
 
 /**
  * @summary List an order's quantities at one version
@@ -615,7 +1856,20 @@ export const GetAdminOrdersByIdItemsParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminOrdersByIdItemsResponse = zod.unknown()
+export const GetAdminOrdersByIdItemsResponseItem = zod.object({
+  "delivered_quantity": zod.int(),
+  "fulfilled_quantity": zod.int(),
+  "id": zod.uuid().describe('Identifies one order item.'),
+  "order_line_item_id": zod.uuid().describe('Identifies one line item.'),
+  "quantity": zod.int(),
+  "return_dismissed_quantity": zod.int(),
+  "return_received_quantity": zod.int(),
+  "return_requested_quantity": zod.int(),
+  "shipped_quantity": zod.int(),
+  "version": zod.int(),
+  "written_off_quantity": zod.int()
+}).describe('One line at one version, with every quantity that has moved on it.')
+export const GetAdminOrdersByIdItemsResponse = zod.array(GetAdminOrdersByIdItemsResponseItem)
 
 /**
  * @summary What has been authorised, captured and refunded
@@ -624,7 +1878,36 @@ export const GetAdminOrdersByIdLedgerParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminOrdersByIdLedgerResponse = zod.unknown()
+export const getAdminOrdersByIdLedgerResponseAuthorizedAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+export const getAdminOrdersByIdLedgerResponseCapturedAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+export const getAdminOrdersByIdLedgerResponseDueAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+export const getAdminOrdersByIdLedgerResponsePaidAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+export const getAdminOrdersByIdLedgerResponseRefundedAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetAdminOrdersByIdLedgerResponse = zod.object({
+  "authorized": zod.object({
+  "amount": zod.string().regex(getAdminOrdersByIdLedgerResponseAuthorizedAmountRegExp),
+  "currency": zod.string()
+}),
+  "captured": zod.object({
+  "amount": zod.string().regex(getAdminOrdersByIdLedgerResponseCapturedAmountRegExp),
+  "currency": zod.string()
+}),
+  "due": zod.object({
+  "amount": zod.string().regex(getAdminOrdersByIdLedgerResponseDueAmountRegExp),
+  "currency": zod.string()
+}),
+  "paid": zod.object({
+  "amount": zod.string().regex(getAdminOrdersByIdLedgerResponsePaidAmountRegExp),
+  "currency": zod.string()
+}),
+  "refunded": zod.object({
+  "amount": zod.string().regex(getAdminOrdersByIdLedgerResponseRefundedAmountRegExp),
+  "currency": zod.string()
+}),
+  "state": zod.string()
+}).describe('What the money on an order comes to. Worked out from the transactions\nrather than stored, so it cannot drift from them.')
 
 /**
  * @summary List an order's lines
@@ -633,7 +1916,20 @@ export const GetAdminOrdersByIdLineItemsParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminOrdersByIdLineItemsResponse = zod.unknown()
+export const getAdminOrdersByIdLineItemsResponseUnitPriceAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetAdminOrdersByIdLineItemsResponseItem = zod.object({
+  "id": zod.uuid().describe('Identifies one line item.'),
+  "requires_shipping": zod.boolean(),
+  "title": zod.string(),
+  "unit_price": zod.object({
+  "amount": zod.string().regex(getAdminOrdersByIdLineItemsResponseUnitPriceAmountRegExp),
+  "currency": zod.string()
+}),
+  "variant_sku": zod.string().nullable()
+})
+export const GetAdminOrdersByIdLineItemsResponse = zod.array(GetAdminOrdersByIdLineItemsResponseItem)
 
 /**
  * @summary List the edits made to an order
@@ -642,7 +1938,23 @@ export const GetAdminOrdersByIdOrderEditsParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminOrdersByIdOrderEditsResponse = zod.unknown()
+export const GetAdminOrdersByIdOrderEditsResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "change_type": zod.string(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "description": zod.string().nullable(),
+  "id": zod.uuid().describe('Identifies one order change.'),
+  "order_claim_id": zod.union([zod.uuid().describe('Identifies one claim.'),zod.null()]),
+  "order_exchange_id": zod.union([zod.uuid().describe('Identifies one exchange.'),zod.null()]),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "order_return_id": zod.union([zod.uuid().describe('Identifies one return.'),zod.null()]),
+  "status": zod.string(),
+  "version": zod.int()
+}))
+}))
 
 /**
  * @summary Open an edit on an order
@@ -651,7 +1963,22 @@ export const PostAdminOrdersByIdOrderEditsParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminOrdersByIdOrderEditsResponse = zod.unknown()
+export const PostAdminOrdersByIdOrderEditsBody = zod.object({
+  "description": zod.string().nullish()
+})
+
+export const PostAdminOrdersByIdOrderEditsResponse = zod.object({
+  "change_type": zod.string(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "description": zod.string().nullable(),
+  "id": zod.uuid().describe('Identifies one order change.'),
+  "order_claim_id": zod.union([zod.uuid().describe('Identifies one claim.'),zod.null()]),
+  "order_exchange_id": zod.union([zod.uuid().describe('Identifies one exchange.'),zod.null()]),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "order_return_id": zod.union([zod.uuid().describe('Identifies one return.'),zod.null()]),
+  "status": zod.string(),
+  "version": zod.int()
+})
 
 /**
  * @summary Put a payment collection under a placed order
@@ -660,7 +1987,26 @@ export const PostAdminOrdersByIdPaymentCollectionParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminOrdersByIdPaymentCollectionResponse = zod.unknown()
+export const PostAdminOrdersByIdPaymentCollectionBody = zod.object({
+  "payment_collection_id": zod.uuid().describe('Identifies one payment collection.')
+})
+
+export const PostAdminOrdersByIdPaymentCollectionResponse = zod.object({
+  "basket_id": zod.union([zod.uuid().describe('Identifies one order basket.'),zod.null()]).describe('The basket this order was split from, if a checkout that spanned more\nthan one seller-scope opened one.'),
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "completed_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "currency_code": zod.string(),
+  "display_id": zod.int().nullable(),
+  "email": zod.string().nullable(),
+  "fulfillment_status": zod.string(),
+  "id": zod.uuid().describe('Identifies one order.'),
+  "is_draft": zod.boolean(),
+  "payment_collection_id": zod.union([zod.uuid().describe('Identifies one payment collection.'),zod.null()]),
+  "payment_status": zod.string(),
+  "status": zod.string(),
+  "version": zod.int()
+}).describe('An order as a back office sees it. Not `order::Order`: that is a row, it\ngrows a column whenever a migration says so, and it carries the scope.')
 
 /**
  * @summary List one order's returns
@@ -669,7 +2015,30 @@ export const GetAdminOrdersByIdReturnsParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminOrdersByIdReturnsResponse = zod.unknown()
+export const getAdminOrdersByIdReturnsResponseTwoItemsItemRefundAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetAdminOrdersByIdReturnsResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "display_id": zod.int().nullable(),
+  "id": zod.uuid().describe('Identifies one return.'),
+  "location_id": zod.uuid().nullable(),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "order_version": zod.int(),
+  "received_at": zod.iso.datetime({"offset":true}).nullable(),
+  "refund_amount": zod.union([zod.object({
+  "amount": zod.string().regex(getAdminOrdersByIdReturnsResponseTwoItemsItemRefundAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "requested_at": zod.iso.datetime({"offset":true}).nullable(),
+  "status": zod.string()
+}))
+}))
 
 /**
  * @summary Correct the address a parcel is going to
@@ -678,7 +2047,35 @@ export const PatchAdminOrdersByIdShippingAddressParams = zod.object({
   "id": zod.string()
 })
 
-export const PatchAdminOrdersByIdShippingAddressResponse = zod.unknown()
+export const PatchAdminOrdersByIdShippingAddressBody = zod.object({
+  "address_1": zod.string().nullish(),
+  "address_2": zod.string().nullish(),
+  "city": zod.string().nullish(),
+  "company": zod.string().nullish(),
+  "country_code": zod.string().nullish(),
+  "first_name": zod.string().nullish(),
+  "last_name": zod.string().nullish(),
+  "phone": zod.string().nullish(),
+  "postal_code": zod.string().nullish(),
+  "province": zod.string().nullish()
+})
+
+export const PatchAdminOrdersByIdShippingAddressResponse = zod.object({
+  "basket_id": zod.union([zod.uuid().describe('Identifies one order basket.'),zod.null()]).describe('The basket this order was split from, if a checkout that spanned more\nthan one seller-scope opened one.'),
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "completed_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "currency_code": zod.string(),
+  "display_id": zod.int().nullable(),
+  "email": zod.string().nullable(),
+  "fulfillment_status": zod.string(),
+  "id": zod.uuid().describe('Identifies one order.'),
+  "is_draft": zod.boolean(),
+  "payment_collection_id": zod.union([zod.uuid().describe('Identifies one payment collection.'),zod.null()]),
+  "payment_status": zod.string(),
+  "status": zod.string(),
+  "version": zod.int()
+}).describe('An order as a back office sees it. Not `order::Order`: that is a row, it\ngrows a column whenever a migration says so, and it carries the scope.')
 
 /**
  * @summary List an order's shipping methods
@@ -687,7 +2084,20 @@ export const GetAdminOrdersByIdShippingMethodsParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminOrdersByIdShippingMethodsResponse = zod.unknown()
+export const getAdminOrdersByIdShippingMethodsResponseAmountAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetAdminOrdersByIdShippingMethodsResponseItem = zod.object({
+  "amount": zod.object({
+  "amount": zod.string().regex(getAdminOrdersByIdShippingMethodsResponseAmountAmountRegExp),
+  "currency": zod.string()
+}),
+  "id": zod.uuid(),
+  "name": zod.string(),
+  "shipping_option_id": zod.union([zod.uuid().describe('Identifies one shipping option.'),zod.null()]),
+  "version": zod.int()
+})
+export const GetAdminOrdersByIdShippingMethodsResponse = zod.array(GetAdminOrdersByIdShippingMethodsResponseItem)
 
 /**
  * @summary Fetch the summary written at one version
@@ -696,7 +2106,12 @@ export const GetAdminOrdersByIdSummaryParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminOrdersByIdSummaryResponse = zod.unknown()
+export const GetAdminOrdersByIdSummaryResponse = zod.object({
+  "currency_code": zod.string(),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "totals": zod.unknown(),
+  "version": zod.int()
+})
 
 /**
  * @summary Work out an order's totals
@@ -705,7 +2120,35 @@ export const GetAdminOrdersByIdTotalsParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminOrdersByIdTotalsResponse = zod.unknown()
+export const getAdminOrdersByIdTotalsResponseDiscountAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+export const getAdminOrdersByIdTotalsResponseShippingAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+export const getAdminOrdersByIdTotalsResponseSubtotalAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+export const getAdminOrdersByIdTotalsResponseTaxAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+export const getAdminOrdersByIdTotalsResponseTotalAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetAdminOrdersByIdTotalsResponse = zod.object({
+  "discount": zod.object({
+  "amount": zod.string().regex(getAdminOrdersByIdTotalsResponseDiscountAmountRegExp),
+  "currency": zod.string()
+}),
+  "shipping": zod.object({
+  "amount": zod.string().regex(getAdminOrdersByIdTotalsResponseShippingAmountRegExp),
+  "currency": zod.string()
+}),
+  "subtotal": zod.object({
+  "amount": zod.string().regex(getAdminOrdersByIdTotalsResponseSubtotalAmountRegExp),
+  "currency": zod.string()
+}),
+  "tax": zod.object({
+  "amount": zod.string().regex(getAdminOrdersByIdTotalsResponseTaxAmountRegExp),
+  "currency": zod.string()
+}),
+  "total": zod.object({
+  "amount": zod.string().regex(getAdminOrdersByIdTotalsResponseTotalAmountRegExp),
+  "currency": zod.string()
+})
+})
 
 /**
  * @summary List an order's money movements
@@ -714,7 +2157,22 @@ export const GetAdminOrdersByIdTransactionsParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminOrdersByIdTransactionsResponse = zod.unknown()
+export const getAdminOrdersByIdTransactionsResponseAmountAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetAdminOrdersByIdTransactionsResponseItem = zod.object({
+  "amount": zod.object({
+  "amount": zod.string().regex(getAdminOrdersByIdTransactionsResponseAmountAmountRegExp),
+  "currency": zod.string()
+}),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one order transaction.'),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "reference": zod.string().nullable(),
+  "reference_id": zod.uuid().nullable(),
+  "version": zod.int()
+})
+export const GetAdminOrdersByIdTransactionsResponse = zod.array(GetAdminOrdersByIdTransactionsResponseItem)
 
 /**
  * @summary Record money that moved outside tezgah
@@ -723,7 +2181,33 @@ export const PostAdminOrdersByIdTransactionsParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminOrdersByIdTransactionsResponse = zod.unknown()
+export const postAdminOrdersByIdTransactionsBodyAmountAmountRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+
+
+export const PostAdminOrdersByIdTransactionsBody = zod.object({
+  "amount": zod.object({
+  "amount": zod.union([zod.string().regex(postAdminOrdersByIdTransactionsBodyAmountAmountRegExpOne),zod.number()]),
+  "currency": zod.string()
+}).describe('An amount as it arrives over the wire. Never a float, and the currency is\ncarried with it so nothing has to guess which shop\'s money this is.'),
+  "reference": zod.string(),
+  "reference_id": zod.uuid()
+})
+
+export const postAdminOrdersByIdTransactionsResponseAmountAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PostAdminOrdersByIdTransactionsResponse = zod.object({
+  "amount": zod.object({
+  "amount": zod.string().regex(postAdminOrdersByIdTransactionsResponseAmountAmountRegExp),
+  "currency": zod.string()
+}),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one order transaction.'),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "reference": zod.string().nullable(),
+  "reference_id": zod.uuid().nullable(),
+  "version": zod.int()
+})
 
 /**
  * @summary When each line's window to change their mind closes
@@ -732,17 +2216,47 @@ export const GetAdminOrdersByIdWithdrawalParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminOrdersByIdWithdrawalResponse = zod.unknown()
+export const GetAdminOrdersByIdWithdrawalResponseItem = zod.object({
+  "deadline": zod.iso.datetime({"offset":true}).nullable(),
+  "delivered_at": zod.iso.datetime({"offset":true}).nullable(),
+  "eligible": zod.boolean(),
+  "exclusion_reason": zod.string().nullable(),
+  "order_line_item_id": zod.uuid().describe('Identifies one line item.')
+})
+export const GetAdminOrdersByIdWithdrawalResponse = zod.array(GetAdminOrdersByIdWithdrawalResponseItem)
 
 /**
  * @summary List return reasons
  */
-export const GetAdminReturnReasonsResponse = zod.unknown()
+export const GetAdminReturnReasonsResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "code": zod.string(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "description": zod.string().nullable(),
+  "id": zod.uuid(),
+  "label": zod.string()
+}).describe('A refund reason or a return reason. The two tables differ by a column name\nand nothing a caller cares about.'))
+}))
 
 /**
  * @summary Add a return reason
  */
-export const PostAdminReturnReasonsResponse = zod.unknown()
+export const PostAdminReturnReasonsBody = zod.object({
+  "code": zod.string(),
+  "description": zod.string().nullish(),
+  "label": zod.string()
+})
+
+export const PostAdminReturnReasonsResponse = zod.object({
+  "code": zod.string(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "description": zod.string().nullable(),
+  "id": zod.uuid(),
+  "label": zod.string()
+}).describe('A refund reason or a return reason. The two tables differ by a column name\nand nothing a caller cares about.')
 
 /**
  * @summary List a return reason's translations
@@ -751,7 +2265,13 @@ export const GetAdminReturnReasonsByIdTranslationsParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminReturnReasonsByIdTranslationsResponse = zod.unknown()
+export const GetAdminReturnReasonsByIdTranslationsResponseItem = zod.object({
+  "description": zod.string().nullable(),
+  "label": zod.string(),
+  "locale": zod.string(),
+  "return_reason_id": zod.uuid()
+})
+export const GetAdminReturnReasonsByIdTranslationsResponse = zod.array(GetAdminReturnReasonsByIdTranslationsResponseItem)
 
 /**
  * @summary Write a return reason's translation into one locale
@@ -760,7 +2280,18 @@ export const PostAdminReturnReasonsByIdTranslationsParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminReturnReasonsByIdTranslationsResponse = zod.unknown()
+export const PostAdminReturnReasonsByIdTranslationsBody = zod.object({
+  "description": zod.string().nullish(),
+  "label": zod.string(),
+  "locale": zod.string()
+})
+
+export const PostAdminReturnReasonsByIdTranslationsResponse = zod.object({
+  "description": zod.string().nullable(),
+  "label": zod.string(),
+  "locale": zod.string(),
+  "return_reason_id": zod.uuid()
+})
 
 /**
  * @summary Drop a return reason's translation for one locale
@@ -780,17 +2311,75 @@ export const GetAdminReturnReasonsByIdTranslationsByLocaleParams = zod.object({
   "locale": zod.string()
 })
 
-export const GetAdminReturnReasonsByIdTranslationsByLocaleResponse = zod.unknown()
+export const GetAdminReturnReasonsByIdTranslationsByLocaleResponse = zod.object({
+  "description": zod.string().nullable(),
+  "is_fallback": zod.boolean(),
+  "label": zod.string(),
+  "locale": zod.string().nullable(),
+  "return_reason_id": zod.uuid()
+})
 
 /**
  * @summary List returns
  */
-export const GetAdminReturnsResponse = zod.unknown()
+export const getAdminReturnsResponseTwoItemsItemRefundAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetAdminReturnsResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "display_id": zod.int().nullable(),
+  "id": zod.uuid().describe('Identifies one return.'),
+  "location_id": zod.uuid().nullable(),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "order_version": zod.int(),
+  "received_at": zod.iso.datetime({"offset":true}).nullable(),
+  "refund_amount": zod.union([zod.object({
+  "amount": zod.string().regex(getAdminReturnsResponseTwoItemsItemRefundAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "requested_at": zod.iso.datetime({"offset":true}).nullable(),
+  "status": zod.string()
+}))
+}))
 
 /**
  * @summary Request a return
  */
-export const PostAdminReturnsResponse = zod.unknown()
+export const PostAdminReturnsBody = zod.object({
+  "lines": zod.array(zod.object({
+  "note": zod.string().nullish(),
+  "order_line_item_id": zod.uuid().describe('Identifies one line item.'),
+  "quantity": zod.int(),
+  "return_reason_id": zod.uuid().nullish()
+})),
+  "location_id": zod.union([zod.uuid().describe('Identifies one stock location.'),zod.null()]).optional(),
+  "order_id": zod.uuid().describe('Identifies one order.')
+})
+
+export const postAdminReturnsResponseRefundAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PostAdminReturnsResponse = zod.object({
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "display_id": zod.int().nullable(),
+  "id": zod.uuid().describe('Identifies one return.'),
+  "location_id": zod.uuid().nullable(),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "order_version": zod.int(),
+  "received_at": zod.iso.datetime({"offset":true}).nullable(),
+  "refund_amount": zod.union([zod.object({
+  "amount": zod.string().regex(postAdminReturnsResponseRefundAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "requested_at": zod.iso.datetime({"offset":true}).nullable(),
+  "status": zod.string()
+})
 
 /**
  * @summary Fetch one return
@@ -799,7 +2388,25 @@ export const GetAdminReturnsByIdParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminReturnsByIdResponse = zod.unknown()
+export const getAdminReturnsByIdResponseRefundAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetAdminReturnsByIdResponse = zod.object({
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "display_id": zod.int().nullable(),
+  "id": zod.uuid().describe('Identifies one return.'),
+  "location_id": zod.uuid().nullable(),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "order_version": zod.int(),
+  "received_at": zod.iso.datetime({"offset":true}).nullable(),
+  "refund_amount": zod.union([zod.object({
+  "amount": zod.string().regex(getAdminReturnsByIdResponseRefundAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "requested_at": zod.iso.datetime({"offset":true}).nullable(),
+  "status": zod.string()
+})
 
 /**
  * @summary Cancel a return that has not arrived
@@ -808,7 +2415,25 @@ export const PostAdminReturnsByIdCancelParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminReturnsByIdCancelResponse = zod.unknown()
+export const postAdminReturnsByIdCancelResponseRefundAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PostAdminReturnsByIdCancelResponse = zod.object({
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "display_id": zod.int().nullable(),
+  "id": zod.uuid().describe('Identifies one return.'),
+  "location_id": zod.uuid().nullable(),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "order_version": zod.int(),
+  "received_at": zod.iso.datetime({"offset":true}).nullable(),
+  "refund_amount": zod.union([zod.object({
+  "amount": zod.string().regex(postAdminReturnsByIdCancelResponseRefundAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "requested_at": zod.iso.datetime({"offset":true}).nullable(),
+  "status": zod.string()
+})
 
 /**
  * @summary Received and not taken; no stock moves
@@ -817,7 +2442,35 @@ export const PostAdminReturnsByIdDismissItemsParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminReturnsByIdDismissItemsResponse = zod.unknown()
+export const postAdminReturnsByIdDismissItemsBodyLinesItemDamagedDefault = 0;
+
+export const PostAdminReturnsByIdDismissItemsBody = zod.object({
+  "lines": zod.array(zod.object({
+  "damaged": zod.int().default(postAdminReturnsByIdDismissItemsBodyLinesItemDamagedDefault),
+  "order_line_item_id": zod.uuid().describe('Identifies one line item.'),
+  "quantity": zod.int()
+}))
+})
+
+export const postAdminReturnsByIdDismissItemsResponseRefundAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PostAdminReturnsByIdDismissItemsResponse = zod.object({
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "display_id": zod.int().nullable(),
+  "id": zod.uuid().describe('Identifies one return.'),
+  "location_id": zod.uuid().nullable(),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "order_version": zod.int(),
+  "received_at": zod.iso.datetime({"offset":true}).nullable(),
+  "refund_amount": zod.union([zod.object({
+  "amount": zod.string().regex(postAdminReturnsByIdDismissItemsResponseRefundAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "requested_at": zod.iso.datetime({"offset":true}).nullable(),
+  "status": zod.string()
+})
 
 /**
  * @summary What is on a return
@@ -826,7 +2479,16 @@ export const GetAdminReturnsByIdItemsParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminReturnsByIdItemsResponse = zod.unknown()
+export const GetAdminReturnsByIdItemsResponseItem = zod.object({
+  "damaged_quantity": zod.int(),
+  "id": zod.uuid(),
+  "note": zod.string().nullable(),
+  "order_line_item_id": zod.uuid().describe('Identifies one line item.'),
+  "quantity": zod.int(),
+  "received_quantity": zod.int(),
+  "return_reason_id": zod.uuid().nullable()
+})
+export const GetAdminReturnsByIdItemsResponse = zod.array(GetAdminReturnsByIdItemsResponseItem)
 
 /**
  * @summary The parcel arrived; put what is sellable back
@@ -835,7 +2497,35 @@ export const PostAdminReturnsByIdReceiveParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminReturnsByIdReceiveResponse = zod.unknown()
+export const postAdminReturnsByIdReceiveBodyLinesItemDamagedDefault = 0;
+
+export const PostAdminReturnsByIdReceiveBody = zod.object({
+  "lines": zod.array(zod.object({
+  "damaged": zod.int().default(postAdminReturnsByIdReceiveBodyLinesItemDamagedDefault),
+  "order_line_item_id": zod.uuid().describe('Identifies one line item.'),
+  "quantity": zod.int()
+}))
+})
+
+export const postAdminReturnsByIdReceiveResponseRefundAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PostAdminReturnsByIdReceiveResponse = zod.object({
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "display_id": zod.int().nullable(),
+  "id": zod.uuid().describe('Identifies one return.'),
+  "location_id": zod.uuid().nullable(),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "order_version": zod.int(),
+  "received_at": zod.iso.datetime({"offset":true}).nullable(),
+  "refund_amount": zod.union([zod.object({
+  "amount": zod.string().regex(postAdminReturnsByIdReceiveResponseRefundAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "requested_at": zod.iso.datetime({"offset":true}).nullable(),
+  "status": zod.string()
+})
 
 /**
  * @summary Record a line as received
@@ -844,7 +2534,27 @@ export const PostAdminReturnsByIdReceiveItemsParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminReturnsByIdReceiveItemsResponse = zod.unknown()
+export const PostAdminReturnsByIdReceiveItemsBody = zod.object({
+  "order_line_item_id": zod.uuid().describe('Identifies one line item.'),
+  "quantity": zod.int()
+})
+
+export const postAdminReturnsByIdReceiveItemsResponseAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PostAdminReturnsByIdReceiveItemsResponse = zod.object({
+  "action": zod.string(),
+  "amount": zod.union([zod.object({
+  "amount": zod.string().regex(postAdminReturnsByIdReceiveItemsResponseAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "applied": zod.boolean(),
+  "details": zod.unknown(),
+  "id": zod.uuid(),
+  "order_change_id": zod.union([zod.uuid().describe('Identifies one order change.'),zod.null()]),
+  "ordering": zod.int(),
+  "reference_id": zod.uuid().nullable()
+})
 
 /**
  * @summary Take a received line back off
@@ -863,7 +2573,25 @@ export const PostAdminReturnsByIdRequestParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminReturnsByIdRequestResponse = zod.unknown()
+export const postAdminReturnsByIdRequestResponseRefundAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PostAdminReturnsByIdRequestResponse = zod.object({
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "display_id": zod.int().nullable(),
+  "id": zod.uuid().describe('Identifies one return.'),
+  "location_id": zod.uuid().nullable(),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "order_version": zod.int(),
+  "received_at": zod.iso.datetime({"offset":true}).nullable(),
+  "refund_amount": zod.union([zod.object({
+  "amount": zod.string().regex(postAdminReturnsByIdRequestResponseRefundAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "requested_at": zod.iso.datetime({"offset":true}).nullable(),
+  "status": zod.string()
+})
 
 /**
  * @summary Add a line to the return's open change
@@ -872,7 +2600,27 @@ export const PostAdminReturnsByIdRequestItemsParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminReturnsByIdRequestItemsResponse = zod.unknown()
+export const PostAdminReturnsByIdRequestItemsBody = zod.object({
+  "order_line_item_id": zod.uuid().describe('Identifies one line item.'),
+  "quantity": zod.int()
+})
+
+export const postAdminReturnsByIdRequestItemsResponseAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PostAdminReturnsByIdRequestItemsResponse = zod.object({
+  "action": zod.string(),
+  "amount": zod.union([zod.object({
+  "amount": zod.string().regex(postAdminReturnsByIdRequestItemsResponseAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "applied": zod.boolean(),
+  "details": zod.unknown(),
+  "id": zod.uuid(),
+  "order_change_id": zod.union([zod.uuid().describe('Identifies one order change.'),zod.null()]),
+  "ordering": zod.int(),
+  "reference_id": zod.uuid().nullable()
+})
 
 /**
  * @summary Take a line off the return's open change
@@ -891,7 +2639,34 @@ export const PostAdminReturnsByIdShippingMethodParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminReturnsByIdShippingMethodResponse = zod.unknown()
+export const postAdminReturnsByIdShippingMethodBodyAmountAmountRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+
+
+export const PostAdminReturnsByIdShippingMethodBody = zod.object({
+  "amount": zod.object({
+  "amount": zod.union([zod.string().regex(postAdminReturnsByIdShippingMethodBodyAmountAmountRegExpOne),zod.number()]),
+  "currency": zod.string()
+}).describe('An amount as it arrives over the wire. Never a float, and the currency is\ncarried with it so nothing has to guess which shop\'s money this is.'),
+  "internal_note": zod.string().nullish(),
+  "name": zod.string()
+})
+
+export const postAdminReturnsByIdShippingMethodResponseAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PostAdminReturnsByIdShippingMethodResponse = zod.object({
+  "action": zod.string(),
+  "amount": zod.union([zod.object({
+  "amount": zod.string().regex(postAdminReturnsByIdShippingMethodResponseAmountOneAmountRegExp),
+  "currency": zod.string()
+}),zod.null()]),
+  "applied": zod.boolean(),
+  "details": zod.unknown(),
+  "id": zod.uuid(),
+  "order_change_id": zod.union([zod.uuid().describe('Identifies one order change.'),zod.null()]),
+  "ordering": zod.int(),
+  "reference_id": zod.uuid().nullable()
+})
 
 /**
  * @summary Take the return's carriage off
@@ -910,12 +2685,30 @@ export const PostAdminReturnsByIdWithdrawalParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminReturnsByIdWithdrawalResponse = zod.unknown()
+export const PostAdminReturnsByIdWithdrawalResponse = zod.object({
+  "notified_at": zod.iso.datetime({"offset":true}).nullable(),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "refund_due_by": zod.iso.datetime({"offset":true}).nullable(),
+  "return_id": zod.uuid().describe('Identifies one return.')
+})
 
 /**
  * @summary List one's own orders
  */
-export const GetStoreOrdersResponse = zod.unknown()
+export const GetStoreOrdersResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "created_at": zod.iso.datetime({"offset":true}),
+  "currency_code": zod.string(),
+  "display_id": zod.int().nullable(),
+  "email": zod.string().nullable(),
+  "fulfillment_status": zod.string(),
+  "id": zod.uuid().describe('Identifies one order.'),
+  "status": zod.string()
+}))
+}))
 
 /**
  * @summary Fetch one of one's own orders
@@ -924,7 +2717,15 @@ export const GetStoreOrdersByIdParams = zod.object({
   "id": zod.string()
 })
 
-export const GetStoreOrdersByIdResponse = zod.unknown()
+export const GetStoreOrdersByIdResponse = zod.object({
+  "created_at": zod.iso.datetime({"offset":true}),
+  "currency_code": zod.string(),
+  "display_id": zod.int().nullable(),
+  "email": zod.string().nullable(),
+  "fulfillment_status": zod.string(),
+  "id": zod.uuid().describe('Identifies one order.'),
+  "status": zod.string()
+})
 
 /**
  * @summary Accept a document against my order
@@ -933,7 +2734,22 @@ export const PostStoreOrdersByIdAgreementsParams = zod.object({
   "id": zod.string()
 })
 
-export const PostStoreOrdersByIdAgreementsResponse = zod.unknown()
+export const PostStoreOrdersByIdAgreementsBody = zod.object({
+  "accepted_at": zod.iso.datetime({"offset":true}).nullish(),
+  "agreement_version_id": zod.uuid().describe('Identifies one agreement version.'),
+  "ip": zod.string().nullish().describe('Where from and with what, as the host saw it. tezgah does not read a\nrequest, so whoever does hands these over.'),
+  "metadata": zod.unknown().optional(),
+  "user_agent": zod.string().nullish()
+})
+
+export const PostStoreOrdersByIdAgreementsResponse = zod.object({
+  "accepted_at": zod.iso.datetime({"offset":true}),
+  "agreement_version_id": zod.uuid().describe('Identifies one agreement version.'),
+  "body_hash": zod.string(),
+  "id": zod.uuid().describe('Identifies one order agreement.'),
+  "kind": zod.string(),
+  "order_id": zod.uuid().describe('Identifies one order.')
+})
 
 /**
  * @summary Read the text I accepted
@@ -943,7 +2759,15 @@ export const GetStoreOrdersByIdAgreementsByKindParams = zod.object({
   "kind": zod.string()
 })
 
-export const GetStoreOrdersByIdAgreementsByKindResponse = zod.unknown()
+export const GetStoreOrdersByIdAgreementsByKindResponse = zod.object({
+  "body": zod.string(),
+  "body_hash": zod.string().describe('What the acceptance points at, so two copies of a text can be compared\nwithout reading them.'),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "effective_from": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one agreement version.'),
+  "kind": zod.string(),
+  "locale": zod.string()
+})
 
 /**
  * @summary Take over an order one was offered
@@ -952,7 +2776,19 @@ export const PostStoreOrdersByIdTransferAcceptParams = zod.object({
   "id": zod.string()
 })
 
-export const PostStoreOrdersByIdTransferAcceptResponse = zod.unknown()
+export const PostStoreOrdersByIdTransferAcceptBody = zod.object({
+  "token": zod.string()
+})
+
+export const PostStoreOrdersByIdTransferAcceptResponse = zod.object({
+  "created_at": zod.iso.datetime({"offset":true}),
+  "currency_code": zod.string(),
+  "display_id": zod.int().nullable(),
+  "email": zod.string().nullable(),
+  "fulfillment_status": zod.string(),
+  "id": zod.uuid().describe('Identifies one order.'),
+  "status": zod.string()
+})
 
 /**
  * @summary Withdraw an offer of one's own order
@@ -961,7 +2797,13 @@ export const PostStoreOrdersByIdTransferCancelParams = zod.object({
   "id": zod.string()
 })
 
-export const PostStoreOrdersByIdTransferCancelResponse = zod.unknown()
+export const PostStoreOrdersByIdTransferCancelResponse = zod.object({
+  "expires_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one order transfer.'),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "status": zod.string(),
+  "to_email": zod.string()
+})
 
 /**
  * @summary Refuse an order one was offered
@@ -970,7 +2812,17 @@ export const PostStoreOrdersByIdTransferDeclineParams = zod.object({
   "id": zod.string()
 })
 
-export const PostStoreOrdersByIdTransferDeclineResponse = zod.unknown()
+export const PostStoreOrdersByIdTransferDeclineBody = zod.object({
+  "token": zod.string()
+})
+
+export const PostStoreOrdersByIdTransferDeclineResponse = zod.object({
+  "expires_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one order transfer.'),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "status": zod.string(),
+  "to_email": zod.string()
+})
 
 /**
  * @summary Offer one of one's own orders to somebody else
@@ -979,12 +2831,36 @@ export const PostStoreOrdersByIdTransferRequestParams = zod.object({
   "id": zod.string()
 })
 
-export const PostStoreOrdersByIdTransferRequestResponse = zod.unknown()
+export const PostStoreOrdersByIdTransferRequestBody = zod.object({
+  "expires_at": zod.iso.datetime({"offset":true}),
+  "to_email": zod.string()
+})
+
+export const PostStoreOrdersByIdTransferRequestResponse = zod.object({
+  "token": zod.string(),
+  "transfer": zod.object({
+  "expires_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one order transfer.'),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "status": zod.string(),
+  "to_email": zod.string()
+})
+}).describe('The token is here and nowhere else: it is not stored and this response is\nthe only time it can be read.')
 
 /**
  * @summary List the reasons a return may be given, optionally in a locale
  */
-export const GetStoreReturnReasonsResponse = zod.unknown()
+export const GetStoreReturnReasonsResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "description": zod.string().nullable(),
+  "id": zod.uuid(),
+  "label": zod.string(),
+  "value": zod.string()
+}))
+}))
 
 /**
  * @summary Fetch one return reason, optionally in a locale
@@ -993,10 +2869,30 @@ export const GetStoreReturnReasonsByIdParams = zod.object({
   "id": zod.string()
 })
 
-export const GetStoreReturnReasonsByIdResponse = zod.unknown()
+export const GetStoreReturnReasonsByIdResponse = zod.object({
+  "description": zod.string().nullable(),
+  "id": zod.uuid(),
+  "label": zod.string(),
+  "value": zod.string()
+})
 
 /**
  * @summary Ask to send something back
  */
-export const PostStoreReturnsResponse = zod.unknown()
+export const PostStoreReturnsBody = zod.object({
+  "lines": zod.array(zod.object({
+  "note": zod.string().nullish(),
+  "order_line_item_id": zod.uuid().describe('Identifies one line item.'),
+  "quantity": zod.int(),
+  "return_reason_id": zod.uuid().nullish()
+})),
+  "order_id": zod.uuid().describe('Identifies one order.')
+})
+
+export const PostStoreReturnsResponse = zod.object({
+  "created_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one return.'),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "status": zod.string()
+})
 
