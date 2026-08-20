@@ -431,7 +431,7 @@ a gap, and `docs/architecture.md` counts it as one.
 by hand, and says exactly how many out loud at startup:
 
 ```
-bound 116 of 486 declared routes
+bound 130 of 486 declared routes
   GET    /store/products
   GET    /store/products/{handle}
   POST   /store/carts

@@ -32,6 +32,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { StatusActions } from "@/features/products/status"
 import { Variants } from "@/features/products/variants"
 import { dateTime, useDetail } from "@/lib/detail"
 
@@ -69,6 +70,7 @@ export function ProductDetail({
             >
               {item.status}
             </Badge>
+            <StatusActions item={item} />
             <DeleteAction
               path="/admin/products/{id}"
               params={{ id: item.id }}

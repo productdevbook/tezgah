@@ -57,11 +57,11 @@ use tezgah::api::{
     store as store_api, subscription, tax_identity,
 };
 use tezgah::id::{
-    CustomerId, DigitalContentId, FulfillmentId, FulfillmentSetId, GiftCardId, InventoryItemId,
-    OrderBasketId, OrderId, PaymentCollectionId, PaymentId, PaymentWebhookEventId, PriceId,
-    PriceListId, PriceSetId, ProductId, PromotionId, RegionId, SalesChannelId, ShippingOptionId,
-    ShippingProfileId, StockLocationId, StoreCreditId, SubscriptionId, TaxRateId, TaxRegionId,
-    VariantId, WorkflowRunId,
+    CategoryId, CustomerId, DigitalContentId, FulfillmentId, FulfillmentSetId, GiftCardId,
+    InventoryItemId, OrderBasketId, OrderId, PaymentCollectionId, PaymentId, PaymentWebhookEventId,
+    PriceId, PriceListId, PriceSetId, ProductId, ProductTagId, PromotionId, RegionId,
+    SalesChannelId, ShippingOptionId, ShippingProfileId, StockLocationId, StoreCreditId,
+    SubscriptionId, TaxRateId, TaxRegionId, VariantId, WorkflowRunId,
 };
 use tezgah::ports::{Action, Actor, Ctx, Host};
 
@@ -110,6 +110,20 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         ("POST", "/admin/publishable-api-keys"),
         ("POST", "/admin/stock-locations"),
         ("POST", "/admin/products"),
+        ("POST", "/admin/products/{id}/publish"),
+        ("POST", "/admin/products/{id}/archive"),
+        ("POST", "/admin/products/{id}/submit"),
+        ("POST", "/admin/products/{id}/approve"),
+        ("POST", "/admin/products/{id}/reject"),
+        ("GET", "/admin/products/{id}/tags"),
+        ("POST", "/admin/products/{id}/tags"),
+        ("DELETE", "/admin/products/{id}/tags/{tag_id}"),
+        ("GET", "/admin/products/{id}/categories"),
+        ("POST", "/admin/products/{id}/categories"),
+        ("DELETE", "/admin/products/{id}/categories/{category_id}"),
+        ("GET", "/admin/products/{id}/channels"),
+        ("POST", "/admin/products/{id}/channels"),
+        ("DELETE", "/admin/products/{id}/channels/{sales_channel_id}"),
         ("GET", "/admin/products/{id}/variants"),
         ("POST", "/admin/products/{id}/variants"),
         ("POST", "/admin/price-sets"),
@@ -245,6 +259,32 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         .route(
             "/admin/stock-locations/{id}",
             patch(update_stock_location).delete(delete_stock_location),
+        )
+        .route("/admin/products/{id}/publish", post(publish_product))
+        .route("/admin/products/{id}/archive", post(archive_product))
+        .route("/admin/products/{id}/submit", post(submit_product))
+        .route("/admin/products/{id}/approve", post(approve_product))
+        .route("/admin/products/{id}/reject", post(reject_product))
+        .route(
+            "/admin/products/{id}/tags",
+            get(list_product_tags).post(tag_product),
+        )
+        .route("/admin/products/{id}/tags/{tag_id}", delete(untag_product))
+        .route(
+            "/admin/products/{id}/categories",
+            get(list_product_categories).post(add_product_to_category),
+        )
+        .route(
+            "/admin/products/{id}/categories/{category_id}",
+            delete(remove_product_from_category),
+        )
+        .route(
+            "/admin/products/{id}/channels",
+            get(list_product_channels).post(add_product_to_channel),
+        )
+        .route(
+            "/admin/products/{id}/channels/{sales_channel_id}",
+            delete(remove_product_from_channel),
         )
         .route(
             "/admin/products/{id}/variants",
@@ -1100,6 +1140,187 @@ async fn create_inventory_item(
     let item = admin_catalogue::create_inventory_item(&mut tx, &ctx, body).await?;
     tx.commit().await?;
     Ok(Json(item))
+}
+
+/// The five that move a product's status.
+///
+/// Each is its own route rather than a field on `PATCH`, and the crate is
+/// emphatic about why: a status is moved by the transition that is allowed,
+/// not by writing the word. Declared since the catalogue was written and
+/// bound by nothing, so a draft could be made here and never published.
+async fn publish_product(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ProductId>,
+) -> Result<Json<admin_catalogue::ProductView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_catalogue::publish_product(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn archive_product(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ProductId>,
+) -> Result<Json<admin_catalogue::ProductView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_catalogue::archive_product(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn submit_product(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ProductId>,
+) -> Result<Json<admin_catalogue::ProductView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_catalogue::submit_product_for_review(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn approve_product(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ProductId>,
+) -> Result<Json<admin_catalogue::ProductView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_catalogue::approve_product(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn reject_product(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ProductId>,
+    Json(body): Json<admin_catalogue::RejectProduct>,
+) -> Result<Json<admin_catalogue::ProductView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_catalogue::reject_product(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+/// What a product is filed under, and what sells it. Three lists and their
+/// two writes each — all declared in the route table and, until now, drawn
+/// and reachable by nothing.
+async fn list_product_tags(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ProductId>,
+) -> Result<Json<Vec<admin_catalogue::TagView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let rows = admin_catalogue::list_product_tags(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+async fn tag_product(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ProductId>,
+    Json(body): Json<admin_catalogue::AttachTag>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    admin_catalogue::tag_product(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "tagged": true })))
+}
+
+async fn untag_product(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path((id, tag_id)): Path<(ProductId, ProductTagId)>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    admin_catalogue::untag_product(&mut tx, &ctx, id, tag_id).await?;
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "untagged": true })))
+}
+
+async fn list_product_categories(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ProductId>,
+) -> Result<Json<Vec<admin_catalogue::CategoryView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let rows = admin_catalogue::list_product_categories(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+async fn add_product_to_category(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ProductId>,
+    Json(body): Json<admin_catalogue::AttachCategory>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    admin_catalogue::add_product_to_category(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "filed": true })))
+}
+
+async fn remove_product_from_category(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path((id, category_id)): Path<(ProductId, CategoryId)>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    admin_catalogue::remove_product_from_category(&mut tx, &ctx, id, category_id).await?;
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "removed": true })))
+}
+
+async fn list_product_channels(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ProductId>,
+) -> Result<Json<Vec<admin_catalogue::ProductChannelView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let rows = admin_catalogue::list_product_channels(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+async fn add_product_to_channel(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ProductId>,
+    Json(body): Json<admin_catalogue::AttachChannel>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    admin_catalogue::add_product_to_channel(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "listed": true })))
+}
+
+async fn remove_product_from_channel(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path((id, sales_channel_id)): Path<(ProductId, SalesChannelId)>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    admin_catalogue::remove_product_from_channel(&mut tx, &ctx, id, sales_channel_id).await?;
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "delisted": true })))
 }
 
 /// A product's variants.
