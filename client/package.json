@@ -10,7 +10,8 @@
     "format": "prettier --write \"**/*.{ts,tsx}\"",
     "typecheck": "bun run patch && tsc -b",
     "preview": "vite preview",
-    "patch": "node patches/apply.mjs"
+    "patch": "node patches/apply.mjs",
+    "generate": "orval && node scripts/generate-routes.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
@@ -46,11 +47,13 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^6",
+    "ajv": "^8.20.0",
     "eslint": "^10",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17",
     "openapi-typescript": "^7.13.0",
+    "orval": "^8.24.0",
     "prettier": "^3.8.3",
     "prettier-plugin-tailwindcss": "^0.8.0",
     "typescript": "~6",

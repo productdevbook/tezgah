@@ -1,76 +1,22 @@
 import type { z } from "zod"
 
-import { held } from "@/lib/token"
+import { apiMutator } from "@/api/mutator"
+import { parseResponse } from "@/api/drift"
 
 import type { paths } from "./schema"
 
-/**
- * Where the admin API is served. tezgah is a library and ships no server, so
- * this points at whatever host mounted `api::routes()`.
- */
-const BASE = import.meta.env.VITE_TEZGAH_API ?? "/api"
+export { ApiError, type ApiErrorKind } from "@/api/errors"
 
 /**
  * Every path the generated document declares.
  *
  * This is the one thing `schema.d.ts` is good for: the document carries no
- * schemas, so it cannot say what an operation answers with, but it does say
- * exactly which paths exist — which stops a typo becoming a 404 nobody reads.
- * The payload type is the caller's, out of `views.ts`.
+ * schemas for most of its operations, so it cannot say what every one
+ * answers with, but it does say exactly which paths exist — which stops a
+ * typo becoming a 404 nobody reads. The payload type is the caller's, out of
+ * `api/schemas.ts`.
  */
 export type ApiPath = keyof paths
-
-/**
- * Why a request did not answer, kept apart from what it answered.
- *
- * `unreachable` is its own case rather than a status of zero: no host is
- * serving the API, which is the state this panel is written in, and a screen
- * that renders it as "nothing here yet" tells the reader something false.
- *
- * `unauthenticated` is kept apart from `denied` because the two are not the
- * same sentence to read. A 401 with no token held means this panel never
- * presented one; a 401 with a token held means the server looked at it and
- * said no. Telling an operator "the authorizer refused" when the panel simply
- * had nothing to send is a wrong answer that sends them to the wrong place.
- *
- * `drifted` is the one this panel needs most. Its types are transcribed from
- * `src/api/*.rs` by hand (#202), so the crate can change one without this
- * knowing. Parsing at the boundary turns that from a blank cell into a
- * refusal that names the field.
- */
-export class ApiError extends Error {
-  readonly kind: ApiErrorKind
-  readonly status: number
-  readonly code?: string
-
-  constructor(
-    kind: ApiErrorKind,
-    status: number,
-    message: string,
-    code?: string
-  ) {
-    super(message)
-    this.name = "ApiError"
-    this.kind = kind
-    this.status = status
-    this.code = code
-  }
-}
-
-export type ApiErrorKind =
-  | "unreachable"
-  | "unauthenticated"
-  | "denied"
-  | "not_found"
-  | "refused"
-  | "drifted"
-
-function kindOf(status: number, hadToken: boolean): ApiErrorKind {
-  if (status === 401 && !hadToken) return "unauthenticated"
-  if (status === 401 || status === 403) return "denied"
-  if (status === 404) return "not_found"
-  return "refused"
-}
 
 function fill(path: string, params: Record<string, string>): string {
   return path.replace(/\{(\w+)\}/g, (_, name: string) => {
@@ -80,6 +26,28 @@ function fill(path: string, params: Record<string, string>): string {
   })
 }
 
+function withQuery(
+  path: string,
+  query?: Record<string, string | number | undefined>
+): string {
+  if (!query) return path
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined) params.set(key, String(value))
+  }
+  const search = params.toString()
+  return search ? `${path}?${search}` : path
+}
+
+/**
+ * `get`/`post` for the paths #202 has not documented a body for — every
+ * write form still builds its own request from a hand-written schema in
+ * `api/schemas.ts`. Where a response is documented, the orval-generated
+ * fetch functions in `api/generated/fetch/**` call `apiMutator` directly and
+ * do not go through these; a screen that wants the drift check on a
+ * generated response calls `parseResponse` itself, the same way these two
+ * do.
+ */
 export async function get<S extends z.ZodTypeAny>(
   path: ApiPath,
   options: {
@@ -89,57 +57,12 @@ export async function get<S extends z.ZodTypeAny>(
     signal?: AbortSignal
   }
 ): Promise<z.infer<S>> {
-  const url = new URL(BASE + fill(path, options.params ?? {}), location.origin)
-  for (const [key, value] of Object.entries(options.query ?? {})) {
-    if (value !== undefined) url.searchParams.set(key, String(value))
-  }
-
-  const token = held()
-  const headers: Record<string, string> = { accept: "application/json" }
-  if (token) headers.authorization = `Bearer ${token}`
-
-  let response: Response
-  try {
-    response = await fetch(url, { signal: options.signal, headers })
-  } catch {
-    throw new ApiError("unreachable", 0, `no host answered at ${BASE}`)
-  }
-
-  if (!response.ok) {
-    throw new ApiError(
-      kindOf(response.status, token !== null),
-      response.status,
-      ...(await said(response))
-    )
-  }
-
-  const parsed = options.schema.safeParse(await response.json())
-  if (!parsed.success) {
-    throw new ApiError(
-      "drifted",
-      response.status,
-      parsed.error.issues
-        .slice(0, 3)
-        .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
-        .join("; ")
-    )
-  }
-  return parsed.data
-}
-
-/**
- * `server/src/http/mod.rs`'s `ApiError` answers `{"error": {"code",
- * "message"}}`, never the two fields at the top level.
- */
-async function said(
-  response: Response
-): Promise<[message: string, code?: string]> {
-  const body: unknown = await response.json().catch(() => null)
-  const fields = ((body as { error?: unknown } | null)?.error ?? {}) as {
-    code?: string
-    message?: string
-  }
-  return [fields.message ?? response.statusText, fields.code]
+  const url = withQuery(fill(path, options.params ?? {}), options.query)
+  const { data, status } = await apiMutator<{ data: unknown; status: number }>(url, {
+    method: "GET",
+    signal: options.signal,
+  })
+  return parseResponse(options.schema, data, status)
 }
 
 export async function post<S extends z.ZodTypeAny>(
@@ -151,49 +74,12 @@ export async function post<S extends z.ZodTypeAny>(
     signal?: AbortSignal
   }
 ): Promise<z.infer<S>> {
-  const url = new URL(BASE + fill(path, options.params ?? {}), location.origin)
-
-  const token = held()
-  const headers: Record<string, string> = {
-    accept: "application/json",
-    "content-type": "application/json",
-  }
-  if (token) headers.authorization = `Bearer ${token}`
-
-  let response: Response
-  try {
-    response = await fetch(url, {
-      method: "POST",
-      signal: options.signal,
-      headers,
-      body: JSON.stringify(options.body),
-    })
-  } catch {
-    throw new ApiError("unreachable", 0, `no host answered at ${BASE}`)
-  }
-
-  if (!response.ok) {
-    throw new ApiError(
-      kindOf(response.status, token !== null),
-      response.status,
-      ...(await said(response))
-    )
-  }
-
-  // `link_variant_price_set` answers `204 No Content`; a caller expecting
-  // that passes `z.void()` as its schema.
-  if (response.status === 204) return options.schema.parse(undefined)
-
-  const parsed = options.schema.safeParse(await response.json())
-  if (!parsed.success) {
-    throw new ApiError(
-      "drifted",
-      response.status,
-      parsed.error.issues
-        .slice(0, 3)
-        .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
-        .join("; ")
-    )
-  }
-  return parsed.data
+  const url = fill(path, options.params ?? {})
+  const { data, status } = await apiMutator<{ data: unknown; status: number }>(url, {
+    method: "POST",
+    signal: options.signal,
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(options.body),
+  })
+  return parseResponse(options.schema, data, status)
 }
