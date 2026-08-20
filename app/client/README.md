@@ -78,14 +78,33 @@ editor, and for most of them that is right rather than unfinished: a customer
 has six fields, a sales channel three, and splitting three fields across two
 drawers is ceremony. The product is the record with seventeen.
 
-**Mountable in the parts that talk, not yet in the parts that route.** No
-screen reaches for a global any more: the API address, the token, what to do
-on a 401 and the locale all come from `panel/runtime.ts`, which a host
-answers. What is still this application's own is routing — the screens are
-`@tanstack/react-router` file routes under a fixed root, and the sidebar in
-`components/app-shell.tsx` is a switch over that closed route union. A host
-mounting these under `/commerce` needs a basepath and a shell of its own,
-and that is the next piece of the seam rather than a rewrite of the screens.
+**Mountable.** A host renders one element and gets the whole panel:
+
+    import { Panel } from "tezgah-panel/src/panel"
+
+    <Panel
+      basepath="/admin/shop"
+      apiBase="/api/commerce"
+      token={() => session.accessToken}
+      onUnauthenticated={() => session.signOut()}
+      locale="tr"
+    />
+
+No screen it draws reaches for a global. Where the API is, what token to
+send, what to do on a 401, which language to draw in and where these screens
+live in the URL are all the host's answers, through `panel/runtime.ts`.
+
+The router is built per mount rather than at module load, which is what makes
+`basepath` possible at all and lets two panels sit on one origin. And
+`bun run check:host` fails the build when anything outside the seven files
+that *are* the standalone host reads `import.meta.env`, `localStorage` or
+`document.cookie` — it caught one thing the day it was written: shadcn's
+sidebar wrote `sidebar_state` at `path=/`, which a panel inside an
+application would have written over that application's own with.
+
+What is left is packaging. There is no library build here, so a host takes
+the source — a published entry point is a build step and a version, not a
+seam.
 
 [`../../docs/architecture.md`](../../docs/architecture.md) carries all of this
 beside the library and server gaps, with which layer owns each.
@@ -101,8 +120,12 @@ it, and nothing under `features/` reaches past it:
 | `token()` | the bearer token to send, read per request, or `null` for none |
 | `onUnauthenticated()` | what to do when the host answers 401 |
 | `locale` | `"en"` or `"tr"` |
+| `basepath` | where the screens live in the host's URL, or `""` at the root |
 
-`PanelProvider` writes it and provides the locale to the tree.
+`Panel` writes it and provides the locale to the tree, and
+`src/panel/index.ts` is the whole of what a host may import — everything else
+here is this repository's to move. `PanelProvider` is exported beside it for
+a host composing the screens itself.
 [`src/App.tsx`](src/App.tsx) is the standalone host's answers — the address
 from `VITE_TEZGAH_API`, the token an operator pasted, and forgetting it on a
 401 — and is about as small as that file should be. An application embedding

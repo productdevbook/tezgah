@@ -23,6 +23,13 @@ export type PanelConfig = {
   /** Called when the host answered 401. A standalone panel forgets its token. */
   onUnauthenticated: () => void
   locale: Locale
+  /**
+   * Where these screens live in the host's URL — `/admin/shop`, or `""` at
+   * the root. The router takes it as its basepath; anything that persists
+   * something in the browser scopes it by this, so a panel mounted inside an
+   * application does not write over what the application keeps.
+   */
+  basepath: string
 }
 
 const standalone: PanelConfig = {
@@ -30,6 +37,7 @@ const standalone: PanelConfig = {
   token: () => null,
   onUnauthenticated: () => {},
   locale: "en",
+  basepath: "",
 }
 
 let current: PanelConfig = standalone
@@ -40,4 +48,23 @@ export function configurePanel(config: Partial<PanelConfig>): void {
 
 export function panelRuntime(): PanelConfig {
   return current
+}
+
+/**
+ * The one thing the panel keeps in the browser by itself, kept here because
+ * where it is kept is the host's answer.
+ *
+ * shadcn's sidebar wrote `sidebar_state` at `path=/`. Mounted inside an
+ * application, that writes over whatever the application keeps under the same
+ * name, and two panels on one origin write over each other. Scoping it by the
+ * basepath is the fix; doing it in this file rather than in the component is
+ * what keeps the component from having a second opinion about the browser.
+ */
+export function rememberSidebar(open: boolean, days = 7): void {
+  const { basepath } = panelRuntime()
+  const name = basepath
+    ? `tezgah_sidebar${basepath.replace(/\W+/g, "_")}`
+    : "tezgah_sidebar"
+  const age = days * 24 * 60 * 60
+  document.cookie = `${name}=${open}; path=${basepath || "/"}; max-age=${age}`
 }
