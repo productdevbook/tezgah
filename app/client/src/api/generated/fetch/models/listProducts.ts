@@ -25,6 +25,13 @@ export interface ListProducts {
   category?: CategoryId | null;
   collection?: CollectionId | null;
   /**
+     * Asks how many products match, as well as this page of them. Off unless
+     * asked: it is a second query over the whole match, which a back office
+     * saying "1–50 of 41,309" wants and a list nobody is counting does not.
+     * @nullable
+     */
+  count?: boolean | null;
+  /**
      * @minimum 0
      * @nullable
      */
