@@ -867,6 +867,82 @@ static BODIES: &[Body] = &[
         request: None,
         response: Some(page_of::<admin_rest::WorkflowDeadLetterView>),
     },
+    // ----------------------------------------------------------- fulfilment
+    Body {
+        operation_id: "getAdminOrdersByIdFulfillments",
+        request: None,
+        response: Some(page_of::<admin_order::FulfillmentView>),
+    },
+    Body {
+        operation_id: "getAdminOrdersByIdShippingOptions",
+        request: None,
+        response: Some(schema_of::<Vec<admin_order::ShippingOptionView>>),
+    },
+    Body {
+        operation_id: "getAdminOrdersByIdReturnsShippingOptions",
+        request: None,
+        response: Some(schema_of::<Vec<admin_order::ShippingOptionView>>),
+    },
+    Body {
+        operation_id: "getAdminOrdersByIdFulfillmentsByFulfillmentId",
+        request: None,
+        response: Some(schema_of::<admin_order::FulfillmentDetailView>),
+    },
+    Body {
+        operation_id: "getAdminFulfillmentSets",
+        request: None,
+        response: Some(page_of::<admin_order::FulfillmentSetView>),
+    },
+    Body {
+        operation_id: "getAdminFulfillmentSetsByIdServiceZones",
+        request: None,
+        response: Some(schema_of::<Vec<admin_order::ServiceZoneView>>),
+    },
+    Body {
+        operation_id: "getAdminFulfillmentProviders",
+        request: None,
+        response: Some(schema_of::<Vec<admin_order::ProviderView>>),
+    },
+    Body {
+        operation_id: "getAdminShippingOptions",
+        request: None,
+        response: Some(page_of::<admin_order::ShippingOptionView>),
+    },
+    Body {
+        operation_id: "getAdminShippingOptionsById",
+        request: None,
+        response: Some(schema_of::<admin_order::ShippingOptionView>),
+    },
+    Body {
+        operation_id: "getAdminShippingOptionsByIdTranslations",
+        request: None,
+        response: Some(schema_of::<Vec<admin_order::ShippingOptionTranslationView>>),
+    },
+    Body {
+        operation_id: "getAdminShippingOptionsByIdTranslationsByLocale",
+        request: None,
+        response: Some(schema_of::<admin_order::LocalisedShippingOptionView>),
+    },
+    Body {
+        operation_id: "getAdminShippingProfiles",
+        request: None,
+        response: Some(page_of::<admin_order::ShippingProfileView>),
+    },
+    Body {
+        operation_id: "getAdminShippingProfilesById",
+        request: None,
+        response: Some(schema_of::<admin_order::ShippingProfileView>),
+    },
+    Body {
+        operation_id: "getAdminShippingOptionTypes",
+        request: None,
+        response: Some(page_of::<admin_order::ShippingOptionTypeView>),
+    },
+    Body {
+        operation_id: "getStoreShippingOptions",
+        request: None,
+        response: Some(schema_of::<Vec<store::ShippingOptionView>>),
+    },
 ];
 
 fn operation(

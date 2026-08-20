@@ -66,8 +66,9 @@ use tezgah::api::{
     subscription,
 };
 use tezgah::id::{
-    CustomerId, InventoryItemId, OrderBasketId, OrderId, ProductId, PromotionId, RegionId,
-    SalesChannelId, SubscriptionId, VariantId, WorkflowRunId,
+    CustomerId, FulfillmentId, FulfillmentSetId, InventoryItemId, OrderBasketId, OrderId,
+    ProductId, PromotionId, RegionId, SalesChannelId, ShippingOptionId, ShippingProfileId,
+    SubscriptionId, VariantId, WorkflowRunId,
 };
 use tezgah::ports::{Actor, Ctx, Host};
 use uuid::Uuid;
@@ -118,6 +119,20 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         ("GET", "/admin/orders/{id}/payout-lines"),
         ("GET", "/admin/payouts"),
         ("GET", "/admin/payout-balance/{currency_code}"),
+        ("GET", "/admin/orders/{id}/fulfillments"),
+        ("GET", "/admin/orders/{id}/shipping-options"),
+        ("GET", "/admin/orders/{id}/returns/shipping-options"),
+        ("GET", "/admin/orders/{id}/fulfillments/{fulfillment_id}"),
+        ("GET", "/admin/fulfillment-sets"),
+        ("GET", "/admin/fulfillment-sets/{id}/service-zones"),
+        ("GET", "/admin/fulfillment-providers"),
+        ("GET", "/admin/shipping-options"),
+        ("GET", "/admin/shipping-options/{id}"),
+        ("GET", "/admin/shipping-options/{id}/translations"),
+        ("GET", "/admin/shipping-options/{id}/translations/{locale}"),
+        ("GET", "/admin/shipping-profiles"),
+        ("GET", "/admin/shipping-profiles/{id}"),
+        ("GET", "/admin/shipping-option-types"),
     ];
 
     let router = Router::new()
@@ -182,7 +197,42 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         .route("/admin/commission-rules", get(commission_rules))
         .route("/admin/orders/{id}/payout-lines", get(order_payout_lines))
         .route("/admin/payouts", get(list_payouts))
-        .route("/admin/payout-balance/{currency_code}", get(payout_balance));
+        .route("/admin/payout-balance/{currency_code}", get(payout_balance))
+        .route("/admin/orders/{id}/fulfillments", get(order_fulfillments))
+        .route(
+            "/admin/orders/{id}/shipping-options",
+            get(order_shipping_options),
+        )
+        .route(
+            "/admin/orders/{id}/returns/shipping-options",
+            get(return_shipping_options),
+        )
+        .route(
+            "/admin/orders/{id}/fulfillments/{fulfillment_id}",
+            get(get_fulfillment),
+        )
+        .route("/admin/fulfillment-sets", get(list_fulfillment_sets))
+        .route(
+            "/admin/fulfillment-sets/{id}/service-zones",
+            get(service_zones),
+        )
+        .route("/admin/fulfillment-providers", get(fulfillment_providers))
+        .route("/admin/shipping-options", get(list_shipping_options))
+        .route("/admin/shipping-options/{id}", get(get_shipping_option))
+        .route(
+            "/admin/shipping-options/{id}/translations",
+            get(list_shipping_option_translations),
+        )
+        .route(
+            "/admin/shipping-options/{id}/translations/{locale}",
+            get(localised_shipping_option),
+        )
+        .route("/admin/shipping-profiles", get(list_shipping_profiles))
+        .route("/admin/shipping-profiles/{id}", get(get_shipping_profile))
+        .route(
+            "/admin/shipping-option-types",
+            get(list_shipping_option_types),
+        );
 
     (router, bound)
 }
@@ -702,4 +752,167 @@ async fn payout_balance(
     let balance = payout::balance(&mut tx, &ctx, currency_code).await?;
     tx.commit().await?;
     Ok(Json(balance))
+}
+
+#[derive(serde::Deserialize)]
+struct CountryQuery {
+    country_code: String,
+}
+
+async fn order_fulfillments(
+    State(state): State<AppState>,
+    Path(order_id): Path<OrderId>,
+    Query(query): Query<admin_order::Listing>,
+) -> Result<Json<tezgah::page::Page<admin_order::FulfillmentView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = admin_order::order_fulfillments(&mut tx, &ctx, order_id, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn order_shipping_options(
+    State(state): State<AppState>,
+    Path(order_id): Path<OrderId>,
+    Query(query): Query<CountryQuery>,
+) -> Result<Json<Vec<admin_order::ShippingOptionView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let options =
+        admin_order::order_shipping_options(&mut tx, &ctx, order_id, &query.country_code).await?;
+    tx.commit().await?;
+    Ok(Json(options))
+}
+
+async fn return_shipping_options(
+    State(state): State<AppState>,
+    Path(order_id): Path<OrderId>,
+    Query(query): Query<CountryQuery>,
+) -> Result<Json<Vec<admin_order::ShippingOptionView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let options =
+        admin_order::return_shipping_options(&mut tx, &ctx, order_id, &query.country_code).await?;
+    tx.commit().await?;
+    Ok(Json(options))
+}
+
+async fn get_fulfillment(
+    State(state): State<AppState>,
+    Path((order_id, id)): Path<(OrderId, FulfillmentId)>,
+) -> Result<Json<admin_order::FulfillmentDetailView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let fulfillment = admin_order::get_fulfillment(&mut tx, &ctx, order_id, id).await?;
+    tx.commit().await?;
+    Ok(Json(fulfillment))
+}
+
+async fn list_fulfillment_sets(
+    State(state): State<AppState>,
+    Query(query): Query<admin_order::Listing>,
+) -> Result<Json<tezgah::page::Page<admin_order::FulfillmentSetView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = admin_order::list_fulfillment_sets(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn service_zones(
+    State(state): State<AppState>,
+    Path(id): Path<FulfillmentSetId>,
+) -> Result<Json<Vec<admin_order::ServiceZoneView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let zones = admin_order::service_zones(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(zones))
+}
+
+async fn fulfillment_providers(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<admin_order::ProviderView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let providers = admin_order::fulfillment_providers(&mut tx, &ctx).await?;
+    tx.commit().await?;
+    Ok(Json(providers))
+}
+
+async fn list_shipping_options(
+    State(state): State<AppState>,
+    Query(query): Query<admin_order::Listing>,
+) -> Result<Json<tezgah::page::Page<admin_order::ShippingOptionView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = admin_order::list_shipping_options(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn get_shipping_option(
+    State(state): State<AppState>,
+    Path(id): Path<ShippingOptionId>,
+) -> Result<Json<admin_order::ShippingOptionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let option = admin_order::get_shipping_option(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(option))
+}
+
+async fn list_shipping_option_translations(
+    State(state): State<AppState>,
+    Path(id): Path<ShippingOptionId>,
+) -> Result<Json<Vec<admin_order::ShippingOptionTranslationView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let translations = admin_order::list_shipping_option_translations(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(translations))
+}
+
+async fn localised_shipping_option(
+    State(state): State<AppState>,
+    Path((id, locale)): Path<(ShippingOptionId, String)>,
+) -> Result<Json<admin_order::LocalisedShippingOptionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let translation = admin_order::localised_shipping_option(&mut tx, &ctx, id, &locale).await?;
+    tx.commit().await?;
+    Ok(Json(translation))
+}
+
+async fn list_shipping_profiles(
+    State(state): State<AppState>,
+    Query(query): Query<admin_order::Listing>,
+) -> Result<Json<tezgah::page::Page<admin_order::ShippingProfileView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = admin_order::list_shipping_profiles(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn get_shipping_profile(
+    State(state): State<AppState>,
+    Path(id): Path<ShippingProfileId>,
+) -> Result<Json<admin_order::ShippingProfileView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let profile = admin_order::get_shipping_profile(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(profile))
+}
+
+async fn list_shipping_option_types(
+    State(state): State<AppState>,
+    Query(query): Query<admin_order::Listing>,
+) -> Result<Json<tezgah::page::Page<admin_order::ShippingOptionTypeView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = admin_order::list_shipping_option_types(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
 }

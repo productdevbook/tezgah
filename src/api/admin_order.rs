@@ -647,7 +647,7 @@ impl From<payment::PaymentSession> for SessionView {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct ProviderView {
     pub id: Uuid,
     pub code: String,
@@ -665,7 +665,7 @@ pub struct ReasonView {
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct FulfillmentView {
     pub id: FulfillmentId,
     pub location_id: Option<StockLocationId>,
@@ -694,7 +694,7 @@ impl From<fulfilment::Fulfillment> for FulfillmentView {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct FulfillmentItemView {
     pub id: Uuid,
     pub title: String,
@@ -702,7 +702,7 @@ pub struct FulfillmentItemView {
     pub quantity: i32,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct LabelView {
     pub id: Uuid,
     pub tracking_number: String,
@@ -711,14 +711,14 @@ pub struct LabelView {
 }
 
 /// A fulfilment with what is in the box and what is on the outside of it.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct FulfillmentDetailView {
     pub fulfillment: FulfillmentView,
     pub items: Vec<FulfillmentItemView>,
     pub labels: Vec<LabelView>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct FulfillmentSetView {
     pub id: FulfillmentSetId,
     pub name: String,
@@ -737,14 +737,14 @@ impl From<fulfilment::FulfillmentSet> for FulfillmentSetView {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct ServiceZoneView {
     pub id: ServiceZoneId,
     pub name: String,
     pub fulfillment_set_id: FulfillmentSetId,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct ShippingOptionView {
     pub id: ShippingOptionId,
     pub name: String,
@@ -782,7 +782,7 @@ pub struct ShippingOptionRuleView {
     pub value: Option<Value>,
 }
 
-#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, sqlx::FromRow, schemars::JsonSchema)]
 pub struct ShippingProfileView {
     pub id: ShippingProfileId,
     pub name: String,
@@ -791,7 +791,7 @@ pub struct ShippingProfileView {
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, sqlx::FromRow, schemars::JsonSchema)]
 pub struct ShippingOptionTypeView {
     pub id: Uuid,
     pub label: String,
@@ -3752,7 +3752,7 @@ pub async fn update_shipping_option(
         .into())
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ShippingOptionTranslationView {
     pub shipping_option_id: ShippingOptionId,
     pub locale: String,
@@ -3813,7 +3813,7 @@ pub async fn remove_shipping_option_translation(
     fulfilment::remove_shipping_option_translation(tx, ctx, id, locale).await
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct LocalisedShippingOptionView {
     pub shipping_option_id: ShippingOptionId,
     pub locale: Option<String>,

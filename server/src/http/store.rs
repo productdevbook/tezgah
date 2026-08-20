@@ -1,16 +1,19 @@
 //! The storefront: catalogue, cart, and — when `state.checkout` is `Some` —
 //! checkout.
 //!
-//! Six routes when a stock location is configured, five without — a browser
+//! Seven routes when a stock location is configured, six without — a browser
 //! walking catalogue to order needs exactly this shape: `examples/shop`
 //! walks the same five calls (plus checkout) directly, without a router at
 //! all, to show what these look like as plain library calls. The three
 //! catalogue-and-cart-opening routes read the caller's own
 //! `x-publishable-key` header — it decides which sales channel's products a
 //! storefront may see. The two cart-by-id routes ahead of checkout take
-//! none: a cart is already scoped by its own id.
+//! none: a cart is already scoped by its own id. `GET /store/shipping-options`
+//! takes neither — the cart it prices delivery for is named in its own
+//! query, the same as `own_cart` asks the host about for every other route
+//! here.
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::HeaderMap;
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -32,6 +35,7 @@ pub fn router(checkout_configured: bool) -> (Router<AppState>, Vec<(&'static str
         ("POST", "/store/carts"),
         ("GET", "/store/carts/{id}"),
         ("POST", "/store/carts/{id}/line-items"),
+        ("GET", "/store/shipping-options"),
     ];
 
     let mut router = Router::new()
@@ -39,7 +43,8 @@ pub fn router(checkout_configured: bool) -> (Router<AppState>, Vec<(&'static str
         .route("/store/products/{handle}", get(get_product))
         .route("/store/carts", post(create_cart))
         .route("/store/carts/{id}", get(get_cart))
-        .route("/store/carts/{id}/line-items", post(add_line_item));
+        .route("/store/carts/{id}/line-items", post(add_line_item))
+        .route("/store/shipping-options", get(list_shipping_options));
 
     if checkout_configured {
         router = router.route("/store/carts/{id}/complete", post(complete_cart));
@@ -145,4 +150,20 @@ async fn complete_cart(
     let completed = store::complete_cart(&mut tx, &ctx, id, checkout, &state.pool).await?;
     tx.commit().await?;
     Ok(Json(completed))
+}
+
+async fn list_shipping_options(
+    State(state): State<AppState>,
+    Query(query): Query<store::ListShippingOptions>,
+) -> Result<Json<Vec<store::ShippingOptionView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(
+        &state,
+        Actor::Guest {
+            cart: query.cart_id.as_uuid(),
+        },
+    );
+    let options = store::list_shipping_options(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(options))
 }

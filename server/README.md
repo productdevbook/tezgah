@@ -169,7 +169,7 @@ receives the `Action` on every call, so a second token (or a role
 by hand, and says exactly how many out loud at startup:
 
 ```
-bound 48 of 483 declared routes
+bound 63 of 483 declared routes
   GET    /store/products
   GET    /store/products/{handle}
   POST   /store/carts
@@ -218,6 +218,21 @@ bound 48 of 483 declared routes
   GET    /admin/orders/{id}/payout-lines
   GET    /admin/payouts
   GET    /admin/payout-balance/{currency_code}
+  GET    /admin/orders/{id}/fulfillments
+  GET    /admin/orders/{id}/shipping-options
+  GET    /admin/orders/{id}/returns/shipping-options
+  GET    /admin/orders/{id}/fulfillments/{fulfillment_id}
+  GET    /admin/fulfillment-sets
+  GET    /admin/fulfillment-sets/{id}/service-zones
+  GET    /admin/fulfillment-providers
+  GET    /admin/shipping-options
+  GET    /admin/shipping-options/{id}
+  GET    /admin/shipping-options/{id}/translations
+  GET    /admin/shipping-options/{id}/translations/{locale}
+  GET    /admin/shipping-profiles
+  GET    /admin/shipping-profiles/{id}
+  GET    /admin/shipping-option-types
+  GET    /store/shipping-options
   plus GET /health, which is this binary's own and not one of the 483
 ```
 
@@ -251,19 +266,40 @@ storefront can check out from. `tezgah-server seed` (above) does the first
 five of those in one command; the rest — a real catalogue — go in through
 these routes, by hand or by whatever the panel or a script does with them.
 
-**Past the panel: reads with no screen yet.** An order basket's own record
-and the two scope-local lists under it (`order_basket::get_basket`,
-`basket_orders`, `basket_carts`), a workflow run's list, single read and
-steps (`admin_rest::list_workflow_runs`, `get_workflow_run`,
-`list_workflow_run_steps`) plus the scope-wide dead-letter list
-(`list_workflow_dead_letters`), and a seller scope's own commission rules,
-one order's payout lines, its payout history and its balance in one currency
-(`payout::commission_rules`, `order_payout_lines`, `payouts`, `balance`) —
-eleven `GET` routes bound because their list-and-single-read functions
-already existed in `src/api/`, not because `client/` draws anything for them
-yet. Everything else `tezgah::api` offers stays unbound; wiring in more of
-the 483 is a matter of adding a handler in `src/http/admin.rs`, not a
-limitation of the approach.
+**Past the panel: reads with no screen yet.** Ten domains had list-and-
+single-read functions sitting in `src/api/` with nothing in this binary
+calling them — reachable from a test, not from a request. Each is bound as
+its functions allow, never inventing a list or a single read a domain does
+not already offer:
+
+- **order_basket** — a basket's own record and the two scope-local lists
+  under it (`order_basket::get_basket`, `basket_orders`, `basket_carts`).
+  There is no `list` across baskets in the crate; only these three.
+- **workflow** — a run's list, single read and steps
+  (`admin_rest::list_workflow_runs`, `get_workflow_run`,
+  `list_workflow_run_steps`), plus the scope-wide dead-letter list
+  (`list_workflow_dead_letters`).
+- **payout** — a seller scope's own commission rules, one order's payout
+  lines, its payout history and its balance in one currency
+  (`payout::commission_rules`, `order_payout_lines`, `payouts`, `balance`).
+- **fulfilment** — a parcel's list and single read on one order, the
+  shipping options that reach an order's address and a return's,
+  fulfilment sets and their service zones, which carriers are on, shipping
+  options and their translations, shipping profiles, and shipping option
+  types (`admin_order::order_fulfillments`, `get_fulfillment`,
+  `order_shipping_options`, `return_shipping_options`,
+  `list_fulfillment_sets`, `service_zones`, `fulfillment_providers`,
+  `list_shipping_options`, `get_shipping_option`,
+  `list_shipping_option_translations`, `localised_shipping_option`,
+  `list_shipping_profiles`, `get_shipping_profile`,
+  `list_shipping_option_types`), plus the storefront's own
+  `GET /store/shipping-options` (`store::list_shipping_options`), which
+  prices delivery for a cart rather than reading a back office's
+  configuration.
+
+Everything else `tezgah::api` offers stays unbound; wiring in more of the
+483 is a matter of adding a handler in `src/http/admin.rs` or
+`src/http/store.rs`, not a limitation of the approach.
 
 Every one of the eight single-row reads the panel's own screens use asks
 `ctx.permit(..)` before it looks
