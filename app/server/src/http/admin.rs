@@ -57,12 +57,12 @@ use tezgah::api::{
     order_basket, payout, store as store_api, subscription, tax_identity,
 };
 use tezgah::id::{
-    CategoryId, CustomerId, DigitalContentId, FulfillmentId, FulfillmentSetId, GiftCardId,
-    InventoryItemId, InventoryLotId, OptionId, OrderBasketId, OrderId, PaymentCollectionId,
-    PaymentId, PaymentWebhookEventId, PriceId, PriceListId, PriceSetId, ProductId, ProductTagId,
-    PromotionId, PublishableKeyId, RegionId, SalesChannelId, ShippingOptionId, ShippingProfileId,
-    StockLocationId, StoreCreditId, SubscriptionId, TaxRateId, TaxRegionId, VariantId,
-    WorkflowRunId,
+    CampaignId, CategoryId, CustomerGroupId, CustomerId, DigitalContentId, FulfillmentId,
+    FulfillmentSetId, GiftCardId, InventoryItemId, InventoryLotId, OptionId, OrderBasketId,
+    OrderId, PaymentCollectionId, PaymentId, PaymentWebhookEventId, PriceId, PriceListId,
+    PriceSetId, ProductId, ProductTagId, PromotionId, PublishableKeyId, RegionId, SalesChannelId,
+    ShippingOptionId, ShippingProfileId, StockLocationId, StoreCreditId, SubscriptionId, TaxRateId,
+    TaxRegionId, VariantId, WorkflowRunId,
 };
 use tezgah::ports::{Action, Actor, Ctx, Host};
 
@@ -149,6 +149,28 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         ("GET", "/admin/products/{id}/channels"),
         ("POST", "/admin/products/{id}/channels"),
         ("DELETE", "/admin/products/{id}/channels/{sales_channel_id}"),
+        ("POST", "/admin/campaigns/{id}/budget"),
+        ("POST", "/admin/campaigns/{id}/promotions"),
+        ("GET", "/admin/customer-groups/{id}/customers"),
+        ("POST", "/admin/customer-groups/{id}/customers"),
+        ("GET", "/admin/customers/{id}/export"),
+        ("POST", "/admin/inventory-items/{id}/transfers"),
+        ("GET", "/admin/inventory-items/{id}/transfers"),
+        ("POST", "/admin/price-lists/{id}/rules"),
+        ("GET", "/admin/products/{id}/translations"),
+        ("POST", "/admin/products/{id}/translations"),
+        ("GET", "/admin/product-categories/{id}/translations"),
+        ("POST", "/admin/product-categories/{id}/translations"),
+        ("POST", "/admin/product-variants/{id}/bundle"),
+        ("GET", "/admin/product-variants/{id}/inventory-items"),
+        ("POST", "/admin/product-variants/{id}/inventory-items"),
+        ("GET", "/admin/publishable-api-keys/{id}/sales-channels"),
+        ("POST", "/admin/publishable-api-keys/{id}/sales-channels"),
+        ("POST", "/admin/reservations/{id}/fulfil"),
+        ("POST", "/admin/returns/{id}/withdrawal"),
+        ("POST", "/admin/selling-plan-groups/{id}/plans"),
+        ("GET", "/admin/selling-plan-groups/{id}/plans"),
+        ("POST", "/admin/selling-plans/{id}/variants"),
         ("GET", "/admin/products/{id}/images"),
         ("POST", "/admin/products/{id}/images"),
         ("GET", "/admin/products/{id}/options"),
@@ -373,6 +395,51 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         .route(
             "/admin/products/{id}/channels/{sales_channel_id}",
             delete(remove_product_from_channel),
+        )
+        .route("/admin/campaigns/{id}/budget", post(set_campaign_budget))
+        .route(
+            "/admin/campaigns/{id}/promotions",
+            post(add_campaign_promotion),
+        )
+        .route(
+            "/admin/customer-groups/{id}/customers",
+            get(list_group_members).post(add_group_member),
+        )
+        .route("/admin/customers/{id}/export", get(export_customer))
+        .route(
+            "/admin/inventory-items/{id}/transfers",
+            get(list_stock_transfers).post(transfer_stock),
+        )
+        .route("/admin/price-lists/{id}/rules", post(add_price_list_rule))
+        .route(
+            "/admin/products/{id}/translations",
+            get(list_translations).post(put_translation),
+        )
+        .route(
+            "/admin/product-categories/{id}/translations",
+            get(list_category_translations).post(put_category_translation),
+        )
+        .route(
+            "/admin/product-variants/{id}/bundle",
+            post(set_bundle_price),
+        )
+        .route(
+            "/admin/product-variants/{id}/inventory-items",
+            get(list_variant_inventory_items).post(attach_inventory_item),
+        )
+        .route(
+            "/admin/publishable-api-keys/{id}/sales-channels",
+            get(list_key_sales_channels).post(link_key_sales_channel),
+        )
+        .route("/admin/reservations/{id}/fulfil", post(fulfil_reservation))
+        .route("/admin/returns/{id}/withdrawal", post(notify_withdrawal))
+        .route(
+            "/admin/selling-plan-groups/{id}/plans",
+            get(list_plans).post(create_plan),
+        )
+        .route(
+            "/admin/selling-plans/{id}/variants",
+            post(attach_plan_variant),
         )
         .route(
             "/admin/products/{id}/images",
@@ -1260,6 +1327,293 @@ async fn create_inventory_item(
     let item = admin_catalogue::create_inventory_item(&mut tx, &ctx, body).await?;
     tx.commit().await?;
     Ok(Json(item))
+}
+
+/// The last of the sub-routes that had a function waiting and no path to it:
+/// what a campaign spends and covers, who is in a group, what a shop hands a
+/// customer who asks for their data, where stock moved, what a price list
+/// narrows to, what a product is called in another language, what a bundle is
+/// made of, which channels a storefront key may see, and the two acts that
+/// close a reservation and a return.
+async fn set_campaign_budget(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<CampaignId>,
+    Json(body): Json<admin_rest::SetBudget>,
+) -> Result<Json<admin_rest::CampaignBudgetView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_rest::set_campaign_budget(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn add_campaign_promotion(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<CampaignId>,
+    Json(body): Json<admin_rest::AttachPromotion>,
+) -> Result<Json<admin_rest::PromotionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_rest::add_campaign_promotion(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn list_group_members(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<CustomerGroupId>,
+    Query(query): Query<admin_rest::List>,
+) -> Result<Json<tezgah::page::Page<admin_rest::CustomerView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let page = admin_rest::list_group_members(&mut tx, &ctx, id, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn add_group_member(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<CustomerGroupId>,
+    Json(body): Json<admin_rest::GroupMember>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    admin_rest::add_group_member(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "added": true })))
+}
+
+/// Everything this shop holds about one person, as they are entitled to ask
+/// for it. A `GET`, because it answers rather than changes.
+async fn export_customer(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<CustomerId>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_rest::export_customer(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn list_stock_transfers(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<InventoryItemId>,
+    Query(query): Query<admin_catalogue::ListQuery>,
+) -> Result<Json<tezgah::page::Page<admin_catalogue::StockTransferView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let page = admin_catalogue::list_stock_transfers(&mut tx, &ctx, id, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn transfer_stock(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<InventoryItemId>,
+    Json(body): Json<admin_catalogue::TransferStock>,
+) -> Result<Json<admin_catalogue::StockTransferView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_catalogue::transfer_stock(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn add_price_list_rule(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<PriceListId>,
+    Json(body): Json<admin_catalogue::AddPriceListRule>,
+) -> Result<Json<admin_catalogue::PriceListRuleView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_catalogue::add_price_list_rule(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn list_translations(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ProductId>,
+) -> Result<Json<Vec<admin_catalogue::TranslationView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let rows = admin_catalogue::list_translations(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+async fn put_translation(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ProductId>,
+    Json(body): Json<admin_catalogue::PutTranslation>,
+) -> Result<Json<admin_catalogue::TranslationView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_catalogue::put_translation(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn list_category_translations(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<CategoryId>,
+) -> Result<Json<Vec<admin_catalogue::CategoryTranslationView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let rows = admin_catalogue::list_category_translations(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+async fn put_category_translation(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<CategoryId>,
+    Json(body): Json<admin_catalogue::PutCategoryTranslation>,
+) -> Result<Json<admin_catalogue::CategoryTranslationView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_catalogue::put_category_translation(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn set_bundle_price(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<VariantId>,
+    Json(body): Json<admin_catalogue::SetBundlePrice>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    admin_catalogue::set_bundle_price(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "set": true })))
+}
+
+async fn list_variant_inventory_items(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<VariantId>,
+) -> Result<Json<Vec<admin_catalogue::VariantInventoryItemView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let rows = admin_catalogue::list_variant_inventory_items(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+async fn attach_inventory_item(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<VariantId>,
+    Json(body): Json<admin_catalogue::AttachInventoryItem>,
+) -> Result<Json<admin_catalogue::VariantInventoryItemView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_catalogue::attach_inventory_item(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn list_key_sales_channels(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<PublishableKeyId>,
+) -> Result<Json<Vec<admin_rest::SalesChannelView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let rows = admin_rest::list_key_sales_channels(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+async fn link_key_sales_channel(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<PublishableKeyId>,
+    Json(body): Json<admin_rest::LinkSalesChannel>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    admin_rest::link_key_sales_channel(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "linked": true })))
+}
+
+async fn fulfil_reservation(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ReservationId>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    admin_catalogue::fulfil_reservation(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "fulfilled": true })))
+}
+
+async fn notify_withdrawal(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ReturnId>,
+) -> Result<Json<agreement::WithdrawalNoticeView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = agreement::notify_withdrawal(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn list_plans(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<SellingPlanGroupId>,
+    Query(query): Query<subscription::List>,
+) -> Result<Json<tezgah::page::Page<subscription::PlanView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let page = subscription::list_plans(&mut tx, &ctx, id, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn create_plan(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<SellingPlanGroupId>,
+    Json(body): Json<subscription::CreatePlan>,
+) -> Result<Json<subscription::PlanView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = subscription::create_plan(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn attach_plan_variant(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<SellingPlanId>,
+    Json(body): Json<subscription::AttachVariant>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    subscription::attach_variant(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "offered": true })))
 }
 
 /// What a product looks like and what makes one variant different from
