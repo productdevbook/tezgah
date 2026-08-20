@@ -5,6 +5,7 @@
  * A commerce engine for Rust: products, carts, orders, payments, inventory, and a workflow runner that unwinds what it started.
  * OpenAPI spec version: 0.0.0
  */
+import type { Order } from './order';
 
 export type GetAdminCustomersParams = {
 /**
@@ -16,6 +17,10 @@ after?: string | null;
  * @nullable
  */
 limit?: number | null;
+/**
+ * Which end first. Left out, this surface answers newest-first.
+ */
+order?: Order | null;
 /**
  * Matched against e-mail, first and last name, and company. Blank is not
  * a search.

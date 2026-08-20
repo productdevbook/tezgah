@@ -142,6 +142,7 @@ export * from './newLineIn';
 export * from './newReason';
 export * from './newShippingIn';
 export * from './openEdit';
+export * from './order';
 export * from './orderAgreementId';
 export * from './orderAgreementView';
 export * from './orderBasketId';

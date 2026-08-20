@@ -7,6 +7,7 @@
  */
 import type { CategoryId } from './categoryId';
 import type { CollectionId } from './collectionId';
+import type { Order } from './order';
 import type { ProductStatus } from './productStatus';
 import type { ProductTagId } from './productTagId';
 import type { ProductTypeId } from './productTypeId';
@@ -21,6 +22,12 @@ export interface ListProducts {
      * @nullable
      */
   limit?: number | null;
+  /**
+     * Which end first. Left out, this surface answers newest-first — which
+     * is not `Order`'s own default, because the default is right for a
+     * storefront walking a catalogue and backwards for a back office.
+     */
+  order?: Order | null;
   product_type?: ProductTypeId | null;
   /**
      * What a back office typed into its search box, matched against a

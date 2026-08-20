@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.0.0
  */
 import type { CustomerId } from './customerId';
+import type { Order } from './order';
 
 export type GetAdminOrdersParams = {
 /**
@@ -18,6 +19,11 @@ customer_id?: CustomerId | null;
  * @nullable
  */
 limit?: number | null;
+/**
+ * Which end first. Left out, this surface answers newest-first: an
+ * operator opening Orders wants today's, not the first the shop took.
+ */
+order?: Order | null;
 /**
  * What a back office typed into its search box, matched against the
  * e-mail on an order and its display number. Blank is not a search.

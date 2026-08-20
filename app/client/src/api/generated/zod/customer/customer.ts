@@ -74,6 +74,7 @@ export const getAdminCustomersQueryLimitMin = 0;
 export const GetAdminCustomersQueryParams = zod.object({
   "after": zod.string().nullish(),
   "limit": zod.int().min(getAdminCustomersQueryLimitMin).nullish(),
+  "order": zod.union([zod.union([zod.literal("oldest").describe('Oldest first — what every list did before there was a choice.'),zod.literal("newest").describe('Newest first.')]).describe('Which end of the list comes first.\n\nEvery list in this crate has answered `Oldest` since it was written, which\nis right for a shopper walking a catalogue and backwards for a back office:\nan operator opening Orders wants today\'s, not the first order the shop ever\ntook.\n\nThis costs nothing to support and needs no new cursor, which is worth\nsaying plainly because it looks like it should. A cursor here is\n`(created_at, id)` — the sort key of \*both\* directions — so newest-first is\nthe same tuple compared the other way and ordered the other way.\n\*\*Sorting by some other column is the change this is not\*\*: that needs the\ncursor to carry that column\'s value instead of a timestamp, and it is not\ndone.\n\nIt lives on a filter rather than on [`Paging`] on purpose. Four lists\nhonour it and sixty-odd do not; on `Paging` those sixty-odd would take a\ndirection and silently ignore it, which is the failure this codebase has\nwritten down more than once. On a filter, a list that cannot answer never\noffers the question.'),zod.null()]).optional(),
   "q": zod.string().nullish()
 })
 

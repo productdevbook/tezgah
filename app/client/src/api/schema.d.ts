@@ -6981,6 +6981,8 @@ export interface components {
             after?: string | null;
             /** Format: uint32 */
             limit?: number | null;
+            /** @description Which end first. Left out, this surface answers newest-first. */
+            order?: components["schemas"]["Order"] | null;
             /**
              * @description Matched against e-mail, first and last name, and company. Blank is not
              *     a search.
@@ -6993,6 +6995,11 @@ export interface components {
             /** Format: uint32 */
             limit?: number | null;
             /**
+             * @description Which end first. Left out, this surface answers newest-first: an
+             *     operator opening Orders wants today's, not the first the shop took.
+             */
+            order?: components["schemas"]["Order"] | null;
+            /**
              * @description What a back office typed into its search box, matched against the
              *     e-mail on an order and its display number. Blank is not a search.
              */
@@ -7004,6 +7011,12 @@ export interface components {
             collection?: components["schemas"]["CollectionId"] | null;
             /** Format: uint32 */
             limit?: number | null;
+            /**
+             * @description Which end first. Left out, this surface answers newest-first — which
+             *     is not `Order`'s own default, because the default is right for a
+             *     storefront walking a catalogue and backwards for a back office.
+             */
+            order?: components["schemas"]["Order"] | null;
             product_type?: components["schemas"]["ProductTypeId"] | null;
             /**
              * @description What a back office typed into its search box, matched against a
@@ -7091,6 +7104,29 @@ export interface components {
         OpenEdit: {
             description?: string | null;
         };
+        /**
+         * @description Which end of the list comes first.
+         *
+         *     Every list in this crate has answered `Oldest` since it was written, which
+         *     is right for a shopper walking a catalogue and backwards for a back office:
+         *     an operator opening Orders wants today's, not the first order the shop ever
+         *     took.
+         *
+         *     This costs nothing to support and needs no new cursor, which is worth
+         *     saying plainly because it looks like it should. A cursor here is
+         *     `(created_at, id)` — the sort key of *both* directions — so newest-first is
+         *     the same tuple compared the other way and ordered the other way.
+         *     **Sorting by some other column is the change this is not**: that needs the
+         *     cursor to carry that column's value instead of a timestamp, and it is not
+         *     done.
+         *
+         *     It lives on a filter rather than on [`Paging`] on purpose. Four lists
+         *     honour it and sixty-odd do not; on `Paging` those sixty-odd would take a
+         *     direction and silently ignore it, which is the failure this codebase has
+         *     written down more than once. On a filter, a list that cannot answer never
+         *     offers the question.
+         */
+        Order: "oldest" | "newest";
         /**
          * Format: uuid
          * @description Identifies one order agreement.
@@ -10079,6 +10115,7 @@ export interface operations {
             query?: {
                 after?: string | null;
                 limit?: number | null;
+                order?: components["schemas"]["Order"] | null;
                 q?: string | null;
             };
             header?: never;
@@ -14092,6 +14129,7 @@ export interface operations {
                 after?: string | null;
                 customer_id?: components["schemas"]["CustomerId"] | null;
                 limit?: number | null;
+                order?: components["schemas"]["Order"] | null;
                 q?: string | null;
             };
             header?: never;
@@ -18677,6 +18715,7 @@ export interface operations {
                 category?: components["schemas"]["CategoryId"] | null;
                 collection?: components["schemas"]["CollectionId"] | null;
                 limit?: number | null;
+                order?: components["schemas"]["Order"] | null;
                 product_type?: components["schemas"]["ProductTypeId"] | null;
                 q?: string | null;
                 status?: components["schemas"]["ProductStatus"] | null;
