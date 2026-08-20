@@ -35,9 +35,11 @@ export function usePagedList<S extends z.ZodTypeAny>(
     after: string | undefined
     onAfterChange: (after: string | undefined) => void
     query?: Record<string, string | number | undefined>
+    /** Fills any `{name}` `path` itself carries — a basket's own sub-lists. */
+    params?: Record<string, string>
   }
 ): PagedList<z.infer<S>> {
-  const { after, onAfterChange, query = {} } = options
+  const { after, onAfterChange, query = {}, params = {} } = options
   const [backStack, setBackStack] = useState<string[]>([])
 
   const result = useQuery({
@@ -46,6 +48,7 @@ export function usePagedList<S extends z.ZodTypeAny>(
       get(path, {
         signal,
         schema: page(item),
+        params,
         query: { limit: 25, after, ...query },
       }),
   })

@@ -11,16 +11,22 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SectionRouteImport } from './routes/$section'
+import { Route as BasketsRouteImport } from './routes/baskets'
 import { Route as CustomersRouteImport } from './routes/customers'
 import { Route as InventoryRouteImport } from './routes/inventory'
 import { Route as OrdersRouteImport } from './routes/orders'
+import { Route as PayoutsRouteImport } from './routes/payouts'
 import { Route as ProductsRouteImport } from './routes/products'
 import { Route as PromotionsRouteImport } from './routes/promotions'
 import { Route as StoreRouteImport } from './routes/store'
 import { Route as SubscriptionsRouteImport } from './routes/subscriptions'
+import { Route as WorkflowsRouteImport } from './routes/workflows'
+import { Route as BasketsIdRouteImport } from './routes/baskets_.$id'
 import { Route as CustomersIdRouteImport } from './routes/customers_.$id'
 import { Route as InventoryIdRouteImport } from './routes/inventory_.$id'
 import { Route as OrdersIdRouteImport } from './routes/orders_.$id'
+import { Route as PayoutsIndexRouteImport } from './routes/payouts.index'
+import { Route as PayoutsCommissionRulesRouteImport } from './routes/payouts.commission-rules'
 import { Route as ProductsIdRouteImport } from './routes/products_.$id'
 import { Route as ProductsNewRouteImport } from './routes/products_.new'
 import { Route as PromotionsIdRouteImport } from './routes/promotions_.$id'
@@ -30,6 +36,9 @@ import { Route as StoreKeysRouteImport } from './routes/store.keys'
 import { Route as StoreRegionsRouteImport } from './routes/store.regions'
 import { Route as StoreSalesChannelsRouteImport } from './routes/store.sales-channels'
 import { Route as SubscriptionsIdRouteImport } from './routes/subscriptions_.$id'
+import { Route as WorkflowsIndexRouteImport } from './routes/workflows.index'
+import { Route as WorkflowsDeadLettersRouteImport } from './routes/workflows.dead-letters'
+import { Route as WorkflowsIdRouteImport } from './routes/workflows_.$id'
 import { Route as StoreCurrenciesNewRouteImport } from './routes/store_.currencies.new'
 import { Route as StoreKeysNewRouteImport } from './routes/store_.keys.new'
 import { Route as StoreRegionsIdRouteImport } from './routes/store_.regions.$id'
@@ -47,6 +56,11 @@ const SectionRoute = SectionRouteImport.update({
   path: '/$section',
   getParentRoute: () => rootRouteImport,
 } as any)
+const BasketsRoute = BasketsRouteImport.update({
+  id: '/baskets',
+  path: '/baskets',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CustomersRoute = CustomersRouteImport.update({
   id: '/customers',
   path: '/customers',
@@ -60,6 +74,11 @@ const InventoryRoute = InventoryRouteImport.update({
 const OrdersRoute = OrdersRouteImport.update({
   id: '/orders',
   path: '/orders',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PayoutsRoute = PayoutsRouteImport.update({
+  id: '/payouts',
+  path: '/payouts',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProductsRoute = ProductsRouteImport.update({
@@ -82,6 +101,16 @@ const SubscriptionsRoute = SubscriptionsRouteImport.update({
   path: '/subscriptions',
   getParentRoute: () => rootRouteImport,
 } as any)
+const WorkflowsRoute = WorkflowsRouteImport.update({
+  id: '/workflows',
+  path: '/workflows',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BasketsIdRoute = BasketsIdRouteImport.update({
+  id: '/baskets_/$id',
+  path: '/baskets/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CustomersIdRoute = CustomersIdRouteImport.update({
   id: '/customers_/$id',
   path: '/customers/$id',
@@ -96,6 +125,16 @@ const OrdersIdRoute = OrdersIdRouteImport.update({
   id: '/orders_/$id',
   path: '/orders/$id',
   getParentRoute: () => rootRouteImport,
+} as any)
+const PayoutsIndexRoute = PayoutsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => PayoutsRoute,
+} as any)
+const PayoutsCommissionRulesRoute = PayoutsCommissionRulesRouteImport.update({
+  id: '/commission-rules',
+  path: '/commission-rules',
+  getParentRoute: () => PayoutsRoute,
 } as any)
 const ProductsIdRoute = ProductsIdRouteImport.update({
   id: '/products_/$id',
@@ -142,6 +181,21 @@ const SubscriptionsIdRoute = SubscriptionsIdRouteImport.update({
   path: '/subscriptions/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const WorkflowsIndexRoute = WorkflowsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => WorkflowsRoute,
+} as any)
+const WorkflowsDeadLettersRoute = WorkflowsDeadLettersRouteImport.update({
+  id: '/dead-letters',
+  path: '/dead-letters',
+  getParentRoute: () => WorkflowsRoute,
+} as any)
+const WorkflowsIdRoute = WorkflowsIdRouteImport.update({
+  id: '/workflows_/$id',
+  path: '/workflows/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const StoreCurrenciesNewRoute = StoreCurrenciesNewRouteImport.update({
   id: '/store_/currencies/new',
   path: '/store/currencies/new',
@@ -176,16 +230,21 @@ const StoreSalesChannelsNewRoute = StoreSalesChannelsNewRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$section': typeof SectionRoute
+  '/baskets': typeof BasketsRoute
   '/customers': typeof CustomersRoute
   '/inventory': typeof InventoryRoute
   '/orders': typeof OrdersRoute
+  '/payouts': typeof PayoutsRouteWithChildren
   '/products': typeof ProductsRoute
   '/promotions': typeof PromotionsRoute
   '/store': typeof StoreRouteWithChildren
   '/subscriptions': typeof SubscriptionsRoute
+  '/workflows': typeof WorkflowsRouteWithChildren
+  '/baskets/$id': typeof BasketsIdRoute
   '/customers/$id': typeof CustomersIdRoute
   '/inventory/$id': typeof InventoryIdRoute
   '/orders/$id': typeof OrdersIdRoute
+  '/payouts/commission-rules': typeof PayoutsCommissionRulesRoute
   '/products/$id': typeof ProductsIdRoute
   '/products/new': typeof ProductsNewRoute
   '/promotions/$id': typeof PromotionsIdRoute
@@ -194,7 +253,11 @@ export interface FileRoutesByFullPath {
   '/store/regions': typeof StoreRegionsRoute
   '/store/sales-channels': typeof StoreSalesChannelsRoute
   '/subscriptions/$id': typeof SubscriptionsIdRoute
+  '/workflows/dead-letters': typeof WorkflowsDeadLettersRoute
+  '/workflows/$id': typeof WorkflowsIdRoute
+  '/payouts/': typeof PayoutsIndexRoute
   '/store/': typeof StoreIndexRoute
+  '/workflows/': typeof WorkflowsIndexRoute
   '/store/currencies/new': typeof StoreCurrenciesNewRoute
   '/store/keys/new': typeof StoreKeysNewRoute
   '/store/regions/$id': typeof StoreRegionsIdRoute
@@ -205,15 +268,18 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/$section': typeof SectionRoute
+  '/baskets': typeof BasketsRoute
   '/customers': typeof CustomersRoute
   '/inventory': typeof InventoryRoute
   '/orders': typeof OrdersRoute
   '/products': typeof ProductsRoute
   '/promotions': typeof PromotionsRoute
   '/subscriptions': typeof SubscriptionsRoute
+  '/baskets/$id': typeof BasketsIdRoute
   '/customers/$id': typeof CustomersIdRoute
   '/inventory/$id': typeof InventoryIdRoute
   '/orders/$id': typeof OrdersIdRoute
+  '/payouts/commission-rules': typeof PayoutsCommissionRulesRoute
   '/products/$id': typeof ProductsIdRoute
   '/products/new': typeof ProductsNewRoute
   '/promotions/$id': typeof PromotionsIdRoute
@@ -222,7 +288,11 @@ export interface FileRoutesByTo {
   '/store/regions': typeof StoreRegionsRoute
   '/store/sales-channels': typeof StoreSalesChannelsRoute
   '/subscriptions/$id': typeof SubscriptionsIdRoute
+  '/workflows/dead-letters': typeof WorkflowsDeadLettersRoute
+  '/workflows/$id': typeof WorkflowsIdRoute
+  '/payouts': typeof PayoutsIndexRoute
   '/store': typeof StoreIndexRoute
+  '/workflows': typeof WorkflowsIndexRoute
   '/store/currencies/new': typeof StoreCurrenciesNewRoute
   '/store/keys/new': typeof StoreKeysNewRoute
   '/store/regions/$id': typeof StoreRegionsIdRoute
@@ -234,16 +304,21 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/$section': typeof SectionRoute
+  '/baskets': typeof BasketsRoute
   '/customers': typeof CustomersRoute
   '/inventory': typeof InventoryRoute
   '/orders': typeof OrdersRoute
+  '/payouts': typeof PayoutsRouteWithChildren
   '/products': typeof ProductsRoute
   '/promotions': typeof PromotionsRoute
   '/store': typeof StoreRouteWithChildren
   '/subscriptions': typeof SubscriptionsRoute
+  '/workflows': typeof WorkflowsRouteWithChildren
+  '/baskets_/$id': typeof BasketsIdRoute
   '/customers_/$id': typeof CustomersIdRoute
   '/inventory_/$id': typeof InventoryIdRoute
   '/orders_/$id': typeof OrdersIdRoute
+  '/payouts/commission-rules': typeof PayoutsCommissionRulesRoute
   '/products_/$id': typeof ProductsIdRoute
   '/products_/new': typeof ProductsNewRoute
   '/promotions_/$id': typeof PromotionsIdRoute
@@ -252,7 +327,11 @@ export interface FileRoutesById {
   '/store/regions': typeof StoreRegionsRoute
   '/store/sales-channels': typeof StoreSalesChannelsRoute
   '/subscriptions_/$id': typeof SubscriptionsIdRoute
+  '/workflows/dead-letters': typeof WorkflowsDeadLettersRoute
+  '/workflows_/$id': typeof WorkflowsIdRoute
+  '/payouts/': typeof PayoutsIndexRoute
   '/store/': typeof StoreIndexRoute
+  '/workflows/': typeof WorkflowsIndexRoute
   '/store_/currencies/new': typeof StoreCurrenciesNewRoute
   '/store_/keys/new': typeof StoreKeysNewRoute
   '/store_/regions/$id': typeof StoreRegionsIdRoute
@@ -265,16 +344,21 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/$section'
+    | '/baskets'
     | '/customers'
     | '/inventory'
     | '/orders'
+    | '/payouts'
     | '/products'
     | '/promotions'
     | '/store'
     | '/subscriptions'
+    | '/workflows'
+    | '/baskets/$id'
     | '/customers/$id'
     | '/inventory/$id'
     | '/orders/$id'
+    | '/payouts/commission-rules'
     | '/products/$id'
     | '/products/new'
     | '/promotions/$id'
@@ -283,7 +367,11 @@ export interface FileRouteTypes {
     | '/store/regions'
     | '/store/sales-channels'
     | '/subscriptions/$id'
+    | '/workflows/dead-letters'
+    | '/workflows/$id'
+    | '/payouts/'
     | '/store/'
+    | '/workflows/'
     | '/store/currencies/new'
     | '/store/keys/new'
     | '/store/regions/$id'
@@ -294,15 +382,18 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/$section'
+    | '/baskets'
     | '/customers'
     | '/inventory'
     | '/orders'
     | '/products'
     | '/promotions'
     | '/subscriptions'
+    | '/baskets/$id'
     | '/customers/$id'
     | '/inventory/$id'
     | '/orders/$id'
+    | '/payouts/commission-rules'
     | '/products/$id'
     | '/products/new'
     | '/promotions/$id'
@@ -311,7 +402,11 @@ export interface FileRouteTypes {
     | '/store/regions'
     | '/store/sales-channels'
     | '/subscriptions/$id'
+    | '/workflows/dead-letters'
+    | '/workflows/$id'
+    | '/payouts'
     | '/store'
+    | '/workflows'
     | '/store/currencies/new'
     | '/store/keys/new'
     | '/store/regions/$id'
@@ -322,16 +417,21 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/$section'
+    | '/baskets'
     | '/customers'
     | '/inventory'
     | '/orders'
+    | '/payouts'
     | '/products'
     | '/promotions'
     | '/store'
     | '/subscriptions'
+    | '/workflows'
+    | '/baskets_/$id'
     | '/customers_/$id'
     | '/inventory_/$id'
     | '/orders_/$id'
+    | '/payouts/commission-rules'
     | '/products_/$id'
     | '/products_/new'
     | '/promotions_/$id'
@@ -340,7 +440,11 @@ export interface FileRouteTypes {
     | '/store/regions'
     | '/store/sales-channels'
     | '/subscriptions_/$id'
+    | '/workflows/dead-letters'
+    | '/workflows_/$id'
+    | '/payouts/'
     | '/store/'
+    | '/workflows/'
     | '/store_/currencies/new'
     | '/store_/keys/new'
     | '/store_/regions/$id'
@@ -352,13 +456,17 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   SectionRoute: typeof SectionRoute
+  BasketsRoute: typeof BasketsRoute
   CustomersRoute: typeof CustomersRoute
   InventoryRoute: typeof InventoryRoute
   OrdersRoute: typeof OrdersRoute
+  PayoutsRoute: typeof PayoutsRouteWithChildren
   ProductsRoute: typeof ProductsRoute
   PromotionsRoute: typeof PromotionsRoute
   StoreRoute: typeof StoreRouteWithChildren
   SubscriptionsRoute: typeof SubscriptionsRoute
+  WorkflowsRoute: typeof WorkflowsRouteWithChildren
+  BasketsIdRoute: typeof BasketsIdRoute
   CustomersIdRoute: typeof CustomersIdRoute
   InventoryIdRoute: typeof InventoryIdRoute
   OrdersIdRoute: typeof OrdersIdRoute
@@ -366,6 +474,7 @@ export interface RootRouteChildren {
   ProductsNewRoute: typeof ProductsNewRoute
   PromotionsIdRoute: typeof PromotionsIdRoute
   SubscriptionsIdRoute: typeof SubscriptionsIdRoute
+  WorkflowsIdRoute: typeof WorkflowsIdRoute
   StoreCurrenciesNewRoute: typeof StoreCurrenciesNewRoute
   StoreKeysNewRoute: typeof StoreKeysNewRoute
   StoreRegionsIdRoute: typeof StoreRegionsIdRoute
@@ -390,6 +499,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SectionRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/baskets': {
+      id: '/baskets'
+      path: '/baskets'
+      fullPath: '/baskets'
+      preLoaderRoute: typeof BasketsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/customers': {
       id: '/customers'
       path: '/customers'
@@ -409,6 +525,13 @@ declare module '@tanstack/react-router' {
       path: '/orders'
       fullPath: '/orders'
       preLoaderRoute: typeof OrdersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/payouts': {
+      id: '/payouts'
+      path: '/payouts'
+      fullPath: '/payouts'
+      preLoaderRoute: typeof PayoutsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/products': {
@@ -439,6 +562,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SubscriptionsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/workflows': {
+      id: '/workflows'
+      path: '/workflows'
+      fullPath: '/workflows'
+      preLoaderRoute: typeof WorkflowsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/baskets_/$id': {
+      id: '/baskets_/$id'
+      path: '/baskets/$id'
+      fullPath: '/baskets/$id'
+      preLoaderRoute: typeof BasketsIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/customers_/$id': {
       id: '/customers_/$id'
       path: '/customers/$id'
@@ -459,6 +596,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/orders/$id'
       preLoaderRoute: typeof OrdersIdRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/payouts/': {
+      id: '/payouts/'
+      path: '/'
+      fullPath: '/payouts/'
+      preLoaderRoute: typeof PayoutsIndexRouteImport
+      parentRoute: typeof PayoutsRoute
+    }
+    '/payouts/commission-rules': {
+      id: '/payouts/commission-rules'
+      path: '/commission-rules'
+      fullPath: '/payouts/commission-rules'
+      preLoaderRoute: typeof PayoutsCommissionRulesRouteImport
+      parentRoute: typeof PayoutsRoute
     }
     '/products_/$id': {
       id: '/products_/$id'
@@ -523,6 +674,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SubscriptionsIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/workflows/': {
+      id: '/workflows/'
+      path: '/'
+      fullPath: '/workflows/'
+      preLoaderRoute: typeof WorkflowsIndexRouteImport
+      parentRoute: typeof WorkflowsRoute
+    }
+    '/workflows/dead-letters': {
+      id: '/workflows/dead-letters'
+      path: '/dead-letters'
+      fullPath: '/workflows/dead-letters'
+      preLoaderRoute: typeof WorkflowsDeadLettersRouteImport
+      parentRoute: typeof WorkflowsRoute
+    }
+    '/workflows_/$id': {
+      id: '/workflows_/$id'
+      path: '/workflows/$id'
+      fullPath: '/workflows/$id'
+      preLoaderRoute: typeof WorkflowsIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/store_/currencies/new': {
       id: '/store_/currencies/new'
       path: '/store/currencies/new'
@@ -568,6 +740,19 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface PayoutsRouteChildren {
+  PayoutsCommissionRulesRoute: typeof PayoutsCommissionRulesRoute
+  PayoutsIndexRoute: typeof PayoutsIndexRoute
+}
+
+const PayoutsRouteChildren: PayoutsRouteChildren = {
+  PayoutsCommissionRulesRoute: PayoutsCommissionRulesRoute,
+  PayoutsIndexRoute: PayoutsIndexRoute,
+}
+
+const PayoutsRouteWithChildren =
+  PayoutsRoute._addFileChildren(PayoutsRouteChildren)
+
 interface StoreRouteChildren {
   StoreCurrenciesRoute: typeof StoreCurrenciesRoute
   StoreKeysRoute: typeof StoreKeysRoute
@@ -586,16 +771,34 @@ const StoreRouteChildren: StoreRouteChildren = {
 
 const StoreRouteWithChildren = StoreRoute._addFileChildren(StoreRouteChildren)
 
+interface WorkflowsRouteChildren {
+  WorkflowsDeadLettersRoute: typeof WorkflowsDeadLettersRoute
+  WorkflowsIndexRoute: typeof WorkflowsIndexRoute
+}
+
+const WorkflowsRouteChildren: WorkflowsRouteChildren = {
+  WorkflowsDeadLettersRoute: WorkflowsDeadLettersRoute,
+  WorkflowsIndexRoute: WorkflowsIndexRoute,
+}
+
+const WorkflowsRouteWithChildren = WorkflowsRoute._addFileChildren(
+  WorkflowsRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   SectionRoute: SectionRoute,
+  BasketsRoute: BasketsRoute,
   CustomersRoute: CustomersRoute,
   InventoryRoute: InventoryRoute,
   OrdersRoute: OrdersRoute,
+  PayoutsRoute: PayoutsRouteWithChildren,
   ProductsRoute: ProductsRoute,
   PromotionsRoute: PromotionsRoute,
   StoreRoute: StoreRouteWithChildren,
   SubscriptionsRoute: SubscriptionsRoute,
+  WorkflowsRoute: WorkflowsRouteWithChildren,
+  BasketsIdRoute: BasketsIdRoute,
   CustomersIdRoute: CustomersIdRoute,
   InventoryIdRoute: InventoryIdRoute,
   OrdersIdRoute: OrdersIdRoute,
@@ -603,6 +806,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProductsNewRoute: ProductsNewRoute,
   PromotionsIdRoute: PromotionsIdRoute,
   SubscriptionsIdRoute: SubscriptionsIdRoute,
+  WorkflowsIdRoute: WorkflowsIdRoute,
   StoreCurrenciesNewRoute: StoreCurrenciesNewRoute,
   StoreKeysNewRoute: StoreKeysNewRoute,
   StoreRegionsIdRoute: StoreRegionsIdRoute,
