@@ -315,7 +315,11 @@ impl From<cart::Cart> for CartView {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+// Named for the document, not renamed in Rust: `admin_order` has a type of
+// the same name and a wider shape, and schemars would otherwise disambiguate
+// the two with a numeric suffix decided by generation order.
+#[schemars(rename = "StoreLineItemView")]
 pub struct LineItemView {
     pub id: LineItemId,
     pub variant_id: Option<VariantId>,

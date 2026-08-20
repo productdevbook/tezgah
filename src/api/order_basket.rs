@@ -7,6 +7,11 @@
 //! needs beyond an order it already reads: which other orders a basket
 //! joined, and — before any order exists — which cart, this scope's own, is
 //! the next leg of a checkout still in progress.
+//!
+//! [`list_carts`] is tagged `"cart"`, not `"order_basket"` — this file
+//! already imports [`crate::cart`] and reaches for [`CartView`] on every
+//! other route in it, so it is the smallest diff for the one list `cart`
+//! itself offers, `cart::list`, to gain a route.
 
 use serde::{Deserialize, Serialize};
 
@@ -139,6 +144,39 @@ pub async fn basket_carts(
     })
 }
 
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ListCarts {
+    pub after: Option<String>,
+    pub limit: Option<u32>,
+    pub customer_id: Option<CustomerId>,
+}
+
+impl ListCarts {
+    fn paging(&self) -> Result<Paging> {
+        let limit = self.limit.unwrap_or(crate::page::DEFAULT_LIMIT);
+        match self.after.as_deref() {
+            Some(text) => Ok(Paging::after(Cursor::decode(text)?, limit)),
+            None => Ok(Paging::first(limit)),
+        }
+    }
+}
+
+/// Every cart this scope holds, abandoned ones included — the back office's
+/// own list, now that it has a screen for one. `cart::list` itself carried
+/// this since before there was a route for it.
+pub async fn list_carts(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    query: ListCarts,
+) -> Result<Page<CartView>> {
+    let page = cart::list(tx, ctx, query.customer_id, query.paging()?).await?;
+    Ok(Page {
+        items: page.items.into_iter().map(CartView::from).collect(),
+        next: page.next,
+    })
+}
+
 pub(super) static ROUTES: &[Route] = &[
     Route {
         surface: Surface::Admin,
@@ -179,5 +217,13 @@ pub(super) static ROUTES: &[Route] = &[
         action: Action::View,
         domain: "order_basket",
         summary: "This scope's own carts under a basket, the next leg to place",
+    },
+    Route {
+        surface: Surface::Admin,
+        method: Method::Get,
+        path: "/admin/carts",
+        action: Action::View,
+        domain: "cart",
+        summary: "List carts, abandoned ones included",
     },
 ];

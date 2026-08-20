@@ -156,6 +156,7 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         ("GET", "/admin/variants/{id}/digital-content"),
         ("POST", "/admin/variants/{id}/digital-content"),
         ("DELETE", "/admin/digital-content/{id}"),
+        ("GET", "/admin/carts"),
     ];
 
     let router = Router::new()
@@ -316,7 +317,8 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
             "/admin/variants/{id}/digital-content",
             get(list_content).post(put_content),
         )
-        .route("/admin/digital-content/{id}", delete(delete_content));
+        .route("/admin/digital-content/{id}", delete(delete_content))
+        .route("/admin/carts", get(list_carts));
 
     (router, bound)
 }
@@ -1357,4 +1359,15 @@ async fn delete_content(
     digital::delete_content(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+async fn list_carts(
+    State(state): State<AppState>,
+    Query(query): Query<order_basket::ListCarts>,
+) -> Result<Json<tezgah::page::Page<store_api::CartView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = order_basket::list_carts(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
 }

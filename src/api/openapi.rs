@@ -1133,6 +1133,17 @@ static BODIES: &[Body] = &[
         request: Some(schema_of::<digital::Redeem>),
         response: Some(schema_of::<digital::DownloadView>),
     },
+    // --------------------------------------------------------------- cart
+    Body {
+        operation_id: "getStoreCartsByIdLineItems",
+        request: None,
+        response: Some(schema_of::<Vec<store::LineItemView>>),
+    },
+    Body {
+        operation_id: "getAdminCarts",
+        request: None,
+        response: Some(page_of::<store::CartView>),
+    },
 ];
 
 fn operation(

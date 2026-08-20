@@ -169,12 +169,13 @@ receives the `Action` on every call, so a second token (or a role
 by hand, and says exactly how many out loud at startup:
 
 ```
-bound 97 of 483 declared routes
+bound 99 of 483 declared routes
   GET    /store/products
   GET    /store/products/{handle}
   POST   /store/carts
   GET    /store/carts/{id}
   POST   /store/carts/{id}/line-items
+  GET    /store/carts/{id}/line-items
   POST   /store/carts/{id}/complete
   GET    /admin/products
   GET    /admin/products/{id}
@@ -267,6 +268,7 @@ bound 97 of 483 declared routes
   GET    /admin/variants/{id}/digital-content
   POST   /admin/variants/{id}/digital-content
   DELETE /admin/digital-content/{id}
+  GET    /admin/carts
   plus GET /health, which is this binary's own and not one of the 483
 ```
 
@@ -386,6 +388,15 @@ not already offer:
   answer `denied` to the `Actor::Guest` every storefront route in this
   binary runs as. Binding a route that refuses its every caller would be
   worse than the gap it replaces.
+- **cart** — a cart's own line items, `GET /store/carts/{id}/line-items`
+  (`store::list_line_items`), and every cart this scope holds, abandoned
+  ones included, `GET /admin/carts` (`order_basket::list_carts`, so named
+  because that file already imports `crate::cart` and reaches for
+  `CartView` on every other route in it). The second did not exist as a
+  route at all until now: `cart::list` sat in `tests/reachable.rs`'s
+  `TOLERATED` list with the reason "the back office has no cart screen" —
+  no longer true, so the entry left with it, and the list is 33 long
+  rather than 34.
 
 Everything else `tezgah::api` offers stays unbound; wiring in more of the
 483 is a matter of adding a handler in `src/http/admin.rs` or

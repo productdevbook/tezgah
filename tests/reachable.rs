@@ -103,7 +103,7 @@ use std::path::{Path, PathBuf};
 
 /// Public functions nothing in the crate calls, each with the reason.
 /// Adding to this is not a fix.
-const TOLERATED: [(&str, &str); 34] = [
+const TOLERATED: [(&str, &str); 33] = [
     (
         "batch::import_workflow",
         "the import workflow a host runs through the runner when a file is large \
@@ -113,11 +113,6 @@ const TOLERATED: [(&str, &str); 34] = [
         "cart::set_customer",
         "the plain setter; the storefront moves a cart to its customer through \
          `cart::transfer_to_customer`",
-    ),
-    (
-        "cart::list",
-        "a page of carts, which no surface asks for: a storefront reaches its \
-         own cart by id and the back office has no cart screen",
     ),
     (
         "cart::expire",

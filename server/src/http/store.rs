@@ -1,7 +1,7 @@
 //! The storefront: catalogue, cart, and — when `state.checkout` is `Some` —
 //! checkout.
 //!
-//! Nine routes when a stock location is configured, eight without — a
+//! Ten routes when a stock location is configured, nine without — a
 //! browser walking catalogue to order needs exactly this shape:
 //! `examples/shop` walks the same five calls (plus checkout) directly,
 //! without a router at all, to show what these look like as plain library
@@ -55,6 +55,7 @@ pub fn router(checkout_configured: bool) -> (Router<AppState>, Vec<(&'static str
         ("GET", "/store/shipping-options"),
         ("GET", "/store/payment-providers"),
         ("GET", "/store/carts/{id}/credits"),
+        ("GET", "/store/carts/{id}/line-items"),
     ];
 
     let mut router = Router::new()
@@ -62,7 +63,10 @@ pub fn router(checkout_configured: bool) -> (Router<AppState>, Vec<(&'static str
         .route("/store/products/{handle}", get(get_product))
         .route("/store/carts", post(create_cart))
         .route("/store/carts/{id}", get(get_cart))
-        .route("/store/carts/{id}/line-items", post(add_line_item))
+        .route(
+            "/store/carts/{id}/line-items",
+            get(list_line_items).post(add_line_item),
+        )
         .route("/store/shipping-options", get(list_shipping_options))
         .route("/store/payment-providers", get(list_payment_providers))
         .route("/store/carts/{id}/credits", get(list_cart_credits));
@@ -214,4 +218,15 @@ async fn list_cart_credits(
     let credits = credit::list_cart_credits(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(credits))
+}
+
+async fn list_line_items(
+    State(state): State<AppState>,
+    Path(id): Path<CartId>,
+) -> Result<Json<Vec<store::LineItemView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, Actor::Guest { cart: id.as_uuid() });
+    let lines = store::list_line_items(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(lines))
 }
