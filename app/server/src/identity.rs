@@ -190,7 +190,185 @@ pub async fn create_tables(pool: &PgPool) -> tezgah::Result<()> {
     .execute(pool)
     .await?;
 
+    // An account that does not exist yet, and the one-use token that makes it.
+    // The digest and not the token, for the same reason a session holds one:
+    // a table full of usable invitations is a table full of accounts.
+    sqlx::query(
+        "create table if not exists server_invitation (
+             id uuid primary key,
+             email text not null,
+             name text not null,
+             role text not null,
+             token_digest bytea not null unique,
+             invited_by uuid references server_operator (id) on delete set null,
+             created_at timestamptz not null default now(),
+             expires_at timestamptz not null,
+             accepted_at timestamptz
+         )",
+    )
+    .execute(pool)
+    .await?;
+
+    // One open invitation per address. A second for the same person is the
+    // first one resent, not a second way in — `invite` replaces rather than
+    // adds, and this is what makes that true rather than intended.
+    sqlx::query(
+        "create unique index if not exists server_invitation_open
+         on server_invitation (lower(email)) where accepted_at is null",
+    )
+    .execute(pool)
+    .await?;
+
     Ok(())
+}
+
+/// How long an invitation is good for. Long enough to survive a weekend,
+/// short enough that a forwarded mail is not a standing door.
+const INVITATION_DAYS: i64 = 7;
+
+#[derive(Debug, Clone)]
+pub struct Invitation {
+    pub id: Uuid,
+    pub email: String,
+    pub name: String,
+    pub role: Role,
+    pub expires_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Writes the invitation down and hands back the one copy of its token.
+///
+/// The token is returned rather than stored: what is kept is a digest, so an
+/// operator reading this table cannot use what they find in it. The caller
+/// puts the token in a letter and then has no way to see it again — which is
+/// also why a lost invitation is resent rather than looked up.
+///
+/// Replaces any open invitation for the same address. Two live tokens for one
+/// person is two ways in, and the second was always meant to be the first one
+/// again.
+pub async fn invite(
+    pool: &PgPool,
+    email: &str,
+    name: &str,
+    role: Role,
+    by: Option<Uuid>,
+) -> tezgah::Result<(Invitation, String)> {
+    let email = email.trim();
+    if email.is_empty() || !email.contains('@') {
+        return Err(tezgah::Error::invalid("that is not an e-mail address"));
+    }
+
+    if taken(pool, email).await? {
+        return Err(tezgah::Error::invalid(
+            "somebody already has an account with that address",
+        ));
+    }
+
+    let token = mint_token();
+    let id = Uuid::now_v7();
+    let expires_at = Utc::now() + Duration::days(INVITATION_DAYS);
+
+    let row: (DateTime<Utc>,) = sqlx::query_as(
+        "insert into server_invitation
+             (id, email, name, role, token_digest, invited_by, expires_at)
+         values ($1, $2, $3, $4, $5, $6, $7)
+         on conflict (lower(email)) where accepted_at is null
+         do update set
+             id = excluded.id,
+             name = excluded.name,
+             role = excluded.role,
+             token_digest = excluded.token_digest,
+             invited_by = excluded.invited_by,
+             created_at = now(),
+             expires_at = excluded.expires_at
+         returning created_at",
+    )
+    .bind(id)
+    .bind(email)
+    .bind(name.trim())
+    .bind(role.as_str())
+    .bind(digest(&token))
+    .bind(by)
+    .bind(expires_at)
+    .fetch_one(pool)
+    .await?;
+
+    Ok((
+        Invitation {
+            id,
+            email: email.to_owned(),
+            name: name.trim().to_owned(),
+            role,
+            expires_at,
+            created_at: row.0,
+        },
+        token,
+    ))
+}
+
+/// Turns an invitation into an account, once.
+///
+/// The row is marked accepted in the same transaction that makes the
+/// operator, so a token cannot make two accounts even if two requests arrive
+/// together: the update names `accepted_at is null` and the second one
+/// matches nothing.
+pub async fn accept_invitation(
+    pool: &PgPool,
+    token: &str,
+    password: &str,
+) -> tezgah::Result<Operator> {
+    let mut tx = pool.begin().await?;
+
+    let found: Option<(Uuid, String, String, String)> = sqlx::query_as(
+        "update server_invitation
+         set accepted_at = now()
+         where token_digest = $1
+           and accepted_at is null
+           and expires_at > now()
+         returning id, email, name, role",
+    )
+    .bind(digest(token))
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    // The same answer for a token that never existed, one already used and one
+    // that expired. Which of the three it was is not the holder's business,
+    // and telling them narrows a guess.
+    let Some((_, email, name, role)) = found else {
+        return Err(tezgah::Error::denied());
+    };
+
+    let operator = create_operator_in(&mut tx, &email, &name, password, Role::parse(&role)).await?;
+    tx.commit().await?;
+
+    Ok(operator)
+}
+
+/// Invitations sent and not yet accepted, so a shop can see who is expected.
+/// The token is not here and cannot be: only its digest was kept.
+pub async fn open_invitations(pool: &PgPool) -> tezgah::Result<Vec<Invitation>> {
+    let rows: Vec<(Uuid, String, String, String, DateTime<Utc>, DateTime<Utc>)> = sqlx::query_as(
+        "select id, email, name, role, expires_at, created_at
+         from server_invitation
+         where accepted_at is null and expires_at > now()
+         order by created_at desc",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(
+            |(id, email, name, role, expires_at, created_at)| Invitation {
+                id,
+                email,
+                name,
+                role: Role::parse(&role),
+                expires_at,
+                created_at,
+            },
+        )
+        .collect())
 }
 
 pub async fn count(pool: &PgPool) -> tezgah::Result<i64> {
@@ -239,6 +417,25 @@ pub async fn create_operator(
     password: &str,
     role: Role,
 ) -> tezgah::Result<Operator> {
+    let mut tx = pool.begin().await?;
+    let made = create_operator_in(&mut tx, email, name, password, role).await?;
+    tx.commit().await?;
+    Ok(made)
+}
+
+/// The same, inside somebody else's transaction.
+///
+/// Accepting an invitation needs this: the invitation is marked used and the
+/// account is made together, or neither happens. A token that burned itself
+/// on an account that then failed to insert would be a person locked out by a
+/// race they cannot see.
+pub(crate) async fn create_operator_in(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    email: &str,
+    name: &str,
+    password: &str,
+    role: Role,
+) -> tezgah::Result<Operator> {
     if password.chars().count() < 12 {
         return Err(tezgah::Error::invalid(
             "a password is at least twelve characters",
@@ -255,11 +452,10 @@ pub async fn create_operator(
     // whose only account cannot make a second one has locked itself out with
     // the key inside — and the only way back would be the `ADMIN_TOKEN` it
     // was told it could stop keeping.
-    let role = if count(pool).await? == 0 {
-        Role::Owner
-    } else {
-        role
-    };
+    let (existing,): (i64,) = sqlx::query_as("select count(*) from server_operator")
+        .fetch_one(&mut **tx)
+        .await?;
+    let role = if existing == 0 { Role::Owner } else { role };
 
     sqlx::query(
         "insert into server_operator (id, email, name, password_hash, role)
@@ -270,7 +466,7 @@ pub async fn create_operator(
     .bind(name)
     .bind(&hash)
     .bind(role.as_str())
-    .execute(pool)
+    .execute(&mut **tx)
     .await
     .map_err(|err| match err {
         sqlx::Error::Database(ref db) if db.code().as_deref() == Some("23505") => {
@@ -285,6 +481,18 @@ pub async fn create_operator(
         name: name.to_owned(),
         role,
     })
+}
+
+/// Whether an account already exists for this address, case-insensitively —
+/// the same way the unique index reads it.
+pub async fn taken(pool: &PgPool, email: &str) -> tezgah::Result<bool> {
+    let (found,): (bool,) = sqlx::query_as(
+        "select exists (select 1 from server_operator where lower(email) = lower($1))",
+    )
+    .bind(email)
+    .fetch_one(pool)
+    .await?;
+    Ok(found)
 }
 
 pub async fn list_operators(pool: &PgPool) -> tezgah::Result<Vec<OperatorRow>> {

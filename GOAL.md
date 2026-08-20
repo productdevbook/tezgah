@@ -365,12 +365,12 @@ In `app/`:
       against: its storefront runs as a guest whose cart id came from the same
       path parameter it is asked about, so a rule comparing the two refuses
       nothing. The sign-in comes first
-- [ ] a file to live and a letter to be sent. An event has somewhere to *go*
-      now: written in the transaction of the change it belongs to, then posted
-      to one URL, signed, retried with a doubling backoff and left dead with
-      its reason. What is left is a mailer — so an invitation, a notification
-      and a reset link can exist — and a file store, so a product image is not
-      a URL somebody else hosts
+- [ ] a file to live, and the rest of the letters. An event has somewhere to
+      *go* — written in the transaction of the change it belongs to, then
+      posted to one URL, signed, retried, dead-lettered — and there is a
+      mailer, which an operator invitation uses. What is left is a shopper's
+      order confirmation, a password reset somebody can ask for themselves,
+      and a file store so a product image is not a URL somebody else hosts
 - [ ] the rest of the route table: 116 of 486 bound by hand, 228 drawn by the
       panel. Counted from the other side: of the 77 `/admin/…/{id}/…`
       sub-routes, 70 were drawn by no screen and ten of those were already

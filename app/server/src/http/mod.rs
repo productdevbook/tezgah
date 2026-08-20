@@ -54,6 +54,12 @@ pub struct AppState {
     /// provider retries a 404 and says so on its dashboard while an unsigned
     /// endpoint accepts a forged capture quietly.
     pub webhook_secret: Option<Arc<str>>,
+    /// `None` when no SMTP was configured. Everything needing a letter checks
+    /// and says it cannot rather than reporting one sent.
+    pub mailer: Option<crate::mail::Mailer>,
+    /// Where the panel lives, for the link in an invitation. Present exactly
+    /// when `mailer` is — `config::Config` refuses one without the other.
+    pub panel_url: Option<Arc<str>>,
 }
 
 /// The paths this binary actually serves out of `tezgah::api::routes()`,

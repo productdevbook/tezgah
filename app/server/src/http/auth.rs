@@ -85,10 +85,39 @@ pub struct NewPassword {
     pub password: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct NewInvitation {
+    pub email: String,
+    pub name: String,
+    /// `owner`, `staff` or `viewer`, read the same narrow way a new account's
+    /// is: anything else is a viewer.
+    pub role: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AcceptInvitation {
+    pub token: String,
+    pub password: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct InvitationView {
+    pub id: Uuid,
+    pub email: String,
+    pub name: String,
+    pub role: &'static str,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub expires_at: chrono::DateTime<chrono::Utc>,
+}
+
 /// The one route that cannot be behind the gate, because it is how somebody
 /// gets through it.
 pub fn open_router() -> Router<AppState> {
-    Router::new().route("/auth/session", post(sign_in))
+    Router::new()
+        .route("/auth/session", post(sign_in))
+        // Open, and it has to be: whoever holds an invitation has no account
+        // yet, which is the whole point of one. The token is the credential.
+        .route("/auth/invitation", post(accept_invitation))
 }
 
 /// Everything else, mounted behind `admin::require_operator` by
@@ -171,6 +200,111 @@ async fn list(State(state): State<AppState>) -> Result<Json<Vec<OperatorRowView>
             })
             .collect(),
     ))
+}
+
+/// An owner invites somebody, and the letter is the whole feature.
+///
+/// Refused outright without a mailer rather than answering with a token for
+/// the owner to copy: a token that travels by whatever the owner pastes it
+/// into is a password sent in the clear, and the shop already has an honest
+/// way to add a colleague — make the account and tell them the password.
+///
+/// The token is in the link and nowhere else. It is not in the response, not
+/// in the row (only its digest is) and not in the log, so an owner who loses
+/// it invites again.
+async fn invite(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Json(body): Json<NewInvitation>,
+) -> Result<Json<InvitationView>, ApiError> {
+    only_an_owner(&caller)?;
+
+    let (Some(mailer), Some(panel)) = (state.mailer.as_ref(), state.panel_url.as_deref()) else {
+        return Err(tezgah::Error::invalid(
+            "this shop cannot send letters — set TEZGAH_SMTP_URL, or make the account \
+             yourself and tell them the password",
+        )
+        .into());
+    };
+
+    let role = body.role.as_deref().map_or(Role::Staff, Role::parse);
+    let by = caller.operator().map(|operator| operator.id);
+    let (invitation, token) =
+        identity::invite(&state.pool, &body.email, &body.name, role, by).await?;
+
+    let link = format!("{}/?invitation={token}", panel.trim_end_matches('/'));
+    mailer
+        .send(
+            &invitation.email,
+            "You have been invited to the shop's back office",
+            &format!(
+                "{} invited you to the back office.\n\n\
+                 Choose a password here — the link works once and stops working {}:\n\n{link}\n",
+                invitation.name,
+                invitation.expires_at.format("on %e %B"),
+            ),
+        )
+        .await?;
+
+    Ok(Json(InvitationView {
+        id: invitation.id,
+        email: invitation.email,
+        name: invitation.name,
+        role: invitation.role.as_str(),
+        created_at: invitation.created_at,
+        expires_at: invitation.expires_at,
+    }))
+}
+
+/// Who is expected but has not arrived. No token here — only its digest was
+/// kept, and an invitation an owner can read out of a list is an invitation
+/// they can use.
+async fn list_invitations(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+) -> Result<Json<Vec<InvitationView>>, ApiError> {
+    only_an_owner(&caller)?;
+
+    Ok(Json(
+        identity::open_invitations(&state.pool)
+            .await?
+            .into_iter()
+            .map(|one| InvitationView {
+                id: one.id,
+                email: one.email,
+                name: one.name,
+                role: one.role.as_str(),
+                created_at: one.created_at,
+                expires_at: one.expires_at,
+            })
+            .collect(),
+    ))
+}
+
+/// Turns an invitation into an account. Open, because whoever holds one has
+/// no account yet.
+///
+/// Answers the same refusal for a token that never existed, one already used
+/// and one that expired — which of the three it was is not the holder's
+/// business, and saying narrows a guess.
+/// Answers with a session, not just the account.
+///
+/// Whoever did this proved they hold the invitation and chose the password a
+/// moment ago; sending them to a sign-in form to type it again proves nothing
+/// and is one more chance to mistype it. It also means the panel never has to
+/// know the address the invitation was sent to.
+async fn accept_invitation(
+    State(state): State<AppState>,
+    Json(body): Json<AcceptInvitation>,
+) -> Result<Json<SessionView>, ApiError> {
+    let made = identity::accept_invitation(&state.pool, &body.token, &body.password).await?;
+    let issued = identity::sign_in(&state.pool, &made.email, &body.password).await?;
+
+    Ok(Json(SessionView {
+        token: issued.token,
+        expires_at: issued.expires_at,
+        operator: issued.operator.into(),
+    }))
 }
 
 async fn create(

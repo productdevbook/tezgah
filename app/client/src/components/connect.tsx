@@ -13,6 +13,7 @@ import {
 import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { acceptInvitation } from "@/features/operators/api"
 import { hold } from "@/lib/token"
 
 /**
@@ -26,7 +27,39 @@ import { hold } from "@/lib/token"
  * Either way what the browser keeps is a bearer token, so nothing past this
  * screen has to know which it holds.
  */
-export function Connect({ onConnected }: { onConnected: () => void }) {
+export function Connect({
+  onConnected,
+  invitation,
+}: {
+  onConnected: () => void
+  /**
+   * The token out of `?invitation=…`, read by `App.tsx` — the host, and the
+   * only file here allowed to look at the URL.
+   */
+  invitation?: string
+}) {
+  // An invitation is not a third tab. Somebody arriving on that link has no
+  // account and no token, so offering them two ways to sign in with neither
+  // is offering them nothing.
+  if (invitation) {
+    return (
+      <div className="flex min-h-svh items-center justify-center p-6">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle>Choose a password</CardTitle>
+            <CardDescription>
+              This link works once. After that, sign in with the address it was
+              sent to.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Accept token={invitation} onConnected={onConnected} />
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   return (
     <div className="flex min-h-svh items-center justify-center p-6">
       <Card className="w-full max-w-md">
@@ -52,6 +85,87 @@ export function Connect({ onConnected }: { onConnected: () => void }) {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+function Accept({
+  token,
+  onConnected,
+}: {
+  token: string
+  onConnected: () => void
+}) {
+  const [password, setPassword] = useState("")
+  const [again, setAgain] = useState("")
+  const [refused, setRefused] = useState<string | null>(null)
+  const [sending, setSending] = useState(false)
+
+  const short = password.length > 0 && password.length < 12
+  const differs = again.length > 0 && again !== password
+
+  async function submit(event: FormEvent) {
+    event.preventDefault()
+    setRefused(null)
+    setSending(true)
+    try {
+      // Straight in: accepting answers with a session, because somebody who
+      // just proved they hold the invitation and chose the password should not
+      // be sent to a form to type it again.
+      const session = await acceptInvitation(token, password)
+      hold(session.token)
+      onConnected()
+    } catch (error) {
+      setRefused(
+        error instanceof ApiError && error.kind === "unreachable"
+          ? "No host answered."
+          : "That invitation has been used already, or it has run out."
+      )
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <form className="space-y-3" onSubmit={submit}>
+      <Field>
+        <FieldLabel htmlFor="new-password">Password</FieldLabel>
+        <Input
+          id="new-password"
+          type="password"
+          autoComplete="new-password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          aria-invalid={short}
+        />
+        {short ? (
+          <p className="text-xs text-destructive">
+            At least twelve characters.
+          </p>
+        ) : null}
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="again">Again</FieldLabel>
+        <Input
+          id="again"
+          type="password"
+          autoComplete="new-password"
+          value={again}
+          onChange={(event) => setAgain(event.target.value)}
+          aria-invalid={differs}
+        />
+        {differs ? (
+          <p className="text-xs text-destructive">These two do not match.</p>
+        ) : null}
+      </Field>
+      {refused ? <p className="text-sm text-destructive">{refused}</p> : null}
+      <Button
+        type="submit"
+        className="w-full"
+        disabled={sending || short || differs || password.length < 12 || !again}
+      >
+        {sending ? "Setting…" : "Set it and sign in"}
+      </Button>
+    </form>
   )
 }
 
