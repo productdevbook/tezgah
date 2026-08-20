@@ -502,11 +502,16 @@ pub async fn create_region(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewRegion) -> Re
     let payment_providers = payment_provider_codes(new.payment_providers)?;
 
     let id = RegionId::new();
+    // `on conflict` rather than catching the violation after it happened: a
+    // caught unique violation has already aborted the caller's transaction —
+    // the same reason `create_sales_channel` and `create_stock_location` do
+    // this instead of a plain insert.
     let region = sqlx::query_as::<_, Region>(&format!(
         "insert into region
              (id, scope, name, currency_code, is_tax_inclusive, has_automatic_taxes,
               payment_providers)
          values ($1, $2, $3, $4, $5, $6, $7)
+         on conflict (scope, name) do nothing
          returning {REGION_COLUMNS}"
     ))
     .bind(id.as_uuid())
@@ -516,8 +521,9 @@ pub async fn create_region(tx: &mut Tx<'_>, ctx: &Ctx<'_>, new: NewRegion) -> Re
     .bind(new.is_tax_inclusive)
     .bind(new.has_automatic_taxes)
     .bind(&payment_providers)
-    .fetch_one(&mut **tx)
-    .await?;
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or_else(|| Error::conflict("a region of that name is already here"))?;
 
     ctx.audit(
         tx,
