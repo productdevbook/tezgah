@@ -191,7 +191,7 @@ has nowhere to say so. A file store and a mailer are the same absence seen
 from a different side: a product image can only be a URL somebody else hosts,
 and nothing in the product can send a receipt.
 
-**112 of 483 declared routes are bound.** The panel draws 228. The difference
+**113 of 483 declared routes are bound.** The panel draws 228. The difference
 is not a mistake — each binding is written by hand, deliberately — but it does
 mean the panel and the binary disagree about what the product is, and the
 number will not close by hand at that rate. Either the route table grows a
