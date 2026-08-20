@@ -47,7 +47,7 @@ there is authentication and no authorization — every operator can do
 everything; nothing can send a letter, so there is no invitation and no
 password reset; the job worker dispatches nothing, so a declined subscription
 renewal is retried never; events and audit entries go to stdout; a product
-image can only be a URL somebody else hosts; and 137 of the library's 486
+image can only be a URL somebody else hosts; and 154 of the library's 486
 declared routes are bound.
 
 Each of those is written down rather than discovered, and each says which side
