@@ -49,6 +49,8 @@ export function SectionLink({
       return <Link to="/operators" {...props} />
     case "batch":
       return <Link to="/batch" {...props} />
+    case "records":
+      return <Link to="/records" {...props} />
     default:
       return <Link to="/$section" params={{ section: slug }} {...props} />
   }

@@ -12,7 +12,7 @@
 //! this binary has no mailer, and a reset link it cannot send is worse than
 //! one it never offered — `ADMIN_TOKEN` is the way back in.
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::routing::{get, patch, post};
 use axum::{Extension, Json, Router};
 use serde::{Deserialize, Serialize};
@@ -102,6 +102,8 @@ pub fn gated_router() -> Router<AppState> {
         .route("/admin/operators", get(list).post(create))
         .route("/admin/operators/{id}", patch(update))
         .route("/admin/operators/{id}/password", post(reset_password))
+        .route("/admin/records/audit", get(audit))
+        .route("/admin/records/events", get(events))
 }
 
 async fn sign_in(
@@ -301,4 +303,144 @@ impl Caller {
             .map(|operator| operator.id)
             .unwrap_or(Uuid::nil())
     }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Recent {
+    /// How many rows, clamped the same way a page is: a screen asking for a
+    /// hundred thousand wants as many as it can have, not an error.
+    pub limit: Option<i64>,
+}
+
+impl Recent {
+    fn rows(&self) -> i64 {
+        self.limit.unwrap_or(50).clamp(1, 200)
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct AuditRow {
+    pub id: Uuid,
+    pub actor_kind: String,
+    pub actor_id: Option<Uuid>,
+    pub action: String,
+    pub entity: String,
+    pub entity_id: Uuid,
+    pub summary: serde_json::Value,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct EventRow {
+    pub id: Uuid,
+    pub name: String,
+    pub entity_id: Uuid,
+    pub payload: serde_json::Value,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub delivered_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+type AuditTuple = (
+    Uuid,
+    String,
+    Option<Uuid>,
+    String,
+    String,
+    Uuid,
+    serde_json::Value,
+    chrono::DateTime<chrono::Utc>,
+);
+
+type EventTuple = (
+    Uuid,
+    String,
+    Uuid,
+    serde_json::Value,
+    chrono::DateTime<chrono::Utc>,
+    Option<chrono::DateTime<chrono::Utc>>,
+);
+
+/// What was written down, newest first. An owner's, because it is the record
+/// of what their staff did and reading it is oversight rather than work.
+///
+/// Not one of tezgah's routes — the crate asks a host to keep an audit trail
+/// and does not say how it is read back. Newest first and a fixed ceiling
+/// rather than a cursor, because what this answers is "what just happened",
+/// and a shop asking a longer question wants the database rather than a
+/// screen.
+async fn audit(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Query(query): Query<Recent>,
+) -> Result<Json<Vec<AuditRow>>, ApiError> {
+    only_an_owner(&caller)?;
+
+    let rows: Vec<AuditTuple> = sqlx::query_as(
+        "select id, actor_kind, actor_id, action, entity, entity_id, summary, created_at
+         from server_audit
+         order by created_at desc, id desc
+         limit $1",
+    )
+    .bind(query.rows())
+    .fetch_all(&state.pool)
+    .await
+    .map_err(tezgah::Error::from)?;
+
+    Ok(Json(
+        rows.into_iter()
+            .map(
+                |(id, actor_kind, actor_id, action, entity, entity_id, summary, created_at)| {
+                    AuditRow {
+                        id,
+                        actor_kind,
+                        actor_id,
+                        action,
+                        entity,
+                        entity_id,
+                        summary,
+                        created_at,
+                    }
+                },
+            )
+            .collect(),
+    ))
+}
+
+/// The outbox, newest first, and an owner's for the same reason the audit
+/// trail is: a payload carries whatever the change carried.
+///
+/// `delivered_at` is null on every row, because nothing here sends them
+/// anywhere — see `host::ServerHost`'s `emit`.
+async fn events(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Query(query): Query<Recent>,
+) -> Result<Json<Vec<EventRow>>, ApiError> {
+    only_an_owner(&caller)?;
+
+    let rows: Vec<EventTuple> = sqlx::query_as(
+        "select id, name, entity_id, payload, created_at, delivered_at
+         from server_event
+         order by created_at desc, id desc
+         limit $1",
+    )
+    .bind(query.rows())
+    .fetch_all(&state.pool)
+    .await
+    .map_err(tezgah::Error::from)?;
+
+    Ok(Json(
+        rows.into_iter()
+            .map(
+                |(id, name, entity_id, payload, created_at, delivered_at)| EventRow {
+                    id,
+                    name,
+                    entity_id,
+                    payload,
+                    created_at,
+                    delivered_at,
+                },
+            )
+            .collect(),
+    ))
 }

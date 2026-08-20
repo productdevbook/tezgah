@@ -209,4 +209,5 @@ export const COVERAGE = {
 export const SERVER_SECTIONS: { slug: string; title: string }[] = [
   { slug: "operators", title: "Operators" },
   { slug: "batch", title: "Import and export" },
+  { slug: "records", title: "What happened" },
 ]

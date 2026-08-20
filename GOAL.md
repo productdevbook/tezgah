@@ -360,8 +360,11 @@ In `app/`:
       against: its storefront runs as a guest whose cart id came from the same
       path parameter it is asked about, so a rule comparing the two refuses
       nothing. The sign-in comes first
-- [ ] somewhere for an event to go, a file to live and a letter to be sent —
-      all three are stdout or a URL somebody else hosts
+- [ ] somewhere for an event to *go*, a file to live and a letter to be sent.
+      Events and audit rows are written down now — an outbox row and an audit
+      row, each in the transaction of the change it belongs to, read at
+      `/records` — but nothing delivers them, and a product image is still a
+      URL somebody else hosts
 - [ ] the rest of the route table: 111 of 483 bound by hand, 228 drawn by the
       panel
 - [ ] tracing, metrics, a request log, readiness apart from liveness, a CORS
@@ -381,9 +384,9 @@ In the panel:
 - [ ] the routing half of the seam — what a screen says and sends is a
       host's answer now; where it lives is still a fixed route root and a
       sidebar switched over a closed route union
-- [ ] a test for a child route whose parent draws no outlet — all five "edit
+- [x] a test for a child route whose parent draws no outlet — all five "edit
       a record" screens were unreachable that way, silently, from the commit
-      that added them
+      that added them. `scripts/check-outlets.mjs`, in CI
 
 ## Deliberately not built
 

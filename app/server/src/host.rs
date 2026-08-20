@@ -122,35 +122,77 @@ impl Clock for ServerHost {
     }
 }
 
+/// Which kind of caller an audit row was written under, and its id when it
+/// has one.
+///
+/// `Actor` is `#[non_exhaustive]`, so a kind added to the crate lands in the
+/// catch-all rather than failing to compile — and the row says `unknown`
+/// rather than naming the wrong thing. An audit log that quietly attributed a
+/// new kind of caller to an old one would be worse than one that says it does
+/// not know.
+fn actor_columns(actor: &Actor) -> (&'static str, Option<Uuid>) {
+    match actor {
+        Actor::Staff { id } => ("staff", Some(*id)),
+        Actor::Customer { id } => ("customer", Some(*id)),
+        Actor::Guest { cart } => ("guest", Some(*cart)),
+        Actor::System => ("system", None),
+        _ => ("unknown", None),
+    }
+}
+
 #[async_trait]
 impl AuditSink for ServerHost {
-    async fn record(&self, _tx: &mut Tx<'_>, entry: AuditEntry) -> tezgah::Result<()> {
-        println!(
-            "{}",
-            serde_json::json!({
-                "kind": "audit",
-                "action": format!("{:?}", entry.action),
-                "entity": entry.entity,
-                "entity_id": entry.entity_id,
-                "summary": entry.summary,
-            })
-        );
+    /// Written into the caller's own transaction, which is the whole reason
+    /// the port hands one over: a change that rolls back takes its audit row
+    /// with it, and a row that survived a rollback would be a record of
+    /// something that did not happen.
+    async fn record(&self, tx: &mut Tx<'_>, entry: AuditEntry) -> tezgah::Result<()> {
+        let (kind, id) = actor_columns(&entry.actor);
+
+        sqlx::query(
+            "insert into server_audit
+                 (id, actor_kind, actor_id, action, entity, entity_id, summary)
+             values ($1, $2, $3, $4, $5, $6, $7)",
+        )
+        .bind(Uuid::now_v7())
+        .bind(kind)
+        .bind(id)
+        .bind(format!("{:?}", entry.action).to_lowercase())
+        .bind(entry.entity)
+        .bind(entry.entity_id)
+        .bind(entry.summary)
+        .execute(&mut **tx)
+        .await?;
+
         Ok(())
     }
 }
 
 #[async_trait]
 impl EventSink for ServerHost {
-    async fn emit(&self, _tx: &mut Tx<'_>, event: Event) -> tezgah::Result<()> {
-        println!(
-            "{}",
-            serde_json::json!({
-                "kind": "event",
-                "name": event.name,
-                "entity_id": event.entity_id,
-                "payload": event.payload,
-            })
-        );
+    /// An outbox row, in the caller's transaction — which is what
+    /// `docs/hosting.md` asks of this port: tezgah says `order.paid` and
+    /// delivery is the host's. Writing it here rather than printing it means
+    /// an event that mattered is still there when nobody was tailing the log,
+    /// and an event whose change rolled back was never written at all.
+    ///
+    /// `delivered_at` is the half this binary does not do. Nothing sends
+    /// these anywhere: there is no mailer and no HTTP client here, so the
+    /// column stays null and the rows are read rather than pushed. That is a
+    /// gap named in `docs/architecture.md`, and it is a smaller one than a
+    /// line on stdout.
+    async fn emit(&self, tx: &mut Tx<'_>, event: Event) -> tezgah::Result<()> {
+        sqlx::query(
+            "insert into server_event (id, name, entity_id, payload)
+             values ($1, $2, $3, $4)",
+        )
+        .bind(Uuid::now_v7())
+        .bind(event.name)
+        .bind(event.entity_id)
+        .bind(event.payload)
+        .execute(&mut **tx)
+        .await?;
+
         Ok(())
     }
 }
@@ -207,6 +249,57 @@ pub async fn create_jobs_table(pool: &PgPool) -> tezgah::Result<()> {
         .execute(pool)
         .await?;
     }
+
+    Ok(())
+}
+
+/// The two tables the audit sink and the event sink write into.
+///
+/// This binary's, like `server_job` and `server_operator`: tezgah owns no
+/// migration for either and never will. No `scope` column, because this
+/// installation is one shop — and no row-level security for the same reason.
+pub async fn create_record_tables(pool: &PgPool) -> tezgah::Result<()> {
+    sqlx::query(
+        "create table if not exists server_audit (
+             id uuid primary key,
+             actor_kind text not null,
+             actor_id uuid,
+             action text not null,
+             entity text not null,
+             entity_id uuid not null,
+             summary jsonb not null,
+             created_at timestamptz not null default now()
+         )",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "create index if not exists server_audit_entity
+         on server_audit (entity, entity_id, created_at desc)",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "create table if not exists server_event (
+             id uuid primary key,
+             name text not null,
+             entity_id uuid not null,
+             payload jsonb not null,
+             created_at timestamptz not null default now(),
+             delivered_at timestamptz
+         )",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "create index if not exists server_event_undelivered
+         on server_event (created_at) where delivered_at is null",
+    )
+    .execute(pool)
+    .await?;
 
     Ok(())
 }

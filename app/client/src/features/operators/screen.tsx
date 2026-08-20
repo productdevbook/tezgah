@@ -19,12 +19,12 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { dateTime } from "@/lib/detail"
+import { useWhoAmI } from "@/lib/session"
 import {
   listOperators,
   patchOperator,
   resetPassword,
   ROLE_MEANS,
-  whoAmI,
   type Operator,
   type Role,
 } from "@/features/operators/api"
@@ -65,10 +65,7 @@ export function Operators() {
     queryFn: ({ signal }) => listOperators(signal),
   })
 
-  const me = useQuery({
-    queryKey: ["whoami"],
-    queryFn: ({ signal }) => whoAmI(signal),
-  })
+  const me = useWhoAmI()
 
   return (
     <div className="space-y-4">

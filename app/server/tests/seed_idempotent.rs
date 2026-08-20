@@ -57,6 +57,12 @@ impl Database {
             .await
             .expect("the migrations to apply");
 
+        // Seeding a shop writes an audit row, and `server_audit` is not one
+        // of tezgah's tables.
+        tezgah_server::prepare(&pool)
+            .await
+            .expect("the tables this binary owns");
+
         Database { admin, pool, name }
     }
 
