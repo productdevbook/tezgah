@@ -75,6 +75,33 @@ export const PostAdminPaymentCollectionsByIdPaymentSessionsParams = zod.object({
 export const PostAdminPaymentCollectionsByIdPaymentSessionsResponse = zod.unknown()
 
 /**
+ * @summary List callbacks received and not yet acted on
+ */
+export const GetAdminPaymentWebhooksResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "attempts": zod.int(),
+  "event_id": zod.string(),
+  "event_type": zod.string(),
+  "id": zod.uuid().describe('Identifies one payment webhook event.'),
+  "payload": zod.unknown(),
+  "payment_provider_id": zod.uuid().describe('Identifies one payment provider.'),
+  "received_at": zod.iso.datetime({"offset":true})
+}))
+}))
+
+/**
+ * @summary Say a received callback has been acted on
+ */
+export const PostAdminPaymentWebhooksByIdProcessedParams = zod.object({
+  "id": zod.string()
+})
+
+export const PostAdminPaymentWebhooksByIdProcessedResponse = zod.unknown()
+
+/**
  * @summary List payments
  */
 export const getAdminPaymentsResponseTwoItemsItemAmountAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
@@ -228,4 +255,31 @@ export const GetStorePaymentProvidersResponseItem = zod.object({
   "code": zod.string()
 })
 export const GetStorePaymentProvidersResponse = zod.array(GetStorePaymentProvidersResponseItem)
+
+/**
+ * @summary Receive a payment provider's callback
+ */
+export const PostWebhooksPaymentsByProviderParams = zod.object({
+  "provider": zod.string()
+})
+
+export const postWebhooksPaymentsByProviderBodyAmountOneAmountRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+
+
+export const PostWebhooksPaymentsByProviderBody = zod.object({
+  "amount": zod.union([zod.object({
+  "amount": zod.union([zod.string().regex(postWebhooksPaymentsByProviderBodyAmountOneAmountRegExpOne),zod.number()]),
+  "currency": zod.string()
+}).describe('An amount as it arrives over the wire. Never a float, and the currency is\ncarried with it so nothing has to guess which shop\'s money this is.'),zod.null()]).optional(),
+  "event_id": zod.string().describe('The provider\'s own id for this delivery. The same one arrives again\nwhen they redeliver, which is what makes the write idempotent.'),
+  "event_type": zod.string().describe('The provider\'s name for it, kept for the audit trail.'),
+  "kind": zod.union([zod.enum(['authorized', 'captured', 'refunded', 'canceled', 'failed']),zod.literal("other").describe('Something tezgah does not model. Recorded, acknowledged, ignored.')]),
+  "payload": zod.unknown(),
+  "session_id": zod.union([zod.uuid().describe('Identifies one payment session.'),zod.null()]).optional()
+}).describe('What a provider sends, once the host has checked the signature.\n\nThe signature is not in here on purpose: it is over bytes this type has\nalready been parsed out of, and checking it against a re-serialised body\nis how a valid signature stops matching. The host verifies the request it\nreceived and then calls this.\n\n`payload` is the provider\'s own body, kept verbatim — the audit trail\nwants what arrived rather than what tezgah understood of it.')
+
+export const PostWebhooksPaymentsByProviderResponse = zod.object({
+  "id": zod.union([zod.uuid().describe('Identifies one payment webhook event.'),zod.null()]),
+  "recorded": zod.boolean().describe('`false` when this delivery has been seen before. The provider is\nacknowledged either way; a redelivery just changes nothing.')
+})
 

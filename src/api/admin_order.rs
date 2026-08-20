@@ -5095,10 +5095,23 @@ mod tests {
         }
     }
 
+    /// One exception, and it is the whole reason `Surface::Webhook` exists: a
+    /// payment provider's callback belongs to this domain and to neither of
+    /// the two audiences. It is checked here rather than exempted, so a second
+    /// route quietly landing on that surface has to be argued for.
     #[test]
-    fn every_route_is_on_the_admin_surface() {
+    fn every_route_is_on_the_admin_surface_but_the_provider_callback() {
+        let mut elsewhere = Vec::new();
         for route in ROUTES {
-            assert_eq!(route.surface, Surface::Admin, "{} is not admin", route.path);
+            if route.surface != Surface::Admin {
+                elsewhere.push((route.surface, route.path));
+            }
         }
+
+        assert_eq!(
+            elsewhere,
+            vec![(Surface::Webhook, "/webhooks/payments/{provider}")],
+            "a route in this module is on a surface nobody wrote down here"
+        );
     }
 }
