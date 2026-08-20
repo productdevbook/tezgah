@@ -15,7 +15,20 @@ export const GetAdminCustomersByIdTaxExemptionsParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminCustomersByIdTaxExemptionsResponse = zod.unknown()
+export const GetAdminCustomersByIdTaxExemptionsResponseItem = zod.object({
+  "certificate_reference": zod.string().nullable(),
+  "country_code": zod.string(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "customer_id": zod.uuid().describe('Identifies one customer.'),
+  "id": zod.uuid(),
+  "kind": zod.string(),
+  "province_code": zod.string().nullable(),
+  "reason_code": zod.string().nullable(),
+  "valid_from": zod.iso.datetime({"offset":true}),
+  "valid_until": zod.iso.datetime({"offset":true}).nullable(),
+  "verified_at": zod.iso.datetime({"offset":true}).nullable()
+})
+export const GetAdminCustomersByIdTaxExemptionsResponse = zod.array(GetAdminCustomersByIdTaxExemptionsResponseItem)
 
 /**
  * @summary File a certificate that exempts a customer
@@ -33,7 +46,17 @@ export const GetAdminCustomersByIdTaxIdsParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminCustomersByIdTaxIdsResponse = zod.unknown()
+export const GetAdminCustomersByIdTaxIdsResponseItem = zod.object({
+  "created_at": zod.iso.datetime({"offset":true}),
+  "customer_id": zod.uuid().describe('Identifies one customer.'),
+  "evidence": zod.string().nullable(),
+  "id": zod.uuid(),
+  "tax_id": zod.string(),
+  "tax_id_country": zod.string(),
+  "tax_id_type": zod.string(),
+  "validated_at": zod.iso.datetime({"offset":true}).nullable()
+}).describe('A buyer\'s number. `validated_at` is what decides anything: an unchecked\nnumber is a string somebody typed.')
+export const GetAdminCustomersByIdTaxIdsResponse = zod.array(GetAdminCustomersByIdTaxIdsResponseItem)
 
 /**
  * @summary Record a customer's tax number and what checking it returned
@@ -65,7 +88,24 @@ export const DeleteAdminTaxIdsByIdResponse = zod.unknown()
 /**
  * @summary List tax rates, optionally within one region
  */
-export const GetAdminTaxRatesResponse = zod.unknown()
+export const getAdminTaxRatesResponseTwoItemsItemRateRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetAdminTaxRatesResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "code": zod.string().nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one tax rate.'),
+  "is_combinable": zod.boolean(),
+  "is_default": zod.boolean(),
+  "name": zod.string(),
+  "rate": zod.string().regex(getAdminTaxRatesResponseTwoItemsItemRateRegExp),
+  "tax_region_id": zod.uuid().describe('Identifies one tax region.')
+}))
+}))
 
 /**
  * @summary Create a tax rate
@@ -88,7 +128,19 @@ export const GetAdminTaxRatesByIdParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminTaxRatesByIdResponse = zod.unknown()
+export const getAdminTaxRatesByIdResponseRateRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetAdminTaxRatesByIdResponse = zod.object({
+  "code": zod.string().nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one tax rate.'),
+  "is_combinable": zod.boolean(),
+  "is_default": zod.boolean(),
+  "name": zod.string(),
+  "rate": zod.string().regex(getAdminTaxRatesByIdResponseRateRegExp),
+  "tax_region_id": zod.uuid().describe('Identifies one tax region.')
+})
 
 /**
  * @summary Change a tax rate
@@ -106,7 +158,13 @@ export const GetAdminTaxRatesByIdRulesParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminTaxRatesByIdRulesResponse = zod.unknown()
+export const GetAdminTaxRatesByIdRulesResponseItem = zod.object({
+  "id": zod.uuid(),
+  "reference": zod.string(),
+  "reference_id": zod.uuid(),
+  "tax_rate_id": zod.uuid().describe('Identifies one tax rate.')
+})
+export const GetAdminTaxRatesByIdRulesResponse = zod.array(GetAdminTaxRatesByIdRulesResponseItem)
 
 /**
  * @summary Make a tax rate apply to a product, type, collection or shipping option
@@ -130,7 +188,19 @@ export const DeleteAdminTaxRatesByIdRulesByRuleIdResponse = zod.unknown()
 /**
  * @summary List tax regions
  */
-export const GetAdminTaxRegionsResponse = zod.unknown()
+export const GetAdminTaxRegionsResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "country_code": zod.string(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one tax region.'),
+  "parent_id": zod.union([zod.uuid().describe('Identifies one tax region.'),zod.null()]),
+  "provider": zod.string().nullable(),
+  "province_code": zod.string().nullable()
+}))
+}))
 
 /**
  * @summary Create a tax region
@@ -153,7 +223,14 @@ export const GetAdminTaxRegionsByIdParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminTaxRegionsByIdResponse = zod.unknown()
+export const GetAdminTaxRegionsByIdResponse = zod.object({
+  "country_code": zod.string(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one tax region.'),
+  "parent_id": zod.union([zod.uuid().describe('Identifies one tax region.'),zod.null()]),
+  "provider": zod.string().nullable(),
+  "province_code": zod.string().nullable()
+})
 
 /**
  * @summary Change a tax region's country, province or provider
@@ -167,7 +244,17 @@ export const PatchAdminTaxRegionsByIdResponse = zod.unknown()
 /**
  * @summary List where the shop is registered and what it files under
  */
-export const GetAdminTaxRegistrationsResponse = zod.unknown()
+export const GetAdminTaxRegistrationsResponseItem = zod.object({
+  "country_code": zod.string(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid(),
+  "is_home": zod.boolean(),
+  "scheme": zod.string(),
+  "tax_id": zod.string().nullable(),
+  "valid_from": zod.iso.datetime({"offset":true}),
+  "valid_until": zod.iso.datetime({"offset":true}).nullable()
+}).describe('One registration the shop itself holds.')
+export const GetAdminTaxRegistrationsResponse = zod.array(GetAdminTaxRegistrationsResponseItem)
 
 /**
  * @summary Record where the shop is registered

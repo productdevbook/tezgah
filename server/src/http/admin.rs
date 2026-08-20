@@ -1,42 +1,18 @@
-//! The admin surface: one list endpoint per screen the panel in `client/`
-//! draws — products, orders, inventory items, customers, promotions,
-//! subscriptions, and the two the store screen's tabs read, regions and
-//! sales channels — plus the currencies list the overview screen reads, and
-//! the two lists the panel needs and did not have: publishable API keys and
-//! stock locations. Alongside every list, the one-row read behind it: a
-//! click on a row in any of those seven screens has somewhere to go —
-//! `GET /admin/{products,orders,inventory-items,customers,promotions,
-//! regions,sales-channels,subscriptions}/{id}`. Alongside them, the writes a
-//! fresh install needs to reach its first order and cannot make any other
-//! way: enabling a currency, opening a region, a sales channel and a stock
-//! location, minting a publishable key, and creating a product, its
-//! variants, a price and a stocked inventory level — #214. Past that, the
-//! list and single-row read behind an order basket, a workflow run and a
-//! seller scope's own payouts: `GET /admin/order-baskets/{id}` and its two
-//! sub-lists, `GET /admin/workflows-executions` and the single run, its
-//! steps and the scope-wide dead letters, and `GET /admin/commission-rules`,
-//! `/admin/orders/{id}/payout-lines`, `/admin/payouts` and
-//! `/admin/payout-balance/{currency_code}` — none of the three has a screen
-//! in `client/` yet, so nothing calls them but this binary's own startup
-//! count. Past all of that, editing and deleting a row a screen already
-//! lists, wherever `tezgah::api` has the function for it: `PATCH` on
-//! products, regions, sales channels, promotions and customers
-//! (`admin_catalogue::update_product`, `admin_rest::update_region`,
-//! `update_sales_channel`, `update_promotion`, `update_customer`) and on
-//! stock locations (`admin_catalogue::rename_stock_location` — the only
-//! field one has to edit past its address is its name); `DELETE` on all of
-//! those but regions, plus inventory items
-//! (`admin_catalogue::delete_product`, `delete_inventory_item`,
-//! `delete_stock_location`, `admin_rest::delete_sales_channel`,
-//! `delete_promotion`, `delete_customer`). `tezgah::api` has neither for
-//! currencies or publishable API keys — a currency, once enabled, has no
-//! writer past `create_currency`, and a key's own withdrawal is
-//! `POST .../revoke` (`Action::Write`, not a `DELETE`) — nor an update for
-//! an inventory item itself, only for the stock a location holds of it,
-//! already bound above; regions have a route to remove a country from one
-//! but none to remove the region itself. Everything else `tezgah::api`
-//! offers stays unbound; nothing here was chosen for this binary beyond
-//! what those needs cover.
+//! draws, the single-row read behind a click on any of them, the twelve
+//! writes a fresh install needs to reach its first order (#214), editing
+//! and deleting a row a screen already lists wherever `tezgah::api` has the
+//! function for it (`PATCH` on products, regions, sales channels,
+//! promotions, customers and stock locations; `DELETE` on all of those but
+//! regions, plus inventory items — `../README.md`'s route table names each
+//! one), and, past the panel, every list-and-single-read a domain already
+//! had the functions for in `src/api/` with nothing here calling them —
+//! order-basket, workflow, payout, fulfilment, tax, pricing, payment,
+//! credit and (list, single read and writes both, because the domain had
+//! no route at all) digital. `../README.md`'s own route table carries the
+//! full breakdown, kept there rather than duplicated here because it moves
+//! with every domain this binary picks up next. Everything else
+//! `tezgah::api` offers stays unbound; nothing here was chosen for this
+//! binary beyond what those needs cover.
 //!
 //! # Why a bearer token, and why it is the whole of this
 //!
@@ -75,16 +51,19 @@ use axum::extract::{Path, Query, Request, State};
 use axum::http::{StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, patch, post};
+use axum::routing::{delete, get, patch, post};
 use axum::{Json, Router};
 use subtle::ConstantTimeEq;
 use tezgah::api::{
-    admin_catalogue, admin_order, admin_rest, order_basket, payout, store as store_api,
-    subscription,
+    admin_catalogue, admin_order, admin_rest, credit, digital, order_basket, payout,
+    store as store_api, subscription, tax_identity,
 };
 use tezgah::id::{
-    CustomerId, InventoryItemId, OrderBasketId, OrderId, ProductId, PromotionId, RegionId,
-    SalesChannelId, StockLocationId, SubscriptionId, VariantId, WorkflowRunId,
+    CustomerId, DigitalContentId, FulfillmentId, FulfillmentSetId, GiftCardId, InventoryItemId,
+    OrderBasketId, OrderId, PaymentCollectionId, PaymentId, PriceId, PriceListId, PriceSetId,
+    ProductId, PromotionId, RegionId, SalesChannelId, ShippingOptionId, ShippingProfileId,
+    StockLocationId, StoreCreditId, SubscriptionId, TaxRateId, TaxRegionId, VariantId,
+    WorkflowRunId,
 };
 use tezgah::ports::{Actor, Ctx, Host};
 use uuid::Uuid;
@@ -147,6 +126,53 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         ("GET", "/admin/orders/{id}/payout-lines"),
         ("GET", "/admin/payouts"),
         ("GET", "/admin/payout-balance/{currency_code}"),
+        ("GET", "/admin/orders/{id}/fulfillments"),
+        ("GET", "/admin/orders/{id}/shipping-options"),
+        ("GET", "/admin/orders/{id}/returns/shipping-options"),
+        ("GET", "/admin/orders/{id}/fulfillments/{fulfillment_id}"),
+        ("GET", "/admin/fulfillment-sets"),
+        ("GET", "/admin/fulfillment-sets/{id}/service-zones"),
+        ("GET", "/admin/fulfillment-providers"),
+        ("GET", "/admin/shipping-options"),
+        ("GET", "/admin/shipping-options/{id}"),
+        ("GET", "/admin/shipping-options/{id}/translations"),
+        ("GET", "/admin/shipping-options/{id}/translations/{locale}"),
+        ("GET", "/admin/shipping-profiles"),
+        ("GET", "/admin/shipping-profiles/{id}"),
+        ("GET", "/admin/shipping-option-types"),
+        ("GET", "/admin/tax-regions"),
+        ("GET", "/admin/tax-regions/{id}"),
+        ("GET", "/admin/tax-rates"),
+        ("GET", "/admin/tax-rates/{id}"),
+        ("GET", "/admin/tax-rates/{id}/rules"),
+        ("GET", "/admin/tax-registrations"),
+        ("GET", "/admin/customers/{id}/tax-ids"),
+        ("GET", "/admin/customers/{id}/tax-exemptions"),
+        ("GET", "/admin/price-sets/{id}"),
+        ("GET", "/admin/price-sets/{id}/prices"),
+        ("GET", "/admin/product-variants/{id}/bundle/components"),
+        ("GET", "/admin/product-variants/{id}/bundle/price"),
+        ("GET", "/admin/prices/{id}/rules"),
+        ("GET", "/admin/price-lists"),
+        ("GET", "/admin/price-lists/{id}"),
+        ("GET", "/admin/price-preferences"),
+        ("GET", "/admin/payments"),
+        ("GET", "/admin/payments/{id}"),
+        ("GET", "/admin/payments/payment-providers"),
+        ("GET", "/admin/payment-collections/{id}"),
+        ("GET", "/admin/payment-collections/{id}/payment-sessions"),
+        ("GET", "/admin/refund-reasons"),
+        ("GET", "/admin/gift-cards"),
+        ("GET", "/admin/gift-cards/{id}"),
+        ("GET", "/admin/gift-cards/{id}/transactions"),
+        ("GET", "/admin/customers/{id}/store-credit"),
+        ("GET", "/admin/store-credits/{id}/transactions"),
+        ("GET", "/admin/orders/{id}/entitlements"),
+        ("POST", "/admin/orders/{id}/entitlements/revoke"),
+        ("GET", "/admin/variants/{id}/digital-content"),
+        ("POST", "/admin/variants/{id}/digital-content"),
+        ("DELETE", "/admin/digital-content/{id}"),
+        ("GET", "/admin/carts"),
     ];
 
     let router = Router::new()
@@ -238,7 +264,104 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         .route("/admin/commission-rules", get(commission_rules))
         .route("/admin/orders/{id}/payout-lines", get(order_payout_lines))
         .route("/admin/payouts", get(list_payouts))
-        .route("/admin/payout-balance/{currency_code}", get(payout_balance));
+        .route("/admin/payout-balance/{currency_code}", get(payout_balance))
+        .route("/admin/orders/{id}/fulfillments", get(order_fulfillments))
+        .route(
+            "/admin/orders/{id}/shipping-options",
+            get(order_shipping_options),
+        )
+        .route(
+            "/admin/orders/{id}/returns/shipping-options",
+            get(return_shipping_options),
+        )
+        .route(
+            "/admin/orders/{id}/fulfillments/{fulfillment_id}",
+            get(get_fulfillment),
+        )
+        .route("/admin/fulfillment-sets", get(list_fulfillment_sets))
+        .route(
+            "/admin/fulfillment-sets/{id}/service-zones",
+            get(service_zones),
+        )
+        .route("/admin/fulfillment-providers", get(fulfillment_providers))
+        .route("/admin/shipping-options", get(list_shipping_options))
+        .route("/admin/shipping-options/{id}", get(get_shipping_option))
+        .route(
+            "/admin/shipping-options/{id}/translations",
+            get(list_shipping_option_translations),
+        )
+        .route(
+            "/admin/shipping-options/{id}/translations/{locale}",
+            get(localised_shipping_option),
+        )
+        .route("/admin/shipping-profiles", get(list_shipping_profiles))
+        .route("/admin/shipping-profiles/{id}", get(get_shipping_profile))
+        .route(
+            "/admin/shipping-option-types",
+            get(list_shipping_option_types),
+        )
+        .route("/admin/tax-regions", get(list_tax_regions))
+        .route("/admin/tax-regions/{id}", get(get_tax_region))
+        .route("/admin/tax-rates", get(list_tax_rates))
+        .route("/admin/tax-rates/{id}", get(get_tax_rate))
+        .route("/admin/tax-rates/{id}/rules", get(list_tax_rate_rules))
+        .route("/admin/tax-registrations", get(list_tax_registrations))
+        .route("/admin/customers/{id}/tax-ids", get(list_customer_tax_ids))
+        .route(
+            "/admin/customers/{id}/tax-exemptions",
+            get(list_customer_tax_exemptions),
+        )
+        .route("/admin/price-sets/{id}", get(get_price_set))
+        .route("/admin/price-sets/{id}/prices", get(list_prices))
+        .route(
+            "/admin/product-variants/{id}/bundle/components",
+            get(list_bundle_components),
+        )
+        .route(
+            "/admin/product-variants/{id}/bundle/price",
+            get(bundle_price),
+        )
+        .route("/admin/prices/{id}/rules", get(list_price_rules))
+        .route("/admin/price-lists", get(list_price_lists))
+        .route("/admin/price-lists/{id}", get(get_price_list))
+        .route("/admin/price-preferences", get(get_price_preference))
+        .route("/admin/payments", get(list_payments))
+        .route("/admin/payments/{id}", get(get_payment))
+        .route("/admin/payments/payment-providers", get(payment_providers))
+        .route(
+            "/admin/payment-collections/{id}",
+            get(get_payment_collection),
+        )
+        .route(
+            "/admin/payment-collections/{id}/payment-sessions",
+            get(payment_sessions),
+        )
+        .route("/admin/refund-reasons", get(list_refund_reasons))
+        .route("/admin/gift-cards", get(list_gift_cards))
+        .route("/admin/gift-cards/{id}", get(get_gift_card))
+        .route(
+            "/admin/gift-cards/{id}/transactions",
+            get(gift_card_movements),
+        )
+        .route("/admin/customers/{id}/store-credit", get(get_store_credit))
+        .route(
+            "/admin/store-credits/{id}/transactions",
+            get(store_credit_movements),
+        )
+        .route(
+            "/admin/orders/{id}/entitlements",
+            get(list_order_entitlements),
+        )
+        .route(
+            "/admin/orders/{id}/entitlements/revoke",
+            post(revoke_entitlements),
+        )
+        .route(
+            "/admin/variants/{id}/digital-content",
+            get(list_content).post(put_content),
+        )
+        .route("/admin/digital-content/{id}", delete(delete_content))
+        .route("/admin/carts", get(list_carts));
 
     (router, bound)
 }
@@ -896,4 +1019,536 @@ async fn payout_balance(
     let balance = payout::balance(&mut tx, &ctx, currency_code).await?;
     tx.commit().await?;
     Ok(Json(balance))
+}
+
+#[derive(serde::Deserialize)]
+struct CountryQuery {
+    country_code: String,
+}
+
+async fn order_fulfillments(
+    State(state): State<AppState>,
+    Path(order_id): Path<OrderId>,
+    Query(query): Query<admin_order::Listing>,
+) -> Result<Json<tezgah::page::Page<admin_order::FulfillmentView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = admin_order::order_fulfillments(&mut tx, &ctx, order_id, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn order_shipping_options(
+    State(state): State<AppState>,
+    Path(order_id): Path<OrderId>,
+    Query(query): Query<CountryQuery>,
+) -> Result<Json<Vec<admin_order::ShippingOptionView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let options =
+        admin_order::order_shipping_options(&mut tx, &ctx, order_id, &query.country_code).await?;
+    tx.commit().await?;
+    Ok(Json(options))
+}
+
+async fn return_shipping_options(
+    State(state): State<AppState>,
+    Path(order_id): Path<OrderId>,
+    Query(query): Query<CountryQuery>,
+) -> Result<Json<Vec<admin_order::ShippingOptionView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let options =
+        admin_order::return_shipping_options(&mut tx, &ctx, order_id, &query.country_code).await?;
+    tx.commit().await?;
+    Ok(Json(options))
+}
+
+async fn get_fulfillment(
+    State(state): State<AppState>,
+    Path((order_id, id)): Path<(OrderId, FulfillmentId)>,
+) -> Result<Json<admin_order::FulfillmentDetailView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let fulfillment = admin_order::get_fulfillment(&mut tx, &ctx, order_id, id).await?;
+    tx.commit().await?;
+    Ok(Json(fulfillment))
+}
+
+async fn list_fulfillment_sets(
+    State(state): State<AppState>,
+    Query(query): Query<admin_order::Listing>,
+) -> Result<Json<tezgah::page::Page<admin_order::FulfillmentSetView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = admin_order::list_fulfillment_sets(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn service_zones(
+    State(state): State<AppState>,
+    Path(id): Path<FulfillmentSetId>,
+) -> Result<Json<Vec<admin_order::ServiceZoneView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let zones = admin_order::service_zones(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(zones))
+}
+
+async fn fulfillment_providers(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<admin_order::ProviderView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let providers = admin_order::fulfillment_providers(&mut tx, &ctx).await?;
+    tx.commit().await?;
+    Ok(Json(providers))
+}
+
+async fn list_shipping_options(
+    State(state): State<AppState>,
+    Query(query): Query<admin_order::Listing>,
+) -> Result<Json<tezgah::page::Page<admin_order::ShippingOptionView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = admin_order::list_shipping_options(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn get_shipping_option(
+    State(state): State<AppState>,
+    Path(id): Path<ShippingOptionId>,
+) -> Result<Json<admin_order::ShippingOptionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let option = admin_order::get_shipping_option(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(option))
+}
+
+async fn list_shipping_option_translations(
+    State(state): State<AppState>,
+    Path(id): Path<ShippingOptionId>,
+) -> Result<Json<Vec<admin_order::ShippingOptionTranslationView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let translations = admin_order::list_shipping_option_translations(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(translations))
+}
+
+async fn localised_shipping_option(
+    State(state): State<AppState>,
+    Path((id, locale)): Path<(ShippingOptionId, String)>,
+) -> Result<Json<admin_order::LocalisedShippingOptionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let translation = admin_order::localised_shipping_option(&mut tx, &ctx, id, &locale).await?;
+    tx.commit().await?;
+    Ok(Json(translation))
+}
+
+async fn list_shipping_profiles(
+    State(state): State<AppState>,
+    Query(query): Query<admin_order::Listing>,
+) -> Result<Json<tezgah::page::Page<admin_order::ShippingProfileView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = admin_order::list_shipping_profiles(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn get_shipping_profile(
+    State(state): State<AppState>,
+    Path(id): Path<ShippingProfileId>,
+) -> Result<Json<admin_order::ShippingProfileView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let profile = admin_order::get_shipping_profile(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(profile))
+}
+
+async fn list_shipping_option_types(
+    State(state): State<AppState>,
+    Query(query): Query<admin_order::Listing>,
+) -> Result<Json<tezgah::page::Page<admin_order::ShippingOptionTypeView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = admin_order::list_shipping_option_types(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn list_tax_regions(
+    State(state): State<AppState>,
+    Query(query): Query<admin_rest::List>,
+) -> Result<Json<tezgah::page::Page<admin_rest::TaxRegionView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = admin_rest::list_tax_regions(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn get_tax_region(
+    State(state): State<AppState>,
+    Path(id): Path<TaxRegionId>,
+) -> Result<Json<admin_rest::TaxRegionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let region = admin_rest::get_tax_region(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(region))
+}
+
+async fn list_tax_rates(
+    State(state): State<AppState>,
+    Query(query): Query<admin_rest::ListTaxRates>,
+) -> Result<Json<tezgah::page::Page<admin_rest::TaxRateView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = admin_rest::list_tax_rates(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn get_tax_rate(
+    State(state): State<AppState>,
+    Path(id): Path<TaxRateId>,
+) -> Result<Json<admin_rest::TaxRateView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let rate = admin_rest::get_tax_rate(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(rate))
+}
+
+async fn list_tax_rate_rules(
+    State(state): State<AppState>,
+    Path(id): Path<TaxRateId>,
+) -> Result<Json<Vec<admin_rest::TaxRateRuleView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let rules = admin_rest::list_tax_rate_rules(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(rules))
+}
+
+async fn list_tax_registrations(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<tax_identity::RegistrationView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let registrations = tax_identity::list_registrations(&mut tx, &ctx).await?;
+    tx.commit().await?;
+    Ok(Json(registrations))
+}
+
+async fn list_customer_tax_ids(
+    State(state): State<AppState>,
+    Path(id): Path<CustomerId>,
+) -> Result<Json<Vec<tax_identity::TaxIdView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let ids = tax_identity::list_tax_ids(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(ids))
+}
+
+async fn list_customer_tax_exemptions(
+    State(state): State<AppState>,
+    Path(id): Path<CustomerId>,
+) -> Result<Json<Vec<tax_identity::ExemptionView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let exemptions = tax_identity::list_exemptions(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(exemptions))
+}
+
+async fn get_price_set(
+    State(state): State<AppState>,
+    Path(id): Path<PriceSetId>,
+) -> Result<Json<admin_catalogue::PriceSetView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let set = admin_catalogue::get_price_set(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(set))
+}
+
+async fn list_prices(
+    State(state): State<AppState>,
+    Path(id): Path<PriceSetId>,
+    Query(query): Query<admin_catalogue::ListQuery>,
+) -> Result<Json<tezgah::page::Page<admin_catalogue::PriceView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = admin_catalogue::list_prices(&mut tx, &ctx, id, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn list_bundle_components(
+    State(state): State<AppState>,
+    Path(id): Path<VariantId>,
+) -> Result<Json<Vec<admin_catalogue::BundleComponentView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let components = admin_catalogue::list_bundle_components(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(components))
+}
+
+async fn bundle_price(
+    State(state): State<AppState>,
+    Path(id): Path<VariantId>,
+    Query(query): Query<admin_catalogue::BundlePriceQuery>,
+) -> Result<Json<admin_catalogue::BundlePriceView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let price = admin_catalogue::bundle_price(&mut tx, &ctx, id, query).await?;
+    tx.commit().await?;
+    Ok(Json(price))
+}
+
+async fn list_price_rules(
+    State(state): State<AppState>,
+    Path(id): Path<PriceId>,
+) -> Result<Json<Vec<admin_catalogue::PriceRuleView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let rules = admin_catalogue::list_price_rules(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(rules))
+}
+
+async fn list_price_lists(
+    State(state): State<AppState>,
+    Query(query): Query<admin_catalogue::ListQuery>,
+) -> Result<Json<tezgah::page::Page<admin_catalogue::PriceListView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = admin_catalogue::list_price_lists(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn get_price_list(
+    State(state): State<AppState>,
+    Path(id): Path<PriceListId>,
+) -> Result<Json<admin_catalogue::PriceListView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let list = admin_catalogue::get_price_list(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(list))
+}
+
+async fn get_price_preference(
+    State(state): State<AppState>,
+    Query(query): Query<admin_catalogue::FindPricePreference>,
+) -> Result<Json<Option<admin_catalogue::PricePreferenceView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let preference = admin_catalogue::get_price_preference(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(preference))
+}
+
+async fn list_payments(
+    State(state): State<AppState>,
+    Query(query): Query<admin_order::ListPayments>,
+) -> Result<Json<tezgah::page::Page<admin_order::PaymentView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = admin_order::list_payments(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn get_payment(
+    State(state): State<AppState>,
+    Path(id): Path<PaymentId>,
+) -> Result<Json<admin_order::PaymentView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let payment = admin_order::get_payment(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(payment))
+}
+
+async fn payment_providers(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<admin_order::ProviderView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let providers = admin_order::payment_providers(&mut tx, &ctx).await?;
+    tx.commit().await?;
+    Ok(Json(providers))
+}
+
+async fn get_payment_collection(
+    State(state): State<AppState>,
+    Path(id): Path<PaymentCollectionId>,
+) -> Result<Json<admin_order::CollectionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let collection = admin_order::get_payment_collection(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(collection))
+}
+
+async fn payment_sessions(
+    State(state): State<AppState>,
+    Path(id): Path<PaymentCollectionId>,
+    Query(query): Query<admin_order::Listing>,
+) -> Result<Json<tezgah::page::Page<admin_order::SessionView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = admin_order::payment_sessions(&mut tx, &ctx, id, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn list_refund_reasons(
+    State(state): State<AppState>,
+    Query(query): Query<admin_order::Listing>,
+) -> Result<Json<tezgah::page::Page<admin_order::ReasonView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = admin_order::list_refund_reasons(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn list_gift_cards(
+    State(state): State<AppState>,
+    Query(query): Query<credit::List>,
+) -> Result<Json<tezgah::page::Page<credit::GiftCardView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = credit::list_gift_cards(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn get_gift_card(
+    State(state): State<AppState>,
+    Path(id): Path<GiftCardId>,
+) -> Result<Json<credit::GiftCardView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let card = credit::get_gift_card(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(card))
+}
+
+async fn gift_card_movements(
+    State(state): State<AppState>,
+    Path(id): Path<GiftCardId>,
+    Query(query): Query<credit::List>,
+) -> Result<Json<tezgah::page::Page<credit::CreditMovementView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = credit::gift_card_movements(&mut tx, &ctx, id, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn get_store_credit(
+    State(state): State<AppState>,
+    Path(id): Path<CustomerId>,
+    Query(query): Query<credit::BalanceQuery>,
+) -> Result<Json<credit::StoreCreditView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let balance = credit::get_store_credit(&mut tx, &ctx, id, query).await?;
+    tx.commit().await?;
+    Ok(Json(balance))
+}
+
+async fn store_credit_movements(
+    State(state): State<AppState>,
+    Path(id): Path<StoreCreditId>,
+    Query(query): Query<credit::List>,
+) -> Result<Json<tezgah::page::Page<credit::CreditMovementView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = credit::store_credit_movements(&mut tx, &ctx, id, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn list_order_entitlements(
+    State(state): State<AppState>,
+    Path(id): Path<OrderId>,
+) -> Result<Json<Vec<digital::EntitlementView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let entitlements = digital::list_order_entitlements(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(entitlements))
+}
+
+async fn revoke_entitlements(
+    State(state): State<AppState>,
+    Path(id): Path<OrderId>,
+    Json(body): Json<digital::RevokeEntitlements>,
+) -> Result<Json<Vec<digital::EntitlementView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let entitlements = digital::revoke_entitlements(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(entitlements))
+}
+
+async fn list_content(
+    State(state): State<AppState>,
+    Path(id): Path<VariantId>,
+) -> Result<Json<Vec<digital::ContentView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let content = digital::list_content(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(content))
+}
+
+async fn put_content(
+    State(state): State<AppState>,
+    Path(id): Path<VariantId>,
+    Json(body): Json<digital::PutContent>,
+) -> Result<Json<digital::ContentView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let content = digital::put_content(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(content))
+}
+
+async fn delete_content(
+    State(state): State<AppState>,
+    Path(id): Path<DigitalContentId>,
+) -> Result<StatusCode, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    digital::delete_content(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn list_carts(
+    State(state): State<AppState>,
+    Query(query): Query<order_basket::ListCarts>,
+) -> Result<Json<tezgah::page::Page<store_api::CartView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = order_basket::list_carts(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
 }

@@ -25,8 +25,8 @@ use serde_json::{Map, Value, json};
 use crate::page::Page;
 
 use super::{
-    Method, Route, Surface, admin_catalogue, admin_order, admin_rest, agreement, order_basket,
-    payout, routes, store, subscription,
+    Method, Route, Surface, admin_catalogue, admin_order, admin_rest, agreement, credit, digital,
+    order_basket, payout, routes, store, subscription, tax_identity,
 };
 
 /// A storefront's key, which pins it to its sales channels.
@@ -927,6 +927,283 @@ static BODIES: &[Body] = &[
         request: None,
         response: Some(page_of::<admin_rest::WorkflowDeadLetterView>),
     },
+    // ----------------------------------------------------------- fulfilment
+    Body {
+        operation_id: "getAdminOrdersByIdFulfillments",
+        request: None,
+        response: Some(page_of::<admin_order::FulfillmentView>),
+    },
+    Body {
+        operation_id: "getAdminOrdersByIdShippingOptions",
+        request: None,
+        response: Some(schema_of::<Vec<admin_order::ShippingOptionView>>),
+    },
+    Body {
+        operation_id: "getAdminOrdersByIdReturnsShippingOptions",
+        request: None,
+        response: Some(schema_of::<Vec<admin_order::ShippingOptionView>>),
+    },
+    Body {
+        operation_id: "getAdminOrdersByIdFulfillmentsByFulfillmentId",
+        request: None,
+        response: Some(schema_of::<admin_order::FulfillmentDetailView>),
+    },
+    Body {
+        operation_id: "getAdminFulfillmentSets",
+        request: None,
+        response: Some(page_of::<admin_order::FulfillmentSetView>),
+    },
+    Body {
+        operation_id: "getAdminFulfillmentSetsByIdServiceZones",
+        request: None,
+        response: Some(schema_of::<Vec<admin_order::ServiceZoneView>>),
+    },
+    Body {
+        operation_id: "getAdminFulfillmentProviders",
+        request: None,
+        response: Some(schema_of::<Vec<admin_order::ProviderView>>),
+    },
+    Body {
+        operation_id: "getAdminShippingOptions",
+        request: None,
+        response: Some(page_of::<admin_order::ShippingOptionView>),
+    },
+    Body {
+        operation_id: "getAdminShippingOptionsById",
+        request: None,
+        response: Some(schema_of::<admin_order::ShippingOptionView>),
+    },
+    Body {
+        operation_id: "getAdminShippingOptionsByIdTranslations",
+        request: None,
+        response: Some(schema_of::<Vec<admin_order::ShippingOptionTranslationView>>),
+    },
+    Body {
+        operation_id: "getAdminShippingOptionsByIdTranslationsByLocale",
+        request: None,
+        response: Some(schema_of::<admin_order::LocalisedShippingOptionView>),
+    },
+    Body {
+        operation_id: "getAdminShippingProfiles",
+        request: None,
+        response: Some(page_of::<admin_order::ShippingProfileView>),
+    },
+    Body {
+        operation_id: "getAdminShippingProfilesById",
+        request: None,
+        response: Some(schema_of::<admin_order::ShippingProfileView>),
+    },
+    Body {
+        operation_id: "getAdminShippingOptionTypes",
+        request: None,
+        response: Some(page_of::<admin_order::ShippingOptionTypeView>),
+    },
+    Body {
+        operation_id: "getStoreShippingOptions",
+        request: None,
+        response: Some(schema_of::<Vec<store::ShippingOptionView>>),
+    },
+    // ------------------------------------------------------------------ tax
+    Body {
+        operation_id: "getAdminTaxRegions",
+        request: None,
+        response: Some(page_of::<admin_rest::TaxRegionView>),
+    },
+    Body {
+        operation_id: "getAdminTaxRegionsById",
+        request: None,
+        response: Some(schema_of::<admin_rest::TaxRegionView>),
+    },
+    Body {
+        operation_id: "getAdminTaxRates",
+        request: None,
+        response: Some(page_of::<admin_rest::TaxRateView>),
+    },
+    Body {
+        operation_id: "getAdminTaxRatesById",
+        request: None,
+        response: Some(schema_of::<admin_rest::TaxRateView>),
+    },
+    Body {
+        operation_id: "getAdminTaxRatesByIdRules",
+        request: None,
+        response: Some(schema_of::<Vec<admin_rest::TaxRateRuleView>>),
+    },
+    Body {
+        operation_id: "getAdminTaxRegistrations",
+        request: None,
+        response: Some(schema_of::<Vec<tax_identity::RegistrationView>>),
+    },
+    Body {
+        operation_id: "getAdminCustomersByIdTaxIds",
+        request: None,
+        response: Some(schema_of::<Vec<tax_identity::TaxIdView>>),
+    },
+    Body {
+        operation_id: "getAdminCustomersByIdTaxExemptions",
+        request: None,
+        response: Some(schema_of::<Vec<tax_identity::ExemptionView>>),
+    },
+    // -------------------------------------------------------------- pricing
+    Body {
+        operation_id: "getAdminPriceSetsById",
+        request: None,
+        response: Some(schema_of::<admin_catalogue::PriceSetView>),
+    },
+    Body {
+        operation_id: "getAdminPriceSetsByIdPrices",
+        request: None,
+        response: Some(page_of::<admin_catalogue::PriceView>),
+    },
+    Body {
+        operation_id: "getAdminProductVariantsByIdBundleComponents",
+        request: None,
+        response: Some(schema_of::<Vec<admin_catalogue::BundleComponentView>>),
+    },
+    Body {
+        operation_id: "getAdminProductVariantsByIdBundlePrice",
+        request: None,
+        response: Some(schema_of::<admin_catalogue::BundlePriceView>),
+    },
+    Body {
+        operation_id: "getAdminPricesByIdRules",
+        request: None,
+        response: Some(schema_of::<Vec<admin_catalogue::PriceRuleView>>),
+    },
+    Body {
+        operation_id: "getAdminPriceLists",
+        request: None,
+        response: Some(page_of::<admin_catalogue::PriceListView>),
+    },
+    Body {
+        operation_id: "getAdminPriceListsById",
+        request: None,
+        response: Some(schema_of::<admin_catalogue::PriceListView>),
+    },
+    Body {
+        operation_id: "getAdminPricePreferences",
+        request: None,
+        response: Some(schema_of::<Option<admin_catalogue::PricePreferenceView>>),
+    },
+    // -------------------------------------------------------------- payment
+    Body {
+        operation_id: "getAdminPayments",
+        request: None,
+        response: Some(page_of::<admin_order::PaymentView>),
+    },
+    Body {
+        operation_id: "getAdminPaymentsById",
+        request: None,
+        response: Some(schema_of::<admin_order::PaymentView>),
+    },
+    Body {
+        operation_id: "getAdminPaymentsPaymentProviders",
+        request: None,
+        response: Some(schema_of::<Vec<admin_order::ProviderView>>),
+    },
+    Body {
+        operation_id: "getAdminPaymentCollectionsById",
+        request: None,
+        response: Some(schema_of::<admin_order::CollectionView>),
+    },
+    Body {
+        operation_id: "getAdminPaymentCollectionsByIdPaymentSessions",
+        request: None,
+        response: Some(page_of::<admin_order::SessionView>),
+    },
+    Body {
+        operation_id: "getAdminRefundReasons",
+        request: None,
+        response: Some(page_of::<admin_order::ReasonView>),
+    },
+    Body {
+        operation_id: "getStorePaymentProviders",
+        request: None,
+        response: Some(schema_of::<Vec<store::PaymentProviderView>>),
+    },
+    // -------------------------------------------------------------- credit
+    Body {
+        operation_id: "getAdminGiftCards",
+        request: None,
+        response: Some(page_of::<credit::GiftCardView>),
+    },
+    Body {
+        operation_id: "getAdminGiftCardsById",
+        request: None,
+        response: Some(schema_of::<credit::GiftCardView>),
+    },
+    Body {
+        operation_id: "getAdminGiftCardsByIdTransactions",
+        request: None,
+        response: Some(page_of::<credit::CreditMovementView>),
+    },
+    Body {
+        operation_id: "getAdminCustomersByIdStoreCredit",
+        request: None,
+        response: Some(schema_of::<credit::StoreCreditView>),
+    },
+    Body {
+        operation_id: "getAdminStoreCreditsByIdTransactions",
+        request: None,
+        response: Some(page_of::<credit::CreditMovementView>),
+    },
+    Body {
+        operation_id: "getStoreCartsByIdCredits",
+        request: None,
+        response: Some(schema_of::<Vec<credit::CartCreditView>>),
+    },
+    Body {
+        operation_id: "getStoreCustomersMeStoreCredit",
+        request: None,
+        response: Some(schema_of::<credit::StoreCreditView>),
+    },
+    // ------------------------------------------------------------- digital
+    Body {
+        operation_id: "getAdminOrdersByIdEntitlements",
+        request: None,
+        response: Some(schema_of::<Vec<digital::EntitlementView>>),
+    },
+    Body {
+        operation_id: "postAdminOrdersByIdEntitlementsRevoke",
+        request: Some(schema_of::<digital::RevokeEntitlements>),
+        response: Some(schema_of::<Vec<digital::EntitlementView>>),
+    },
+    Body {
+        operation_id: "getAdminVariantsByIdDigitalContent",
+        request: None,
+        response: Some(schema_of::<Vec<digital::ContentView>>),
+    },
+    Body {
+        operation_id: "postAdminVariantsByIdDigitalContent",
+        request: Some(schema_of::<digital::PutContent>),
+        response: Some(schema_of::<digital::ContentView>),
+    },
+    Body {
+        operation_id: "getStoreEntitlements",
+        request: None,
+        response: Some(page_of::<digital::EntitlementView>),
+    },
+    Body {
+        operation_id: "postStoreEntitlementsByIdToken",
+        request: None,
+        response: Some(schema_of::<digital::TokenView>),
+    },
+    Body {
+        operation_id: "postStoreDownloads",
+        request: Some(schema_of::<digital::Redeem>),
+        response: Some(schema_of::<digital::DownloadView>),
+    },
+    // --------------------------------------------------------------- cart
+    Body {
+        operation_id: "getStoreCartsByIdLineItems",
+        request: None,
+        response: Some(schema_of::<Vec<store::LineItemView>>),
+    },
+    Body {
+        operation_id: "getAdminCarts",
+        request: None,
+        response: Some(page_of::<store::CartView>),
+    },
 ];
 
 fn operation(
@@ -1184,9 +1461,14 @@ mod tests {
         // response side: payout's own money, catalogue's dimensions, the
         // order domain's — `MoneyView` once for every view built through
         // `amount_view`/`From<Money>`, plus the two invoices carry a total
-        // outside that helper — and pricing's own `PriceView.amount`, all
-        // riding the same `for_serialize` generator and answering the same
-        // way even though not all of them are money.
+        // outside that helper — pricing's own `PriceView.amount` and a
+        // bundle's own priced total and its components' shares, and a
+        // payment collection's own four running totals, which `CollectionView`
+        // carries as raw `Decimal` rather than through `amount_view` because
+        // all four already share the collection's one fixed currency, and a
+        // gift card's, a store credit's and a cart credit's own balances and
+        // movements, all riding the same `for_serialize` generator and
+        // answering the same way even though not all of them are money.
         for pointer in [
             "/components/schemas/BalanceView/properties/amount",
             "/components/schemas/PayoutView/properties/amount",
@@ -1198,7 +1480,19 @@ mod tests {
             "/components/schemas/ProductView/properties/width",
             "/components/schemas/MoneyView/properties/amount",
             "/components/schemas/InvoiceView/properties/total_amount",
+            "/components/schemas/GiftCardView/properties/initial_balance",
+            "/components/schemas/GiftCardView/properties/balance",
+            "/components/schemas/CreditMovementView/properties/amount",
+            "/components/schemas/StoreCreditView/properties/balance",
+            "/components/schemas/CartCreditView/properties/amount",
             "/components/schemas/PriceView/properties/amount",
+            "/components/schemas/BundlePriceView/properties/total",
+            "/components/schemas/BundlePriceComponentView/properties/unit_price",
+            "/components/schemas/BundlePriceComponentView/properties/allocated_total",
+            "/components/schemas/CollectionView/properties/amount",
+            "/components/schemas/CollectionView/properties/authorized_amount",
+            "/components/schemas/CollectionView/properties/captured_amount",
+            "/components/schemas/CollectionView/properties/refunded_amount",
         ] {
             let schema = document
                 .pointer(pointer)

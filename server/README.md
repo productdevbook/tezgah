@@ -169,12 +169,13 @@ receives the `Action` on every call, so a second token (or a role
 by hand, and says exactly how many out loud at startup:
 
 ```
-bound 60 of 483 declared routes
+bound 111 of 483 declared routes
   GET    /store/products
   GET    /store/products/{handle}
   POST   /store/carts
   GET    /store/carts/{id}
   POST   /store/carts/{id}/line-items
+  GET    /store/carts/{id}/line-items
   POST   /store/carts/{id}/complete
   GET    /admin/products
   GET    /admin/products/{id}
@@ -230,6 +231,56 @@ bound 60 of 483 declared routes
   GET    /admin/orders/{id}/payout-lines
   GET    /admin/payouts
   GET    /admin/payout-balance/{currency_code}
+  GET    /admin/orders/{id}/fulfillments
+  GET    /admin/orders/{id}/shipping-options
+  GET    /admin/orders/{id}/returns/shipping-options
+  GET    /admin/orders/{id}/fulfillments/{fulfillment_id}
+  GET    /admin/fulfillment-sets
+  GET    /admin/fulfillment-sets/{id}/service-zones
+  GET    /admin/fulfillment-providers
+  GET    /admin/shipping-options
+  GET    /admin/shipping-options/{id}
+  GET    /admin/shipping-options/{id}/translations
+  GET    /admin/shipping-options/{id}/translations/{locale}
+  GET    /admin/shipping-profiles
+  GET    /admin/shipping-profiles/{id}
+  GET    /admin/shipping-option-types
+  GET    /store/shipping-options
+  GET    /admin/tax-regions
+  GET    /admin/tax-regions/{id}
+  GET    /admin/tax-rates
+  GET    /admin/tax-rates/{id}
+  GET    /admin/tax-rates/{id}/rules
+  GET    /admin/tax-registrations
+  GET    /admin/customers/{id}/tax-ids
+  GET    /admin/customers/{id}/tax-exemptions
+  GET    /admin/price-sets/{id}
+  GET    /admin/price-sets/{id}/prices
+  GET    /admin/product-variants/{id}/bundle/components
+  GET    /admin/product-variants/{id}/bundle/price
+  GET    /admin/prices/{id}/rules
+  GET    /admin/price-lists
+  GET    /admin/price-lists/{id}
+  GET    /admin/price-preferences
+  GET    /admin/payments
+  GET    /admin/payments/{id}
+  GET    /admin/payments/payment-providers
+  GET    /admin/payment-collections/{id}
+  GET    /admin/payment-collections/{id}/payment-sessions
+  GET    /admin/refund-reasons
+  GET    /store/payment-providers
+  GET    /admin/gift-cards
+  GET    /admin/gift-cards/{id}
+  GET    /admin/gift-cards/{id}/transactions
+  GET    /admin/customers/{id}/store-credit
+  GET    /admin/store-credits/{id}/transactions
+  GET    /store/carts/{id}/credits
+  GET    /admin/orders/{id}/entitlements
+  POST   /admin/orders/{id}/entitlements/revoke
+  GET    /admin/variants/{id}/digital-content
+  POST   /admin/variants/{id}/digital-content
+  DELETE /admin/digital-content/{id}
+  GET    /admin/carts
   plus GET /health, which is this binary's own and not one of the 483
 ```
 
@@ -295,19 +346,105 @@ Inventory items get the delete above but no update: the only write past
 creation is to the stock a location holds of an item, already bound at
 `POST /admin/inventory-items/{id}/location-levels`.
 
-**Past the panel: reads with no screen yet.** An order basket's own record
-and the two scope-local lists under it (`order_basket::get_basket`,
-`basket_orders`, `basket_carts`), a workflow run's list, single read and
-steps (`admin_rest::list_workflow_runs`, `get_workflow_run`,
-`list_workflow_run_steps`) plus the scope-wide dead-letter list
-(`list_workflow_dead_letters`), and a seller scope's own commission rules,
-one order's payout lines, its payout history and its balance in one currency
-(`payout::commission_rules`, `order_payout_lines`, `payouts`, `balance`) —
-eleven `GET` routes bound because their list-and-single-read functions
-already existed in `src/api/`, not because `client/` draws anything for them
-yet. Everything else `tezgah::api` offers stays unbound; wiring in more of
-the 483 is a matter of adding a handler in `src/http/admin.rs`, not a
-limitation of the approach.
+**Past the panel: reads with no screen yet.** Ten domains had list-and-
+single-read functions sitting in `src/api/` with nothing in this binary
+calling them — reachable from a test, not from a request. Each is bound as
+its functions allow, never inventing a list or a single read a domain does
+not already offer:
+
+- **order_basket** — a basket's own record and the two scope-local lists
+  under it (`order_basket::get_basket`, `basket_orders`, `basket_carts`).
+  There is no `list` across baskets in the crate; only these three.
+- **workflow** — a run's list, single read and steps
+  (`admin_rest::list_workflow_runs`, `get_workflow_run`,
+  `list_workflow_run_steps`), plus the scope-wide dead-letter list
+  (`list_workflow_dead_letters`).
+- **payout** — a seller scope's own commission rules, one order's payout
+  lines, its payout history and its balance in one currency
+  (`payout::commission_rules`, `order_payout_lines`, `payouts`, `balance`).
+- **fulfilment** — a parcel's list and single read on one order, the
+  shipping options that reach an order's address and a return's,
+  fulfilment sets and their service zones, which carriers are on, shipping
+  options and their translations, shipping profiles, and shipping option
+  types (`admin_order::order_fulfillments`, `get_fulfillment`,
+  `order_shipping_options`, `return_shipping_options`,
+  `list_fulfillment_sets`, `service_zones`, `fulfillment_providers`,
+  `list_shipping_options`, `get_shipping_option`,
+  `list_shipping_option_translations`, `localised_shipping_option`,
+  `list_shipping_profiles`, `get_shipping_profile`,
+  `list_shipping_option_types`), plus the storefront's own
+  `GET /store/shipping-options` (`store::list_shipping_options`), which
+  prices delivery for a cart rather than reading a back office's
+  configuration.
+- **tax** — tax regions and rates, list and single read on both, and the
+  rules on one rate (`admin_rest::list_tax_regions`, `get_tax_region`,
+  `list_tax_rates`, `get_tax_rate`, `list_tax_rate_rules`), plus where the
+  shop is registered and what it files under, a customer's tax numbers and
+  their exemption certificates, from `src/api/tax_identity.rs`
+  (`list_registrations`, `list_tax_ids`, `list_exemptions`). None of the
+  three in `tax_identity` has a single-row read by id in the crate — a
+  registration, a tax number and a certificate are read as their owner's
+  whole list, never one at a time.
+- **pricing** — one price set and the page of prices under it, a bundle's
+  components and what it prices at right now, the rules on one price, price
+  lists with a list and single read on both, and a price preference found
+  by attribute rather than by id (`admin_catalogue::get_price_set`,
+  `list_prices`, `list_bundle_components`, `bundle_price`,
+  `list_price_rules`, `list_price_lists`, `get_price_list`,
+  `get_price_preference`). The last answers `null` rather than a 404: no
+  preference set for an attribute is the common case, not a missing row.
+- **payment** — payments with a list and single read, which carriers a
+  shop accepts, a payment collection's single read and the sessions under
+  it, and refund reasons (`admin_order::list_payments`, `get_payment`,
+  `payment_providers`, `get_payment_collection`, `payment_sessions`,
+  `list_refund_reasons`), plus the storefront's own
+  `GET /store/payment-providers` (`store::list_payment_providers`), narrowed
+  to a cart's region the same way `GET /store/shipping-options` narrows to
+  its address. `CollectionView`'s four running totals — the collection's
+  amount, and what has been authorized, captured and refunded against it —
+  are the payment domain's own raw-`Decimal` money fields, so
+  `money_crosses_the_wire_as_a_string_not_a_number` grows four more
+  pointers for them.
+- **credit** — gift cards with a list, single read and their transactions,
+  and a customer's store-credit balance in one currency with its own
+  transactions (`credit::list_gift_cards`, `get_gift_card`,
+  `gift_card_movements`, `get_store_credit`, `store_credit_movements`),
+  plus what a cart currently means to pay with,
+  `GET /store/carts/{id}/credits` (`list_cart_credits`).
+  `GET /store/customers/me/store-credit` (`my_store_credit`) is not among
+  these: it calls `signed_in(ctx)`, which only ever succeeds for
+  `Actor::Customer`, and this binary has no customer sign-in anywhere —
+  every storefront route it binds runs as `Actor::Guest`. Binding it would
+  mean a route that answers `denied` to every caller, which is worse than
+  leaving it unbound; giving this binary a customer identity is a separate
+  decision, the same shape as #214.
+- **digital** — what an order's money bought the right to, a list and a
+  hand revocation, and a variant's own files, list, write and delete
+  (`digital::list_order_entitlements`, `revoke_entitlements`,
+  `list_content`, `put_content`, `delete_content`). Writes are bound here,
+  past this round's read-only rule for the other nine domains, because the
+  domain had no route at all — a shop with digital products could not
+  reach any of it. The storefront half —
+  `GET /store/entitlements`, `POST /store/entitlements/{id}/token`,
+  `POST /store/downloads` (`my_entitlements`, `create_token`, `redeem`) —
+  is not bound for the same reason `GET /store/customers/me/store-credit`
+  above is not: all three call `signed_in(ctx)` before anything else, and
+  answer `denied` to the `Actor::Guest` every storefront route in this
+  binary runs as. Binding a route that refuses its every caller would be
+  worse than the gap it replaces.
+- **cart** — a cart's own line items, `GET /store/carts/{id}/line-items`
+  (`store::list_line_items`), and every cart this scope holds, abandoned
+  ones included, `GET /admin/carts` (`order_basket::list_carts`, so named
+  because that file already imports `crate::cart` and reaches for
+  `CartView` on every other route in it). The second did not exist as a
+  route at all until now: `cart::list` sat in `tests/reachable.rs`'s
+  `TOLERATED` list with the reason "the back office has no cart screen" —
+  no longer true, so the entry left with it, and the list is 33 long
+  rather than 34.
+
+Everything else `tezgah::api` offers stays unbound; wiring in more of the
+483 is a matter of adding a handler in `src/http/admin.rs` or
+`src/http/store.rs`, not a limitation of the approach.
 
 Every one of the eight single-row reads the panel's own screens use asks
 `ctx.permit(..)` before it looks

@@ -143,6 +143,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/carts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List carts, abandoned ones included */
+        get: operations["getAdminCarts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/claims": {
         parameters: {
             query?: never;
@@ -6341,9 +6358,53 @@ export interface components {
         };
         /**
          * Format: uuid
+         * @description Identifies one bundle component.
+         */
+        BundleComponentId: string;
+        BundleComponentView: {
+            bundle_variant_id: components["schemas"]["VariantId"];
+            component_variant_id: components["schemas"]["VariantId"];
+            id: components["schemas"]["BundleComponentId"];
+            /** Format: int32 */
+            quantity: number;
+            /** Format: int32 */
+            sort_order: number;
+        };
+        BundlePriceComponentView: {
+            allocated_total: string;
+            component_variant_id: components["schemas"]["VariantId"];
+            /** Format: int32 */
+            quantity: number;
+            unit_price: string;
+        };
+        BundlePriceView: {
+            components: components["schemas"]["BundlePriceComponentView"][];
+            currency_code: string;
+            mode: string;
+            total: string;
+        };
+        /**
+         * Format: uuid
          * @description Identifies one campaign.
          */
         CampaignId: string;
+        /**
+         * Format: uuid
+         * @description Identifies one cart credit.
+         */
+        CartCreditId: string;
+        /**
+         * @description What a cart says it will pay with. Which card is named by id rather than by
+         *     code, for the same reason the code is not in any other answer.
+         */
+        CartCreditView: {
+            amount: string;
+            cart_id: components["schemas"]["CartId"];
+            currency_code: string;
+            gift_card_id: components["schemas"]["GiftCardId"] | null;
+            id: components["schemas"]["CartCreditId"];
+            store_credit_id: components["schemas"]["StoreCreditId"] | null;
+        };
         /**
          * Format: uuid
          * @description Identifies one cart.
@@ -6457,6 +6518,19 @@ export interface components {
          * @description Identifies one collection.
          */
         CollectionId: string;
+        CollectionView: {
+            amount: string;
+            authorized_amount: string;
+            captured_amount: string;
+            /** Format: date-time */
+            completed_at: string | null;
+            /** Format: date-time */
+            created_at: string;
+            currency_code: string;
+            id: components["schemas"]["PaymentCollectionId"];
+            refunded_amount: string;
+            status: string;
+        };
         /**
          * Format: uuid
          * @description Identifies one commission rule.
@@ -6468,6 +6542,21 @@ export interface components {
             id: components["schemas"]["CommissionRuleId"];
             kind: string;
             value: string;
+        };
+        ContentView: {
+            auto_grant: boolean;
+            content_key: string;
+            /** Format: date-time */
+            created_at: string;
+            id: components["schemas"]["DigitalContentId"];
+            /** Format: int32 */
+            max_downloads: number | null;
+            name: string;
+            /** Format: int32 */
+            rank: number;
+            /** Format: int32 */
+            valid_days: number | null;
+            variant_id: components["schemas"]["VariantId"];
         };
         ConvertDraft: {
             payment_collection_id: components["schemas"]["PaymentCollectionId"];
@@ -6577,6 +6666,17 @@ export interface components {
             /** @description Why buying this is outside the right of withdrawal. */
             withdrawal_exclusion?: string | null;
         };
+        CreditMovementView: {
+            amount: string;
+            /** Format: date-time */
+            created_at: string;
+            currency_code: string;
+            /** Format: uuid */
+            id: string;
+            kind: string;
+            order_id: components["schemas"]["OrderId"] | null;
+            reason: string | null;
+        };
         CurrencyView: {
             code: string;
             /** Format: int16 */
@@ -6609,6 +6709,45 @@ export interface components {
         };
         /**
          * Format: uuid
+         * @description Identifies one digital content.
+         */
+        DigitalContentId: string;
+        /**
+         * @description What the host hands to its own storage. tezgah has counted the download by
+         *     the time this is returned.
+         */
+        DownloadView: {
+            content_key: string;
+            /** Format: int32 */
+            download_count: number;
+            entitlement_id: components["schemas"]["OrderEntitlementId"];
+            /** Format: int32 */
+            remaining: number | null;
+        };
+        /**
+         * @description An entitlement as it leaves the building. No `content_key`: what a shopper
+         *     needs is whether they may still download it, not where it is kept.
+         */
+        EntitlementView: {
+            digital_content_id: components["schemas"]["DigitalContentId"];
+            /** Format: int32 */
+            download_count: number;
+            /** Format: date-time */
+            expires_at: string | null;
+            /** Format: date-time */
+            granted_at: string;
+            id: components["schemas"]["OrderEntitlementId"];
+            /** Format: int32 */
+            max_downloads: number | null;
+            order_id: components["schemas"]["OrderId"];
+            /** Format: int32 */
+            remaining: number | null;
+            /** Format: date-time */
+            revoked_at: string | null;
+            revoked_reason: string | null;
+        };
+        /**
+         * Format: uuid
          * @description Identifies one exchange.
          */
         ExchangeId: string;
@@ -6632,6 +6771,94 @@ export interface components {
             order_return_id: components["schemas"]["ReturnId"] | null;
             /** Format: int32 */
             order_version: number;
+        };
+        ExemptionView: {
+            certificate_reference: string | null;
+            country_code: string;
+            /** Format: date-time */
+            created_at: string;
+            customer_id: components["schemas"]["CustomerId"];
+            /** Format: uuid */
+            id: string;
+            kind: string;
+            province_code: string | null;
+            reason_code: string | null;
+            /** Format: date-time */
+            valid_from: string;
+            /** Format: date-time */
+            valid_until: string | null;
+            /** Format: date-time */
+            verified_at: string | null;
+        };
+        /** @description A fulfilment with what is in the box and what is on the outside of it. */
+        FulfillmentDetailView: {
+            fulfillment: components["schemas"]["FulfillmentView"];
+            items: components["schemas"]["FulfillmentItemView"][];
+            labels: components["schemas"]["LabelView"][];
+        };
+        /**
+         * Format: uuid
+         * @description Identifies one fulfillment.
+         */
+        FulfillmentId: string;
+        FulfillmentItemView: {
+            /** Format: uuid */
+            id: string;
+            /** Format: int32 */
+            quantity: number;
+            sku: string | null;
+            title: string;
+        };
+        /**
+         * Format: uuid
+         * @description Identifies one fulfillment set.
+         */
+        FulfillmentSetId: string;
+        FulfillmentSetView: {
+            /** Format: date-time */
+            created_at: string;
+            id: components["schemas"]["FulfillmentSetId"];
+            kind: string;
+            name: string;
+        };
+        FulfillmentView: {
+            /** Format: date-time */
+            canceled_at: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            delivered_at: string | null;
+            id: components["schemas"]["FulfillmentId"];
+            location_id: components["schemas"]["StockLocationId"] | null;
+            /** Format: date-time */
+            packed_at: string | null;
+            requires_shipping: boolean;
+            /** Format: date-time */
+            shipped_at: string | null;
+            shipping_option_id: components["schemas"]["ShippingOptionId"] | null;
+        };
+        /**
+         * Format: uuid
+         * @description Identifies one gift card.
+         */
+        GiftCardId: string;
+        /**
+         * @description A card as it leaves the building. No code and no hash: what is left is what
+         *     is spendable, and who it belongs to when anybody does.
+         */
+        GiftCardView: {
+            balance: string;
+            /** Format: date-time */
+            created_at: string;
+            currency_code: string;
+            customer_id: components["schemas"]["CustomerId"] | null;
+            /** Format: date-time */
+            disabled_at: string | null;
+            /** Format: date-time */
+            expires_at: string | null;
+            id: components["schemas"]["GiftCardId"];
+            initial_balance: string;
+            issued_order_id: components["schemas"]["OrderId"] | null;
         };
         /**
          * Format: uuid
@@ -6705,6 +6932,13 @@ export interface components {
          * @enum {string}
          */
         ItemAction: "add" | "update" | "remove" | "write_off";
+        LabelView: {
+            /** Format: uuid */
+            id: string;
+            label_url: string | null;
+            tracking_number: string;
+            tracking_url: string | null;
+        };
         /**
          * @description What the money on an order comes to. Worked out from the transactions
          *     rather than stored, so it cannot drift from them.
@@ -6744,6 +6978,12 @@ export interface components {
             locale: string | null;
             /** Format: uuid */
             return_reason_id: string;
+        };
+        LocalisedShippingOptionView: {
+            is_fallback: boolean;
+            locale: string | null;
+            name: string;
+            shipping_option_id: components["schemas"]["ShippingOptionId"];
         };
         /**
          * @description An amount as it arrives over the wire. Never a float, and the currency is
@@ -6829,6 +7069,11 @@ export interface components {
          * @description Identifies one order change.
          */
         OrderChangeId: string;
+        /**
+         * Format: uuid
+         * @description Identifies one entitlement.
+         */
+        OrderEntitlementId: string;
         /**
          * Format: uuid
          * @description Identifies one order.
@@ -6917,6 +7162,31 @@ export interface components {
         PaymentCollectionId: string;
         /**
          * Format: uuid
+         * @description Identifies one payment.
+         */
+        PaymentId: string;
+        PaymentProviderView: {
+            code: string;
+        };
+        /**
+         * Format: uuid
+         * @description Identifies one payment session.
+         */
+        PaymentSessionId: string;
+        PaymentView: {
+            amount: components["schemas"]["MoneyView"];
+            /** Format: date-time */
+            canceled_at: string | null;
+            /** Format: date-time */
+            captured_at: string | null;
+            /** Format: date-time */
+            created_at: string;
+            id: components["schemas"]["PaymentId"];
+            payment_collection_id: components["schemas"]["PaymentCollectionId"];
+            payment_session_id: components["schemas"]["PaymentSessionId"] | null;
+        };
+        /**
+         * Format: uuid
          * @description Identifies one payout.
          */
         PayoutId: string;
@@ -6953,11 +7223,43 @@ export interface components {
          * @description Identifies one price list.
          */
         PriceListId: string;
+        PriceListView: {
+            /** Format: date-time */
+            created_at: string;
+            description: string | null;
+            /** Format: date-time */
+            ends_at: string | null;
+            id: components["schemas"]["PriceListId"];
+            kind: string;
+            /** Format: int32 */
+            rules_count: number;
+            /** Format: date-time */
+            starts_at: string | null;
+            status: string;
+            title: string;
+        };
+        PricePreferenceView: {
+            attribute: string;
+            /** Format: uuid */
+            id: string;
+            is_tax_inclusive: boolean;
+            value: string | null;
+        };
         PriceRuleInput: {
             attribute: string;
             operator: string;
             /** Format: int32 */
             priority?: number | null;
+            value: string;
+        };
+        PriceRuleView: {
+            attribute: string;
+            /** Format: uuid */
+            id: string;
+            operator: string;
+            price_id: components["schemas"]["PriceId"];
+            /** Format: int32 */
+            priority: number;
             value: string;
         };
         /**
@@ -7058,6 +7360,12 @@ export interface components {
             /** Format: int32 */
             used: number;
         };
+        ProviderView: {
+            code: string;
+            /** Format: uuid */
+            id: string;
+            is_enabled: boolean;
+        };
         PublishAgreement: {
             body: string;
             /** Format: date-time */
@@ -7071,6 +7379,18 @@ export interface components {
          * @description Identifies one publishable key.
          */
         PublishableKeyId: string;
+        PutContent: {
+            auto_grant?: boolean | null;
+            content_key: string;
+            /** Format: int32 */
+            max_downloads?: number | null;
+            metadata?: unknown;
+            name: string;
+            /** Format: int32 */
+            rank?: number | null;
+            /** Format: int32 */
+            valid_days?: number | null;
+        };
         PutReturnReasonTranslation: {
             description?: string | null;
             label: string;
@@ -7120,6 +7440,11 @@ export interface components {
             /** Format: uuid */
             reference_id: string;
         };
+        Redeem: {
+            ip?: string | null;
+            token: string;
+            user_agent?: string | null;
+        };
         /**
          * Format: uuid
          * @description Identifies one region.
@@ -7134,6 +7459,21 @@ export interface components {
             is_tax_inclusive: boolean;
             name: string;
             payment_providers: string[];
+        };
+        /** @description One registration the shop itself holds. */
+        RegistrationView: {
+            country_code: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            id: string;
+            is_home: boolean;
+            scheme: string;
+            tax_id: string | null;
+            /** Format: date-time */
+            valid_from: string;
+            /** Format: date-time */
+            valid_until: string | null;
         };
         RenameStockLocation: {
             name: string;
@@ -7244,6 +7584,9 @@ export interface components {
             requested_at: string | null;
             status: string;
         };
+        RevokeEntitlements: {
+            reason?: string | null;
+        };
         /**
          * Format: uuid
          * @description Identifies one sales channel.
@@ -7262,6 +7605,30 @@ export interface components {
          * @description Identifies one selling plan.
          */
         SellingPlanId: string;
+        /**
+         * Format: uuid
+         * @description Identifies one service zone.
+         */
+        ServiceZoneId: string;
+        ServiceZoneView: {
+            fulfillment_set_id: components["schemas"]["FulfillmentSetId"];
+            id: components["schemas"]["ServiceZoneId"];
+            name: string;
+        };
+        /**
+         * @description A session without its `data`: that is the provider's, and it has held a
+         *     client secret before now.
+         */
+        SessionView: {
+            amount: components["schemas"]["MoneyView"];
+            /** Format: date-time */
+            authorized_at: string | null;
+            /** Format: date-time */
+            created_at: string;
+            id: components["schemas"]["PaymentSessionId"];
+            payment_collection_id: components["schemas"]["PaymentCollectionId"];
+            status: string;
+        };
         SetCommissionRule: {
             category_id?: components["schemas"]["CategoryId"] | null;
             currency_code?: string | null;
@@ -7292,6 +7659,45 @@ export interface components {
          * @description Identifies one shipping option.
          */
         ShippingOptionId: string;
+        ShippingOptionTranslationView: {
+            locale: string;
+            name: string;
+            shipping_option_id: components["schemas"]["ShippingOptionId"];
+        };
+        ShippingOptionTypeView: {
+            code: string;
+            /** Format: date-time */
+            created_at: string;
+            description: string | null;
+            /** Format: uuid */
+            id: string;
+            label: string;
+        };
+        ShippingOptionView: {
+            /** Format: date-time */
+            created_at: string;
+            enabled_in_store: boolean;
+            id: components["schemas"]["ShippingOptionId"];
+            is_return: boolean;
+            name: string;
+            price_type: string;
+            service_zone_id: components["schemas"]["ServiceZoneId"];
+            /** Format: uuid */
+            shipping_option_type_id: string | null;
+            shipping_profile_id: components["schemas"]["ShippingProfileId"] | null;
+        };
+        /**
+         * Format: uuid
+         * @description Identifies one shipping profile.
+         */
+        ShippingProfileId: string;
+        ShippingProfileView: {
+            /** Format: date-time */
+            created_at: string;
+            id: components["schemas"]["ShippingProfileId"];
+            kind: string;
+            name: string;
+        };
         /**
          * @description Where a location is. The country is what makes it the origin of a supply,
          *     so it is required and the rest of the address is not.
@@ -7319,6 +7725,43 @@ export interface components {
             id: components["schemas"]["StockLocationId"];
             name: string;
         };
+        /**
+         * Format: uuid
+         * @description Identifies one store credit.
+         */
+        StoreCreditId: string;
+        StoreCreditView: {
+            balance: string;
+            currency_code: string;
+            customer_id: components["schemas"]["CustomerId"];
+            /** Format: date-time */
+            disabled_at: string | null;
+            id: components["schemas"]["StoreCreditId"];
+        };
+        StoreLineItemView: {
+            id: components["schemas"]["LineItemId"];
+            /** @description The bundle line this one is a component of, when it is one. */
+            parent_line_item_id: components["schemas"]["LineItemId"] | null;
+            product_handle: string | null;
+            product_title: string;
+            /** Format: int32 */
+            quantity: number;
+            requires_shipping: boolean;
+            /** @description The plan this line is bought on, when it is a subscription's. */
+            selling_plan_id: components["schemas"]["SellingPlanId"] | null;
+            thumbnail: string | null;
+            unit_price: components["schemas"]["StoreMoneyView"];
+            variant_id: components["schemas"]["VariantId"] | null;
+            variant_title: string | null;
+        };
+        /**
+         * @description An amount as it leaves the building: the number and the code it is in,
+         *     never a bare decimal somebody has to guess the currency of.
+         */
+        StoreMoneyView: {
+            amount: string;
+            currency_code: string;
+        };
         StoreOrderView: {
             /** Format: date-time */
             created_at: string;
@@ -7340,6 +7783,13 @@ export interface components {
             id: components["schemas"]["ReturnId"];
             order_id: components["schemas"]["OrderId"];
             status: string;
+        };
+        StoreShippingOptionView: {
+            /** @description Absent when the option is priced on request rather than from a list. */
+            amount: components["schemas"]["StoreMoneyView"] | null;
+            id: components["schemas"]["ShippingOptionId"];
+            name: string;
+            price_type: string;
         };
         /**
          * Format: uuid
@@ -7377,6 +7827,71 @@ export interface components {
             totals: unknown;
             /** Format: int32 */
             version: number;
+        };
+        /**
+         * @description A buyer's number. `validated_at` is what decides anything: an unchecked
+         *     number is a string somebody typed.
+         */
+        TaxIdView: {
+            /** Format: date-time */
+            created_at: string;
+            customer_id: components["schemas"]["CustomerId"];
+            evidence: string | null;
+            /** Format: uuid */
+            id: string;
+            tax_id: string;
+            tax_id_country: string;
+            tax_id_type: string;
+            /** Format: date-time */
+            validated_at: string | null;
+        };
+        /**
+         * Format: uuid
+         * @description Identifies one tax rate.
+         */
+        TaxRateId: string;
+        TaxRateRuleView: {
+            /** Format: uuid */
+            id: string;
+            reference: string;
+            /** Format: uuid */
+            reference_id: string;
+            tax_rate_id: components["schemas"]["TaxRateId"];
+        };
+        TaxRateView: {
+            code: string | null;
+            /** Format: date-time */
+            created_at: string;
+            id: components["schemas"]["TaxRateId"];
+            is_combinable: boolean;
+            is_default: boolean;
+            name: string;
+            rate: string;
+            tax_region_id: components["schemas"]["TaxRegionId"];
+        };
+        /**
+         * Format: uuid
+         * @description Identifies one tax region.
+         */
+        TaxRegionId: string;
+        TaxRegionView: {
+            country_code: string;
+            /** Format: date-time */
+            created_at: string;
+            id: components["schemas"]["TaxRegionId"];
+            parent_id: components["schemas"]["TaxRegionId"] | null;
+            provider: string | null;
+            province_code: string | null;
+        };
+        /**
+         * @description The one answer carrying a token, the way an issued gift card is the one
+         *     answer carrying a code.
+         */
+        TokenView: {
+            entitlement: components["schemas"]["EntitlementView"];
+            /** Format: date-time */
+            expires_at: string;
+            token: string;
         };
         TotalsView: {
             discount: components["schemas"]["MoneyView"];
@@ -8012,6 +8527,49 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description The request was not well formed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The host's authorizer refused. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such thing, or none this caller may see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getAdminCarts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The call succeeded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["CartView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -9916,7 +10474,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["StoreCreditView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -9998,7 +10558,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ExemptionView"][];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -10080,7 +10642,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["TaxIdView"][];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -11312,7 +11876,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ProviderView"][];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -11472,7 +12038,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["FulfillmentSetView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -11593,7 +12163,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ServiceZoneView"][];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -11673,7 +12245,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["GiftCardView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -11792,7 +12368,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["GiftCardView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -11915,7 +12493,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["CreditMovementView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -13925,7 +14507,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["EntitlementView"][];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -13959,14 +14543,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevokeEntitlements"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["EntitlementView"][];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -14007,7 +14597,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["FulfillmentView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -14090,7 +14684,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["FulfillmentDetailView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -14836,7 +15432,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ShippingOptionView"][];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -14967,7 +15565,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ShippingOptionView"][];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -15266,7 +15866,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["CollectionView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -15307,7 +15909,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["SessionView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -15387,7 +15993,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["PaymentView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -15426,7 +16036,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ProviderView"][];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -15588,7 +16200,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PaymentView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -15840,7 +16454,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["PriceListView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -15920,7 +16538,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PriceListView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -16041,7 +16661,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PricePreferenceView"] | null;
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -16162,7 +16784,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PriceSetView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -16203,7 +16827,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["PriceView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -16410,7 +17038,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PriceRuleView"][];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -17426,7 +18056,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["BundleComponentView"][];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -17550,7 +18182,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["BundlePriceView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -20090,7 +20724,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["ReasonView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -22060,7 +22698,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["ShippingOptionTypeView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -22138,7 +22780,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["ShippingOptionView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -22218,7 +22864,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ShippingOptionView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -22341,7 +22989,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ShippingOptionTranslationView"][];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -22424,7 +23074,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["LocalisedShippingOptionView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -22505,7 +23157,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["ShippingProfileView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -22585,7 +23241,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ShippingProfileView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -23127,7 +23785,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["CreditMovementView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -23937,7 +24599,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["TaxRateView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -24017,7 +24683,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["TaxRateView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -24140,7 +24808,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["TaxRateRuleView"][];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -24262,7 +24932,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["TaxRegionView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -24342,7 +25016,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["TaxRegionView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -24463,7 +25139,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["RegistrationView"][];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -24584,7 +25262,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ContentView"][];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -24618,14 +25298,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutContent"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ContentView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -25041,7 +25727,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["CartCreditView"][];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -25206,7 +25894,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["StoreLineItemView"][];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -26092,7 +26782,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["StoreCreditView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -26124,14 +26816,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Redeem"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["DownloadView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -26170,7 +26868,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["EntitlementView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -26211,7 +26913,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["TokenView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -26730,7 +27434,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PaymentProviderView"][];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -27460,7 +28166,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["StoreShippingOptionView"][];
+                };
             };
             /** @description The request was not well formed. */
             400: {

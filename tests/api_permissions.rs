@@ -4255,6 +4255,11 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
             order_basket::ListBasketOrders::default()
         )
     );
+    denied!(
+        Method::Get,
+        "/admin/carts",
+        order_basket::list_carts(&mut tx, &ctx, order_basket::ListCarts::default())
+    );
 
     // -------------------------------------------------------- payout.rs ----
     denied!(

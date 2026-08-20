@@ -45,7 +45,12 @@ use super::{Method, Route, Surface, own_cart, own_order, signed_in};
 
 /// An amount as it leaves the building: the number and the code it is in,
 /// never a bare decimal somebody has to guess the currency of.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+// Named for the document, not renamed in Rust: `admin_order` has a type of
+// the same name with a `currency` field rather than `currency_code`, and
+// schemars would otherwise disambiguate the two with a numeric suffix
+// decided by generation order.
+#[schemars(rename = "StoreMoneyView")]
 pub struct MoneyView {
     pub amount: Decimal,
     pub currency_code: String,
@@ -310,7 +315,11 @@ impl From<cart::Cart> for CartView {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+// Named for the document, not renamed in Rust: `admin_order` has a type of
+// the same name and a wider shape, and schemars would otherwise disambiguate
+// the two with a numeric suffix decided by generation order.
+#[schemars(rename = "StoreLineItemView")]
 pub struct LineItemView {
     pub id: LineItemId,
     pub variant_id: Option<VariantId>,
@@ -508,7 +517,11 @@ impl From<customer::CustomerAddress> for AddressView {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+// Named for the document, not renamed in Rust: `admin_order` has a type of
+// the same name and a wider shape, and schemars would otherwise disambiguate
+// the two with a numeric suffix decided by generation order.
+#[schemars(rename = "StoreShippingOptionView")]
 pub struct ShippingOptionView {
     pub id: ShippingOptionId,
     pub name: String,
@@ -623,7 +636,7 @@ impl PaymentSessionView {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct PaymentProviderView {
     pub code: String,
 }

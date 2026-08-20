@@ -5,6 +5,16 @@
  * A commerce engine for Rust: products, carts, orders, payments, inventory, and a workflow runner that unwinds what it started.
  * OpenAPI spec version: 0.0.0
  */
+import type {
+  CollectionView,
+  GetAdminPaymentCollectionsByIdPaymentSessions200,
+  GetAdminPayments200,
+  GetAdminRefundReasons200,
+  PaymentProviderView,
+  PaymentView,
+  ProviderView
+} from '../models';
+
 import { apiMutator } from '../../../mutator';
 
 export type postAdminPaymentCollectionsResponse200 = {
@@ -60,7 +70,7 @@ export const postAdminPaymentCollections = async ( options?: Parameters<typeof a
 
 
 export type getAdminPaymentCollectionsByIdResponse200 = {
-  data: void
+  data: CollectionView
   status: 200
 }
 
@@ -112,7 +122,7 @@ export const getAdminPaymentCollectionsById = async (id: string, options?: Param
 
 
 export type getAdminPaymentCollectionsByIdPaymentSessionsResponse200 = {
-  data: void
+  data: GetAdminPaymentCollectionsByIdPaymentSessions200
   status: 200
 }
 
@@ -216,7 +226,7 @@ export const postAdminPaymentCollectionsByIdPaymentSessions = async (id: string,
 
 
 export type getAdminPaymentsResponse200 = {
-  data: void
+  data: GetAdminPayments200
   status: 200
 }
 
@@ -268,7 +278,7 @@ export const getAdminPayments = async ( options?: Parameters<typeof apiMutator>[
 
 
 export type getAdminPaymentsPaymentProvidersResponse200 = {
-  data: void
+  data: ProviderView[]
   status: 200
 }
 
@@ -476,7 +486,7 @@ export const postAdminPaymentsPaymentProvidersByIdEnable = async (id: string, op
 
 
 export type getAdminPaymentsByIdResponse200 = {
-  data: void
+  data: PaymentView
   status: 200
 }
 
@@ -632,7 +642,7 @@ export const postAdminPaymentsByIdRefund = async (id: string, options?: Paramete
 
 
 export type getAdminRefundReasonsResponse200 = {
-  data: void
+  data: GetAdminRefundReasons200
   status: 200
 }
 
@@ -944,7 +954,7 @@ export const postStorePaymentCollectionsByIdPaymentSessions = async (id: string,
 
 
 export type getStorePaymentProvidersResponse200 = {
-  data: void
+  data: PaymentProviderView[]
   status: 200
 }
 

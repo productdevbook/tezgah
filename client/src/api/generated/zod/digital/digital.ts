@@ -24,7 +24,19 @@ export const GetAdminOrdersByIdEntitlementsParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminOrdersByIdEntitlementsResponse = zod.unknown()
+export const GetAdminOrdersByIdEntitlementsResponseItem = zod.object({
+  "digital_content_id": zod.uuid().describe('Identifies one digital content.'),
+  "download_count": zod.int(),
+  "expires_at": zod.iso.datetime({"offset":true}).nullable(),
+  "granted_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one entitlement.'),
+  "max_downloads": zod.int().nullable(),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "remaining": zod.int().nullable(),
+  "revoked_at": zod.iso.datetime({"offset":true}).nullable(),
+  "revoked_reason": zod.string().nullable()
+}).describe('An entitlement as it leaves the building. No `content_key`: what a shopper\nneeds is whether they may still download it, not where it is kept.')
+export const GetAdminOrdersByIdEntitlementsResponse = zod.array(GetAdminOrdersByIdEntitlementsResponseItem)
 
 /**
  * @summary Take an order's downloads back
@@ -33,7 +45,23 @@ export const PostAdminOrdersByIdEntitlementsRevokeParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminOrdersByIdEntitlementsRevokeResponse = zod.unknown()
+export const PostAdminOrdersByIdEntitlementsRevokeBody = zod.object({
+  "reason": zod.string().nullish()
+})
+
+export const PostAdminOrdersByIdEntitlementsRevokeResponseItem = zod.object({
+  "digital_content_id": zod.uuid().describe('Identifies one digital content.'),
+  "download_count": zod.int(),
+  "expires_at": zod.iso.datetime({"offset":true}).nullable(),
+  "granted_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one entitlement.'),
+  "max_downloads": zod.int().nullable(),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "remaining": zod.int().nullable(),
+  "revoked_at": zod.iso.datetime({"offset":true}).nullable(),
+  "revoked_reason": zod.string().nullable()
+}).describe('An entitlement as it leaves the building. No `content_key`: what a shopper\nneeds is whether they may still download it, not where it is kept.')
+export const PostAdminOrdersByIdEntitlementsRevokeResponse = zod.array(PostAdminOrdersByIdEntitlementsRevokeResponseItem)
 
 /**
  * @summary List the files a variant carries
@@ -42,7 +70,18 @@ export const GetAdminVariantsByIdDigitalContentParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminVariantsByIdDigitalContentResponse = zod.unknown()
+export const GetAdminVariantsByIdDigitalContentResponseItem = zod.object({
+  "auto_grant": zod.boolean(),
+  "content_key": zod.string(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one digital content.'),
+  "max_downloads": zod.int().nullable(),
+  "name": zod.string(),
+  "rank": zod.int(),
+  "valid_days": zod.int().nullable(),
+  "variant_id": zod.uuid().describe('Identifies one variant.')
+})
+export const GetAdminVariantsByIdDigitalContentResponse = zod.array(GetAdminVariantsByIdDigitalContentResponseItem)
 
 /**
  * @summary Put a file on a variant
@@ -51,17 +90,64 @@ export const PostAdminVariantsByIdDigitalContentParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminVariantsByIdDigitalContentResponse = zod.unknown()
+export const PostAdminVariantsByIdDigitalContentBody = zod.object({
+  "auto_grant": zod.boolean().nullish(),
+  "content_key": zod.string(),
+  "max_downloads": zod.int().nullish(),
+  "metadata": zod.unknown().optional(),
+  "name": zod.string(),
+  "rank": zod.int().nullish(),
+  "valid_days": zod.int().nullish()
+})
+
+export const PostAdminVariantsByIdDigitalContentResponse = zod.object({
+  "auto_grant": zod.boolean(),
+  "content_key": zod.string(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one digital content.'),
+  "max_downloads": zod.int().nullable(),
+  "name": zod.string(),
+  "rank": zod.int(),
+  "valid_days": zod.int().nullable(),
+  "variant_id": zod.uuid().describe('Identifies one variant.')
+})
 
 /**
  * @summary Spend one download of a link
  */
-export const PostStoreDownloadsResponse = zod.unknown()
+export const PostStoreDownloadsBody = zod.object({
+  "ip": zod.string().nullish(),
+  "token": zod.string(),
+  "user_agent": zod.string().nullish()
+})
+
+export const PostStoreDownloadsResponse = zod.object({
+  "content_key": zod.string(),
+  "download_count": zod.int(),
+  "entitlement_id": zod.uuid().describe('Identifies one entitlement.'),
+  "remaining": zod.int().nullable()
+}).describe('What the host hands to its own storage. tezgah has counted the download by\nthe time this is returned.')
 
 /**
  * @summary What I may download
  */
-export const GetStoreEntitlementsResponse = zod.unknown()
+export const GetStoreEntitlementsResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "digital_content_id": zod.uuid().describe('Identifies one digital content.'),
+  "download_count": zod.int(),
+  "expires_at": zod.iso.datetime({"offset":true}).nullable(),
+  "granted_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one entitlement.'),
+  "max_downloads": zod.int().nullable(),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "remaining": zod.int().nullable(),
+  "revoked_at": zod.iso.datetime({"offset":true}).nullable(),
+  "revoked_reason": zod.string().nullable()
+}).describe('An entitlement as it leaves the building. No `content_key`: what a shopper\nneeds is whether they may still download it, not where it is kept.'))
+}))
 
 /**
  * @summary Ask for a download link
@@ -70,5 +156,20 @@ export const PostStoreEntitlementsByIdTokenParams = zod.object({
   "id": zod.string()
 })
 
-export const PostStoreEntitlementsByIdTokenResponse = zod.unknown()
+export const PostStoreEntitlementsByIdTokenResponse = zod.object({
+  "entitlement": zod.object({
+  "digital_content_id": zod.uuid().describe('Identifies one digital content.'),
+  "download_count": zod.int(),
+  "expires_at": zod.iso.datetime({"offset":true}).nullable(),
+  "granted_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one entitlement.'),
+  "max_downloads": zod.int().nullable(),
+  "order_id": zod.uuid().describe('Identifies one order.'),
+  "remaining": zod.int().nullable(),
+  "revoked_at": zod.iso.datetime({"offset":true}).nullable(),
+  "revoked_reason": zod.string().nullable()
+}).describe('An entitlement as it leaves the building. No `content_key`: what a shopper\nneeds is whether they may still download it, not where it is kept.'),
+  "expires_at": zod.iso.datetime({"offset":true}),
+  "token": zod.string()
+}).describe('The one answer carrying a token, the way an issued gift card is the one\nanswer carrying a code.')
 

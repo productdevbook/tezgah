@@ -78,17 +78,18 @@ impl Bound {
 
 /// Assembles the router and reports what it bound.
 ///
-/// The store surface — catalogue, cart, checkout — is always mounted;
-/// `store::router`'s own doc comment says which six or five of those routes
-/// depending on whether checkout is configured. The admin surface is mounted
-/// only when `state.admin_token` is `Some`, and everything under it — eleven
-/// list endpoints the panel in `client/` reads, the eight single-row reads
-/// behind a click on one of those lists, the twelve writes a fresh install
-/// needs to fill a shop, a screen's row edited or deleted wherever
-/// `tezgah::api` has the function for it, and the reads past what the panel
-/// has a screen for yet (`admin::router`'s own doc comment names all five)
-/// — requires that same bearer token: see `admin::router`'s doc comment for
-/// why an unset token means no admin surface at all rather than an open
+/// The store surface — catalogue, cart, checkout, and now the reads past
+/// those five that had their own functions waiting in `src/api/` — is
+/// always mounted; `store::router`'s own doc comment says exactly how many
+/// of its routes are bound and why some of `tezgah::api`'s storefront
+/// routes still are not. The admin surface is mounted only when
+/// `state.admin_token` is `Some`; `admin::router`'s own doc comment names
+/// what it binds — the panel's screens, their writes, a screen's row edited
+/// or deleted wherever `tezgah::api` has the function for it, and the reads
+/// past what the panel has a screen for yet — and `../README.md`'s route
+/// table carries the full list. Requires that same bearer token: see
+/// `admin::router`'s doc comment for why an unset token means no admin
+/// surface at all rather than an open
 /// one.
 pub fn router(state: AppState) -> (Router, Bound) {
     let mut bound = Vec::new();

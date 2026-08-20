@@ -9,6 +9,23 @@ import * as zod from 'zod';
 
 
 /**
+ * @summary List carts, abandoned ones included
+ */
+export const GetAdminCartsResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "completed_at": zod.iso.datetime({"offset":true}).nullable(),
+  "currency_code": zod.string(),
+  "customer_id": zod.union([zod.uuid().describe('Identifies one customer.'),zod.null()]),
+  "email": zod.string().nullable(),
+  "id": zod.uuid().describe('Identifies one cart.'),
+  "region_id": zod.union([zod.uuid().describe('Identifies one region.'),zod.null()])
+}))
+}))
+
+/**
  * @summary Start a cart
  */
 export const PostStoreCartsResponse = zod.unknown()
@@ -65,7 +82,26 @@ export const GetStoreCartsByIdLineItemsParams = zod.object({
   "id": zod.string()
 })
 
-export const GetStoreCartsByIdLineItemsResponse = zod.unknown()
+export const getStoreCartsByIdLineItemsResponseUnitPriceAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetStoreCartsByIdLineItemsResponseItem = zod.object({
+  "id": zod.uuid().describe('Identifies one line item.'),
+  "parent_line_item_id": zod.union([zod.uuid().describe('Identifies one line item.'),zod.null()]).describe('The bundle line this one is a component of, when it is one.'),
+  "product_handle": zod.string().nullable(),
+  "product_title": zod.string(),
+  "quantity": zod.int(),
+  "requires_shipping": zod.boolean(),
+  "selling_plan_id": zod.union([zod.uuid().describe('Identifies one selling plan.'),zod.null()]).describe('The plan this line is bought on, when it is a subscription\'s.'),
+  "thumbnail": zod.string().nullable(),
+  "unit_price": zod.object({
+  "amount": zod.string().regex(getStoreCartsByIdLineItemsResponseUnitPriceAmountRegExp),
+  "currency_code": zod.string()
+}).describe('An amount as it leaves the building: the number and the code it is in,\nnever a bare decimal somebody has to guess the currency of.'),
+  "variant_id": zod.union([zod.uuid().describe('Identifies one variant.'),zod.null()]),
+  "variant_title": zod.string().nullable()
+})
+export const GetStoreCartsByIdLineItemsResponse = zod.array(GetStoreCartsByIdLineItemsResponseItem)
 
 /**
  * @summary Put a variant in the cart at the shop's price

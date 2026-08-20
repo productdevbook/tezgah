@@ -5,7 +5,64 @@
  * A commerce engine for Rust: products, carts, orders, payments, inventory, and a workflow runner that unwinds what it started.
  * OpenAPI spec version: 0.0.0
  */
+import type {
+  GetAdminCarts200,
+  StoreLineItemView
+} from '../models';
+
 import { apiMutator } from '../../../mutator';
+
+export type getAdminCartsResponse200 = {
+  data: GetAdminCarts200
+  status: 200
+}
+
+export type getAdminCartsResponse400 = {
+  data: void
+  status: 400
+}
+
+export type getAdminCartsResponse403 = {
+  data: void
+  status: 403
+}
+
+export type getAdminCartsResponse404 = {
+  data: void
+  status: 404
+}
+
+export type getAdminCartsResponseSuccess = (getAdminCartsResponse200) & {
+  headers: Headers;
+};
+export type getAdminCartsResponseError = (getAdminCartsResponse400 | getAdminCartsResponse403 | getAdminCartsResponse404) & {
+  headers: Headers;
+};
+
+export type getAdminCartsResponse = (getAdminCartsResponseSuccess | getAdminCartsResponseError)
+
+export const getGetAdminCartsUrl = () => {
+
+
+
+
+  return `/admin/carts`
+}
+
+/**
+ * @summary List carts, abandoned ones included
+ */
+export const getAdminCarts = async ( options?: Parameters<typeof apiMutator>[1]): Promise<getAdminCartsResponse> => {
+
+  return apiMutator<getAdminCartsResponse>(getGetAdminCartsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
 
 export type postStoreCartsResponse200 = {
   data: void
@@ -320,7 +377,7 @@ export const postStoreCartsByIdCustomer = async (id: string, options?: Parameter
 
 
 export type getStoreCartsByIdLineItemsResponse200 = {
-  data: void
+  data: StoreLineItemView[]
   status: 200
 }
 

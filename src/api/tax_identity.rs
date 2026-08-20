@@ -28,7 +28,7 @@ use super::{Method, Route, Surface};
 // ---------------------------------------------------------------------------
 
 /// One registration the shop itself holds.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct RegistrationView {
     pub id: Uuid,
     pub country_code: String,
@@ -57,7 +57,7 @@ impl From<tax::TaxRegistration> for RegistrationView {
 
 /// A buyer's number. `validated_at` is what decides anything: an unchecked
 /// number is a string somebody typed.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TaxIdView {
     pub id: Uuid,
     pub customer_id: CustomerId,
@@ -84,7 +84,7 @@ impl From<tax::CustomerTaxId> for TaxIdView {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ExemptionView {
     pub id: Uuid,
     pub customer_id: CustomerId,

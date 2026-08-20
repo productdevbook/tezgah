@@ -5,10 +5,21 @@
  * A commerce engine for Rust: products, carts, orders, payments, inventory, and a workflow runner that unwinds what it started.
  * OpenAPI spec version: 0.0.0
  */
+import type {
+  ExemptionView,
+  GetAdminTaxRates200,
+  GetAdminTaxRegions200,
+  RegistrationView,
+  TaxIdView,
+  TaxRateRuleView,
+  TaxRateView,
+  TaxRegionView
+} from '../models';
+
 import { apiMutator } from '../../../mutator';
 
 export type getAdminCustomersByIdTaxExemptionsResponse200 = {
-  data: void
+  data: ExemptionView[]
   status: 200
 }
 
@@ -112,7 +123,7 @@ export const postAdminCustomersByIdTaxExemptions = async (id: string, options?: 
 
 
 export type getAdminCustomersByIdTaxIdsResponse200 = {
-  data: void
+  data: TaxIdView[]
   status: 200
 }
 
@@ -320,7 +331,7 @@ export const deleteAdminTaxIdsById = async (id: string, options?: Parameters<typ
 
 
 export type getAdminTaxRatesResponse200 = {
-  data: void
+  data: GetAdminTaxRates200
   status: 200
 }
 
@@ -476,7 +487,7 @@ export const deleteAdminTaxRatesById = async (id: string, options?: Parameters<t
 
 
 export type getAdminTaxRatesByIdResponse200 = {
-  data: void
+  data: TaxRateView
   status: 200
 }
 
@@ -580,7 +591,7 @@ export const patchAdminTaxRatesById = async (id: string, options?: Parameters<ty
 
 
 export type getAdminTaxRatesByIdRulesResponse200 = {
-  data: void
+  data: TaxRateRuleView[]
   status: 200
 }
 
@@ -738,7 +749,7 @@ export const deleteAdminTaxRatesByIdRulesByRuleId = async (id: string,
 
 
 export type getAdminTaxRegionsResponse200 = {
-  data: void
+  data: GetAdminTaxRegions200
   status: 200
 }
 
@@ -894,7 +905,7 @@ export const deleteAdminTaxRegionsById = async (id: string, options?: Parameters
 
 
 export type getAdminTaxRegionsByIdResponse200 = {
-  data: void
+  data: TaxRegionView
   status: 200
 }
 
@@ -998,7 +1009,7 @@ export const patchAdminTaxRegionsById = async (id: string, options?: Parameters<
 
 
 export type getAdminTaxRegistrationsResponse200 = {
-  data: void
+  data: RegistrationView[]
   status: 200
 }
 

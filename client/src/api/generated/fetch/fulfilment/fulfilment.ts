@@ -5,10 +5,26 @@
  * A commerce engine for Rust: products, carts, orders, payments, inventory, and a workflow runner that unwinds what it started.
  * OpenAPI spec version: 0.0.0
  */
+import type {
+  FulfillmentDetailView,
+  GetAdminFulfillmentSets200,
+  GetAdminOrdersByIdFulfillments200,
+  GetAdminShippingOptionTypes200,
+  GetAdminShippingOptions200,
+  GetAdminShippingProfiles200,
+  LocalisedShippingOptionView,
+  ProviderView,
+  ServiceZoneView,
+  ShippingOptionTranslationView,
+  ShippingOptionView,
+  ShippingProfileView,
+  StoreShippingOptionView
+} from '../models';
+
 import { apiMutator } from '../../../mutator';
 
 export type getAdminFulfillmentProvidersResponse200 = {
-  data: void
+  data: ProviderView[]
   status: 200
 }
 
@@ -216,7 +232,7 @@ export const postAdminFulfillmentProvidersByIdEnable = async (id: string, option
 
 
 export type getAdminFulfillmentSetsResponse200 = {
-  data: void
+  data: GetAdminFulfillmentSets200
   status: 200
 }
 
@@ -372,7 +388,7 @@ export const deleteAdminFulfillmentSetsById = async (id: string, options?: Param
 
 
 export type getAdminFulfillmentSetsByIdServiceZonesResponse200 = {
-  data: void
+  data: ServiceZoneView[]
   status: 200
 }
 
@@ -476,7 +492,7 @@ export const postAdminFulfillmentSetsByIdServiceZones = async (id: string, optio
 
 
 export type getAdminOrdersByIdFulfillmentsResponse200 = {
-  data: void
+  data: GetAdminOrdersByIdFulfillments200
   status: 200
 }
 
@@ -580,7 +596,7 @@ export const postAdminOrdersByIdFulfillments = async (id: string, options?: Para
 
 
 export type getAdminOrdersByIdFulfillmentsByFulfillmentIdResponse200 = {
-  data: void
+  data: FulfillmentDetailView
   status: 200
 }
 
@@ -850,7 +866,7 @@ export const postAdminOrdersByIdFulfillmentsByFulfillmentIdShipment = async (id:
 
 
 export type getAdminOrdersByIdReturnsShippingOptionsResponse200 = {
-  data: void
+  data: ShippingOptionView[]
   status: 200
 }
 
@@ -902,7 +918,7 @@ export const getAdminOrdersByIdReturnsShippingOptions = async (id: string, optio
 
 
 export type getAdminOrdersByIdShippingOptionsResponse200 = {
-  data: void
+  data: ShippingOptionView[]
   status: 200
 }
 
@@ -954,7 +970,7 @@ export const getAdminOrdersByIdShippingOptions = async (id: string, options?: Pa
 
 
 export type getAdminShippingOptionTypesResponse200 = {
-  data: void
+  data: GetAdminShippingOptionTypes200
   status: 200
 }
 
@@ -1058,7 +1074,7 @@ export const postAdminShippingOptionTypes = async ( options?: Parameters<typeof 
 
 
 export type getAdminShippingOptionsResponse200 = {
-  data: void
+  data: GetAdminShippingOptions200
   status: 200
 }
 
@@ -1162,7 +1178,7 @@ export const postAdminShippingOptions = async ( options?: Parameters<typeof apiM
 
 
 export type getAdminShippingOptionsByIdResponse200 = {
-  data: void
+  data: ShippingOptionView
   status: 200
 }
 
@@ -1318,7 +1334,7 @@ export const postAdminShippingOptionsByIdRules = async (id: string, options?: Pa
 
 
 export type getAdminShippingOptionsByIdTranslationsResponse200 = {
-  data: void
+  data: ShippingOptionTranslationView[]
   status: 200
 }
 
@@ -1476,7 +1492,7 @@ export const deleteAdminShippingOptionsByIdTranslationsByLocale = async (id: str
 
 
 export type getAdminShippingOptionsByIdTranslationsByLocaleResponse200 = {
-  data: void
+  data: LocalisedShippingOptionView
   status: 200
 }
 
@@ -1530,7 +1546,7 @@ export const getAdminShippingOptionsByIdTranslationsByLocale = async (id: string
 
 
 export type getAdminShippingProfilesResponse200 = {
-  data: void
+  data: GetAdminShippingProfiles200
   status: 200
 }
 
@@ -1634,7 +1650,7 @@ export const postAdminShippingProfiles = async ( options?: Parameters<typeof api
 
 
 export type getAdminShippingProfilesByIdResponse200 = {
-  data: void
+  data: ShippingProfileView
   status: 200
 }
 
@@ -1738,7 +1754,7 @@ export const patchAdminShippingProfilesById = async (id: string, options?: Param
 
 
 export type getStoreShippingOptionsResponse200 = {
-  data: void
+  data: StoreShippingOptionView[]
   status: 200
 }
 

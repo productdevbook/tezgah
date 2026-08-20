@@ -462,7 +462,7 @@ impl From<pricing::Price> for PriceView {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct PriceRuleView {
     pub id: uuid::Uuid,
     pub price_id: PriceId,
@@ -485,7 +485,7 @@ impl From<pricing::PriceRule> for PriceRuleView {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct PriceListView {
     pub id: PriceListId,
     pub title: String,
@@ -533,7 +533,7 @@ impl From<pricing::PriceListRule> for PriceListRuleView {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct PricePreferenceView {
     pub id: uuid::Uuid,
     pub attribute: String,
@@ -1834,7 +1834,7 @@ pub async fn set_bundle_price(
     pricing::set_bundle_price_mode(tx, ctx, variant_id, mode, body.discount_percent).await
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct BundleComponentView {
     pub id: BundleComponentId,
     pub bundle_variant_id: VariantId,
@@ -1918,7 +1918,7 @@ fn one() -> i32 {
     1
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct BundlePriceComponentView {
     pub component_variant_id: VariantId,
     pub quantity: i32,
@@ -1926,7 +1926,7 @@ pub struct BundlePriceComponentView {
     pub allocated_total: Decimal,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct BundlePriceView {
     pub mode: String,
     pub total: Decimal,

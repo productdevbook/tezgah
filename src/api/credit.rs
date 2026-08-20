@@ -75,7 +75,7 @@ impl AmountIn {
 
 /// A card as it leaves the building. No code and no hash: what is left is what
 /// is spendable, and who it belongs to when anybody does.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GiftCardView {
     pub id: GiftCardId,
     pub initial_balance: Decimal,
@@ -111,7 +111,7 @@ pub struct IssuedGiftCardView {
     pub code: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct CreditMovementView {
     pub id: uuid::Uuid,
     pub kind: String,
@@ -150,7 +150,7 @@ impl From<credit::StoreCreditTransaction> for CreditMovementView {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct StoreCreditView {
     pub id: StoreCreditId,
     pub customer_id: CustomerId,
@@ -173,7 +173,7 @@ impl From<credit::StoreCredit> for StoreCreditView {
 
 /// What a cart says it will pay with. Which card is named by id rather than by
 /// code, for the same reason the code is not in any other answer.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct CartCreditView {
     pub id: CartCreditId,
     pub cart_id: CartId,
