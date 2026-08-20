@@ -351,10 +351,149 @@
         ],
         "type": "object"
       },
+      "BundleComponentId": {
+        "description": "Identifies one bundle component.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "BundleComponentView": {
+        "properties": {
+          "bundle_variant_id": {
+            "$ref": "#/components/schemas/VariantId"
+          },
+          "component_variant_id": {
+            "$ref": "#/components/schemas/VariantId"
+          },
+          "id": {
+            "$ref": "#/components/schemas/BundleComponentId"
+          },
+          "quantity": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "sort_order": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "bundle_variant_id",
+          "component_variant_id",
+          "quantity",
+          "sort_order"
+        ],
+        "type": "object"
+      },
+      "BundlePriceComponentView": {
+        "properties": {
+          "allocated_total": {
+            "pattern": "^-?\\d+(\\.\\d+)?$",
+            "type": "string"
+          },
+          "component_variant_id": {
+            "$ref": "#/components/schemas/VariantId"
+          },
+          "quantity": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "unit_price": {
+            "pattern": "^-?\\d+(\\.\\d+)?$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "component_variant_id",
+          "quantity",
+          "unit_price",
+          "allocated_total"
+        ],
+        "type": "object"
+      },
+      "BundlePriceView": {
+        "properties": {
+          "components": {
+            "items": {
+              "$ref": "#/components/schemas/BundlePriceComponentView"
+            },
+            "type": "array"
+          },
+          "currency_code": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "total": {
+            "pattern": "^-?\\d+(\\.\\d+)?$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "total",
+          "currency_code",
+          "components"
+        ],
+        "type": "object"
+      },
       "CampaignId": {
         "description": "Identifies one campaign.",
         "format": "uuid",
         "type": "string"
+      },
+      "CartCreditId": {
+        "description": "Identifies one cart credit.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "CartCreditView": {
+        "description": "What a cart says it will pay with. Which card is named by id rather than by\ncode, for the same reason the code is not in any other answer.",
+        "properties": {
+          "amount": {
+            "pattern": "^-?\\d+(\\.\\d+)?$",
+            "type": "string"
+          },
+          "cart_id": {
+            "$ref": "#/components/schemas/CartId"
+          },
+          "currency_code": {
+            "type": "string"
+          },
+          "gift_card_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GiftCardId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/CartCreditId"
+          },
+          "store_credit_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StoreCreditId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "cart_id",
+          "gift_card_id",
+          "store_credit_id",
+          "amount",
+          "currency_code"
+        ],
+        "type": "object"
       },
       "CartId": {
         "description": "Identifies one cart.",
@@ -756,6 +895,58 @@
         "format": "uuid",
         "type": "string"
       },
+      "CollectionView": {
+        "properties": {
+          "amount": {
+            "pattern": "^-?\\d+(\\.\\d+)?$",
+            "type": "string"
+          },
+          "authorized_amount": {
+            "pattern": "^-?\\d+(\\.\\d+)?$",
+            "type": "string"
+          },
+          "captured_amount": {
+            "pattern": "^-?\\d+(\\.\\d+)?$",
+            "type": "string"
+          },
+          "completed_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "currency_code": {
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/PaymentCollectionId"
+          },
+          "refunded_amount": {
+            "pattern": "^-?\\d+(\\.\\d+)?$",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "currency_code",
+          "amount",
+          "authorized_amount",
+          "captured_amount",
+          "refunded_amount",
+          "status",
+          "completed_at",
+          "created_at"
+        ],
+        "type": "object"
+      },
       "CommissionRuleId": {
         "description": "Identifies one commission rule.",
         "format": "uuid",
@@ -796,6 +987,59 @@
           "kind",
           "value",
           "currency_code"
+        ],
+        "type": "object"
+      },
+      "ContentView": {
+        "properties": {
+          "auto_grant": {
+            "type": "boolean"
+          },
+          "content_key": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/DigitalContentId"
+          },
+          "max_downloads": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "rank": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "valid_days": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "variant_id": {
+            "$ref": "#/components/schemas/VariantId"
+          }
+        },
+        "required": [
+          "id",
+          "variant_id",
+          "content_key",
+          "name",
+          "max_downloads",
+          "valid_days",
+          "auto_grant",
+          "rank",
+          "created_at"
         ],
         "type": "object"
       },
@@ -1309,6 +1553,54 @@
         ],
         "type": "object"
       },
+      "CreditMovementView": {
+        "properties": {
+          "amount": {
+            "pattern": "^-?\\d+(\\.\\d+)?$",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "currency_code": {
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "order_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrderId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "amount",
+          "currency_code",
+          "order_id",
+          "reason",
+          "created_at"
+        ],
+        "type": "object"
+      },
       "CurrencyView": {
         "properties": {
           "code": {
@@ -1418,6 +1710,109 @@
         },
         "type": "object"
       },
+      "DigitalContentId": {
+        "description": "Identifies one digital content.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "DownloadView": {
+        "description": "What the host hands to its own storage. tezgah has counted the download by\nthe time this is returned.",
+        "properties": {
+          "content_key": {
+            "type": "string"
+          },
+          "download_count": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "entitlement_id": {
+            "$ref": "#/components/schemas/OrderEntitlementId"
+          },
+          "remaining": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "entitlement_id",
+          "content_key",
+          "download_count",
+          "remaining"
+        ],
+        "type": "object"
+      },
+      "EntitlementView": {
+        "description": "An entitlement as it leaves the building. No `content_key`: what a shopper\nneeds is whether they may still download it, not where it is kept.",
+        "properties": {
+          "digital_content_id": {
+            "$ref": "#/components/schemas/DigitalContentId"
+          },
+          "download_count": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "granted_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/OrderEntitlementId"
+          },
+          "max_downloads": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "order_id": {
+            "$ref": "#/components/schemas/OrderId"
+          },
+          "remaining": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "revoked_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revoked_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "order_id",
+          "digital_content_id",
+          "max_downloads",
+          "download_count",
+          "remaining",
+          "granted_at",
+          "expires_at",
+          "revoked_at",
+          "revoked_reason"
+        ],
+        "type": "object"
+      },
       "ExchangeId": {
         "description": "Identifies one exchange.",
         "format": "uuid",
@@ -1509,6 +1904,313 @@
           "difference_due",
           "allow_backorder",
           "canceled_at",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "ExemptionView": {
+        "properties": {
+          "certificate_reference": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "country_code": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "customer_id": {
+            "$ref": "#/components/schemas/CustomerId"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "province_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "valid_from": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "valid_until": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "verified_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "customer_id",
+          "kind",
+          "reason_code",
+          "certificate_reference",
+          "country_code",
+          "province_code",
+          "valid_from",
+          "valid_until",
+          "verified_at",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "FulfillmentDetailView": {
+        "description": "A fulfilment with what is in the box and what is on the outside of it.",
+        "properties": {
+          "fulfillment": {
+            "$ref": "#/components/schemas/FulfillmentView"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FulfillmentItemView"
+            },
+            "type": "array"
+          },
+          "labels": {
+            "items": {
+              "$ref": "#/components/schemas/LabelView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "fulfillment",
+          "items",
+          "labels"
+        ],
+        "type": "object"
+      },
+      "FulfillmentId": {
+        "description": "Identifies one fulfillment.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "FulfillmentItemView": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "quantity": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "sku": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "sku",
+          "quantity"
+        ],
+        "type": "object"
+      },
+      "FulfillmentSetId": {
+        "description": "Identifies one fulfillment set.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "FulfillmentSetView": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/FulfillmentSetId"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "FulfillmentView": {
+        "properties": {
+          "canceled_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "delivered_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/FulfillmentId"
+          },
+          "location_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StockLocationId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "packed_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "requires_shipping": {
+            "type": "boolean"
+          },
+          "shipped_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "shipping_option_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShippingOptionId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "location_id",
+          "shipping_option_id",
+          "requires_shipping",
+          "packed_at",
+          "shipped_at",
+          "delivered_at",
+          "canceled_at",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "GiftCardId": {
+        "description": "Identifies one gift card.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "GiftCardView": {
+        "description": "A card as it leaves the building. No code and no hash: what is left is what\nis spendable, and who it belongs to when anybody does.",
+        "properties": {
+          "balance": {
+            "pattern": "^-?\\d+(\\.\\d+)?$",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "currency_code": {
+            "type": "string"
+          },
+          "customer_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CustomerId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "disabled_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/GiftCardId"
+          },
+          "initial_balance": {
+            "pattern": "^-?\\d+(\\.\\d+)?$",
+            "type": "string"
+          },
+          "issued_order_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrderId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "initial_balance",
+          "balance",
+          "currency_code",
+          "issued_order_id",
+          "customer_id",
+          "expires_at",
+          "disabled_at",
           "created_at"
         ],
         "type": "object"
@@ -1738,6 +2440,36 @@
         ],
         "type": "string"
       },
+      "LabelView": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "label_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tracking_number": {
+            "type": "string"
+          },
+          "tracking_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "tracking_number",
+          "tracking_url",
+          "label_url"
+        ],
+        "type": "object"
+      },
       "LedgerView": {
         "description": "What the money on an order comes to. Worked out from the transactions\nrather than stored, so it cannot drift from them.",
         "properties": {
@@ -1864,6 +2596,32 @@
           "locale",
           "label",
           "description",
+          "is_fallback"
+        ],
+        "type": "object"
+      },
+      "LocalisedShippingOptionView": {
+        "properties": {
+          "is_fallback": {
+            "type": "boolean"
+          },
+          "locale": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "shipping_option_id": {
+            "$ref": "#/components/schemas/ShippingOptionId"
+          }
+        },
+        "required": [
+          "shipping_option_id",
+          "locale",
+          "name",
           "is_fallback"
         ],
         "type": "object"
@@ -2106,6 +2864,11 @@
         "format": "uuid",
         "type": "string"
       },
+      "OrderEntitlementId": {
+        "description": "Identifies one entitlement.",
+        "format": "uuid",
+        "type": "string"
+      },
       "OrderId": {
         "description": "Identifies one order.",
         "format": "uuid",
@@ -2311,6 +3074,78 @@
         "format": "uuid",
         "type": "string"
       },
+      "PaymentId": {
+        "description": "Identifies one payment.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "PaymentProviderView": {
+        "properties": {
+          "code": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "type": "object"
+      },
+      "PaymentSessionId": {
+        "description": "Identifies one payment session.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "PaymentView": {
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/MoneyView"
+          },
+          "canceled_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "captured_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/PaymentId"
+          },
+          "payment_collection_id": {
+            "$ref": "#/components/schemas/PaymentCollectionId"
+          },
+          "payment_session_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaymentSessionId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "payment_collection_id",
+          "payment_session_id",
+          "amount",
+          "captured_at",
+          "canceled_at",
+          "created_at"
+        ],
+        "type": "object"
+      },
       "PayoutId": {
         "description": "Identifies one payout.",
         "format": "uuid",
@@ -2414,6 +3249,89 @@
         "format": "uuid",
         "type": "string"
       },
+      "PriceListView": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ends_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/PriceListId"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "rules_count": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "starts_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "description",
+          "kind",
+          "status",
+          "starts_at",
+          "ends_at",
+          "rules_count",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "PricePreferenceView": {
+        "properties": {
+          "attribute": {
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "is_tax_inclusive": {
+            "type": "boolean"
+          },
+          "value": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "attribute",
+          "value",
+          "is_tax_inclusive"
+        ],
+        "type": "object"
+      },
       "PriceRuleInput": {
         "additionalProperties": false,
         "properties": {
@@ -2438,6 +3356,39 @@
           "attribute",
           "value",
           "operator"
+        ],
+        "type": "object"
+      },
+      "PriceRuleView": {
+        "properties": {
+          "attribute": {
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "operator": {
+            "type": "string"
+          },
+          "price_id": {
+            "$ref": "#/components/schemas/PriceId"
+          },
+          "priority": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "price_id",
+          "attribute",
+          "value",
+          "operator",
+          "priority"
         ],
         "type": "object"
       },
@@ -2772,6 +3723,26 @@
         ],
         "type": "object"
       },
+      "ProviderView": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "is_enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "is_enabled"
+        ],
+        "type": "object"
+      },
       "PublishAgreement": {
         "additionalProperties": false,
         "properties": {
@@ -2804,6 +3775,50 @@
         "description": "Identifies one publishable key.",
         "format": "uuid",
         "type": "string"
+      },
+      "PutContent": {
+        "additionalProperties": false,
+        "properties": {
+          "auto_grant": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "content_key": {
+            "type": "string"
+          },
+          "max_downloads": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "metadata": true,
+          "name": {
+            "type": "string"
+          },
+          "rank": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "valid_days": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "content_key",
+          "name"
+        ],
+        "type": "object"
       },
       "PutReturnReasonTranslation": {
         "additionalProperties": false,
@@ -2972,6 +3987,30 @@
         ],
         "type": "object"
       },
+      "Redeem": {
+        "additionalProperties": false,
+        "properties": {
+          "ip": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "token": {
+            "type": "string"
+          },
+          "user_agent": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "type": "object"
+      },
       "RegionId": {
         "description": "Identifies one region.",
         "format": "uuid",
@@ -3012,6 +4051,56 @@
           "is_tax_inclusive",
           "has_automatic_taxes",
           "payment_providers",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "RegistrationView": {
+        "description": "One registration the shop itself holds.",
+        "properties": {
+          "country_code": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "is_home": {
+            "type": "boolean"
+          },
+          "scheme": {
+            "type": "string"
+          },
+          "tax_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "valid_from": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "valid_until": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "country_code",
+          "scheme",
+          "tax_id",
+          "is_home",
+          "valid_from",
+          "valid_until",
           "created_at"
         ],
         "type": "object"
@@ -3438,6 +4527,18 @@
         ],
         "type": "object"
       },
+      "RevokeEntitlements": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "SalesChannelId": {
         "description": "Identifies one sales channel.",
         "format": "uuid",
@@ -3478,6 +4579,67 @@
         "description": "Identifies one selling plan.",
         "format": "uuid",
         "type": "string"
+      },
+      "ServiceZoneId": {
+        "description": "Identifies one service zone.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "ServiceZoneView": {
+        "properties": {
+          "fulfillment_set_id": {
+            "$ref": "#/components/schemas/FulfillmentSetId"
+          },
+          "id": {
+            "$ref": "#/components/schemas/ServiceZoneId"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "fulfillment_set_id"
+        ],
+        "type": "object"
+      },
+      "SessionView": {
+        "description": "A session without its `data`: that is the provider's, and it has held a\nclient secret before now.",
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/MoneyView"
+          },
+          "authorized_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/PaymentSessionId"
+          },
+          "payment_collection_id": {
+            "$ref": "#/components/schemas/PaymentCollectionId"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "payment_collection_id",
+          "amount",
+          "status",
+          "authorized_at",
+          "created_at"
+        ],
+        "type": "object"
       },
       "SetCommissionRule": {
         "additionalProperties": false,
@@ -3590,6 +4752,141 @@
         "format": "uuid",
         "type": "string"
       },
+      "ShippingOptionTranslationView": {
+        "properties": {
+          "locale": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "shipping_option_id": {
+            "$ref": "#/components/schemas/ShippingOptionId"
+          }
+        },
+        "required": [
+          "shipping_option_id",
+          "locale",
+          "name"
+        ],
+        "type": "object"
+      },
+      "ShippingOptionTypeView": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "code",
+          "description",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "ShippingOptionView": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "enabled_in_store": {
+            "type": "boolean"
+          },
+          "id": {
+            "$ref": "#/components/schemas/ShippingOptionId"
+          },
+          "is_return": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "price_type": {
+            "type": "string"
+          },
+          "service_zone_id": {
+            "$ref": "#/components/schemas/ServiceZoneId"
+          },
+          "shipping_option_type_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "shipping_profile_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShippingProfileId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "price_type",
+          "service_zone_id",
+          "shipping_profile_id",
+          "shipping_option_type_id",
+          "is_return",
+          "enabled_in_store",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "ShippingProfileId": {
+        "description": "Identifies one shipping profile.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "ShippingProfileView": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/ShippingProfileId"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "created_at"
+        ],
+        "type": "object"
+      },
       "StockLocationAddressIn": {
         "additionalProperties": false,
         "description": "Where a location is. The country is what makes it the origin of a supply,\nso it is required and the rest of the address is not.",
@@ -3676,6 +4973,144 @@
         ],
         "type": "object"
       },
+      "StoreCreditId": {
+        "description": "Identifies one store credit.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "StoreCreditView": {
+        "properties": {
+          "balance": {
+            "pattern": "^-?\\d+(\\.\\d+)?$",
+            "type": "string"
+          },
+          "currency_code": {
+            "type": "string"
+          },
+          "customer_id": {
+            "$ref": "#/components/schemas/CustomerId"
+          },
+          "disabled_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/StoreCreditId"
+          }
+        },
+        "required": [
+          "id",
+          "customer_id",
+          "currency_code",
+          "balance",
+          "disabled_at"
+        ],
+        "type": "object"
+      },
+      "StoreLineItemView": {
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/LineItemId"
+          },
+          "parent_line_item_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LineItemId"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The bundle line this one is a component of, when it is one."
+          },
+          "product_handle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "product_title": {
+            "type": "string"
+          },
+          "quantity": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "requires_shipping": {
+            "type": "boolean"
+          },
+          "selling_plan_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SellingPlanId"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The plan this line is bought on, when it is a subscription's."
+          },
+          "thumbnail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "unit_price": {
+            "$ref": "#/components/schemas/StoreMoneyView"
+          },
+          "variant_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VariantId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "variant_title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "variant_id",
+          "product_title",
+          "product_handle",
+          "variant_title",
+          "thumbnail",
+          "quantity",
+          "unit_price",
+          "requires_shipping",
+          "parent_line_item_id",
+          "selling_plan_id"
+        ],
+        "type": "object"
+      },
+      "StoreMoneyView": {
+        "description": "An amount as it leaves the building: the number and the code it is in,\nnever a bare decimal somebody has to guess the currency of.",
+        "properties": {
+          "amount": {
+            "pattern": "^-?\\d+(\\.\\d+)?$",
+            "type": "string"
+          },
+          "currency_code": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount",
+          "currency_code"
+        ],
+        "type": "object"
+      },
       "StoreOrderView": {
         "properties": {
           "created_at": {
@@ -3759,6 +5194,37 @@
           "order_id",
           "status",
           "created_at"
+        ],
+        "type": "object"
+      },
+      "StoreShippingOptionView": {
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StoreMoneyView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Absent when the option is priced on request rather than from a list."
+          },
+          "id": {
+            "$ref": "#/components/schemas/ShippingOptionId"
+          },
+          "name": {
+            "type": "string"
+          },
+          "price_type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "price_type",
+          "amount"
         ],
         "type": "object"
       },
@@ -3851,6 +5317,200 @@
           "version",
           "currency_code",
           "totals"
+        ],
+        "type": "object"
+      },
+      "TaxIdView": {
+        "description": "A buyer's number. `validated_at` is what decides anything: an unchecked\nnumber is a string somebody typed.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "customer_id": {
+            "$ref": "#/components/schemas/CustomerId"
+          },
+          "evidence": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "tax_id": {
+            "type": "string"
+          },
+          "tax_id_country": {
+            "type": "string"
+          },
+          "tax_id_type": {
+            "type": "string"
+          },
+          "validated_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "customer_id",
+          "tax_id",
+          "tax_id_type",
+          "tax_id_country",
+          "validated_at",
+          "evidence",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "TaxRateId": {
+        "description": "Identifies one tax rate.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "TaxRateRuleView": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "reference": {
+            "type": "string"
+          },
+          "reference_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "tax_rate_id": {
+            "$ref": "#/components/schemas/TaxRateId"
+          }
+        },
+        "required": [
+          "id",
+          "tax_rate_id",
+          "reference",
+          "reference_id"
+        ],
+        "type": "object"
+      },
+      "TaxRateView": {
+        "properties": {
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/TaxRateId"
+          },
+          "is_combinable": {
+            "type": "boolean"
+          },
+          "is_default": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "rate": {
+            "pattern": "^-?\\d+(\\.\\d+)?$",
+            "type": "string"
+          },
+          "tax_region_id": {
+            "$ref": "#/components/schemas/TaxRegionId"
+          }
+        },
+        "required": [
+          "id",
+          "tax_region_id",
+          "rate",
+          "code",
+          "name",
+          "is_default",
+          "is_combinable",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "TaxRegionId": {
+        "description": "Identifies one tax region.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "TaxRegionView": {
+        "properties": {
+          "country_code": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/TaxRegionId"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaxRegionId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "province_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "country_code",
+          "province_code",
+          "parent_id",
+          "provider",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "TokenView": {
+        "description": "The one answer carrying a token, the way an issued gift card is the one\nanswer carrying a code.",
+        "properties": {
+          "entitlement": {
+            "$ref": "#/components/schemas/EntitlementView"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "expires_at",
+          "entitlement"
         ],
         "type": "object"
       },
@@ -5066,6 +6726,57 @@
           "promotion"
         ],
         "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/carts": {
+      "get": {
+        "operationId": "getAdminCarts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/CartView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "List carts, abandoned ones included",
+        "tags": [
+          "cart"
+        ],
+        "x-tezgah-permission": "view"
       }
     },
     "/admin/claims": {
@@ -6972,6 +8683,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreCreditView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -7048,6 +8766,16 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ExemptionView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -7124,6 +8852,16 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TaxIdView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -8476,6 +10214,16 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProviderView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -8612,6 +10360,27 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/FulfillmentSetView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -8718,6 +10487,16 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ServiceZoneView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -8785,6 +10564,27 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/GiftCardView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -8882,6 +10682,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GiftCardView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -8999,6 +10806,27 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/CreditMovementView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -11111,6 +12939,16 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EntitlementView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -11148,8 +12986,28 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokeEntitlements"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EntitlementView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -11189,6 +13047,27 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/FulfillmentView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -11273,6 +13152,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FulfillmentDetailView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -12140,6 +14026,16 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ShippingOptionView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -12284,6 +14180,16 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ShippingOptionView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -12597,6 +14503,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -12636,6 +14549,27 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/SessionView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -12703,6 +14637,27 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/PaymentView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -12733,6 +14688,16 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProviderView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -12878,6 +14843,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -13128,6 +15100,27 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/PriceListView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -13195,6 +15188,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceListView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -13301,6 +15301,20 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/PricePreferenceView"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -13405,6 +15419,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceSetView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -13444,6 +15465,27 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/PriceView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -13636,6 +15678,16 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PriceRuleView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -14561,6 +16613,16 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BundleComponentView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -14684,6 +16746,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BundlePriceView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -17188,6 +19257,27 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/ReasonView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -19233,6 +21323,27 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/ShippingOptionTypeView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -19291,6 +21402,27 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/ShippingOptionView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -19358,6 +21490,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShippingOptionView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -19473,6 +21612,16 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ShippingOptionTranslationView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -19602,6 +21751,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalisedShippingOptionView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -19632,6 +21788,27 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/ShippingProfileView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -19699,6 +21876,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShippingProfileView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -20220,6 +22404,27 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/CreditMovementView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -20950,6 +23155,27 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/TaxRateView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -21054,6 +23280,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaxRateView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -21130,6 +23363,16 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TaxRateRuleView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -21244,6 +23487,27 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/TaxRegionView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -21348,6 +23612,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaxRegionView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -21415,6 +23686,16 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RegistrationView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -21521,6 +23802,16 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ContentView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -21556,8 +23847,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutContent"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -21978,6 +24286,16 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CartCreditView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -22142,6 +24460,16 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StoreLineItemView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -22925,6 +25253,13 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreCreditView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -22953,8 +25288,25 @@
       "post": {
         "operationId": "postStoreDownloads",
         "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Redeem"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -22985,6 +25337,27 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/EntitlementView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -23024,6 +25397,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -23574,6 +25954,16 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PaymentProviderView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -24231,6 +26621,16 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StoreShippingOptionView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {

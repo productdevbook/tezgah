@@ -5,10 +5,19 @@
  * A commerce engine for Rust: products, carts, orders, payments, inventory, and a workflow runner that unwinds what it started.
  * OpenAPI spec version: 0.0.0
  */
+import type {
+  CartCreditView,
+  GetAdminGiftCards200,
+  GetAdminGiftCardsByIdTransactions200,
+  GetAdminStoreCreditsByIdTransactions200,
+  GiftCardView,
+  StoreCreditView
+} from '../models';
+
 import { apiMutator } from '../../../mutator';
 
 export type getAdminCustomersByIdStoreCreditResponse200 = {
-  data: void
+  data: StoreCreditView
   status: 200
 }
 
@@ -112,7 +121,7 @@ export const postAdminCustomersByIdStoreCredit = async (id: string, options?: Pa
 
 
 export type getAdminGiftCardsResponse200 = {
-  data: void
+  data: GetAdminGiftCards200
   status: 200
 }
 
@@ -268,7 +277,7 @@ export const postAdminGiftCardsLookup = async ( options?: Parameters<typeof apiM
 
 
 export type getAdminGiftCardsByIdResponse200 = {
-  data: void
+  data: GiftCardView
   status: 200
 }
 
@@ -424,7 +433,7 @@ export const postAdminGiftCardsByIdDisable = async (id: string, options?: Parame
 
 
 export type getAdminGiftCardsByIdTransactionsResponse200 = {
-  data: void
+  data: GetAdminGiftCardsByIdTransactions200
   status: 200
 }
 
@@ -580,7 +589,7 @@ export const postAdminStoreCreditsByIdAdjust = async (id: string, options?: Para
 
 
 export type getAdminStoreCreditsByIdTransactionsResponse200 = {
-  data: void
+  data: GetAdminStoreCreditsByIdTransactions200
   status: 200
 }
 
@@ -632,7 +641,7 @@ export const getAdminStoreCreditsByIdTransactions = async (id: string, options?:
 
 
 export type getStoreCartsByIdCreditsResponse200 = {
-  data: void
+  data: CartCreditView[]
   status: 200
 }
 
@@ -842,7 +851,7 @@ export const postStoreCartsByIdStoreCredit = async (id: string, options?: Parame
 
 
 export type getStoreCustomersMeStoreCreditResponse200 = {
-  data: void
+  data: StoreCreditView
   status: 200
 }
 

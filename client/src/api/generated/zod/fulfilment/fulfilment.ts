@@ -11,7 +11,12 @@ import * as zod from 'zod';
 /**
  * @summary Which carriers this shop has on
  */
-export const GetAdminFulfillmentProvidersResponse = zod.unknown()
+export const GetAdminFulfillmentProvidersResponseItem = zod.object({
+  "code": zod.string(),
+  "id": zod.uuid(),
+  "is_enabled": zod.boolean()
+})
+export const GetAdminFulfillmentProvidersResponse = zod.array(GetAdminFulfillmentProvidersResponseItem)
 
 /**
  * @summary Register a carrier
@@ -39,7 +44,17 @@ export const PostAdminFulfillmentProvidersByIdEnableResponse = zod.unknown()
 /**
  * @summary List fulfilment sets
  */
-export const GetAdminFulfillmentSetsResponse = zod.unknown()
+export const GetAdminFulfillmentSetsResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "created_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one fulfillment set.'),
+  "kind": zod.string(),
+  "name": zod.string()
+}))
+}))
 
 /**
  * @summary Add a fulfilment set
@@ -62,7 +77,12 @@ export const GetAdminFulfillmentSetsByIdServiceZonesParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminFulfillmentSetsByIdServiceZonesResponse = zod.unknown()
+export const GetAdminFulfillmentSetsByIdServiceZonesResponseItem = zod.object({
+  "fulfillment_set_id": zod.uuid().describe('Identifies one fulfillment set.'),
+  "id": zod.uuid().describe('Identifies one service zone.'),
+  "name": zod.string()
+})
+export const GetAdminFulfillmentSetsByIdServiceZonesResponse = zod.array(GetAdminFulfillmentSetsByIdServiceZonesResponseItem)
 
 /**
  * @summary Add a service zone to a set
@@ -80,7 +100,22 @@ export const GetAdminOrdersByIdFulfillmentsParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminOrdersByIdFulfillmentsResponse = zod.unknown()
+export const GetAdminOrdersByIdFulfillmentsResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "delivered_at": zod.iso.datetime({"offset":true}).nullable(),
+  "id": zod.uuid().describe('Identifies one fulfillment.'),
+  "location_id": zod.union([zod.uuid().describe('Identifies one stock location.'),zod.null()]),
+  "packed_at": zod.iso.datetime({"offset":true}).nullable(),
+  "requires_shipping": zod.boolean(),
+  "shipped_at": zod.iso.datetime({"offset":true}).nullable(),
+  "shipping_option_id": zod.union([zod.uuid().describe('Identifies one shipping option.'),zod.null()])
+}))
+}))
 
 /**
  * @summary Make up a parcel from part of an order
@@ -99,7 +134,31 @@ export const GetAdminOrdersByIdFulfillmentsByFulfillmentIdParams = zod.object({
   "fulfillment_id": zod.string()
 })
 
-export const GetAdminOrdersByIdFulfillmentsByFulfillmentIdResponse = zod.unknown()
+export const GetAdminOrdersByIdFulfillmentsByFulfillmentIdResponse = zod.object({
+  "fulfillment": zod.object({
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "delivered_at": zod.iso.datetime({"offset":true}).nullable(),
+  "id": zod.uuid().describe('Identifies one fulfillment.'),
+  "location_id": zod.union([zod.uuid().describe('Identifies one stock location.'),zod.null()]),
+  "packed_at": zod.iso.datetime({"offset":true}).nullable(),
+  "requires_shipping": zod.boolean(),
+  "shipped_at": zod.iso.datetime({"offset":true}).nullable(),
+  "shipping_option_id": zod.union([zod.uuid().describe('Identifies one shipping option.'),zod.null()])
+}),
+  "items": zod.array(zod.object({
+  "id": zod.uuid(),
+  "quantity": zod.int(),
+  "sku": zod.string().nullable(),
+  "title": zod.string()
+})),
+  "labels": zod.array(zod.object({
+  "id": zod.uuid(),
+  "label_url": zod.string().nullable(),
+  "tracking_number": zod.string(),
+  "tracking_url": zod.string().nullable()
+}))
+}).describe('A fulfilment with what is in the box and what is on the outside of it.')
 
 /**
  * @summary Cancel a parcel and put its stock back
@@ -148,7 +207,18 @@ export const GetAdminOrdersByIdReturnsShippingOptionsParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminOrdersByIdReturnsShippingOptionsResponse = zod.unknown()
+export const GetAdminOrdersByIdReturnsShippingOptionsResponseItem = zod.object({
+  "created_at": zod.iso.datetime({"offset":true}),
+  "enabled_in_store": zod.boolean(),
+  "id": zod.uuid().describe('Identifies one shipping option.'),
+  "is_return": zod.boolean(),
+  "name": zod.string(),
+  "price_type": zod.string(),
+  "service_zone_id": zod.uuid().describe('Identifies one service zone.'),
+  "shipping_option_type_id": zod.uuid().nullable(),
+  "shipping_profile_id": zod.union([zod.uuid().describe('Identifies one shipping profile.'),zod.null()])
+})
+export const GetAdminOrdersByIdReturnsShippingOptionsResponse = zod.array(GetAdminOrdersByIdReturnsShippingOptionsResponseItem)
 
 /**
  * @summary Which shipping options reach an order's address
@@ -157,12 +227,34 @@ export const GetAdminOrdersByIdShippingOptionsParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminOrdersByIdShippingOptionsResponse = zod.unknown()
+export const GetAdminOrdersByIdShippingOptionsResponseItem = zod.object({
+  "created_at": zod.iso.datetime({"offset":true}),
+  "enabled_in_store": zod.boolean(),
+  "id": zod.uuid().describe('Identifies one shipping option.'),
+  "is_return": zod.boolean(),
+  "name": zod.string(),
+  "price_type": zod.string(),
+  "service_zone_id": zod.uuid().describe('Identifies one service zone.'),
+  "shipping_option_type_id": zod.uuid().nullable(),
+  "shipping_profile_id": zod.union([zod.uuid().describe('Identifies one shipping profile.'),zod.null()])
+})
+export const GetAdminOrdersByIdShippingOptionsResponse = zod.array(GetAdminOrdersByIdShippingOptionsResponseItem)
 
 /**
  * @summary List shipping option types
  */
-export const GetAdminShippingOptionTypesResponse = zod.unknown()
+export const GetAdminShippingOptionTypesResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "code": zod.string(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "description": zod.string().nullable(),
+  "id": zod.uuid(),
+  "label": zod.string()
+}))
+}))
 
 /**
  * @summary Add a shipping option type
@@ -172,7 +264,22 @@ export const PostAdminShippingOptionTypesResponse = zod.unknown()
 /**
  * @summary List shipping options
  */
-export const GetAdminShippingOptionsResponse = zod.unknown()
+export const GetAdminShippingOptionsResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "created_at": zod.iso.datetime({"offset":true}),
+  "enabled_in_store": zod.boolean(),
+  "id": zod.uuid().describe('Identifies one shipping option.'),
+  "is_return": zod.boolean(),
+  "name": zod.string(),
+  "price_type": zod.string(),
+  "service_zone_id": zod.uuid().describe('Identifies one service zone.'),
+  "shipping_option_type_id": zod.uuid().nullable(),
+  "shipping_profile_id": zod.union([zod.uuid().describe('Identifies one shipping profile.'),zod.null()])
+}))
+}))
 
 /**
  * @summary Add a shipping option
@@ -186,7 +293,17 @@ export const GetAdminShippingOptionsByIdParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminShippingOptionsByIdResponse = zod.unknown()
+export const GetAdminShippingOptionsByIdResponse = zod.object({
+  "created_at": zod.iso.datetime({"offset":true}),
+  "enabled_in_store": zod.boolean(),
+  "id": zod.uuid().describe('Identifies one shipping option.'),
+  "is_return": zod.boolean(),
+  "name": zod.string(),
+  "price_type": zod.string(),
+  "service_zone_id": zod.uuid().describe('Identifies one service zone.'),
+  "shipping_option_type_id": zod.uuid().nullable(),
+  "shipping_profile_id": zod.union([zod.uuid().describe('Identifies one shipping profile.'),zod.null()])
+})
 
 /**
  * @summary Change a shipping option's name, price type or carrier
@@ -213,7 +330,12 @@ export const GetAdminShippingOptionsByIdTranslationsParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminShippingOptionsByIdTranslationsResponse = zod.unknown()
+export const GetAdminShippingOptionsByIdTranslationsResponseItem = zod.object({
+  "locale": zod.string(),
+  "name": zod.string(),
+  "shipping_option_id": zod.uuid().describe('Identifies one shipping option.')
+})
+export const GetAdminShippingOptionsByIdTranslationsResponse = zod.array(GetAdminShippingOptionsByIdTranslationsResponseItem)
 
 /**
  * @summary Write a shipping option's translation into one locale
@@ -242,12 +364,27 @@ export const GetAdminShippingOptionsByIdTranslationsByLocaleParams = zod.object(
   "locale": zod.string()
 })
 
-export const GetAdminShippingOptionsByIdTranslationsByLocaleResponse = zod.unknown()
+export const GetAdminShippingOptionsByIdTranslationsByLocaleResponse = zod.object({
+  "is_fallback": zod.boolean(),
+  "locale": zod.string().nullable(),
+  "name": zod.string(),
+  "shipping_option_id": zod.uuid().describe('Identifies one shipping option.')
+})
 
 /**
  * @summary List shipping profiles
  */
-export const GetAdminShippingProfilesResponse = zod.unknown()
+export const GetAdminShippingProfilesResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "created_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one shipping profile.'),
+  "kind": zod.string(),
+  "name": zod.string()
+}))
+}))
 
 /**
  * @summary Add a shipping profile
@@ -261,7 +398,12 @@ export const GetAdminShippingProfilesByIdParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminShippingProfilesByIdResponse = zod.unknown()
+export const GetAdminShippingProfilesByIdResponse = zod.object({
+  "created_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one shipping profile.'),
+  "kind": zod.string(),
+  "name": zod.string()
+})
 
 /**
  * @summary Change a shipping profile
@@ -275,7 +417,19 @@ export const PatchAdminShippingProfilesByIdResponse = zod.unknown()
 /**
  * @summary List what can deliver this cart to an address, optionally in a locale
  */
-export const GetStoreShippingOptionsResponse = zod.unknown()
+export const getStoreShippingOptionsResponseAmountOneAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetStoreShippingOptionsResponseItem = zod.object({
+  "amount": zod.union([zod.object({
+  "amount": zod.string().regex(getStoreShippingOptionsResponseAmountOneAmountRegExp),
+  "currency_code": zod.string()
+}).describe('An amount as it leaves the building: the number and the code it is in,\nnever a bare decimal somebody has to guess the currency of.'),zod.null()]).describe('Absent when the option is priced on request rather than from a list.'),
+  "id": zod.uuid().describe('Identifies one shipping option.'),
+  "name": zod.string(),
+  "price_type": zod.string()
+})
+export const GetStoreShippingOptionsResponse = zod.array(GetStoreShippingOptionsResponseItem)
 
 /**
  * @summary Price one shipping option for a cart

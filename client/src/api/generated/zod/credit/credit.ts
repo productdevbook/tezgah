@@ -15,7 +15,16 @@ export const GetAdminCustomersByIdStoreCreditParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminCustomersByIdStoreCreditResponse = zod.unknown()
+export const getAdminCustomersByIdStoreCreditResponseBalanceRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetAdminCustomersByIdStoreCreditResponse = zod.object({
+  "balance": zod.string().regex(getAdminCustomersByIdStoreCreditResponseBalanceRegExp),
+  "currency_code": zod.string(),
+  "customer_id": zod.uuid().describe('Identifies one customer.'),
+  "disabled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "id": zod.uuid().describe('Identifies one store credit.')
+})
 
 /**
  * @summary Put money on a customer's balance
@@ -29,7 +38,26 @@ export const PostAdminCustomersByIdStoreCreditResponse = zod.unknown()
 /**
  * @summary List gift cards
  */
-export const GetAdminGiftCardsResponse = zod.unknown()
+export const getAdminGiftCardsResponseTwoItemsItemBalanceRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+export const getAdminGiftCardsResponseTwoItemsItemInitialBalanceRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetAdminGiftCardsResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "balance": zod.string().regex(getAdminGiftCardsResponseTwoItemsItemBalanceRegExp),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "currency_code": zod.string(),
+  "customer_id": zod.union([zod.uuid().describe('Identifies one customer.'),zod.null()]),
+  "disabled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "expires_at": zod.iso.datetime({"offset":true}).nullable(),
+  "id": zod.uuid().describe('Identifies one gift card.'),
+  "initial_balance": zod.string().regex(getAdminGiftCardsResponseTwoItemsItemInitialBalanceRegExp),
+  "issued_order_id": zod.union([zod.uuid().describe('Identifies one order.'),zod.null()])
+}).describe('A card as it leaves the building. No code and no hash: what is left is what\nis spendable, and who it belongs to when anybody does.'))
+}))
 
 /**
  * @summary Issue a gift card and read its code once
@@ -48,7 +76,21 @@ export const GetAdminGiftCardsByIdParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminGiftCardsByIdResponse = zod.unknown()
+export const getAdminGiftCardsByIdResponseBalanceRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+export const getAdminGiftCardsByIdResponseInitialBalanceRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetAdminGiftCardsByIdResponse = zod.object({
+  "balance": zod.string().regex(getAdminGiftCardsByIdResponseBalanceRegExp),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "currency_code": zod.string(),
+  "customer_id": zod.union([zod.uuid().describe('Identifies one customer.'),zod.null()]),
+  "disabled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "expires_at": zod.iso.datetime({"offset":true}).nullable(),
+  "id": zod.uuid().describe('Identifies one gift card.'),
+  "initial_balance": zod.string().regex(getAdminGiftCardsByIdResponseInitialBalanceRegExp),
+  "issued_order_id": zod.union([zod.uuid().describe('Identifies one order.'),zod.null()])
+}).describe('A card as it leaves the building. No code and no hash: what is left is what\nis spendable, and who it belongs to when anybody does.')
 
 /**
  * @summary Correct a card's balance by hand, with a reason
@@ -75,7 +117,23 @@ export const GetAdminGiftCardsByIdTransactionsParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminGiftCardsByIdTransactionsResponse = zod.unknown()
+export const getAdminGiftCardsByIdTransactionsResponseTwoItemsItemAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetAdminGiftCardsByIdTransactionsResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "amount": zod.string().regex(getAdminGiftCardsByIdTransactionsResponseTwoItemsItemAmountRegExp),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "currency_code": zod.string(),
+  "id": zod.uuid(),
+  "kind": zod.string(),
+  "order_id": zod.union([zod.uuid().describe('Identifies one order.'),zod.null()]),
+  "reason": zod.string().nullable()
+}))
+}))
 
 /**
  * @summary Refund an order onto the customer's balance instead of the card
@@ -102,7 +160,23 @@ export const GetAdminStoreCreditsByIdTransactionsParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminStoreCreditsByIdTransactionsResponse = zod.unknown()
+export const getAdminStoreCreditsByIdTransactionsResponseTwoItemsItemAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetAdminStoreCreditsByIdTransactionsResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "amount": zod.string().regex(getAdminStoreCreditsByIdTransactionsResponseTwoItemsItemAmountRegExp),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "currency_code": zod.string(),
+  "id": zod.uuid(),
+  "kind": zod.string(),
+  "order_id": zod.union([zod.uuid().describe('Identifies one order.'),zod.null()]),
+  "reason": zod.string().nullable()
+}))
+}))
 
 /**
  * @summary What this cart means to pay with
@@ -111,7 +185,18 @@ export const GetStoreCartsByIdCreditsParams = zod.object({
   "id": zod.string()
 })
 
-export const GetStoreCartsByIdCreditsResponse = zod.unknown()
+export const getStoreCartsByIdCreditsResponseAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetStoreCartsByIdCreditsResponseItem = zod.object({
+  "amount": zod.string().regex(getStoreCartsByIdCreditsResponseAmountRegExp),
+  "cart_id": zod.uuid().describe('Identifies one cart.'),
+  "currency_code": zod.string(),
+  "gift_card_id": zod.union([zod.uuid().describe('Identifies one gift card.'),zod.null()]),
+  "id": zod.uuid().describe('Identifies one cart credit.'),
+  "store_credit_id": zod.union([zod.uuid().describe('Identifies one store credit.'),zod.null()])
+}).describe('What a cart says it will pay with. Which card is named by id rather than by\ncode, for the same reason the code is not in any other answer.')
+export const GetStoreCartsByIdCreditsResponse = zod.array(GetStoreCartsByIdCreditsResponseItem)
 
 /**
  * @summary Take a gift card or a balance off this cart
@@ -144,5 +229,14 @@ export const PostStoreCartsByIdStoreCreditResponse = zod.unknown()
 /**
  * @summary Read my own balance in one currency
  */
-export const GetStoreCustomersMeStoreCreditResponse = zod.unknown()
+export const getStoreCustomersMeStoreCreditResponseBalanceRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetStoreCustomersMeStoreCreditResponse = zod.object({
+  "balance": zod.string().regex(getStoreCustomersMeStoreCreditResponseBalanceRegExp),
+  "currency_code": zod.string(),
+  "customer_id": zod.uuid().describe('Identifies one customer.'),
+  "disabled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "id": zod.uuid().describe('Identifies one store credit.')
+})
 

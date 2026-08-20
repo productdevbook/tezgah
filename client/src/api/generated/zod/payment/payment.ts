@@ -20,7 +20,23 @@ export const GetAdminPaymentCollectionsByIdParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminPaymentCollectionsByIdResponse = zod.unknown()
+export const getAdminPaymentCollectionsByIdResponseAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+export const getAdminPaymentCollectionsByIdResponseAuthorizedAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+export const getAdminPaymentCollectionsByIdResponseCapturedAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+export const getAdminPaymentCollectionsByIdResponseRefundedAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetAdminPaymentCollectionsByIdResponse = zod.object({
+  "amount": zod.string().regex(getAdminPaymentCollectionsByIdResponseAmountRegExp),
+  "authorized_amount": zod.string().regex(getAdminPaymentCollectionsByIdResponseAuthorizedAmountRegExp),
+  "captured_amount": zod.string().regex(getAdminPaymentCollectionsByIdResponseCapturedAmountRegExp),
+  "completed_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "currency_code": zod.string(),
+  "id": zod.uuid().describe('Identifies one payment collection.'),
+  "refunded_amount": zod.string().regex(getAdminPaymentCollectionsByIdResponseRefundedAmountRegExp),
+  "status": zod.string()
+})
 
 /**
  * @summary List a collection's sessions
@@ -29,7 +45,25 @@ export const GetAdminPaymentCollectionsByIdPaymentSessionsParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminPaymentCollectionsByIdPaymentSessionsResponse = zod.unknown()
+export const getAdminPaymentCollectionsByIdPaymentSessionsResponseTwoItemsItemAmountAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetAdminPaymentCollectionsByIdPaymentSessionsResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "amount": zod.object({
+  "amount": zod.string().regex(getAdminPaymentCollectionsByIdPaymentSessionsResponseTwoItemsItemAmountAmountRegExp),
+  "currency": zod.string()
+}),
+  "authorized_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one payment session.'),
+  "payment_collection_id": zod.uuid().describe('Identifies one payment collection.'),
+  "status": zod.string()
+}).describe('A session without its `data`: that is the provider\'s, and it has held a\nclient secret before now.'))
+}))
 
 /**
  * @summary Open a session with a provider
@@ -43,12 +77,36 @@ export const PostAdminPaymentCollectionsByIdPaymentSessionsResponse = zod.unknow
 /**
  * @summary List payments
  */
-export const GetAdminPaymentsResponse = zod.unknown()
+export const getAdminPaymentsResponseTwoItemsItemAmountAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetAdminPaymentsResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "amount": zod.object({
+  "amount": zod.string().regex(getAdminPaymentsResponseTwoItemsItemAmountAmountRegExp),
+  "currency": zod.string()
+}),
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "captured_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one payment.'),
+  "payment_collection_id": zod.uuid().describe('Identifies one payment collection.'),
+  "payment_session_id": zod.union([zod.uuid().describe('Identifies one payment session.'),zod.null()])
+}))
+}))
 
 /**
  * @summary Which payment providers this shop has on
  */
-export const GetAdminPaymentsPaymentProvidersResponse = zod.unknown()
+export const GetAdminPaymentsPaymentProvidersResponseItem = zod.object({
+  "code": zod.string(),
+  "id": zod.uuid(),
+  "is_enabled": zod.boolean()
+})
+export const GetAdminPaymentsPaymentProvidersResponse = zod.array(GetAdminPaymentsPaymentProvidersResponseItem)
 
 /**
  * @summary Register a payment provider
@@ -80,7 +138,21 @@ export const GetAdminPaymentsByIdParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminPaymentsByIdResponse = zod.unknown()
+export const getAdminPaymentsByIdResponseAmountAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetAdminPaymentsByIdResponse = zod.object({
+  "amount": zod.object({
+  "amount": zod.string().regex(getAdminPaymentsByIdResponseAmountAmountRegExp),
+  "currency": zod.string()
+}),
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "captured_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one payment.'),
+  "payment_collection_id": zod.uuid().describe('Identifies one payment collection.'),
+  "payment_session_id": zod.union([zod.uuid().describe('Identifies one payment session.'),zod.null()])
+})
 
 /**
  * @summary Take money that is being held
@@ -103,7 +175,18 @@ export const PostAdminPaymentsByIdRefundResponse = zod.unknown()
 /**
  * @summary List refund reasons
  */
-export const GetAdminRefundReasonsResponse = zod.unknown()
+export const GetAdminRefundReasonsResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "code": zod.string(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "description": zod.string().nullable(),
+  "id": zod.uuid(),
+  "label": zod.string()
+}).describe('A refund reason or a return reason. The two tables differ by a column name\nand nothing a caller cares about.'))
+}))
 
 /**
  * @summary Add a refund reason
@@ -141,5 +224,8 @@ export const PostStorePaymentCollectionsByIdPaymentSessionsResponse = zod.unknow
 /**
  * @summary List the providers a shopper may pay with
  */
-export const GetStorePaymentProvidersResponse = zod.unknown()
+export const GetStorePaymentProvidersResponseItem = zod.object({
+  "code": zod.string()
+})
+export const GetStorePaymentProvidersResponse = zod.array(GetStorePaymentProvidersResponseItem)
 

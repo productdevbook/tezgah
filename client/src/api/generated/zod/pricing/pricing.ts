@@ -11,7 +11,22 @@ import * as zod from 'zod';
 /**
  * @summary List price lists
  */
-export const GetAdminPriceListsResponse = zod.unknown()
+export const GetAdminPriceListsResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "created_at": zod.iso.datetime({"offset":true}),
+  "description": zod.string().nullable(),
+  "ends_at": zod.iso.datetime({"offset":true}).nullable(),
+  "id": zod.uuid().describe('Identifies one price list.'),
+  "kind": zod.string(),
+  "rules_count": zod.int(),
+  "starts_at": zod.iso.datetime({"offset":true}).nullable(),
+  "status": zod.string(),
+  "title": zod.string()
+}))
+}))
 
 /**
  * @summary Create a price list
@@ -25,7 +40,17 @@ export const GetAdminPriceListsByIdParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminPriceListsByIdResponse = zod.unknown()
+export const GetAdminPriceListsByIdResponse = zod.object({
+  "created_at": zod.iso.datetime({"offset":true}),
+  "description": zod.string().nullable(),
+  "ends_at": zod.iso.datetime({"offset":true}).nullable(),
+  "id": zod.uuid().describe('Identifies one price list.'),
+  "kind": zod.string(),
+  "rules_count": zod.int(),
+  "starts_at": zod.iso.datetime({"offset":true}).nullable(),
+  "status": zod.string(),
+  "title": zod.string()
+})
 
 /**
  * @summary Change a price list
@@ -48,7 +73,12 @@ export const PostAdminPriceListsByIdRulesResponse = zod.unknown()
 /**
  * @summary Whether an attribute's prices are quoted tax inclusive
  */
-export const GetAdminPricePreferencesResponse = zod.unknown()
+export const GetAdminPricePreferencesResponse = zod.union([zod.object({
+  "attribute": zod.string(),
+  "id": zod.uuid(),
+  "is_tax_inclusive": zod.boolean(),
+  "value": zod.string().nullable()
+}),zod.null()])
 
 /**
  * @summary Say whether an attribute's prices are quoted tax inclusive
@@ -70,7 +100,10 @@ export const GetAdminPriceSetsByIdParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminPriceSetsByIdResponse = zod.unknown()
+export const GetAdminPriceSetsByIdResponse = zod.object({
+  "created_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one price set.')
+})
 
 /**
  * @summary List the prices in a price set
@@ -79,7 +112,26 @@ export const GetAdminPriceSetsByIdPricesParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminPriceSetsByIdPricesResponse = zod.unknown()
+export const getAdminPriceSetsByIdPricesResponseTwoItemsItemAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetAdminPriceSetsByIdPricesResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "amount": zod.string().regex(getAdminPriceSetsByIdPricesResponseTwoItemsItemAmountRegExp),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "currency_code": zod.string(),
+  "id": zod.uuid().describe('Identifies one price.'),
+  "max_quantity": zod.int().nullable(),
+  "min_quantity": zod.int().nullable(),
+  "price_list_id": zod.union([zod.uuid().describe('Identifies one price list.'),zod.null()]),
+  "price_set_id": zod.uuid().describe('Identifies one price set.'),
+  "rules_count": zod.int(),
+  "title": zod.string().nullable()
+}))
+}))
 
 /**
  * @summary Add a price
@@ -149,7 +201,15 @@ export const GetAdminPricesByIdRulesParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminPricesByIdRulesResponse = zod.unknown()
+export const GetAdminPricesByIdRulesResponseItem = zod.object({
+  "attribute": zod.string(),
+  "id": zod.uuid(),
+  "operator": zod.string(),
+  "price_id": zod.uuid().describe('Identifies one price.'),
+  "priority": zod.int(),
+  "value": zod.string()
+})
+export const GetAdminPricesByIdRulesResponse = zod.array(GetAdminPricesByIdRulesResponseItem)
 
 /**
  * @summary Add a rule to a price
@@ -186,7 +246,14 @@ export const GetAdminProductVariantsByIdBundleComponentsParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminProductVariantsByIdBundleComponentsResponse = zod.unknown()
+export const GetAdminProductVariantsByIdBundleComponentsResponseItem = zod.object({
+  "bundle_variant_id": zod.uuid().describe('Identifies one variant.'),
+  "component_variant_id": zod.uuid().describe('Identifies one variant.'),
+  "id": zod.uuid().describe('Identifies one bundle component.'),
+  "quantity": zod.int(),
+  "sort_order": zod.int()
+})
+export const GetAdminProductVariantsByIdBundleComponentsResponse = zod.array(GetAdminProductVariantsByIdBundleComponentsResponseItem)
 
 /**
  * @summary Add a component to a bundle
@@ -214,7 +281,22 @@ export const GetAdminProductVariantsByIdBundlePriceParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminProductVariantsByIdBundlePriceResponse = zod.unknown()
+export const getAdminProductVariantsByIdBundlePriceResponseComponentsItemAllocatedTotalRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+export const getAdminProductVariantsByIdBundlePriceResponseComponentsItemUnitPriceRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+export const getAdminProductVariantsByIdBundlePriceResponseTotalRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetAdminProductVariantsByIdBundlePriceResponse = zod.object({
+  "components": zod.array(zod.object({
+  "allocated_total": zod.string().regex(getAdminProductVariantsByIdBundlePriceResponseComponentsItemAllocatedTotalRegExp),
+  "component_variant_id": zod.uuid().describe('Identifies one variant.'),
+  "quantity": zod.int(),
+  "unit_price": zod.string().regex(getAdminProductVariantsByIdBundlePriceResponseComponentsItemUnitPriceRegExp)
+})),
+  "currency_code": zod.string(),
+  "mode": zod.string(),
+  "total": zod.string().regex(getAdminProductVariantsByIdBundlePriceResponseTotalRegExp)
+})
 
 /**
  * @summary Point a variant at a price set

@@ -5,6 +5,17 @@
  * A commerce engine for Rust: products, carts, orders, payments, inventory, and a workflow runner that unwinds what it started.
  * OpenAPI spec version: 0.0.0
  */
+import type {
+  ContentView,
+  DownloadView,
+  EntitlementView,
+  GetStoreEntitlements200,
+  PutContent,
+  Redeem,
+  RevokeEntitlements,
+  TokenView
+} from '../models';
+
 import { apiMutator } from '../../../mutator';
 
 export type deleteAdminDigitalContentByIdResponse200 = {
@@ -60,7 +71,7 @@ export const deleteAdminDigitalContentById = async (id: string, options?: Parame
 
 
 export type getAdminOrdersByIdEntitlementsResponse200 = {
-  data: void
+  data: EntitlementView[]
   status: 200
 }
 
@@ -112,7 +123,7 @@ export const getAdminOrdersByIdEntitlements = async (id: string, options?: Param
 
 
 export type postAdminOrdersByIdEntitlementsRevokeResponse200 = {
-  data: void
+  data: EntitlementView[]
   status: 200
 }
 
@@ -151,20 +162,21 @@ export const getPostAdminOrdersByIdEntitlementsRevokeUrl = (id: string,) => {
 /**
  * @summary Take an order's downloads back
  */
-export const postAdminOrdersByIdEntitlementsRevoke = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminOrdersByIdEntitlementsRevokeResponse> => {
+export const postAdminOrdersByIdEntitlementsRevoke = async (id: string,
+    revokeEntitlements: RevokeEntitlements, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminOrdersByIdEntitlementsRevokeResponse> => {
 
   return apiMutator<postAdminOrdersByIdEntitlementsRevokeResponse>(getPostAdminOrdersByIdEntitlementsRevokeUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(revokeEntitlements)
   }
 );}
 
 
 export type getAdminVariantsByIdDigitalContentResponse200 = {
-  data: void
+  data: ContentView[]
   status: 200
 }
 
@@ -216,7 +228,7 @@ export const getAdminVariantsByIdDigitalContent = async (id: string, options?: P
 
 
 export type postAdminVariantsByIdDigitalContentResponse200 = {
-  data: void
+  data: ContentView
   status: 200
 }
 
@@ -255,20 +267,21 @@ export const getPostAdminVariantsByIdDigitalContentUrl = (id: string,) => {
 /**
  * @summary Put a file on a variant
  */
-export const postAdminVariantsByIdDigitalContent = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminVariantsByIdDigitalContentResponse> => {
+export const postAdminVariantsByIdDigitalContent = async (id: string,
+    putContent: PutContent, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminVariantsByIdDigitalContentResponse> => {
 
   return apiMutator<postAdminVariantsByIdDigitalContentResponse>(getPostAdminVariantsByIdDigitalContentUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(putContent)
   }
 );}
 
 
 export type postStoreDownloadsResponse200 = {
-  data: void
+  data: DownloadView
   status: 200
 }
 
@@ -307,20 +320,20 @@ export const getPostStoreDownloadsUrl = () => {
 /**
  * @summary Spend one download of a link
  */
-export const postStoreDownloads = async ( options?: Parameters<typeof apiMutator>[1]): Promise<postStoreDownloadsResponse> => {
+export const postStoreDownloads = async (redeem: Redeem, options?: Parameters<typeof apiMutator>[1]): Promise<postStoreDownloadsResponse> => {
 
   return apiMutator<postStoreDownloadsResponse>(getPostStoreDownloadsUrl(),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(redeem)
   }
 );}
 
 
 export type getStoreEntitlementsResponse200 = {
-  data: void
+  data: GetStoreEntitlements200
   status: 200
 }
 
@@ -372,7 +385,7 @@ export const getStoreEntitlements = async ( options?: Parameters<typeof apiMutat
 
 
 export type postStoreEntitlementsByIdTokenResponse200 = {
-  data: void
+  data: TokenView
   status: 200
 }
 

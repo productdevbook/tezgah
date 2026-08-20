@@ -7,7 +7,14 @@
  */
 import type {
   AddPrice,
+  BundleComponentView,
+  BundlePriceView,
+  GetAdminPriceLists200,
+  GetAdminPriceSetsByIdPrices200,
   LinkPriceSet,
+  PriceListView,
+  PricePreferenceView,
+  PriceRuleView,
   PriceSetView,
   PriceView
 } from '../models';
@@ -15,7 +22,7 @@ import type {
 import { apiMutator } from '../../../mutator';
 
 export type getAdminPriceListsResponse200 = {
-  data: void
+  data: GetAdminPriceLists200
   status: 200
 }
 
@@ -119,7 +126,7 @@ export const postAdminPriceLists = async ( options?: Parameters<typeof apiMutato
 
 
 export type getAdminPriceListsByIdResponse200 = {
-  data: void
+  data: PriceListView
   status: 200
 }
 
@@ -275,7 +282,7 @@ export const postAdminPriceListsByIdRules = async (id: string, options?: Paramet
 
 
 export type getAdminPricePreferencesResponse200 = {
-  data: void
+  data: PricePreferenceView | null
   status: 200
 }
 
@@ -431,7 +438,7 @@ export const postAdminPriceSets = async ( options?: Parameters<typeof apiMutator
 
 
 export type getAdminPriceSetsByIdResponse200 = {
-  data: void
+  data: PriceSetView
   status: 200
 }
 
@@ -483,7 +490,7 @@ export const getAdminPriceSetsById = async (id: string, options?: Parameters<typ
 
 
 export type getAdminPriceSetsByIdPricesResponse200 = {
-  data: void
+  data: GetAdminPriceSetsByIdPrices200
   status: 200
 }
 
@@ -743,7 +750,7 @@ export const patchAdminPricesById = async (id: string, options?: Parameters<type
 
 
 export type getAdminPricesByIdRulesResponse200 = {
-  data: void
+  data: PriceRuleView[]
   status: 200
 }
 
@@ -953,7 +960,7 @@ export const postAdminProductVariantsByIdBundle = async (id: string, options?: P
 
 
 export type getAdminProductVariantsByIdBundleComponentsResponse200 = {
-  data: void
+  data: BundleComponentView[]
   status: 200
 }
 
@@ -1111,7 +1118,7 @@ export const deleteAdminProductVariantsByIdBundleComponentsByComponentVariantId 
 
 
 export type getAdminProductVariantsByIdBundlePriceResponse200 = {
-  data: void
+  data: BundlePriceView
   status: 200
 }
 
