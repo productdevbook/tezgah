@@ -1,13 +1,24 @@
 import { z } from "zod"
 
-import { GetAdminCustomersByIdResponse } from "@/api/generated/zod/customer/customer"
+import {
+  GetAdminCustomersByIdResponse,
+  PatchAdminCustomersByIdBody,
+} from "@/api/generated/zod/customer/customer"
 import { GetAdminInventoryItemsByIdResponse } from "@/api/generated/zod/inventory/inventory"
 import { GetAdminOrdersByIdResponse } from "@/api/generated/zod/order/order"
-import { GetAdminProductsByIdResponse } from "@/api/generated/zod/catalogue/catalogue"
-import { GetAdminPromotionsByIdResponse } from "@/api/generated/zod/promotion/promotion"
+import {
+  GetAdminProductsByIdResponse,
+  PatchAdminProductsByIdBody,
+} from "@/api/generated/zod/catalogue/catalogue"
+import {
+  GetAdminPromotionsByIdResponse,
+  PatchAdminPromotionsByIdBody,
+} from "@/api/generated/zod/promotion/promotion"
 import {
   GetAdminRegionsByIdResponse,
   GetAdminSalesChannelsByIdResponse,
+  PatchAdminRegionsByIdBody,
+  PatchAdminSalesChannelsByIdBody,
 } from "@/api/generated/zod/store/store"
 import { GetAdminSubscriptionsByIdResponse } from "@/api/generated/zod/subscription/subscription"
 
@@ -44,6 +55,15 @@ export type Product = z.infer<typeof product>
 export const productStatus = product.shape.status
 export type ProductStatus = z.infer<typeof productStatus>
 
+/**
+ * `PATCH /admin/products/{id}`'s body — a field left out is left alone, and
+ * `null` on a nullable one clears it. `edit.tsx` sends a subset of these
+ * keys; the rest come through as `undefined`, which this schema already
+ * treats as "unchanged".
+ */
+export const updateProduct = PatchAdminProductsByIdBody
+export type UpdateProduct = z.infer<typeof updateProduct>
+
 export const order = GetAdminOrdersByIdResponse
 export type Order = z.infer<typeof order>
 
@@ -53,8 +73,14 @@ export type InventoryItem = z.infer<typeof inventoryItem>
 export const customer = GetAdminCustomersByIdResponse
 export type Customer = z.infer<typeof customer>
 
+export const updateCustomer = PatchAdminCustomersByIdBody
+export type UpdateCustomer = z.infer<typeof updateCustomer>
+
 export const promotion = GetAdminPromotionsByIdResponse
 export type Promotion = z.infer<typeof promotion>
+
+export const updatePromotion = PatchAdminPromotionsByIdBody
+export type UpdatePromotion = z.infer<typeof updatePromotion>
 
 export const subscription = GetAdminSubscriptionsByIdResponse
 export type Subscription = z.infer<typeof subscription>
@@ -83,8 +109,14 @@ export type SubscriptionContract = z.infer<typeof subscriptionContract>
 export const region = GetAdminRegionsByIdResponse
 export type Region = z.infer<typeof region>
 
+export const updateRegion = PatchAdminRegionsByIdBody
+export type UpdateRegion = z.infer<typeof updateRegion>
+
 export const salesChannel = GetAdminSalesChannelsByIdResponse
 export type SalesChannel = z.infer<typeof salesChannel>
+
+export const updateSalesChannel = PatchAdminSalesChannelsByIdBody
+export type UpdateSalesChannel = z.infer<typeof updateSalesChannel>
 
 // — hand-written: #202 does not document these yet, so each is transcribed
 // straight from the Rust struct it names, same as before orval existed.

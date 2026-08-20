@@ -1,8 +1,12 @@
+import { Link } from "@tanstack/react-router"
+
 import { product } from "@/api/schemas"
+import { DeleteAction } from "@/components/delete-action"
 import { DetailField, FieldGrid, Metadata, Empty } from "@/components/detail-fields"
 import { DetailHeader } from "@/components/detail-header"
 import { QueryState } from "@/components/query-state"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { dateTime, useDetail } from "@/lib/detail"
 
@@ -21,6 +25,21 @@ export function ProductDetail({ id }: { id: string }) {
               <Badge variant={item.status === "published" ? "default" : "outline"}>
                 {item.status}
               </Badge>
+              <Button
+                variant="outline"
+                size="sm"
+                nativeButton={false}
+                render={<Link to="/products/$id/edit" params={{ id: item.id }} />}
+              >
+                Edit
+              </Button>
+              <DeleteAction
+                path="/admin/products/{id}"
+                params={{ id: item.id }}
+                invalidateKey={["products"]}
+                kind="product"
+                name={item.title}
+              />
             </DetailHeader>
             <Card>
               <CardContent>
