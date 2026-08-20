@@ -31,7 +31,7 @@ that exist, so a typo cannot become a request nobody answers — the one thing
 useful about the other 461 operations Orval also sees but cannot give a body
 to.
 
-    bunx openapi-typescript ../tests/snapshots/openapi.json -o src/api/schema.d.ts
+    bunx openapi-typescript ../../tests/snapshots/openapi.json -o src/api/schema.d.ts
     bun run generate   # orval, then the route tree — see below
 
 CI regenerates all three and fails on a diff.

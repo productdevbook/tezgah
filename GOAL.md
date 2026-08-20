@@ -27,7 +27,7 @@ already solved by whatever embeds this, so it is asked for through
 | file and image storage | a URL on the record | a host already has media |
 | caching | — | a library that caches behind your back is a bug |
 | analytics dashboards | the API | reporting over Postgres is the host's |
-| the admin screens | the API | the crate ships no UI; [`client/`](client) is a panel over it, built and released apart |
+| the admin screens | the API | the crate ships no UI; [`app/client/`](app/client) is a panel over it, built and released apart |
 
 ## Where this is
 
@@ -56,7 +56,7 @@ that runs — axum over the route table, all five ports implemented including a
 job worker that actually runs what it enqueues, and a `PaymentProvider` built
 over `dyn kasapay_core::Provider`, which is the first thing outside that
 module's own tests to lean on the mapping. It binds 6 of the 483 operations,
-enough to walk browse → cart → checkout → order, and says so. [`client/`](client)
+enough to walk browse → cart → checkout → order, and says so. [`app/client/`](app/client)
 is an admin panel over the same surface, with screens for products, orders and
 inventory — 228 of the 483 operations behind a screen, and every section that
 has none saying how many it is not drawing. Neither is in the crate: depending
@@ -216,12 +216,12 @@ writes an order, and the provider is not in your database.
       on a whole domain, request and response bodies both; 22 operations
       carry a schema now — payout's 6 plus, response side only, the list and
       single-fetch operation for every view type
-      [`client/src/api/views.ts`](client/src/api/views.ts) hand-transcribes
+      [`app/client/src/api/views.ts`](app/client/src/api/views.ts) hand-transcribes
       across the seven domains it actually reads (catalogue, order,
       inventory, customer, promotion, subscription, store). `views.ts` is not
       deleted yet — that is the next step once its schemas are checked
       against what `schemars` now generates for the same types — and the
-      create/edit routes in those seven domains, which `client/` does not
+      create/edit routes in those seven domains, which `app/client/` does not
       call yet, still answer `200` with no body schema, the same as the rest
       of the table. productdevbook/tezgah#202.
 - [x] every route declares its permission, and a matrix test proves it —

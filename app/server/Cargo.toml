@@ -16,7 +16,7 @@ name = "tezgah-server"
 path = "src/main.rs"
 
 [dependencies]
-tezgah = { path = ".." }
+tezgah = { path = "../.." }
 async-trait = "0.1"
 axum = "0.8"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }

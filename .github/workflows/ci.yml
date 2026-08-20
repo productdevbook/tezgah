@@ -64,7 +64,7 @@ jobs:
     timeout-minutes: 15
     defaults:
       run:
-        working-directory: client
+        working-directory: app/client
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -90,7 +90,7 @@ jobs:
           if git diff --quiet -- src; then
             exit 0
           fi
-          echo "::error::generated client is stale — run 'bun run generate' in client/ and commit the result." >&2
+          echo "::error::generated client is stale — run 'bun run generate' in app/client/ and commit the result." >&2
           git diff --stat -- src
           exit 1
       # Both are committed, not produced by `build`, because `tsc -b` needs
@@ -115,7 +115,7 @@ jobs:
           git diff --stat -- src/routeTree.gen.ts
           exit 1
 
-  # The images, built and thrown away. Nothing else reads server/Dockerfile's
+  # The images, built and thrown away. Nothing else reads app/server/Dockerfile's
   # stand-in list, so a crate target added anywhere else broke the image while
   # every other check stayed green. amd64 only and no push: this is here to
   # fail a pull request, not to publish.
@@ -129,15 +129,15 @@ jobs:
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
-          file: server/Dockerfile
+          file: app/server/Dockerfile
           platforms: linux/amd64
           push: false
           cache-from: type=gha,scope=server-linux/amd64
       - name: panel
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
-          context: client
-          file: client/Dockerfile
+          context: app/client
+          file: app/client/Dockerfile
           platforms: linux/amd64
           push: false
           cache-from: type=gha,scope=panel-linux/amd64
