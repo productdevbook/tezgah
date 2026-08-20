@@ -19,6 +19,12 @@ const DEFAULT_CURRENCY_EXPONENT: u32 = 2;
 
 const DEFAULT_PORT: u16 = 8080;
 
+/// The only value `TEZGAH_DEMO_BANK` accepts. A phrase, not `1` or `true`,
+/// so that setting it is a decision rather than a habit — see
+/// `provider::DemoBank`'s own doc comment for what it authorises and
+/// `docs/self-hosting.md` for what taking real money instead requires.
+const DEMO_BANK_CONFIRMATION: &str = "i-understand-this-takes-no-money";
+
 #[derive(Debug, Clone)]
 pub struct Config {
     pub database_url: String,
@@ -34,6 +40,13 @@ pub struct Config {
     /// `README.md`'s route table for what that costs a fresh install.
     pub stock_location_id: Option<StockLocationId>,
     pub currency_exponent: u32,
+    /// `true` only when `TEZGAH_DEMO_BANK` is set to exactly
+    /// `DEMO_BANK_CONFIRMATION`. The only payment provider this binary ships
+    /// is `provider::DemoBank`, which authorises every charge and remembers
+    /// nothing — so checkout stays unbound on `false`, the same way it stays
+    /// unbound with no `stock_location_id`. `main.rs` is where the two
+    /// combine.
+    pub demo_bank_enabled: bool,
 }
 
 #[derive(Debug)]
@@ -109,6 +122,10 @@ impl Config {
             Err(_) => DEFAULT_CURRENCY_EXPONENT,
         };
 
+        let demo_bank_enabled = std::env::var("TEZGAH_DEMO_BANK")
+            .map(|value| value == DEMO_BANK_CONFIRMATION)
+            .unwrap_or(false);
+
         Ok(Config {
             database_url,
             port,
@@ -116,6 +133,7 @@ impl Config {
             admin_token,
             stock_location_id,
             currency_exponent,
+            demo_bank_enabled,
         })
     }
 }

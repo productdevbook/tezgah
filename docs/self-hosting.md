@@ -37,6 +37,7 @@ directly rather than through the panel's own `/api/` proxy.
 | `POSTGRES_PASSWORD` | postgres, and built into `DATABASE_URL` | — required | change this before the first `up` — Postgres sets it once, from the empty volume, and ignores a later change to `.env` |
 | `POSTGRES_DB` | postgres, and built into `DATABASE_URL` | `tezgah` | the database name |
 | `ADMIN_TOKEN` | tezgah-server | — unset | the bearer token every `/admin/*` request must carry. Unset (or empty), and tezgah-server does not serve `/admin/*` at all — no admin surface answering with no token or a weak one |
+| `TEZGAH_DEMO_BANK` | tezgah-server | — unset | set to exactly `i-understand-this-takes-no-money` to run checkout against the one payment provider this binary ships — a demo that authorises every charge and takes no real money. Unset (or any other value), and `POST /store/carts/{id}/complete` is not bound at all. See [Taking real money](#taking-real-money) below |
 | `SERVER_PORT` | tezgah-server, and tezgah-panel's upstream | `8080` | the port tezgah-server listens on inside its own container |
 | `SERVER_HTTP_PORT` | Compose only | `8081` | the host port tezgah-server is published on |
 | `PANEL_HTTP_PORT` | Compose only | `8080` | the host port the panel is published on |
@@ -70,6 +71,33 @@ hand. Restore it into a fresh volume with:
 gunzip -c tezgah-2024-01-01.sql.gz | \
   docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
 ```
+
+## Taking real money
+
+The published `tezgah-server` image ships exactly one payment provider:
+`DemoBank`, in `server/src/provider.rs`. It authorises every charge it is
+asked for and remembers nothing — it exists so checkout has something to run
+against, not so checkout has something to take money with. Setting
+`TEZGAH_STOCK_LOCATION_ID` alone does not turn it on: `TEZGAH_DEMO_BANK` also
+has to be set, to exactly `i-understand-this-takes-no-money`, or
+`POST /store/carts/{id}/complete` is not bound at all and startup says which
+of the two is missing. Unset, empty or any other value all mean the same
+thing — closed — because a phrase that has to be typed out cannot be set by
+habit the way `1` or `true` can.
+
+That default is closed on purpose. `tezgah` is public, its published images
+are what a first self-host runs, and the only thing standing between a fresh
+install and "every checkout succeeds and no money moved" used to be a
+comment. It no longer is — but it also means there is no environment
+variable that makes this image take real money. `CLAUDE.md` explains why:
+payment providers are [kasapay](https://github.com/productdevbook/kasapay)'s
+to write, not tezgah's, and this repository carries no adapter for a real
+bank or gateway. Taking real payments means building `tezgah-server` (or your
+own binary over the `tezgah` library) against a real `kasapay_core::Provider`
+— an adapter crate from the kasapay project — and passing that to
+`KasapayProvider::new` in `server/src/main.rs` in place of `DemoBank`. The
+published image cannot do this for you; it is a starting point for a binary
+you build, not a drop-in payment gateway.
 
 ## What this does not do
 

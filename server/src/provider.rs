@@ -15,6 +15,14 @@
 //! `kasapay_core::Provider` — an adapter crate from the kasapay project — and
 //! passing that to `KasapayProvider::new` in `main.rs` in place of
 //! `DemoBank`. Nothing here should be mistaken for that crate arriving.
+//!
+//! `main.rs` never wires this in on its own: `config::Config::demo_bank_enabled`
+//! has to be `true` — `TEZGAH_DEMO_BANK` set to exactly
+//! `i-understand-this-takes-no-money` — or checkout stays unbound, the same
+//! way it stays unbound with no stock location. A phrase that has to be typed
+//! out cannot be set by accident, and the default is closed for the same
+//! reason `ADMIN_TOKEN`'s default is: a self-hosted install that never
+//! touched this variable takes no money it did not mean to.
 
 use std::sync::Arc;
 
@@ -160,9 +168,9 @@ fn unsupported(id: kasapay_core::ProviderId) -> kasapay_core::Error {
     )
 }
 
-/// Authorises every charge immediately and remembers nothing. See this
-/// file's own doc comment for what standing this up as a demo does and does
-/// not mean.
+/// Authorises every charge immediately and remembers nothing. `main.rs` only
+/// constructs this behind `TEZGAH_DEMO_BANK` — see this file's own doc
+/// comment for what standing it up as a demo does and does not mean.
 #[derive(Debug, Default)]
 pub struct DemoBank;
 

@@ -55,16 +55,25 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let scope = bootstrap_scope(&pool).await?;
     let host = Arc::new(host::ServerHost);
 
-    let checkout = match config.stock_location_id {
-        Some(location_id) => {
+    let checkout = match (config.stock_location_id, config.demo_bank_enabled) {
+        (Some(location_id), true) => {
             let bank: Arc<dyn kasapay_core::Provider> = Arc::new(provider::DemoBank);
             let kasapay_provider: Arc<dyn PaymentProvider> = Arc::new(
                 provider::KasapayProvider::new(bank, config.currency_exponent),
             );
             Some(Arc::new(Checkout::new(kasapay_provider, location_id)))
         }
-        None => {
+        (None, _) => {
             println!("checkout not bound: TEZGAH_STOCK_LOCATION_ID is not set");
+            None
+        }
+        (Some(_), false) => {
+            println!(
+                "checkout not bound: TEZGAH_DEMO_BANK is not set to \
+                 i-understand-this-takes-no-money — the only payment provider this binary \
+                 ships is a demo that authorises every charge and takes no real money; see \
+                 docs/self-hosting.md"
+            );
             None
         }
     };

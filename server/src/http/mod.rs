@@ -27,10 +27,13 @@ use crate::host::ServerHost;
 pub struct AppState {
     pub pool: PgPool,
     pub host: Arc<ServerHost>,
-    /// `None` when `TEZGAH_STOCK_LOCATION_ID` was not set — `store::router`
-    /// does not mount `POST /store/carts/{id}/complete` in that case, because
-    /// `tezgah::checkout::Checkout::new` needs a location and there is none
-    /// to give it.
+    /// `None` when `TEZGAH_STOCK_LOCATION_ID` was not set, or when
+    /// `TEZGAH_DEMO_BANK` was not set to the phrase `config::Config` requires
+    /// — `store::router` does not mount `POST /store/carts/{id}/complete` in
+    /// either case: the first because `tezgah::checkout::Checkout::new` needs
+    /// a location and there is none to give it, the second because the only
+    /// payment provider this binary can build it with is a demo that takes
+    /// no real money.
     pub checkout: Option<Arc<Checkout>>,
     pub scope: Scope,
     /// `None` means the admin surface is not mounted — see
