@@ -7,13 +7,14 @@
 //! that is how a real catalogue gets in.
 //!
 //! Idempotent by construction rather than by a check run first: every write
-//! here happens in one transaction, and `create_sales_channel` and
-//! `create_stock_location` both reject a second row of the same name with
-//! `Error::conflict` (`store.rs`, `inventory.rs`). A second run hits that
-//! conflict on the sales channel, and the whole transaction — including the
-//! region insert ahead of it, which has no such constraint of its own — is
-//! dropped rather than committed. Nothing after the conflict runs, so a
-//! second `publishable_key` row is never minted either.
+//! here happens in one transaction, and `create_region`, `create_sales_channel`
+//! and `create_stock_location` each reject a second row of the same name with
+//! `Error::conflict` (`store.rs`, `inventory.rs`) rather than a raw unique
+//! violation that would poison the transaction. A second run hits the first
+//! of those three conflicts it reaches — `already_seeded` treats any of them
+//! the same way — and the whole transaction, including whatever ran ahead of
+//! it, is dropped rather than committed. Nothing after the conflict runs, so
+//! a second `publishable_key` row is never minted either.
 
 use sqlx::PgPool;
 use tezgah::id::StockLocationId;
@@ -59,7 +60,7 @@ pub async fn run(
     )
     .await?;
 
-    store::create_region(
+    match store::create_region(
         &mut tx,
         &ctx,
         NewRegion {
@@ -70,7 +71,15 @@ pub async fn run(
             payment_providers: Vec::new(),
         },
     )
-    .await?;
+    .await
+    {
+        Ok(_) => {}
+        Err(err) if err.code() == "conflict" => {
+            drop(tx);
+            return report_already_seeded(pool, scope, &ctx).await;
+        }
+        Err(err) => return Err(err),
+    }
 
     let channel = match store::create_sales_channel(
         &mut tx,
@@ -91,7 +100,7 @@ pub async fn run(
         Err(err) => return Err(err),
     };
 
-    let location = inventory::create_stock_location(
+    let location = match inventory::create_stock_location(
         &mut tx,
         &ctx,
         NewStockLocation {
@@ -99,7 +108,15 @@ pub async fn run(
             address: None,
         },
     )
-    .await?;
+    .await
+    {
+        Ok(location) => location,
+        Err(err) if err.code() == "conflict" => {
+            drop(tx);
+            return report_already_seeded(pool, scope, &ctx).await;
+        }
+        Err(err) => return Err(err),
+    };
 
     let issued = store::create_publishable_key(&mut tx, &ctx, KEY_TITLE).await?;
     store::link_key_to_channel(&mut tx, &ctx, issued.key.id, channel.id).await?;
@@ -127,10 +144,11 @@ async fn scope_tx(tx: &mut tezgah::ports::Tx<'_>, scope: Scope) -> tezgah::Resul
     Ok(())
 }
 
-/// A second run stops at the sales-channel conflict with nothing committed —
-/// this looks the shop's already-seeded location back up in a fresh
-/// transaction so the operator still gets an id for `TEZGAH_STOCK_LOCATION_ID`
-/// even though nothing was written this time.
+/// A second run stops at whichever of the region, sales-channel or stock-
+/// location conflicts it reaches first, with nothing committed — this looks
+/// the shop's already-seeded location back up in a fresh transaction so the
+/// operator still gets an id for `TEZGAH_STOCK_LOCATION_ID` even though
+/// nothing was written this time.
 async fn report_already_seeded(pool: &PgPool, scope: Scope, ctx: &Ctx<'_>) -> tezgah::Result<()> {
     let mut tx = pool.begin().await?;
     scope_tx(&mut tx, scope).await?;
@@ -143,7 +161,9 @@ async fn report_already_seeded(pool: &PgPool, scope: Scope, ctx: &Ctx<'_>) -> te
         .find(|location| location.name == LOCATION_NAME)
         .map(|location| location.id);
 
-    println!("already seeded — \"{CHANNEL_NAME}\" already exists, nothing written");
+    println!(
+        "already seeded — this shop's default region and sales channel already exist, nothing written"
+    );
     match existing {
         Some(id) => println!("  TEZGAH_STOCK_LOCATION_ID={id}"),
         None => println!(

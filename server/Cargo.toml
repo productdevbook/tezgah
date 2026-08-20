@@ -7,6 +7,10 @@ license = "MIT"
 description = "A self-hostable HTTP server over the tezgah commerce library."
 publish = false
 
+[lib]
+name = "tezgah_server"
+path = "src/lib.rs"
+
 [[bin]]
 name = "tezgah-server"
 path = "src/main.rs"
@@ -29,6 +33,11 @@ sqlx = { version = "0.8", default-features = false, features = [
 subtle = { version = "2", default-features = false }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "time"] }
 uuid = { version = "1", features = ["serde", "v7"] }
+
+[dev-dependencies]
+http-body-util = "0.1"
+tower = { version = "0.5", default-features = false, features = ["util"] }
+url = "2"
 
 [lints.rust]
 missing_debug_implementations = "warn"

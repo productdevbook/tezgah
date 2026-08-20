@@ -5,15 +5,9 @@
 //! variable does, and the difference between this binary and
 //! `examples/shop`.
 //!
-//! Configuration is read once, at startup, by [`config::Config::from_env`] —
-//! a missing `DATABASE_URL` fails here, with one message naming what is
-//! wrong, rather than on the first request that needed a pool.
-
-mod config;
-mod host;
-mod http;
-mod provider;
-mod seed;
+//! Configuration is read once, at startup, by [`Config::from_env`] — a
+//! missing `DATABASE_URL` fails here, with one message naming what is wrong,
+//! rather than on the first request that needed a pool.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -23,10 +17,10 @@ use sqlx::postgres::PgPoolOptions;
 use tezgah::checkout::Checkout;
 use tezgah::payment::PaymentProvider;
 use tezgah::ports::Scope;
+use tezgah_server::config::Config;
+use tezgah_server::{host, http, provider, seed};
 use tokio::net::TcpListener;
 use uuid::Uuid;
-
-use config::Config;
 
 #[tokio::main]
 async fn main() {
