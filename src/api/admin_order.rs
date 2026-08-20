@@ -2823,13 +2823,30 @@ impl From<payment::PendingWebhook> for PendingCallbackView {
     }
 }
 
+/// Its own struct rather than `api::PagingQuery`, which carries `JsonSchema`
+/// and deliberately no `Deserialize` — it exists to be described once in the
+/// document, not to be read from a query string. This is how the other lists
+/// in this module take theirs.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ListCallbacks {
+    pub after: Option<String>,
+    pub limit: Option<u32>,
+}
+
 /// What arrived and has not been acted on, oldest first.
 pub async fn pending_callbacks(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
-    query: super::PagingQuery,
+    query: ListCallbacks,
 ) -> Result<Page<PendingCallbackView>> {
-    let page = payment::unprocessed(tx, ctx, query.paging()?).await?;
+    let limit = query.limit.unwrap_or(crate::page::DEFAULT_LIMIT);
+    let paging = match query.after.as_deref() {
+        Some(text) => Paging::after(Cursor::decode(text)?, limit),
+        None => Paging::first(limit),
+    };
+
+    let page = payment::unprocessed(tx, ctx, paging).await?;
     Ok(Page {
         items: page
             .items

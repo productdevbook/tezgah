@@ -1670,7 +1670,7 @@ async fn list_payments(
 async fn pending_callbacks(
     State(state): State<AppState>,
     Extension(caller): Extension<Caller>,
-    Query(query): Query<tezgah::api::PagingQuery>,
+    Query(query): Query<admin_order::ListCallbacks>,
 ) -> Result<Json<tezgah::page::Page<admin_order::PendingCallbackView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
     let ctx = ctx_for(&state, &caller);
