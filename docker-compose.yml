@@ -29,6 +29,11 @@ services:
       # is one password to change in .env rather than two that can drift.
       DATABASE_URL: postgres://${POSTGRES_USER:-tezgah}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-tezgah}
       ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      # Left empty on purpose — see .env.example. tezgah-server ships one
+      # payment provider, a demo that authorises every charge and takes no
+      # real money, and only runs checkout against it when this is set to
+      # the exact phrase it requires.
+      TEZGAH_DEMO_BANK: ${TEZGAH_DEMO_BANK:-}
     ports:
       - "${SERVER_HTTP_PORT:-8081}:${SERVER_PORT:-8080}"
     healthcheck:

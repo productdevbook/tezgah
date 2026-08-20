@@ -21,6 +21,7 @@ something a container starts.
 export DATABASE_URL=postgres://postgres:postgres@localhost:5432/tezgah
 export ADMIN_TOKEN=$(openssl rand -hex 32)
 export TEZGAH_STOCK_LOCATION_ID=<a stock location's uuid>
+export TEZGAH_DEMO_BANK=i-understand-this-takes-no-money
 cargo run --package tezgah-server
 ```
 
@@ -36,6 +37,7 @@ naming what is wrong, rather than on the first request that needed a pool.
 | `TEZGAH_SKIP_MIGRATIONS` | no | unset | set to `1` to skip `tezgah::MIGRATIONS` — the database already has them |
 | `ADMIN_TOKEN` | no | unset | the bearer token that unlocks `/admin/*` — see below |
 | `TEZGAH_STOCK_LOCATION_ID` | no | unset | the one warehouse checkout reserves and ships from — see below |
+| `TEZGAH_DEMO_BANK` | no | unset | set to exactly `i-understand-this-takes-no-money` to run checkout against the demo payment provider — see below |
 | `TEZGAH_CURRENCY_EXPONENT` | no | `2` | this shop's one currency's decimal places, for the payment provider wrapper |
 
 Configuration comes from the environment and nowhere else: no config file
@@ -61,13 +63,22 @@ already exists. Without it, `POST /store/carts/{id}/complete` is not bound at
 all — see the route table below — rather than bound and answering every call
 with a configuration error.
 
-Checkout also needs a payment provider, and ships with a stand-in:
+Checkout also needs a payment provider, and ships with a stand-in only:
 `src/provider.rs`'s `DemoBank` authorises every charge immediately and
 remembers nothing. `CLAUDE.md` is explicit that a provider is
 [kasapay](https://github.com/productdevbook/kasapay)'s to write, not
 tezgah's, and no adapter crate for a real bank or gateway lives in this
 public repository — taking real money means depending on one and passing it
 to `KasapayProvider::new` in `src/main.rs` in place of `DemoBank`.
+
+Because `DemoBank` is the only provider this binary can build checkout with,
+and it takes no real money, `TEZGAH_STOCK_LOCATION_ID` alone does not turn
+checkout on. `TEZGAH_DEMO_BANK` also has to be set, to exactly
+`i-understand-this-takes-no-money` — anything else, including unset or
+empty, leaves `POST /store/carts/{id}/complete` unbound, and startup says
+which of the two is missing. See
+[`docs/self-hosting.md`](../docs/self-hosting.md#taking-real-money) for what
+taking real money instead requires.
 
 ## `GET /health`
 
@@ -118,10 +129,10 @@ bound 15 of 483 declared routes
   plus GET /health, which is this binary's own and not one of the 483
 ```
 
-That is the count with both `ADMIN_TOKEN` and `TEZGAH_STOCK_LOCATION_ID` set.
-Without either, the corresponding rows above are not bound and the startup
-count drops accordingly — the log line is always the true count for that
-run, never a number copied from here.
+That is the count with `ADMIN_TOKEN`, `TEZGAH_STOCK_LOCATION_ID` and
+`TEZGAH_DEMO_BANK` all set. Without any one of them, the corresponding rows
+above are not bound and the startup count drops accordingly — the log line
+is always the true count for that run, never a number copied from here.
 
 **Store — the shopping flow.** The same walk `examples/shop` makes as plain
 calls: browse the catalogue with a publishable key
