@@ -259,10 +259,16 @@ what is missing.
 **No filtering, searching or sorting** — because the API offers none. This is
 the library gap above, seen from the screen.
 
-**Most forms are still hand-rolled.** `react-hook-form` and a zod resolver
-arrived with the route-modal work, and one domain uses them; the rest still
-carry a `useState`, a `safeParse` and a hand-built map of field errors each.
-The schemas were always the expensive half and they were already generated.
+**Every form with fields to validate is on the resolver.** `react-hook-form`
+against the zod schema, in fourteen files across five domains — products,
+customers, operators, promotions and the store's own settings. The schemas
+were always the expensive half and they were already generated.
+
+What is left carries no fields worth validating: a confirmation with a
+free-text reason, an upload button, and the two edit grids, which are their
+own shape entirely. The one that did — inviting somebody — validated an
+e-mail with a regex beside a zod schema that already said the same thing, and
+the two could disagree.
 
 **Translation exists and covers almost nothing.** English and Turkish, with
 the compiler enforcing that the two dictionaries match, over the shared

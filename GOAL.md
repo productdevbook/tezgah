@@ -381,9 +381,10 @@ In `app/`:
 In the panel:
 
 - [ ] filtering, searching and sorting, once the library offers them
-- [ ] the rest of the forms on the resolver — one domain uses
-      `react-hook-form` against its zod schema; the others still hand-roll a
-      `useState` and a map of field errors each
+- [x] the rest of the forms on the resolver — `react-hook-form` against the
+      zod schema in fourteen files across five domains. What is left carries
+      no fields worth validating: a confirmation with a reason, an upload
+      button, and the two edit grids
 - [ ] the screens' own words in the dictionary — English and Turkish exist
       and the compiler keeps them in step, over the shared chrome only
 - [x] an edit grid past prices — an inventory item's levels are counted in

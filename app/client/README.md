@@ -348,9 +348,14 @@ outlet:
 `components/form/form.tsx`'s `FormField` is the other half — a `Controller`
 over the zod schema in `api/schemas.ts`, so validation, dirty state and field
 errors come from the schema rather than from a `useState` and a hand-rolled
-`Record<string, string>` in each screen. `features/products/` is converted;
-the four remaining `*-edit.tsx` screens are drawn in a `RouteDrawer` and
-still hand-roll their form.
+`Record<string, string>` in each screen. Every form with fields to validate is
+on it: fourteen files across products, customers, operators, promotions and
+the store's own settings.
+
+What is left off it has nothing to validate — a confirmation with a free-text
+reason, an upload button — or is an edit grid, which is a different shape
+entirely: a grid's state is one map of what has been typed, keyed by row, and
+a form library modelling that would be modelling the wrong thing.
 
 #### The outlet is not optional, and its absence is silent
 

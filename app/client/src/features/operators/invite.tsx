@@ -1,5 +1,7 @@
+import { zodResolver } from "@hookform/resolvers/zod"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
+import { useForm, useWatch } from "react-hook-form"
 
 import { TableFrame } from "@/components/data-table"
 import { Button } from "@/components/ui/button"
@@ -11,7 +13,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -30,11 +31,14 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { dateTime } from "@/lib/detail"
+import { FormField } from "@/components/form/form"
 import {
   invite,
   listInvitations,
+  newInvitation,
   role as roleSchema,
   ROLE_MEANS,
+  type NewInvitation,
   type Role,
 } from "@/features/operators/api"
 
@@ -48,98 +52,108 @@ import {
  */
 export function InviteAction() {
   const [open, setOpen] = useState(false)
-  const [email, setEmail] = useState("")
-  const [name, setName] = useState("")
-  const [role, setRole] = useState<Role>("staff")
   const client = useQueryClient()
 
+  // The schema, rather than a second opinion about what an address looks
+  // like. `newInvitation` already says it; the hand-written regex that used
+  // to sit here was a copy that could disagree with the server's answer and
+  // with itself.
+  const form = useForm<NewInvitation>({
+    resolver: zodResolver(newInvitation),
+    defaultValues: { email: "", name: "", role: "staff" },
+  })
+
   const mutation = useMutation({
-    mutationFn: () => invite({ email: email.trim(), name: name.trim(), role }),
+    mutationFn: (body: NewInvitation) => invite(body),
     onSuccess: () => {
       setOpen(false)
-      setEmail("")
-      setName("")
+      form.reset()
       void client.invalidateQueries({ queryKey: ["invitations"] })
     },
   })
 
-  const looksLikeAddress = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+  // `useWatch` rather than `form.watch()`: the second returns a function the
+  // React compiler cannot memoize, and re-renders this on every keystroke of
+  // every field rather than of this one.
+  const role = useWatch({ control: form.control, name: "role" })
 
   return (
     <>
       <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
         Invite
       </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next)
+          if (!next) form.reset()
+        }}
+      >
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Invite somebody</DialogTitle>
-            <DialogDescription>
-              They get a link that works once and runs out in seven days. They
-              choose their own password, so nobody else ever knows it.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <Field>
-              <FieldLabel htmlFor="invite-email">E-mail</FieldLabel>
-              <Input
-                id="invite-email"
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                aria-invalid={email.length > 0 && !looksLikeAddress}
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="invite-name">Name</FieldLabel>
-              <Input
-                id="invite-name"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="invite-role">Role</FieldLabel>
-              <Select
-                value={role}
-                onValueChange={(value) => setRole(value as Role)}
-              >
-                <SelectTrigger id="invite-role">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {roleSchema.options.map((one) => (
-                    <SelectItem key={one} value={one}>
-                      {one}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <form
+            onSubmit={form.handleSubmit((values) =>
+              mutation.mutateAsync(values)
+            )}
+          >
+            <DialogHeader>
+              <DialogTitle>Invite somebody</DialogTitle>
+              <DialogDescription>
+                They get a link that works once and runs out in seven days. They
+                choose their own password, so nobody else ever knows it.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <FormField control={form.control} name="email" label="E-mail">
+                {(field) => <Input id={field.name} type="email" {...field} />}
+              </FormField>
+              <FormField control={form.control} name="name" label="Name">
+                {(field) => <Input id={field.name} {...field} />}
+              </FormField>
+              <FormField control={form.control} name="role" label="Role">
+                {(field) => (
+                  <Select
+                    value={field.value}
+                    onValueChange={(value) => field.onChange(value as Role)}
+                  >
+                    <SelectTrigger id={field.name}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {roleSchema.options.map((one) => (
+                        <SelectItem key={one} value={one}>
+                          {one}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </FormField>
               <p className="text-xs text-muted-foreground">
                 {ROLE_MEANS[role]}
               </p>
-            </Field>
-            {mutation.isError ? (
-              <p className="text-sm text-destructive">
-                {mutation.error instanceof Error
-                  ? mutation.error.message
-                  : "Refused."}
-              </p>
-            ) : null}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => mutation.mutate()}
-              disabled={
-                mutation.isPending || !looksLikeAddress || name.trim() === ""
-              }
-            >
-              {mutation.isPending ? "Sending…" : "Send the invitation"}
-            </Button>
-          </DialogFooter>
+              {mutation.isError ? (
+                <p className="text-sm text-destructive">
+                  {mutation.error instanceof Error
+                    ? mutation.error.message
+                    : "Refused."}
+                </p>
+              ) : null}
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={form.formState.isSubmitting}>
+                {form.formState.isSubmitting
+                  ? "Sending…"
+                  : "Send the invitation"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </>
