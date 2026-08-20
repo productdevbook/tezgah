@@ -165,9 +165,11 @@ fails with that as its reason rather than being marked done.
 
 The one kind the crate enqueues still cannot run, and now says why: a
 subscription's dunning retry needs a provider that can charge a card left on
-file, and the payment library this app pins cannot name which card. That is a
-capability to ask the payment library for, not something to work around in a
-host — so the job records it and waits.
+file, and no published version of the payment library can name which card.
+The capability is on that library's main branch and was committed eleven
+hours after its newest tag, so what is missing is a release rather than the
+work — productdevbook/kasapay#225. Asked for there rather than worked around
+here, and the job records the reason and waits.
 
 **Events go to stdout.** No outbox, no subscriber, no delivery, no retry. A
 shop that wants `order.paid` to reach its own systems, or to become an e-mail,
@@ -214,8 +216,9 @@ to describe — the product's page has three. This was written down as
 impossible once, on the reasoning that the API offers one write per record
 rather than one per part of it. The reasoning was wrong: the write takes
 every field as an option, so a form sending three of them leaves the rest
-alone. What is left is the other fifteen records, which is work rather than a
-constraint.
+alone. What is left is the other records, and for most of them one editor is right
+rather than unfinished: a customer has six fields to a product's seventeen,
+and splitting six across three drawers is ceremony.
 
 **Bulk is a round trip.** A page of variants out as CSV, edited, and back in
 — the export's columns and the import's are the same, which is what makes it

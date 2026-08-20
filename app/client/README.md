@@ -51,9 +51,10 @@ That was written here as impossible once, on the reasoning that the API has
 one write route per record rather than one per part of it. The reasoning was
 wrong: `PATCH /admin/products/{id}` takes every field as an `Option`, so a
 form that sends three of them leaves the rest alone — which is what an
-established platform's per-section drawers do too. Every other record's page
-still has one editor, and that is now a thing to finish rather than a thing
-the API prevents.
+established platform's per-section drawers do too. Every other record's page still has one
+editor, and for most of them that is right rather than unfinished: a customer
+has six fields, a sales channel three, and splitting three fields across two
+drawers is ceremony. The product is the record with seventeen.
 
 **Mountable in the parts that talk, not yet in the parts that route.** No
 screen reaches for a global any more: the API address, the token, what to do
