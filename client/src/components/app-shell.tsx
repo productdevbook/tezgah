@@ -223,22 +223,24 @@ export function AppShell() {
               <SidebarGroupLabel>{group.title}</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
-                  {group.sections.map((section) => (
-                    <SidebarMenuItem key={section.slug}>
-                      <SectionLink
-                        slug={section.slug}
-                        title={section.title}
-                        active={isActiveSection(matchRoute, section)}
-                      >
-                        <span className="truncate">{section.title}</span>
-                        {!section.built ? (
-                          <span className="text-muted-foreground ml-auto text-[10px] group-data-[collapsible=icon]:hidden">
-                            soon
-                          </span>
-                        ) : null}
-                      </SectionLink>
-                    </SidebarMenuItem>
-                  ))}
+                  {group.sections
+                    .filter((section) => !section.folded)
+                    .map((section) => (
+                      <SidebarMenuItem key={section.slug}>
+                        <SectionLink
+                          slug={section.slug}
+                          title={section.title}
+                          active={isActiveSection(matchRoute, section)}
+                        >
+                          <span className="truncate">{section.title}</span>
+                          {!section.built ? (
+                            <span className="text-muted-foreground ml-auto text-[10px] group-data-[collapsible=icon]:hidden">
+                              soon
+                            </span>
+                          ) : null}
+                        </SectionLink>
+                      </SidebarMenuItem>
+                    ))}
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
