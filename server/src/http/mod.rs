@@ -7,6 +7,7 @@
 //! comment for exactly which, and why those.
 
 pub mod admin;
+pub mod docs;
 pub mod health;
 pub mod store;
 
@@ -66,6 +67,11 @@ impl Bound {
         }
         if self.health {
             println!("  plus GET /health, which is this binary's own and not one of the 483");
+            let (paths, schemas) = docs::described();
+            println!(
+                "  plus GET /openapi.json and GET /docs, describing {paths} paths \
+                 and {schemas} schemas — also this binary's own"
+            );
         }
     }
 }
@@ -84,7 +90,9 @@ impl Bound {
 pub fn router(state: AppState) -> (Router, Bound) {
     let mut bound = Vec::new();
 
-    let app_base = Router::new().route("/health", get(health::check));
+    let app_base = Router::new()
+        .route("/health", get(health::check))
+        .merge(docs::router());
 
     let (store_router, store_bound) = store::router(state.checkout.is_some());
     let mut app = app_base.merge(store_router);
