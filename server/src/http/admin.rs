@@ -18,8 +18,13 @@
 //! `/admin/orders/{id}/payout-lines`, `/admin/payouts` and
 //! `/admin/payout-balance/{currency_code}` — none of the three has a screen
 //! in `client/` yet, so nothing calls them but this binary's own startup
-//! count. Everything else `tezgah::api` offers stays unbound; nothing here
-//! was chosen for this binary beyond what those needs cover.
+//! count. Past all of that, editing and deleting a row a screen already
+//! lists: `PATCH /admin/customers/{id}` (`admin_rest::update_customer`,
+//! `Action::Write`) and `DELETE /admin/customers/{id}`
+//! (`admin_rest::delete_customer`, `Action::Delete` — soft: a customer's
+//! orders keep pointing at the row). Everything else `tezgah::api` offers
+//! stays unbound; nothing here was chosen for this binary beyond what those
+//! needs cover.
 //!
 //! # Why a bearer token, and why it is the whole of this
 //!
@@ -84,6 +89,8 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         ("GET", "/admin/inventory-items/{id}"),
         ("GET", "/admin/customers"),
         ("GET", "/admin/customers/{id}"),
+        ("PATCH", "/admin/customers/{id}"),
+        ("DELETE", "/admin/customers/{id}"),
         ("GET", "/admin/promotions"),
         ("GET", "/admin/promotions/{id}"),
         ("GET", "/admin/subscriptions"),
@@ -131,7 +138,12 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         )
         .route("/admin/inventory-items/{id}", get(get_inventory_item))
         .route("/admin/customers", get(list_customers))
-        .route("/admin/customers/{id}", get(get_customer))
+        .route(
+            "/admin/customers/{id}",
+            get(get_customer)
+                .patch(update_customer)
+                .delete(delete_customer),
+        )
         .route("/admin/promotions", get(list_promotions))
         .route("/admin/promotions/{id}", get(get_promotion))
         .route("/admin/subscriptions", get(list_subscriptions))
@@ -326,6 +338,29 @@ async fn get_customer(
     let customer = admin_rest::get_customer(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(customer))
+}
+
+async fn update_customer(
+    State(state): State<AppState>,
+    Path(id): Path<CustomerId>,
+    Json(body): Json<admin_rest::UpdateCustomer>,
+) -> Result<Json<admin_rest::CustomerView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let customer = admin_rest::update_customer(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(customer))
+}
+
+async fn delete_customer(
+    State(state): State<AppState>,
+    Path(id): Path<CustomerId>,
+) -> Result<StatusCode, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    admin_rest::delete_customer(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn list_promotions(

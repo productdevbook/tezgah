@@ -104,7 +104,7 @@ pub struct CreateCustomer {
     pub metadata: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UpdateCustomer {
     pub email: Option<String>,
