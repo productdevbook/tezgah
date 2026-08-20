@@ -53,14 +53,14 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post};
 use axum::{Extension, Json, Router};
 use tezgah::api::{
-    admin_catalogue, admin_order, admin_rest, credit, digital, order_basket, payout,
+    admin_catalogue, admin_order, admin_rest, agreement, credit, digital, order_basket, payout,
     store as store_api, subscription, tax_identity,
 };
 use tezgah::id::{
     CategoryId, CustomerId, DigitalContentId, FulfillmentId, FulfillmentSetId, GiftCardId,
     InventoryItemId, OrderBasketId, OrderId, PaymentCollectionId, PaymentId, PaymentWebhookEventId,
-    PriceId, PriceListId, PriceSetId, ProductId, ProductTagId, PromotionId, RegionId,
-    SalesChannelId, ShippingOptionId, ShippingProfileId, StockLocationId, StoreCreditId,
+    PriceId, PriceListId, PriceSetId, ProductId, ProductTagId, PromotionId, PublishableKeyId,
+    RegionId, SalesChannelId, ShippingOptionId, ShippingProfileId, StockLocationId, StoreCreditId,
     SubscriptionId, TaxRateId, TaxRegionId, VariantId, WorkflowRunId,
 };
 use tezgah::ports::{Action, Actor, Ctx, Host};
@@ -91,6 +91,23 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         ("PATCH", "/admin/promotions/{id}"),
         ("DELETE", "/admin/promotions/{id}"),
         ("GET", "/admin/subscriptions"),
+        ("GET", "/admin/orders/{id}/invoices"),
+        ("POST", "/admin/orders/{id}/invoices"),
+        ("GET", "/admin/orders/{id}/agreements"),
+        ("GET", "/admin/orders/{id}/withdrawal"),
+        ("POST", "/admin/promotions/{id}/status"),
+        ("POST", "/admin/promotions/{id}/application-method"),
+        ("GET", "/admin/customers/{id}/addresses"),
+        ("POST", "/admin/customers/{id}/addresses"),
+        ("POST", "/admin/customers/{id}/erase"),
+        ("POST", "/admin/gift-cards/{id}/adjust"),
+        ("POST", "/admin/gift-cards/{id}/disable"),
+        ("POST", "/admin/publishable-api-keys/{id}/revoke"),
+        ("GET", "/admin/regions/{id}/countries"),
+        ("POST", "/admin/regions/{id}/countries"),
+        ("GET", "/admin/stock-locations/{id}/address"),
+        ("POST", "/admin/stock-locations/{id}/address"),
+        ("POST", "/admin/tax-exemptions/{id}/revoke"),
         ("GET", "/admin/subscriptions/{id}"),
         ("GET", "/admin/subscriptions/{id}/events"),
         ("POST", "/admin/subscriptions/{id}/cancel"),
@@ -238,6 +255,37 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
                 .delete(delete_promotion),
         )
         .route("/admin/subscriptions", get(list_subscriptions))
+        .route(
+            "/admin/orders/{id}/invoices",
+            get(list_invoices).post(record_invoice),
+        )
+        .route("/admin/orders/{id}/agreements", get(order_agreements))
+        .route("/admin/orders/{id}/withdrawal", get(order_withdrawal))
+        .route("/admin/promotions/{id}/status", post(set_promotion_status))
+        .route(
+            "/admin/promotions/{id}/application-method",
+            post(set_application_method),
+        )
+        .route(
+            "/admin/customers/{id}/addresses",
+            get(list_addresses).post(add_address),
+        )
+        .route("/admin/customers/{id}/erase", post(erase_customer))
+        .route("/admin/gift-cards/{id}/adjust", post(adjust_gift_card))
+        .route("/admin/gift-cards/{id}/disable", post(disable_gift_card))
+        .route(
+            "/admin/publishable-api-keys/{id}/revoke",
+            post(revoke_publishable_key),
+        )
+        .route(
+            "/admin/regions/{id}/countries",
+            get(list_region_countries).post(add_region_country),
+        )
+        .route(
+            "/admin/stock-locations/{id}/address",
+            get(get_location_address).post(set_location_address),
+        )
+        .route("/admin/tax-exemptions/{id}/revoke", post(revoke_exemption))
         .route("/admin/subscriptions/{id}", get(get_subscription))
         .route("/admin/subscriptions/{id}/events", get(subscription_events))
         .route(
@@ -1163,6 +1211,227 @@ async fn create_inventory_item(
     let item = admin_catalogue::create_inventory_item(&mut tx, &ctx, body).await?;
     tx.commit().await?;
     Ok(Json(item))
+}
+
+/// Seventeen more that were declared and bound by nothing: what an order's
+/// buyer accepted and was invoiced, what a promotion is doing, where a
+/// customer has things sent, and the four ways money or a key is taken back.
+async fn list_invoices(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<OrderId>,
+) -> Result<Json<Vec<agreement::InvoiceView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let rows = agreement::list_invoices(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+async fn record_invoice(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<OrderId>,
+    Json(body): Json<agreement::RecordInvoice>,
+) -> Result<Json<agreement::InvoiceView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = agreement::record_invoice(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn order_agreements(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<OrderId>,
+) -> Result<Json<Vec<agreement::OrderAgreementView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let rows = agreement::order_agreements(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+/// When the buyer may still change their mind, which a shop is asked about
+/// far more often than it is asked what the terms said.
+async fn order_withdrawal(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<OrderId>,
+) -> Result<Json<Vec<agreement::WithdrawalView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let rows = agreement::withdrawal_windows(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+async fn set_promotion_status(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<PromotionId>,
+    Json(body): Json<admin_rest::SetStatus>,
+) -> Result<Json<admin_rest::PromotionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_rest::set_promotion_status(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn set_application_method(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<PromotionId>,
+    Json(body): Json<admin_rest::SetApplicationMethod>,
+) -> Result<Json<admin_rest::ApplicationMethodView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_rest::set_application_method(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn list_addresses(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<CustomerId>,
+    Query(query): Query<admin_rest::List>,
+) -> Result<Json<tezgah::page::Page<admin_rest::AddressView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let page = admin_rest::list_addresses(&mut tx, &ctx, id, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn add_address(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<CustomerId>,
+    Json(body): Json<admin_rest::WriteAddress>,
+) -> Result<Json<admin_rest::AddressView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_rest::add_address(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+/// Erasing on request. The orders stay and the person does not — which is
+/// what makes this a route rather than a delete.
+async fn erase_customer(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<CustomerId>,
+) -> Result<Json<admin_rest::CustomerView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_rest::erase_customer(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn adjust_gift_card(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<GiftCardId>,
+    Json(body): Json<credit::Adjustment>,
+) -> Result<Json<credit::GiftCardView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = credit::adjust_gift_card(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn disable_gift_card(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<GiftCardId>,
+) -> Result<Json<credit::GiftCardView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = credit::disable_gift_card(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn revoke_publishable_key(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<PublishableKeyId>,
+) -> Result<Json<admin_rest::PublishableKeyView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_rest::revoke_publishable_key(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn list_region_countries(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<RegionId>,
+    Query(query): Query<admin_rest::List>,
+) -> Result<Json<tezgah::page::Page<admin_rest::RegionCountryView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let page = admin_rest::list_region_countries(&mut tx, &ctx, id, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn add_region_country(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<RegionId>,
+    Json(body): Json<admin_rest::AddRegionCountry>,
+) -> Result<Json<admin_rest::RegionCountryView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_rest::add_region_country(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn get_location_address(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<StockLocationId>,
+) -> Result<Json<Option<admin_catalogue::StockLocationAddressView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_catalogue::get_stock_location_address(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn set_location_address(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<StockLocationId>,
+    Json(body): Json<admin_catalogue::StockLocationAddressIn>,
+) -> Result<Json<admin_catalogue::StockLocationAddressView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_catalogue::set_stock_location_address(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn revoke_exemption(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<uuid::Uuid>,
+    Json(body): Json<tax_identity::RevokeExemption>,
+) -> Result<Json<tax_identity::ExemptionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = tax_identity::revoke_exemption(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
 }
 
 /// What a shop does to a contract after it exists.
