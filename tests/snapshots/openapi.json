@@ -3953,6 +3953,128 @@
         ],
         "type": "object"
       },
+      "UpdateProduct": {
+        "additionalProperties": false,
+        "description": "A field left out is left alone; `null` on a nullable link clears it.",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "external_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "handle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "height": {
+            "pattern": "^-?\\d+(\\.\\d+)?([eE]\\d+)?$",
+            "type": [
+              "string",
+              "number",
+              "null"
+            ]
+          },
+          "hs_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "is_discountable": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "length": {
+            "pattern": "^-?\\d+(\\.\\d+)?([eE]\\d+)?$",
+            "type": [
+              "string",
+              "number",
+              "null"
+            ]
+          },
+          "material": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "metadata": true,
+          "origin_country": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "product_collection_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CollectionId"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "product_type_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProductTypeId"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "thumbnail_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "weight": {
+            "pattern": "^-?\\d+(\\.\\d+)?([eE]\\d+)?$",
+            "type": [
+              "string",
+              "number",
+              "null"
+            ]
+          },
+          "width": {
+            "pattern": "^-?\\d+(\\.\\d+)?([eE]\\d+)?$",
+            "type": [
+              "string",
+              "number",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "VariantId": {
         "description": "Identifies one variant.",
         "format": "uuid",
@@ -15075,8 +15197,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProduct"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
