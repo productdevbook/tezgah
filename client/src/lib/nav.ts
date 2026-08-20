@@ -13,6 +13,17 @@ export type Section = {
   operations: number
   /** False until a screen exists; the route renders what is missing instead. */
   built: boolean
+  /**
+   * Where this domain's operations are drawn, when it is not a place of its
+   * own. `digital` is the case that made this field exist: its eight
+   * operations all hang off another record — `GET /admin/orders/{id}/
+   * entitlements`, `GET /admin/variants/{id}/digital-content` — so a
+   * standalone Digital screen would be a claim about the domain's shape that
+   * the route table does not make. It stays counted, because the operations
+   * are real and somebody has to draw them; it leaves the sidebar, because
+   * there is nowhere for that entry to go.
+   */
+  folded?: string
 }
 
 export type Group = {
@@ -59,13 +70,26 @@ export const GROUPS: Group[] = [
     sections: [
       { slug: "customers", title: "Customers", tag: "customer", operations: 25, built: true },
       { slug: "store", title: "Store", tag: "store", operations: 32, built: true },
-      { slug: "digital", title: "Digital", tag: "digital", operations: 8, built: false },
+      {
+        slug: "digital",
+        title: "Digital",
+        tag: "digital",
+        operations: 8,
+        built: false,
+        folded: "the order's entitlements and the product's digital content",
+      },
       { slug: "workflows", title: "Workflows", tag: "workflow", operations: 4, built: true },
     ],
   },
 ]
 
 export const SECTIONS: Section[] = GROUPS.flatMap((g) => g.sections)
+
+/**
+ * The ones with a place of their own. A folded domain is counted and drawn,
+ * but not from the sidebar — there is no address for it to lead to.
+ */
+export const NAVIGABLE: Section[] = SECTIONS.filter((s) => !s.folded)
 
 export function sectionBySlug(slug: string): Section | undefined {
   return SECTIONS.find((s) => s.slug === slug)
