@@ -729,6 +729,11 @@ pub async fn products(
     let column = match filter.by {
         By::Created => "p.created_at",
         By::Title => "p.title",
+        // A product has no address. Answered by the default rather than by an
+        // error, the same way an order answers `Title`: a list is not the
+        // place to refuse a question this shape, and the exhaustive match is
+        // what made this arm a decision instead of an oversight.
+        By::Email => "p.created_at",
     };
     let after_at = paging.after.as_ref().and_then(Cursor::timestamp);
     let after_title = paging.after.as_ref().and_then(|c| c.text_key());
@@ -803,7 +808,7 @@ pub async fn products(
         // the next page resumes from the same one. A page ordered by title
         // that handed back a timestamp would silently start over.
         match filter.by {
-            By::Created => Cursor::at(row.created_at, row.id.as_uuid()),
+            By::Created | By::Email => Cursor::at(row.created_at, row.id.as_uuid()),
             By::Title => Cursor::text(row.title.clone(), row.id.as_uuid()),
         }
     }))

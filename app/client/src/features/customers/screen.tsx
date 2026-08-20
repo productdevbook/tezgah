@@ -6,6 +6,13 @@ import { Badge } from "@/components/ui/badge"
 import { usePagedList } from "@/lib/paged"
 import { PageHeading } from "@/components/page-heading"
 import { SearchBox } from "@/components/search-box"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 function name(row: Customer): string | null {
   const parts = [row.first_name, row.last_name].filter(Boolean)
@@ -55,13 +62,17 @@ const columns: Columns<Customer> = [
 export function Customers({
   after,
   q,
+  by,
   onAfterChange,
   onQChange,
+  onByChange,
 }: {
   after: string | undefined
   q: string | undefined
+  by: "created" | "email"
   onAfterChange: (after: string | undefined) => void
   onQChange: (q: string | undefined) => void
+  onByChange: (by: "created" | "email") => void
 }) {
   const paged = usePagedList(
     ["customers", q ?? ""],
@@ -70,7 +81,7 @@ export function Customers({
     {
       after,
       onAfterChange,
-      query: { q },
+      query: { q, by },
     }
   )
   return (
@@ -79,6 +90,19 @@ export function Customers({
         title="Customers"
         subtitle="Guests are customers too — a cart makes one before an account does."
       >
+        <Select
+          value={by}
+          onValueChange={(value) => onByChange(value as "created" | "email")}
+        >
+          <SelectTrigger className="w-36" size="sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {/* Two, because the crate orders this list two ways. */}
+            <SelectItem value="created">Newest first</SelectItem>
+            <SelectItem value="email">By e-mail</SelectItem>
+          </SelectContent>
+        </Select>
         <SearchBox
           value={q}
           onChange={onQChange}

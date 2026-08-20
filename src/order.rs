@@ -51,7 +51,7 @@ use crate::id::{
     StockLocationId, SubscriptionId, VariantId,
 };
 use crate::money::{Currency, Money};
-use crate::page::{Cursor, Order as Direction, Page, Paging, Search};
+use crate::page::{By, Cursor, Order as Direction, Page, Paging, Search};
 use crate::ports::{Action, Actor, AuditEntry, Ctx, Event, Permit, Resource, Tx};
 
 const ORDER_COLUMNS: &str = "id, display_id, region_id, sales_channel_id, customer_id, \
@@ -1318,6 +1318,9 @@ pub struct OrderFilter {
     /// first order the shop ever took — so the admin surface asks for
     /// `Newest` and the storefront leaves it alone.
     pub order: Direction,
+    /// Which column. `Number` is what somebody with a receipt in front of
+    /// them wants; `Email` is what somebody with a complaint wants.
+    pub by: By,
 }
 
 /// Orders, newest last.
@@ -1336,6 +1339,18 @@ pub async fn list(
     )?;
 
     let (beyond, direction) = (filter.order.beyond(), filter.order.direction());
+    // The column is interpolated from a closed enum and the key is bound.
+    // Every predicate is in the query; the two whose parameter is null do
+    // nothing, which is what lets one query answer three orderings.
+    let column = match filter.by {
+        By::Created => "created_at",
+        By::Email => "email",
+        // An order has no title. Answered by the default rather than by an
+        // error: a list is not the place to refuse a question this shape.
+        By::Title => "created_at",
+    };
+    let after_at = paging.after.as_ref().and_then(Cursor::timestamp);
+    let after_text = paging.after.as_ref().and_then(|c| c.text_key());
 
     let rows = sqlx::query_as::<_, Order>(&format!(
         r#"select {ORDER_COLUMNS} from "order"
@@ -1346,21 +1361,27 @@ pub async fn list(
                   or email ilike $4
                   or display_id::text ilike $4)
              and ($5::timestamptz is null or (created_at, id) {beyond} ($5, $6))
-           order by created_at {direction}, id {direction}
-           limit $7"#
+             and ($7::text is null or ({column}::text, id) {beyond} ($7, $6))
+           order by {column} {direction}, id {direction}
+           limit $8"#
     ))
     .bind(ctx.scope.0)
     .bind(filter.customer.map(CustomerId::as_uuid))
     .bind(filter.drafts)
     .bind(filter.search.as_ref().map(Search::pattern))
-    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(after_at)
     .bind(paging.after.as_ref().map(|c| c.id))
+    .bind(after_text)
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| {
-        Cursor::at(row.created_at, row.id.as_uuid())
+    // The cursor names the column the page was ordered by, so the next page
+    // resumes from the same one. An order with no e-mail sorts under the
+    // empty string, which is where it also appears in the list.
+    Ok(Page::build(rows, paging, |row| match filter.by {
+        By::Created | By::Title => Cursor::at(row.created_at, row.id.as_uuid()),
+        By::Email => Cursor::text(row.email.clone().unwrap_or_default(), row.id.as_uuid()),
     }))
 }
 

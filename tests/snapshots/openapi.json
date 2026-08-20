@@ -450,6 +450,11 @@
             "const": "title",
             "description": "What a person reads the row as — a product's title.",
             "type": "string"
+          },
+          {
+            "const": "email",
+            "description": "The address on the row. An order's, a customer's: the thing somebody\nlooking for one of them types.\n\nThere is deliberately no variant for an order's number. A display\nnumber is assigned in order, so ordering by it is ordering by when the\norder was placed — `Created` already answers that, and a second name\nfor one ordering is a way for the two to disagree.",
+            "type": "string"
           }
         ]
       },
@@ -2617,6 +2622,17 @@
               "null"
             ]
           },
+          "by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/By"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which column. `created` is the default; `email` is the other one."
+          },
           "limit": {
             "format": "uint32",
             "minimum": 0,
@@ -2654,6 +2670,17 @@
               "string",
               "null"
             ]
+          },
+          "by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/By"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which column. `created` is the default; `email` is the other one."
           },
           "customer_id": {
             "anyOf": [
@@ -8731,6 +8758,22 @@
           },
           {
             "in": "query",
+            "name": "by",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/By"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Which column. `created` is the default; `email` is the other one."
+            }
+          },
+          {
+            "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
@@ -13023,6 +13066,22 @@
                 "string",
                 "null"
               ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "by",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/By"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Which column. `created` is the default; `email` is the other one."
             }
           },
           {

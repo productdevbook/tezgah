@@ -6395,7 +6395,7 @@ export interface components {
          *     two go together: adding a variant here without teaching the list to bind
          *     the matching key gives an ordering that pages back to the beginning.
          */
-        By: "created" | "title";
+        By: "created" | "title" | "email";
         /**
          * Format: uuid
          * @description Identifies one campaign.
@@ -6998,6 +6998,8 @@ export interface components {
          */
         ListCustomers: {
             after?: string | null;
+            /** @description Which column. `created` is the default; `email` is the other one. */
+            by?: components["schemas"]["By"] | null;
             /** Format: uint32 */
             limit?: number | null;
             /** @description Which end first. Left out, this surface answers newest-first. */
@@ -7010,6 +7012,8 @@ export interface components {
         };
         ListOrders: {
             after?: string | null;
+            /** @description Which column. `created` is the default; `email` is the other one. */
+            by?: components["schemas"]["By"] | null;
             customer_id?: components["schemas"]["CustomerId"] | null;
             /** Format: uint32 */
             limit?: number | null;
@@ -10195,6 +10199,7 @@ export interface operations {
         parameters: {
             query?: {
                 after?: string | null;
+                by?: components["schemas"]["By"] | null;
                 limit?: number | null;
                 order?: components["schemas"]["Order"] | null;
                 q?: string | null;
@@ -14217,6 +14222,7 @@ export interface operations {
         parameters: {
             query?: {
                 after?: string | null;
+                by?: components["schemas"]["By"] | null;
                 customer_id?: components["schemas"]["CustomerId"] | null;
                 limit?: number | null;
                 order?: components["schemas"]["Order"] | null;

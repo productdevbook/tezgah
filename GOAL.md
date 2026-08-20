@@ -331,9 +331,10 @@ In the library:
 - [ ] search on orders and customers — the catalogue has one (`page::Search`,
       `ilike`, no index); both of the others take their filters as positional
       arguments rather than a struct, so it is a signature change
-- [ ] sorting on the lists past `catalogue` — the cursor carries a key now, so
-      the shape is settled and each list needs a column and a `page::By`
-      variant rather than a design
+- [ ] sorting on the lists past the three that have it — products by title,
+      orders and customers by address. The cursor carries a key, so each list
+      left needs a column and a `page::By` variant rather than a design, and
+      an exhaustive `match` makes a variant added without one a compile error
 - [ ] the query string of the other 480 operations in the document — three
       describe theirs (#254); the rest still answer with their path
       parameters alone

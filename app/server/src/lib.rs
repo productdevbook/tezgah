@@ -9,3 +9,4 @@ pub mod identity;
 pub mod provider;
 pub mod schedule;
 pub mod seed;
+pub mod shopper;

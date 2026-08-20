@@ -13,7 +13,7 @@ use sqlx::FromRow;
 
 use crate::error::{Error, Result};
 use crate::id::{AddressId, CustomerGroupId, CustomerId};
-use crate::page::{Cursor, Order, Page, Paging, Search};
+use crate::page::{By, Cursor, Order, Page, Paging, Search};
 use crate::payment;
 use crate::ports::{Action, AuditEntry, Ctx, Event, Permit, Resource, Tx};
 
@@ -247,6 +247,10 @@ pub struct CustomerFilter {
     /// Which end first. A back office opening Customers wants whoever
     /// arrived this week.
     pub order: Order,
+    /// Which column. `Email` is what somebody with a name in front of them
+    /// asks for; a customer has no title, so that variant answers as
+    /// `Created` does.
+    pub by: By,
     /// Matched against e-mail, first and last name, and company — the four
     /// ways somebody asks for a person. A guest with none of them set is
     /// findable through the order they left, not here.
@@ -262,6 +266,12 @@ pub async fn list(
     let _: Permit = ctx.permit(Action::View, Resource::Customer { id: None })?;
 
     let (beyond, direction) = (filter.order.beyond(), filter.order.direction());
+    let column = match filter.by {
+        By::Email => "email",
+        By::Created | By::Title => "created_at",
+    };
+    let after_at = paging.after.as_ref().and_then(Cursor::timestamp);
+    let after_text = paging.after.as_ref().and_then(|c| c.text_key());
 
     let rows = sqlx::query_as::<_, Customer>(&format!(
         "select {COLUMNS} from customer
@@ -273,19 +283,25 @@ pub async fn list(
                 or last_name ilike $2
                 or company_name ilike $2)
            and ($3::timestamptz is null or (created_at, id) {beyond} ($3, $4))
-         order by created_at {direction}, id {direction}
-         limit $5"
+           and ($5::text is null or ({column}::text, id) {beyond} ($5, $4))
+         order by {column} {direction}, id {direction}
+         limit $6"
     ))
     .bind(ctx.scope.0)
     .bind(filter.search.as_ref().map(Search::pattern))
-    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(after_at)
     .bind(paging.after.as_ref().map(|c| c.id))
+    .bind(after_text)
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| {
-        Cursor::at(row.created_at, row.id.as_uuid())
+    // A guest with no address sorts under the empty string, which is where it
+    // also appears in the list — the two have to agree or the page after it
+    // starts somewhere else.
+    Ok(Page::build(rows, paging, |row| match filter.by {
+        By::Created | By::Title => Cursor::at(row.created_at, row.id.as_uuid()),
+        By::Email => Cursor::text(row.email.clone().unwrap_or_default(), row.id.as_uuid()),
     }))
 }
 

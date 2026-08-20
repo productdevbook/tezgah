@@ -203,6 +203,14 @@ pub enum By {
     Created,
     /// What a person reads the row as — a product's title.
     Title,
+    /// The address on the row. An order's, a customer's: the thing somebody
+    /// looking for one of them types.
+    ///
+    /// There is deliberately no variant for an order's number. A display
+    /// number is assigned in order, so ordering by it is ordering by when the
+    /// order was placed — `Created` already answers that, and a second name
+    /// for one ordering is a way for the two to disagree.
+    Email,
 }
 
 /// What somebody typed into a search box.
