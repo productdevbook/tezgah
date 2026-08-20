@@ -427,7 +427,64 @@ export const PatchAdminProductsByIdParams = zod.object({
   "id": zod.string()
 })
 
-export const PatchAdminProductsByIdResponse = zod.unknown()
+export const patchAdminProductsByIdBodyHeightRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+export const patchAdminProductsByIdBodyLengthRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+export const patchAdminProductsByIdBodyProductCollectionIdDefault = null;
+export const patchAdminProductsByIdBodyProductTypeIdDefault = null;
+export const patchAdminProductsByIdBodyWeightRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+export const patchAdminProductsByIdBodyWidthRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+
+
+export const PatchAdminProductsByIdBody = zod.object({
+  "description": zod.string().nullish(),
+  "external_id": zod.string().nullish(),
+  "handle": zod.string().nullish(),
+  "height": zod.union([zod.string().regex(patchAdminProductsByIdBodyHeightRegExpOne),zod.number()]).nullish(),
+  "hs_code": zod.string().nullish(),
+  "is_discountable": zod.boolean().nullish(),
+  "length": zod.union([zod.string().regex(patchAdminProductsByIdBodyLengthRegExpOne),zod.number()]).nullish(),
+  "material": zod.string().nullish(),
+  "metadata": zod.unknown().optional(),
+  "origin_country": zod.string().nullish(),
+  "product_collection_id": zod.union([zod.uuid().describe('Identifies one collection.'),zod.null()]).default(patchAdminProductsByIdBodyProductCollectionIdDefault),
+  "product_type_id": zod.union([zod.uuid().describe('Identifies one type.'),zod.null()]).default(patchAdminProductsByIdBodyProductTypeIdDefault),
+  "subtitle": zod.string().nullish(),
+  "thumbnail_url": zod.string().nullish(),
+  "title": zod.string().nullish(),
+  "weight": zod.union([zod.string().regex(patchAdminProductsByIdBodyWeightRegExpOne),zod.number()]).nullish(),
+  "width": zod.union([zod.string().regex(patchAdminProductsByIdBodyWidthRegExpOne),zod.number()]).nullish()
+}).describe('A field left out is left alone; `null` on a nullable link clears it.')
+
+export const patchAdminProductsByIdResponseHeightRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+export const patchAdminProductsByIdResponseLengthRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+export const patchAdminProductsByIdResponseWeightRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+export const patchAdminProductsByIdResponseWidthRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PatchAdminProductsByIdResponse = zod.object({
+  "created_at": zod.iso.datetime({"offset":true}),
+  "description": zod.string().nullable(),
+  "external_id": zod.string().nullable(),
+  "handle": zod.string(),
+  "height": zod.string().regex(patchAdminProductsByIdResponseHeightRegExp).nullable(),
+  "hs_code": zod.string().nullable(),
+  "id": zod.uuid().describe('Identifies one product.'),
+  "is_discountable": zod.boolean(),
+  "length": zod.string().regex(patchAdminProductsByIdResponseLengthRegExp).nullable(),
+  "material": zod.string().nullable(),
+  "metadata": zod.unknown(),
+  "origin_country": zod.string().nullable(),
+  "product_collection_id": zod.union([zod.uuid().describe('Identifies one collection.'),zod.null()]),
+  "product_type_id": zod.union([zod.uuid().describe('Identifies one type.'),zod.null()]),
+  "rejected_reason": zod.string().nullable(),
+  "status": zod.enum(['draft', 'proposed', 'published', 'archived', 'rejected']).describe('Where a product is in its life. `draft` is invisible, `published` is for\nsale, `archived` is kept for the orders that already name it. `proposed`\nand `rejected` are a marketplace\'s review of a seller\'s submission —\ninvisible the same as `draft`, but reached only through\n[`submit_for_review`], [`approve_product`] and [`reject_product`], not\nthrough a plain edit.'),
+  "subtitle": zod.string().nullable(),
+  "thumbnail_url": zod.string().nullable(),
+  "title": zod.string(),
+  "updated_at": zod.iso.datetime({"offset":true}),
+  "weight": zod.string().regex(patchAdminProductsByIdResponseWeightRegExp).nullable(),
+  "width": zod.string().regex(patchAdminProductsByIdResponseWidthRegExp).nullable()
+}).describe('A product as its own shop sees it: the status included, because deciding\nwhat to do next is the whole point of the screen this feeds.')
 
 /**
  * @summary Approve a proposed product and publish it

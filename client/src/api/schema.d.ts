@@ -7135,6 +7135,9 @@ export interface components {
             name: string;
             payment_providers: string[];
         };
+        RenameStockLocation: {
+            name: string;
+        };
         RequestClaim: {
             claim_type: components["schemas"]["ClaimKind"];
             /** @default false */
@@ -7402,8 +7405,59 @@ export interface components {
             status: string;
             to_email: string;
         };
+        UpdateCustomer: {
+            company_name?: string | null;
+            email?: string | null;
+            first_name?: string | null;
+            last_name?: string | null;
+            metadata?: unknown;
+            phone?: string | null;
+        };
         UpdateEmail: {
             email: string;
+        };
+        /** @description A field left out is left alone; `null` on a nullable link clears it. */
+        UpdateProduct: {
+            description?: string | null;
+            external_id?: string | null;
+            handle?: string | null;
+            height?: string | number | null;
+            hs_code?: string | null;
+            is_discountable?: boolean | null;
+            length?: string | number | null;
+            material?: string | null;
+            metadata?: unknown;
+            origin_country?: string | null;
+            /** @default null */
+            product_collection_id: components["schemas"]["CollectionId"] | null;
+            /** @default null */
+            product_type_id: components["schemas"]["ProductTypeId"] | null;
+            subtitle?: string | null;
+            thumbnail_url?: string | null;
+            title?: string | null;
+            weight?: string | number | null;
+            width?: string | number | null;
+        };
+        UpdatePromotion: {
+            code?: string | null;
+            /** Format: int32 */
+            customer_usage_limit?: number | null;
+            is_automatic?: boolean | null;
+            metadata?: unknown;
+            /** Format: int32 */
+            usage_limit?: number | null;
+        };
+        UpdateRegion: {
+            currency_code?: string | null;
+            has_automatic_taxes?: boolean | null;
+            is_tax_inclusive?: boolean | null;
+            name?: string | null;
+            payment_providers?: string[] | null;
+        };
+        UpdateSalesChannel: {
+            description?: string | null;
+            is_disabled?: boolean | null;
+            name?: string | null;
         };
         /**
          * Format: uuid
@@ -9560,14 +9614,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCustomer"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["CustomerView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -18188,14 +18248,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateProduct"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ProductView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -19473,14 +19539,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePromotion"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PromotionView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -20222,14 +20294,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateRegion"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["RegionView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -21647,14 +21725,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSalesChannel"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["SalesChannelView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -22742,14 +22826,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameStockLocation"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["StockLocationView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {

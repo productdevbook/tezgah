@@ -7,7 +7,8 @@
  */
 import type {
   CustomerView,
-  GetAdminCustomers200
+  GetAdminCustomers200,
+  UpdateCustomer
 } from '../models';
 
 import { apiMutator } from '../../../mutator';
@@ -587,7 +588,7 @@ export const getAdminCustomersById = async (id: string, options?: Parameters<typ
 
 
 export type patchAdminCustomersByIdResponse200 = {
-  data: void
+  data: CustomerView
   status: 200
 }
 
@@ -626,14 +627,15 @@ export const getPatchAdminCustomersByIdUrl = (id: string,) => {
 /**
  * @summary Edit a customer
  */
-export const patchAdminCustomersById = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<patchAdminCustomersByIdResponse> => {
+export const patchAdminCustomersById = async (id: string,
+    updateCustomer: UpdateCustomer, options?: Parameters<typeof apiMutator>[1]): Promise<patchAdminCustomersByIdResponse> => {
 
   return apiMutator<patchAdminCustomersByIdResponse>(getPatchAdminCustomersByIdUrl(id),
   {
     ...options,
-    method: 'PATCH'
-
-
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateCustomer)
   }
 );}
 
