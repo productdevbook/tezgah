@@ -141,7 +141,7 @@ struct QueryString {
     of: SchemaFn,
 }
 
-/// A start, not the set. Three lists an operator actually filters; the rest
+/// A start, not the set. Four lists an operator actually filters; the rest
 /// still answer with the path parameters alone, and `tests/openapi.rs` counts
 /// what is here so the number cannot quietly stop growing.
 const QUERIES: &[QueryString] = &[
@@ -156,6 +156,10 @@ const QUERIES: &[QueryString] = &[
     QueryString {
         operation_id: "getAdminOrders",
         of: schema_of::<admin_order::ListOrders>,
+    },
+    QueryString {
+        operation_id: "getAdminCustomers",
+        of: schema_of::<admin_rest::ListCustomers>,
     },
 ];
 

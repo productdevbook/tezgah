@@ -293,7 +293,7 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
     denied!(
         Method::Get,
         "/admin/customers",
-        admin_rest::list_customers(&mut tx, &ctx, admin_rest::List::default())
+        admin_rest::list_customers(&mut tx, &ctx, admin_rest::ListCustomers::default())
     );
     denied!(
         Method::Post,

@@ -16,13 +16,20 @@ use tezgah::id::{InventoryItemId, LineItemId, StockLocationId, VariantId};
 use tezgah::money::{Currency, Money};
 use tezgah::order::{
     self, ChangeAction, ChangeType, ClaimLine, ClaimRequest, ClaimType, NewAction, NewAdjustment,
-    NewOrder, NewOrderLine, NewOrderShipping, NewTaxLine, OrderAddress, OrderStatus, ReceivedLine,
-    ReturnLine,
+    NewOrder, NewOrderLine, NewOrderShipping, NewTaxLine, OrderAddress, OrderFilter, OrderStatus,
+    ReceivedLine, ReturnLine,
 };
-use tezgah::page::Paging;
+use tezgah::page::{Order as Direction, Paging, Search};
 use tezgah::ports::{Actor, Ctx, Scope, Tx};
 use tezgah::{inventory, page};
 use uuid::Uuid;
+
+fn drafts_only() -> OrderFilter {
+    OrderFilter {
+        drafts: Some(true),
+        ..OrderFilter::default()
+    }
+}
 
 fn lira() -> Currency {
     Currency::parse("TRY").expect("a currency code")
@@ -537,7 +544,7 @@ async fn a_draft_is_priced_like_any_other_order() -> tezgah::Result<()> {
     assert_eq!(sent.payment_collection_id, Some(collection.id));
 
     // And it is no longer in the drafts list.
-    let drafts = order::list(&mut tx, &ctx, None, Some(true), Paging::first(10)).await?;
+    let drafts = order::list(&mut tx, &ctx, drafts_only(), Paging::first(10)).await?;
     assert!(drafts.is_empty());
 
     tx.rollback().await.expect("to roll back");
@@ -645,7 +652,7 @@ async fn another_scope_sees_no_orders() -> tezgah::Result<()> {
         .expect_err("somebody else's order is not there");
     assert!(unseen.is_not_found());
 
-    let listed = order::list(&mut theirs, &ctx, None, None, Paging::first(10)).await?;
+    let listed = order::list(&mut theirs, &ctx, OrderFilter::default(), Paging::first(10)).await?;
     assert!(listed.is_empty());
 
     theirs.rollback().await.expect("to roll back");
@@ -711,15 +718,14 @@ async fn a_page_of_orders_carries_a_cursor() -> tezgah::Result<()> {
         order::create(&mut tx, &ctx, an_order(vec![a_line(1, dec!(10))])).await?;
     }
 
-    let first = order::list(&mut tx, &ctx, None, None, Paging::first(2)).await?;
+    let first = order::list(&mut tx, &ctx, OrderFilter::default(), Paging::first(2)).await?;
     assert_eq!(first.len(), 2);
     let next = first.next.as_ref().expect("another page");
 
     let rest = order::list(
         &mut tx,
         &ctx,
-        None,
-        None,
+        OrderFilter::default(),
         Paging::after(page::Cursor::decode(next)?, 2),
     )
     .await?;
@@ -2548,4 +2554,106 @@ async fn a_deleted_return_reason_takes_its_translations_with_it() {
 
     tx.rollback().await.expect("to roll back");
     shop.close().await;
+}
+
+/// An operator looking for one order out of forty thousand has an e-mail or a
+/// number off a receipt, and until now had neither to search with.
+#[tokio::test]
+async fn an_order_is_found_by_its_email_or_its_number() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let mine = order::create(
+        &mut tx,
+        &ctx,
+        NewOrder {
+            email: Some("ada@example.com".into()),
+            ..an_order(vec![a_line(1, dec!(10))])
+        },
+    )
+    .await?;
+
+    order::create(
+        &mut tx,
+        &ctx,
+        NewOrder {
+            email: Some("grace@example.com".into()),
+            ..an_order(vec![a_line(1, dec!(10))])
+        },
+    )
+    .await?;
+
+    let searching = |text: &str| OrderFilter {
+        search: Search::new(text),
+        ..OrderFilter::default()
+    };
+
+    let by_email = order::list(&mut tx, &ctx, searching("ADA@"), Paging::first(10)).await?;
+    assert_eq!(by_email.len(), 1, "the e-mail matches, case and all");
+    assert_eq!(by_email.items[0].id, mine.id);
+
+    let number = mine.display_id.expect("an order has a display number");
+    let by_number = order::list(
+        &mut tx,
+        &ctx,
+        searching(&number.to_string()),
+        Paging::first(10),
+    )
+    .await?;
+    assert!(
+        by_number.items.iter().any(|row| row.id == mine.id),
+        "the display number matches too"
+    );
+
+    let nobody = order::list(&mut tx, &ctx, searching("nobody"), Paging::first(10)).await?;
+    assert!(nobody.is_empty());
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
+}
+
+/// A back office opening Orders wants today's, not the first order the shop
+/// ever took — and paging through newest-first has to keep working, which is
+/// the half that is easy to get wrong.
+#[tokio::test]
+async fn newest_first_pages_the_other_way_and_still_ends() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let mut made = Vec::new();
+    for _ in 0..3 {
+        made.push(order::create(&mut tx, &ctx, an_order(vec![a_line(1, dec!(10))])).await?);
+    }
+
+    let newest = OrderFilter {
+        order: Direction::Newest,
+        ..OrderFilter::default()
+    };
+
+    let first = order::list(&mut tx, &ctx, newest.clone(), Paging::first(2)).await?;
+    assert_eq!(first.len(), 2);
+    assert_eq!(
+        first.items[0].id, made[2].id,
+        "the newest order is on page one"
+    );
+    assert_eq!(first.items[1].id, made[1].id);
+
+    let next = first.next.as_ref().expect("another page");
+    let rest = order::list(
+        &mut tx,
+        &ctx,
+        newest,
+        Paging::after(page::Cursor::decode(next)?, 2),
+    )
+    .await?;
+    assert_eq!(rest.len(), 1, "the cursor walked backwards in time, once");
+    assert_eq!(rest.items[0].id, made[0].id);
+    assert!(rest.next.is_none());
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
 }

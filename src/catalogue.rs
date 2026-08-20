@@ -18,7 +18,7 @@ use crate::id::{
     CategoryId, CollectionId, OptionId, OptionValueId, ProductId, ProductImageId, ProductTagId,
     ProductTypeId, SalesChannelId, VariantId,
 };
-use crate::page::{Cursor, Page, Paging, Search};
+use crate::page::{Cursor, Order, Page, Paging, Search};
 use crate::ports::{Action, AuditEntry, Ctx, Event, Permit, Resource, Tx};
 
 /// Most options one product may be generated from, and most variants one
@@ -406,6 +406,9 @@ pub struct ProductFilter {
     /// because nobody has measured this hurting yet, and an index nobody
     /// needed is a migration everybody pays for.
     pub search: Option<Search>,
+    /// Which end first. A storefront walks a catalogue oldest-first; a back
+    /// office opening Products wants what was added yesterday.
+    pub order: Order,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -715,10 +718,13 @@ pub async fn products(
 ) -> Result<Page<Product>> {
     let _: Permit = ctx.permit(Action::View, Resource::Product { id: None })?;
 
-    let rows = sqlx::query_as::<_, Product>(concat!(
-        "select ",
-        product_columns!(),
-        " from product p
+    let (beyond, direction) = (filter.order.beyond(), filter.order.direction());
+
+    let rows = sqlx::query_as::<_, Product>(&format!(
+        concat!(
+            "select ",
+            product_columns!(),
+            " from product p
          where p.scope = $1
            and p.deleted_at is null
            and ($2::text is null or p.status = $2)
@@ -752,9 +758,15 @@ pub async fn products(
                 or p.title ilike $8
                 or p.handle ilike $8
                 or p.subtitle ilike $8)
-           and ($9::timestamptz is null or (p.created_at, p.id) > ($9, $10))
-         order by p.created_at, p.id
+           and ($9::timestamptz is null or (p.created_at, p.id) {beyond} ($9, $10))
+         order by p.created_at {direction}, p.id {direction}
          limit $11"
+        ),
+        // Named rather than captured: `format_args!` cannot capture from the
+        // surrounding scope when the format string came out of a macro, and
+        // this one comes out of `concat!`.
+        beyond = beyond,
+        direction = direction,
     ))
     .bind(ctx.scope.0)
     .bind(filter.status)

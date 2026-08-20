@@ -51,7 +51,7 @@ use crate::id::{
     StockLocationId, SubscriptionId, VariantId,
 };
 use crate::money::{Currency, Money};
-use crate::page::{Cursor, Page, Paging};
+use crate::page::{Cursor, Order as Direction, Page, Paging, Search};
 use crate::ports::{Action, Actor, AuditEntry, Ctx, Event, Permit, Resource, Tx};
 
 const ORDER_COLUMNS: &str = "id, display_id, region_id, sales_channel_id, customer_id, \
@@ -1298,34 +1298,61 @@ pub async fn get(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: OrderId) -> Result<Order> {
     Ok(order)
 }
 
-/// Orders, newest last, optionally one customer's and optionally only drafts.
+/// What narrows a listing of orders.
+///
+/// A struct rather than three positional arguments because the third was a
+/// search and there will be a fourth: a status, a date range, a channel. Every
+/// one of those added to a signature is a change at every call site, and every
+/// one added here is a field with a default.
+#[derive(Debug, Clone, Default)]
+pub struct OrderFilter {
+    pub customer: Option<CustomerId>,
+    /// `Some(true)` is drafts only; `Some(false)` is everything placed.
+    pub drafts: Option<bool>,
+    /// Matched against the e-mail the order carries and its display number —
+    /// the two things somebody reads off a receipt or out of an angry
+    /// message. Not the order's id: nobody types a uuid, and the two routes
+    /// that take one take it in the path.
+    pub search: Option<Search>,
+    /// Which end first. A back office opening Orders wants today's, not the
+    /// first order the shop ever took — so the admin surface asks for
+    /// `Newest` and the storefront leaves it alone.
+    pub order: Direction,
+}
+
+/// Orders, newest last.
 pub async fn list(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
-    customer_id: Option<CustomerId>,
-    drafts: Option<bool>,
+    filter: OrderFilter,
     paging: Paging,
 ) -> Result<Page<Order>> {
     let _: Permit = ctx.permit(
         Action::View,
         Resource::Order {
             id: Uuid::nil(),
-            customer: customer_id.map(CustomerId::as_uuid),
+            customer: filter.customer.map(CustomerId::as_uuid),
         },
     )?;
+
+    let (beyond, direction) = (filter.order.beyond(), filter.order.direction());
 
     let rows = sqlx::query_as::<_, Order>(&format!(
         r#"select {ORDER_COLUMNS} from "order"
            where scope = $1
              and ($2::uuid is null or customer_id = $2)
              and ($3::boolean is null or is_draft = $3)
-             and ($4::timestamptz is null or (created_at, id) > ($4, $5))
-           order by created_at, id
-           limit $6"#
+             and ($4::text is null
+                  or email ilike $4
+                  or display_id::text ilike $4)
+             and ($5::timestamptz is null or (created_at, id) {beyond} ($5, $6))
+           order by created_at {direction}, id {direction}
+           limit $7"#
     ))
     .bind(ctx.scope.0)
-    .bind(customer_id.map(CustomerId::as_uuid))
-    .bind(drafts)
+    .bind(filter.customer.map(CustomerId::as_uuid))
+    .bind(filter.drafts)
+    .bind(filter.search.as_ref().map(Search::pattern))
     .bind(paging.after.map(|c| c.at))
     .bind(paging.after.map(|c| c.id))
     .bind(paging.probe())

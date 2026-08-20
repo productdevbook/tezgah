@@ -5,13 +5,21 @@ import { DataTable, type Columns } from "@/components/data-table"
 import { Badge } from "@/components/ui/badge"
 import { usePagedList } from "@/lib/paged"
 import { PageHeading } from "@/components/page-heading"
+import { SearchBox } from "@/components/search-box"
 
 /**
  * An order carries three statuses that move independently — itself, its money
  * and its parcels — so all three are shown. Folding them into one word would
  * have to be wrong about two of them.
  */
-const SETTLED = ["captured", "paid", "refunded", "fulfilled", "shipped", "delivered"]
+const SETTLED = [
+  "captured",
+  "paid",
+  "refunded",
+  "fulfilled",
+  "shipped",
+  "delivered",
+]
 const STUCK = ["canceled", "cancelled", "requires_more", "failed", "declined"]
 
 function tone(status: string): "default" | "outline" | "destructive" {
@@ -31,7 +39,9 @@ const columns: Columns<Order> = [
     header: "Customer",
     accessorKey: "email",
     cell: ({ row }) =>
-      row.original.email ?? <span className="text-muted-foreground">no email</span>,
+      row.original.email ?? (
+        <span className="text-muted-foreground">no email</span>
+      ),
     meta: { className: "max-w-56 truncate" },
   },
   {
@@ -72,15 +82,29 @@ const columns: Columns<Order> = [
 
 export function Orders({
   after,
+  q,
   onAfterChange,
+  onQChange,
 }: {
   after: string | undefined
+  q: string | undefined
   onAfterChange: (after: string | undefined) => void
+  onQChange: (q: string | undefined) => void
 }) {
-  const paged = usePagedList(["orders"], "/admin/orders", order, { after, onAfterChange })
+  const paged = usePagedList(["orders", q ?? ""], "/admin/orders", order, {
+    after,
+    onAfterChange,
+    query: { q },
+  })
   return (
     <div className="space-y-4">
-      <PageHeading title="Orders" subtitle="Drafts are listed too, and say so." />
+      <PageHeading title="Orders" subtitle="Drafts are listed too, and say so.">
+        <SearchBox
+          value={q}
+          onChange={onQChange}
+          placeholder="Search e-mail or order number"
+        />
+      </PageHeading>
       <DataTable
         paged={paged}
         columns={columns}
@@ -92,7 +116,12 @@ export function Orders({
             aria-label={`Open order ${row.display_id ?? row.id}`}
           />
         )}
-        empty={{ title: "No orders", description: "Nothing has been placed yet." }}
+        empty={{
+          title: "No orders",
+          description: q
+            ? `Nothing matches ${q}.`
+            : "Nothing has been placed yet.",
+        }}
       />
     </div>
   )

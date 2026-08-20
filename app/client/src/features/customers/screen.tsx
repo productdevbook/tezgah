@@ -5,6 +5,7 @@ import { DataTable, type Columns } from "@/components/data-table"
 import { Badge } from "@/components/ui/badge"
 import { usePagedList } from "@/lib/paged"
 import { PageHeading } from "@/components/page-heading"
+import { SearchBox } from "@/components/search-box"
 
 function name(row: Customer): string | null {
   const parts = [row.first_name, row.last_name].filter(Boolean)
@@ -16,7 +17,9 @@ const columns: Columns<Customer> = [
     header: "Name",
     accessorKey: "first_name",
     cell: ({ row }) =>
-      name(row.original) ?? <span className="text-muted-foreground">unnamed</span>,
+      name(row.original) ?? (
+        <span className="text-muted-foreground">unnamed</span>
+      ),
     meta: { className: "font-medium" },
   },
   {
@@ -35,7 +38,9 @@ const columns: Columns<Customer> = [
           {row.original.has_account ? "registered" : "guest"}
         </Badge>
         {/* Erased on request; the orders stay, the person does not. */}
-        {row.original.anonymised ? <Badge variant="outline">erased</Badge> : null}
+        {row.original.anonymised ? (
+          <Badge variant="outline">erased</Badge>
+        ) : null}
       </div>
     ),
   },
@@ -49,21 +54,37 @@ const columns: Columns<Customer> = [
 
 export function Customers({
   after,
+  q,
   onAfterChange,
+  onQChange,
 }: {
   after: string | undefined
+  q: string | undefined
   onAfterChange: (after: string | undefined) => void
+  onQChange: (q: string | undefined) => void
 }) {
-  const paged = usePagedList(["customers"], "/admin/customers", customer, {
-    after,
-    onAfterChange,
-  })
+  const paged = usePagedList(
+    ["customers", q ?? ""],
+    "/admin/customers",
+    customer,
+    {
+      after,
+      onAfterChange,
+      query: { q },
+    }
+  )
   return (
     <div className="space-y-4">
       <PageHeading
         title="Customers"
         subtitle="Guests are customers too — a cart makes one before an account does."
-      />
+      >
+        <SearchBox
+          value={q}
+          onChange={onQChange}
+          placeholder="Search name, e-mail, company"
+        />
+      </PageHeading>
       <DataTable
         paged={paged}
         columns={columns}
@@ -75,7 +96,10 @@ export function Customers({
             aria-label={`Open ${name(row) ?? "customer"}`}
           />
         )}
-        empty={{ title: "No customers", description: "Nobody has shopped yet." }}
+        empty={{
+          title: "No customers",
+          description: q ? `Nothing matches ${q}.` : "Nobody has shopped yet.",
+        }}
       />
     </div>
   )
