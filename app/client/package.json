@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "bun run patch && tsc -b && vite build",
     "lint": "eslint .",
+    "check:outlets": "node scripts/check-outlets.mjs",
     "format": "prettier --write \"**/*.{ts,tsx}\"",
     "typecheck": "bun run patch && tsc -b",
     "preview": "vite preview",

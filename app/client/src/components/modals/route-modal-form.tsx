@@ -3,6 +3,7 @@ import type { ReactNode } from "react"
 import {
   FormProvider,
   type FieldValues,
+  type SubmitHandler,
   type UseFormReturn,
 } from "react-hook-form"
 
