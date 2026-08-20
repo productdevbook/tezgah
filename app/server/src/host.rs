@@ -164,11 +164,11 @@ fn backoff(attempts: i32) -> chrono::Duration {
 /// retry. The registry is a `match` rather than a map because a job this
 /// binary cannot handle must be visible as such — see [`drain_once`].
 pub struct Dispatcher {
-    /// `None` when this binary has no `RecurringProvider` and no stock
-    /// location to renew into — the same two things `main.rs` needs before it
-    /// can bind checkout. A dunning retry then fails with that as its
-    /// recorded reason rather than being marked done by a worker that did
-    /// nothing.
+    /// `None` today, always: charging a card a shopper left on file needs a
+    /// `RecurringProvider`, and kasapay 0.0.5 cannot name the instrument to
+    /// take — `provider.rs` carries that in full. A dunning retry fails with
+    /// exactly that as its recorded reason rather than being marked done by a
+    /// worker that did nothing, which is what used to happen.
     pub renewals: Option<Arc<Renewals>>,
     pub scope: Scope,
 }
@@ -193,8 +193,10 @@ impl Dispatcher {
             tezgah::subscription::DUNNING_JOB => {
                 let Some(renewals) = self.renewals.as_ref() else {
                     return Err(tezgah::Error::invalid(
-                        "this server has no recurring payment provider, so a dunning \
-                         retry cannot be attempted — see docs/self-hosting.md",
+                        "this server has no recurring payment provider: kasapay 0.0.5 \
+                         cannot name the saved instrument a stored charge should take, \
+                         so nothing here implements RecurringProvider — see \
+                         app/server/src/provider.rs",
                     ));
                 };
 

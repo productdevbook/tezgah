@@ -29,8 +29,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tezgah::payment::{
     Authorization, AuthorizeRequest, CancelRequest, CaptureRequest, CaptureResult, LookupProvider,
-    PaymentProvider, RecurringProvider, RefundRequest, RefundResult, SessionRequest,
-    SessionResponse, SessionStatus, StoredChargeRequest, WebhookEvent,
+    PaymentProvider, RefundRequest, RefundResult, SessionRequest, SessionResponse, SessionStatus,
+    WebhookEvent,
 };
 use tezgah::providers::kasapay as mapping;
 
@@ -145,56 +145,19 @@ impl PaymentProvider for KasapayProvider {
     }
 }
 
-/// What a subscription renewal needs and an ordinary checkout does not:
-/// charging an instrument the shopper left on file, with nobody present.
-///
-/// A provider that cannot do this answers `Unsupported` and the renewal fails
-/// with that as its reason — which is the point of `RecurringProvider` being
-/// an extension trait rather than a method on `PaymentProvider`: a provider
-/// that cannot sell a subscription says so at compile time where it can, and
-/// at the till with a real reason where it cannot.
-#[async_trait]
-impl RecurringProvider for KasapayProvider {
-    async fn authorize_stored(&self, req: StoredChargeRequest) -> tezgah::Result<Authorization> {
-        let order = kasapay_core::OrderRef::new(req.session_id.to_string());
-        let amount = mapping::to_kasapay_money(req.amount, self.exponent)?;
-
-        // Both halves, together: kasapay names a saved instrument as the vault
-        // and the thing in it, and a request naming one without the other is
-        // refused rather than guessed at.
-        let request = kasapay_core::ChargeRequest::builder(order, amount)
-            .customer(req.account_holder)
-            .instrument(kasapay_core::InstrumentId::issued(
-                req.payment_method_reference,
-            ))
-            .build()
-            .map_err(|err| tezgah::Error::invalid(err.to_string()))?;
-
-        let charge = self
-            .provider
-            .charge(&request)
-            .await
-            .map_err(map_provider_error)?;
-
-        let raw = charge.raw.json().unwrap_or_else(|| serde_json::json!({}));
-
-        Ok(Authorization {
-            status: mapping::map_status(charge.status)?,
-            amount: Some(mapping::from_kasapay_money(charge.amount, self.exponent)?),
-            data: serde_json::json!({
-                "kasapay_payment_id": charge.id.as_ref().map(kasapay_core::PaymentId::as_str),
-                "raw": raw,
-            }),
-            // A renewal has nobody at a browser to send anywhere. A provider
-            // answering with a redirect has not charged the card on file, and
-            // the status it came back with is what says so.
-            redirect: None,
-            message: None,
-            installment: None,
-        })
-    }
-}
-
+// There is no `impl RecurringProvider for KasapayProvider` here, and its
+// absence is the answer rather than an omission. Charging an instrument a
+// shopper left on file needs the request to name that instrument, and
+// kasapay 0.0.5 — the version this crate pins — has no field for one:
+// `ChargeRequest` carries a `customer` and nothing to say which of their
+// saved cards to take. Naming the customer alone and calling it a stored
+// charge is precisely the "accept a field and drop it" that kasapay's own doc
+// refuses, so this does neither.
+//
+// tezgah's own rule is that a missing provider capability is opened on
+// kasapay rather than worked around here. Until it arrives,
+// `host::Dispatcher` records exactly this as a dunning retry's reason instead
+// of marking the job done.
 #[async_trait]
 impl LookupProvider for KasapayProvider {
     async fn lookup(
@@ -247,15 +210,13 @@ impl kasapay_core::Provider for DemoBank {
             status: kasapay_core::Status::Authorized,
             next_action: None,
             provider: self.id(),
-            // The instrument is echoed rather than ignored. kasapay's own doc
-            // is explicit that a provider which cannot charge a saved
-            // instrument must refuse rather than quietly open a form — this
-            // one can "charge" anything, and saying which instrument it was
-            // handed is what keeps a dunning retry readable in the log.
+            // The payer is echoed rather than dropped. kasapay's own doc is
+            // explicit that accepting a field and ignoring it reads as a
+            // guarantee where there is none, and a demo is where that habit
+            // would start.
             raw: kasapay_core::Raw::from_json(&serde_json::json!({
                 "demo": true,
                 "customer": request.customer.as_deref(),
-                "instrument": request.instrument.as_ref().map(kasapay_core::InstrumentId::as_str),
             })),
         })
     }

@@ -161,6 +161,12 @@ the crate enqueues; it dispatches now, retries with a doubling backoff, and
 leaves a job dead with its reason after five attempts. A kind nothing handles
 fails with that as its reason rather than being marked done.
 
+The one kind the crate enqueues still cannot run, and now says why: a
+subscription's dunning retry needs a provider that can charge a card left on
+file, and the payment library this app pins cannot name which card. That is a
+capability to ask the payment library for, not something to work around in a
+host — so the job records it and waits.
+
 **Events go to stdout.** No outbox, no subscriber, no delivery, no retry. A
 shop that wants `order.paid` to reach its own systems, or to become an e-mail,
 has nowhere to say so. A file store and a mailer are the same absence seen

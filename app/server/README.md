@@ -237,10 +237,18 @@ nothing handles fails the same way rather than being marked done — which is
 what the worker used to do to every job it claimed, including the one kind
 tezgah enqueues, so a declined subscription renewal was retried never.
 
-Dispatching that one needs a `RecurringProvider`, which needs the same
-`TEZGAH_STOCK_LOCATION_ID` and `TEZGAH_DEMO_BANK` checkout does. Without
-them startup says so, rather than leaving a dunning retry to fail five times
-explaining it.
+Dispatching that one needs a `RecurringProvider`, and there is none. Charging
+a card a shopper left on file means naming which card, and kasapay 0.0.5 —
+the version this crate pins — has no field for one: `ChargeRequest` carries a
+customer and nothing to say which of their saved instruments to take. Naming
+the customer alone and calling it a stored charge is the "accept a field and
+drop it" kasapay's own documentation refuses, so `src/provider.rs` implements
+neither and says so where somebody would look for it.
+
+tezgah's rule is that a missing provider capability is opened on kasapay
+rather than worked around here. Until it arrives a dunning retry records
+exactly that as its reason — which is still an improvement on being marked
+done by a worker that did nothing.
 
 ## Route table
 
