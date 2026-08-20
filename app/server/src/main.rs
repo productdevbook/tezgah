@@ -80,6 +80,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     host::create_jobs_table(&pool).await?;
+    host::create_record_tables(&pool).await?;
     identity::create_tables(&pool).await?;
     shopper::create_tables(&pool).await?;
 

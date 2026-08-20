@@ -35,6 +35,8 @@ function isActiveServerSection(
       return Boolean(matchRoute({ to: "/operators", fuzzy: true }))
     case "batch":
       return Boolean(matchRoute({ to: "/batch", fuzzy: true }))
+    case "records":
+      return Boolean(matchRoute({ to: "/records", fuzzy: true }))
     default:
       return false
   }

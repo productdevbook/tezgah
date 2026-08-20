@@ -25,6 +25,7 @@ import { Route as PayoutsRouteImport } from './routes/payouts'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as ProductsRouteImport } from './routes/products'
 import { Route as PromotionsRouteImport } from './routes/promotions'
+import { Route as RecordsRouteImport } from './routes/records'
 import { Route as StoreRouteImport } from './routes/store'
 import { Route as SubscriptionsRouteImport } from './routes/subscriptions'
 import { Route as TaxRouteImport } from './routes/tax'
@@ -165,6 +166,11 @@ const ProductsRoute = ProductsRouteImport.update({
 const PromotionsRoute = PromotionsRouteImport.update({
   id: '/promotions',
   path: '/promotions',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RecordsRoute = RecordsRouteImport.update({
+  id: '/records',
+  path: '/records',
   getParentRoute: () => rootRouteImport,
 } as any)
 const StoreRoute = StoreRouteImport.update({
@@ -496,6 +502,7 @@ export interface FileRoutesByFullPath {
   '/pricing': typeof PricingRouteWithChildren
   '/products': typeof ProductsRouteWithChildren
   '/promotions': typeof PromotionsRoute
+  '/records': typeof RecordsRoute
   '/store': typeof StoreRouteWithChildren
   '/subscriptions': typeof SubscriptionsRoute
   '/tax': typeof TaxRouteWithChildren
@@ -571,6 +578,7 @@ export interface FileRoutesByTo {
   '/orders': typeof OrdersRoute
   '/products': typeof ProductsRouteWithChildren
   '/promotions': typeof PromotionsRoute
+  '/records': typeof RecordsRoute
   '/subscriptions': typeof SubscriptionsRoute
   '/baskets/$id': typeof BasketsIdRoute
   '/credit/$id': typeof CreditIdRoute
@@ -648,6 +656,7 @@ export interface FileRoutesById {
   '/pricing': typeof PricingRouteWithChildren
   '/products': typeof ProductsRouteWithChildren
   '/promotions': typeof PromotionsRoute
+  '/records': typeof RecordsRoute
   '/store': typeof StoreRouteWithChildren
   '/subscriptions': typeof SubscriptionsRoute
   '/tax': typeof TaxRouteWithChildren
@@ -729,6 +738,7 @@ export interface FileRouteTypes {
     | '/pricing'
     | '/products'
     | '/promotions'
+    | '/records'
     | '/store'
     | '/subscriptions'
     | '/tax'
@@ -804,6 +814,7 @@ export interface FileRouteTypes {
     | '/orders'
     | '/products'
     | '/promotions'
+    | '/records'
     | '/subscriptions'
     | '/baskets/$id'
     | '/credit/$id'
@@ -880,6 +891,7 @@ export interface FileRouteTypes {
     | '/pricing'
     | '/products'
     | '/promotions'
+    | '/records'
     | '/store'
     | '/subscriptions'
     | '/tax'
@@ -960,6 +972,7 @@ export interface RootRouteChildren {
   PricingRoute: typeof PricingRouteWithChildren
   ProductsRoute: typeof ProductsRouteWithChildren
   PromotionsRoute: typeof PromotionsRoute
+  RecordsRoute: typeof RecordsRoute
   StoreRoute: typeof StoreRouteWithChildren
   SubscriptionsRoute: typeof SubscriptionsRoute
   TaxRoute: typeof TaxRouteWithChildren
@@ -1095,6 +1108,13 @@ declare module '@tanstack/react-router' {
       path: '/promotions'
       fullPath: '/promotions'
       preLoaderRoute: typeof PromotionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/records': {
+      id: '/records'
+      path: '/records'
+      fullPath: '/records'
+      preLoaderRoute: typeof RecordsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/store': {
@@ -1796,6 +1816,7 @@ const rootRouteChildren: RootRouteChildren = {
   PricingRoute: PricingRouteWithChildren,
   ProductsRoute: ProductsRouteWithChildren,
   PromotionsRoute: PromotionsRoute,
+  RecordsRoute: RecordsRoute,
   StoreRoute: StoreRouteWithChildren,
   SubscriptionsRoute: SubscriptionsRoute,
   TaxRoute: TaxRouteWithChildren,
