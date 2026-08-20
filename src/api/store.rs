@@ -992,6 +992,7 @@ pub async fn list_products(
             })
             .collect(),
         next: page.next,
+        total: page.total,
     })
 }
 
@@ -1072,6 +1073,7 @@ pub async fn list_variants(
     Ok(Page {
         items,
         next: page.next,
+        total: page.total,
     })
 }
 
@@ -1139,10 +1141,7 @@ pub async fn list_product_tags(
     query: ListPage,
 ) -> Result<Page<TagView>> {
     let page = catalogue::tags(tx, ctx, paging(query.after.as_deref(), query.limit)?).await?;
-    Ok(Page {
-        items: page.items.into_iter().map(TagView::from).collect(),
-        next: page.next,
-    })
+    Ok(page.map(TagView::from))
 }
 
 pub async fn get_product_tag(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ProductTagId) -> Result<TagView> {
@@ -1155,10 +1154,7 @@ pub async fn list_product_types(
     query: ListPage,
 ) -> Result<Page<TypeView>> {
     let page = catalogue::types(tx, ctx, paging(query.after.as_deref(), query.limit)?).await?;
-    Ok(Page {
-        items: page.items.into_iter().map(TypeView::from).collect(),
-        next: page.next,
-    })
+    Ok(page.map(TypeView::from))
 }
 
 pub async fn get_product_type(
@@ -1234,6 +1230,9 @@ pub async fn list_product_categories(
             })
             .collect(),
         next: page.next,
+        // Not `page.total`: the count is of rows before this
+        // filter dropped some, so it would not describe what is here.
+        total: None,
     })
 }
 
@@ -1266,10 +1265,7 @@ pub async fn list_collections(
 ) -> Result<Page<CollectionView>> {
     let page =
         catalogue::collections(tx, ctx, paging(query.after.as_deref(), query.limit)?).await?;
-    Ok(Page {
-        items: page.items.into_iter().map(CollectionView::from).collect(),
-        next: page.next,
-    })
+    Ok(page.map(CollectionView::from))
 }
 
 pub async fn get_collection(
@@ -1292,10 +1288,7 @@ pub async fn list_regions(
     query: ListPage,
 ) -> Result<Page<RegionView>> {
     let page = store::regions(tx, ctx, paging(query.after.as_deref(), query.limit)?).await?;
-    Ok(Page {
-        items: page.items.into_iter().map(RegionView::from).collect(),
-        next: page.next,
-    })
+    Ok(page.map(RegionView::from))
 }
 
 pub async fn get_region(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: RegionId) -> Result<RegionView> {
@@ -2143,10 +2136,7 @@ pub async fn list_my_addresses(
     let page =
         customer::addresses(tx, ctx, who, paging(query.after.as_deref(), query.limit)?).await?;
 
-    Ok(Page {
-        items: page.items.into_iter().map(AddressView::from).collect(),
-        next: page.next,
-    })
+    Ok(page.map(AddressView::from))
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -2374,10 +2364,7 @@ pub async fn list_my_orders(
     )
     .await?;
 
-    Ok(Page {
-        items: page.items.into_iter().map(OrderView::from).collect(),
-        next: page.next,
-    })
+    Ok(page.map(OrderView::from))
 }
 
 pub async fn get_my_order(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: OrderId) -> Result<OrderView> {
@@ -2574,6 +2561,7 @@ pub async fn list_return_reasons(
             })
             .collect(),
         next: page.next,
+        total: page.total,
     })
 }
 

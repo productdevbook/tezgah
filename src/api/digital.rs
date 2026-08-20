@@ -220,10 +220,7 @@ pub async fn my_entitlements(
     let customer = signed_in(ctx)?;
     let page = digital::for_customer(tx, ctx, customer, query.paging()?).await?;
 
-    Ok(Page {
-        items: page.items.into_iter().map(EntitlementView::from).collect(),
-        next: page.next,
-    })
+    Ok(page.map(EntitlementView::from))
 }
 
 pub async fn create_token(

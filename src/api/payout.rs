@@ -94,6 +94,7 @@ pub async fn commission_rules(
             .map(CommissionRuleView::from)
             .collect(),
         next: page.next,
+        total: page.total,
     })
 }
 
@@ -143,10 +144,7 @@ pub async fn order_payout_lines(
         paging(query.after.as_deref(), query.limit)?,
     )
     .await?;
-    Ok(Page {
-        items: page.items.into_iter().map(PayoutLineView::from).collect(),
-        next: page.next,
-    })
+    Ok(page.map(PayoutLineView::from))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -172,10 +170,7 @@ impl From<payout::Payout> for PayoutView {
 
 pub async fn payouts(tx: &mut Tx<'_>, ctx: &Ctx<'_>, query: ListQuery) -> Result<Page<PayoutView>> {
     let page = payout::payouts(tx, ctx, paging(query.after.as_deref(), query.limit)?).await?;
-    Ok(Page {
-        items: page.items.into_iter().map(PayoutView::from).collect(),
-        next: page.next,
-    })
+    Ok(page.map(PayoutView::from))
 }
 
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]

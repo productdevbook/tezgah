@@ -119,10 +119,7 @@ pub async fn basket_orders(
     query: ListBasketOrders,
 ) -> Result<Page<OrderView>> {
     let page = order_basket::orders(tx, ctx, id, query.paging()?).await?;
-    Ok(Page {
-        items: page.items.into_iter().map(OrderView::from).collect(),
-        next: page.next,
-    })
+    Ok(page.map(OrderView::from))
 }
 
 /// This scope's own carts under one basket — a host's split checkout finds
@@ -138,10 +135,7 @@ pub async fn basket_carts(
     query: ListBasketOrders,
 ) -> Result<Page<CartView>> {
     let page = cart::for_basket(tx, ctx, id, query.paging()?).await?;
-    Ok(Page {
-        items: page.items.into_iter().map(CartView::from).collect(),
-        next: page.next,
-    })
+    Ok(page.map(CartView::from))
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -171,10 +165,7 @@ pub async fn list_carts(
     query: ListCarts,
 ) -> Result<Page<CartView>> {
     let page = cart::list(tx, ctx, query.customer_id, query.paging()?).await?;
-    Ok(Page {
-        items: page.items.into_iter().map(CartView::from).collect(),
-        next: page.next,
-    })
+    Ok(page.map(CartView::from))
 }
 
 pub(super) static ROUTES: &[Route] = &[

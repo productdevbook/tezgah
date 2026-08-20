@@ -272,6 +272,7 @@ impl Search {
 pub struct Paging {
     pub after: Option<Cursor>,
     limit: Option<u32>,
+    counting: bool,
 }
 
 impl Paging {
@@ -279,6 +280,7 @@ impl Paging {
         Paging {
             after: None,
             limit: Some(limit),
+            counting: false,
         }
     }
 
@@ -286,7 +288,28 @@ impl Paging {
         Paging {
             after: Some(cursor),
             limit: Some(limit),
+            counting: false,
         }
+    }
+
+    /// Asks for how many rows match, as well as this page of them.
+    ///
+    /// Off unless asked, because it is a second query over the whole match
+    /// rather than a cheaper part of the first: a cursor page genuinely does
+    /// not know how many rows are behind it, and pretending otherwise would
+    /// put a `count(*)` on the path of every list in the crate. A back office
+    /// wanting to say "1–50 of 41,309" pays for it; a storefront listing
+    /// twenty products does not.
+    pub fn counting(mut self) -> Self {
+        self.counting = true;
+        self
+    }
+
+    /// Whether the caller asked for a total. A list that cannot answer one
+    /// ignores this, and its page says `null` — which is the honest answer to
+    /// "how many", not zero.
+    pub fn counts(&self) -> bool {
+        self.counting
     }
 
     /// Clamped rather than refused: a client asking for a thousand rows wants
@@ -306,6 +329,14 @@ impl Paging {
 pub struct Page<T> {
     pub items: Vec<T>,
     pub next: Option<String>,
+    /// How many rows match, when the caller asked and the list can answer.
+    ///
+    /// `null` means nobody asked, or this list does not count — never zero.
+    /// Zero is a real answer and has to stay distinguishable from silence,
+    /// which is why this is an `Option` on the wire rather than a number that
+    /// defaults.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total: Option<i64>,
 }
 
 impl<T> Page<T> {
@@ -321,7 +352,32 @@ impl<T> Page<T> {
             None
         };
 
-        Page { items, next }
+        Page {
+            items,
+            next,
+            total: None,
+        }
+    }
+
+    /// The same page with a total on it, for a caller that asked and a query
+    /// that answered.
+    pub fn counting(mut self, total: i64) -> Self {
+        self.total = Some(total);
+        self
+    }
+
+    /// One view of a page over another, carrying the cursor and the total.
+    ///
+    /// Every `api/` module used to write this out — thirty-three copies of
+    /// `Page { items: page.items.into_iter().map(View::from).collect(), next:
+    /// page.next }` — and each of them would have had to learn about `total`
+    /// separately. One that forgot would have dropped it silently.
+    pub fn map<U>(self, mut f: impl FnMut(T) -> U) -> Page<U> {
+        Page {
+            items: self.items.into_iter().map(&mut f).collect(),
+            next: self.next,
+            total: self.total,
+        }
     }
 
     pub fn is_empty(&self) -> bool {

@@ -209,10 +209,7 @@ pub async fn list_plan_groups(
 ) -> Result<Page<PlanGroupView>> {
     let page = subscription::plan_groups(tx, ctx, query.paging()?).await?;
 
-    Ok(Page {
-        items: page.items.into_iter().map(PlanGroupView::from).collect(),
-        next: page.next,
-    })
+    Ok(page.map(PlanGroupView::from))
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -276,10 +273,7 @@ pub async fn list_plans(
 ) -> Result<Page<PlanView>> {
     let page = subscription::plans(tx, ctx, group_id, query.paging()?).await?;
 
-    Ok(Page {
-        items: page.items.into_iter().map(PlanView::from).collect(),
-        next: page.next,
-    })
+    Ok(page.map(PlanView::from))
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -368,10 +362,7 @@ pub async fn list_subscriptions(
 ) -> Result<Page<SubscriptionView>> {
     let page = subscription::list(tx, ctx, None, query.paging()?).await?;
 
-    Ok(Page {
-        items: page.items.into_iter().map(SubscriptionView::from).collect(),
-        next: page.next,
-    })
+    Ok(page.map(SubscriptionView::from))
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -398,10 +389,7 @@ pub async fn list_due(
 
     let page = subscription::due(tx, ctx, query.at.unwrap_or_else(|| ctx.now()), paging).await?;
 
-    Ok(Page {
-        items: page.items.into_iter().map(SubscriptionView::from).collect(),
-        next: page.next,
-    })
+    Ok(page.map(SubscriptionView::from))
 }
 
 pub async fn get_subscription(
@@ -446,6 +434,7 @@ pub async fn list_events(
             })
             .collect(),
         next: page.next,
+        total: page.total,
     })
 }
 
@@ -642,10 +631,7 @@ pub async fn list_due_deliveries(
     let page = subscription::due_deliveries(tx, ctx, query.at.unwrap_or_else(|| ctx.now()), paging)
         .await?;
 
-    Ok(Page {
-        items: page.items.into_iter().map(SubscriptionView::from).collect(),
-        next: page.next,
-    })
+    Ok(page.map(SubscriptionView::from))
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -676,10 +662,7 @@ pub async fn my_subscriptions(
     let customer = signed_in(ctx)?;
     let page = subscription::list(tx, ctx, Some(customer), query.paging()?).await?;
 
-    Ok(Page {
-        items: page.items.into_iter().map(SubscriptionView::from).collect(),
-        next: page.next,
-    })
+    Ok(page.map(SubscriptionView::from))
 }
 
 /// A shopper stopping their own contract. At the end of the period they have

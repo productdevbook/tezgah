@@ -32,6 +32,53 @@ pub const MAX_COMBINATIONS: usize = 1_000;
 /// so they are not paged.
 const MAX_ATTACHED: i64 = 200;
 
+/// The eight predicates a product list filters on, written once because two
+/// queries ask them: the page itself, and the `count(*)` behind
+/// `Paging::counting`. Two copies would be one fact with two answers, and a
+/// count that drifts from the list it claims to describe is worse than none.
+///
+/// `$1`..`$8`, in this order: scope, status, collection, type, category, tag,
+/// channels, search. A caller binds all eight whichever query it is running.
+macro_rules! product_filter {
+    () => {
+        "\
+         where p.scope = $1
+           and p.deleted_at is null
+           and ($2::text is null or p.status = $2)
+           and ($3::uuid is null or p.product_collection_id = $3)
+           and ($4::uuid is null or p.product_type_id = $4)
+           and ($5::uuid is null or exists (
+                 select 1
+                 from product_category_link l
+                 join product_category c on c.id = l.category_id and c.scope = p.scope
+                 where l.scope = p.scope
+                   and l.product_id = p.id
+                   and c.mpath like (
+                     select root.mpath || '%'
+                     from product_category root
+                     where root.scope = p.scope and root.id = $5
+                   )
+               ))
+           and ($6::uuid is null or exists (
+                 select 1 from product_tag_link t
+                 where t.scope = p.scope and t.product_id = p.id and t.tag_id = $6
+               ))
+           and ($7::uuid[] is null or not exists (
+                 select 1 from product_sales_channel s
+                 where s.scope = p.scope and s.product_id = p.id
+               ) or exists (
+                 select 1 from product_sales_channel s
+                 where s.scope = p.scope and s.product_id = p.id
+                   and s.sales_channel_id = any($7)
+               ))
+           and ($8::text is null
+                or p.title ilike $8
+                or p.handle ilike $8
+                or p.subtitle ilike $8)
+"
+    };
+}
+
 macro_rules! product_columns {
     () => {
         "id, handle, title, subtitle, description, status, rejected_reason, thumbnail_url, \
@@ -742,41 +789,9 @@ pub async fn products(
         concat!(
             "select ",
             product_columns!(),
-            " from product p
-         where p.scope = $1
-           and p.deleted_at is null
-           and ($2::text is null or p.status = $2)
-           and ($3::uuid is null or p.product_collection_id = $3)
-           and ($4::uuid is null or p.product_type_id = $4)
-           and ($5::uuid is null or exists (
-                 select 1
-                 from product_category_link l
-                 join product_category c on c.id = l.category_id and c.scope = p.scope
-                 where l.scope = p.scope
-                   and l.product_id = p.id
-                   and c.mpath like (
-                     select root.mpath || '%'
-                     from product_category root
-                     where root.scope = p.scope and root.id = $5
-                   )
-               ))
-           and ($6::uuid is null or exists (
-                 select 1 from product_tag_link t
-                 where t.scope = p.scope and t.product_id = p.id and t.tag_id = $6
-               ))
-           and ($7::uuid[] is null or not exists (
-                 select 1 from product_sales_channel s
-                 where s.scope = p.scope and s.product_id = p.id
-               ) or exists (
-                 select 1 from product_sales_channel s
-                 where s.scope = p.scope and s.product_id = p.id
-                   and s.sales_channel_id = any($7)
-               ))
-           and ($8::text is null
-                or p.title ilike $8
-                or p.handle ilike $8
-                or p.subtitle ilike $8)
-           and ($9::timestamptz is null or (p.created_at, p.id) {beyond} ($9, $10))
+            " from product p",
+            product_filter!(),
+            "           and ($9::timestamptz is null or (p.created_at, p.id) {beyond} ($9, $10))
            and ($11::text is null or (p.title, p.id) {beyond} ($11, $10))
          order by {column} {direction}, p.id {direction}
          limit $12"
@@ -794,7 +809,7 @@ pub async fn products(
     .bind(filter.product_type.map(ProductTypeId::as_uuid))
     .bind(filter.category.map(CategoryId::as_uuid))
     .bind(filter.tag.map(ProductTagId::as_uuid))
-    .bind(filter.channels)
+    .bind(filter.channels.clone())
     .bind(filter.search.as_ref().map(Search::pattern))
     .bind(after_at)
     .bind(paging.after.as_ref().map(|c| c.id))
@@ -803,7 +818,29 @@ pub async fn products(
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| {
+    // Asked for separately, and only when asked. The same eight predicates,
+    // from the same macro, without the cursor and without the limit — a
+    // cursor page does not know how many rows are behind it, and this is the
+    // second question rather than a cheaper part of the first.
+    let total = if paging.counts() {
+        let (count,): (i64,) =
+            sqlx::query_as(concat!("select count(*) from product p", product_filter!()))
+                .bind(ctx.scope.0)
+                .bind(filter.status)
+                .bind(filter.collection.map(CollectionId::as_uuid))
+                .bind(filter.product_type.map(ProductTypeId::as_uuid))
+                .bind(filter.category.map(CategoryId::as_uuid))
+                .bind(filter.tag.map(ProductTagId::as_uuid))
+                .bind(filter.channels)
+                .bind(filter.search.as_ref().map(Search::pattern))
+                .fetch_one(&mut **tx)
+                .await?;
+        Some(count)
+    } else {
+        None
+    };
+
+    let page = Page::build(rows, paging, |row| {
         // The cursor a page hands back names the column it was ordered by, so
         // the next page resumes from the same one. A page ordered by title
         // that handed back a timestamp would silently start over.
@@ -811,7 +848,12 @@ pub async fn products(
             By::Created | By::Email => Cursor::at(row.created_at, row.id.as_uuid()),
             By::Title => Cursor::text(row.title.clone(), row.id.as_uuid()),
         }
-    }))
+    });
+
+    Ok(match total {
+        Some(total) => page.counting(total),
+        None => page,
+    })
 }
 
 pub async fn update_product(
