@@ -52,10 +52,11 @@ pages that are not on screen.
 ## Two of shadcn's own files are patched
 
 `src/components/ui/spinner.tsx` and `scroll-area.tsx` do not typecheck as
-generated — an svg's `strokeWidth` is `string | number` where `HugeiconsIcon`
-wants a number, and a namespace import nothing reads. Both are fixed in place,
-and `shadcn add` will write them back the way they were. If a build starts
-failing on either, that is what happened.
+generated, and every `shadcn add` or preset change writes them back the way
+they were. That happened twice — once at `base-luma`, once at `base-maia` — so
+the fixes are in [`patches/`](patches) and `bun run patch` re-applies them.
+It runs as part of `build` and `typecheck`, and is idempotent, so a forgotten
+re-apply is a failing typecheck rather than a surprise.
 
 ## Scripts
 
