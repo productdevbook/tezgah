@@ -7,7 +7,9 @@ release: `ghcr.io/productdevbook/tezgah-server` (the API, `/admin/*` and
 `/store/*`) and `ghcr.io/productdevbook/tezgah-panel` (the admin panel, built
 static and served by nginx). `.github/workflows/publish.yml` builds both for
 `linux/amd64` and `linux/arm64` on every push to `main` (tagged `edge`) and
-every `vX.Y.Z` tag (tagged `X.Y.Z`, `X.Y` and `latest`).
+every `vX.Y.Z` tag (tagged `X.Y.Z`, `X.Y` and `latest`) — each architecture on
+a runner of its own, then one manifest over the two, so a tag never points at
+half a build.
 
 ## Five minutes with Compose
 

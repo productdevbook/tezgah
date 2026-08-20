@@ -16,28 +16,83 @@ permissions:
   contents: read
   packages: write
 
+env:
+  SERVER_IMAGE: ghcr.io/productdevbook/tezgah-server
+  PANEL_IMAGE: ghcr.io/productdevbook/tezgah-panel
+
 jobs:
-  image:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+  # One runner per architecture, and no QEMU. Emulating arm64 to compile Rust
+  # took this past a thirty-minute timeout while the panel's own build — bun
+  # and nginx, no compiler — finished in four. Native runners are free for
+  # public repositories, so the cross-architecture build costs nothing but
+  # this extra job.
+  build:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: server
-            image: ghcr.io/productdevbook/tezgah-server
-            context: .
-            file: server/Dockerfile
-          - name: panel
-            image: ghcr.io/productdevbook/tezgah-panel
-            context: client
-            file: client/Dockerfile
+          - { name: server, platform: linux/amd64, runner: ubuntu-latest,    context: ".",      file: server/Dockerfile }
+          - { name: server, platform: linux/arm64, runner: ubuntu-24.04-arm, context: ".",      file: server/Dockerfile }
+          - { name: panel,  platform: linux/amd64, runner: ubuntu-latest,    context: "client", file: client/Dockerfile }
+          - { name: panel,  platform: linux/arm64, runner: ubuntu-24.04-arm, context: "client", file: client/Dockerfile }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
-      # Third-party actions below are pinned to a commit, not a tag: a tag
-      # can be moved by whoever holds it, a commit cannot.
-      - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+      # Third-party actions below are pinned to a commit, not a tag: a tag can
+      # be moved by whoever holds it, a commit cannot.
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Pushed by digest, with no tag: the tags are written once by the merge
+      # job below, so a half-finished matrix never leaves `edge` pointing at
+      # one architecture.
+      - name: Build and push by digest
+        id: push
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ matrix.name == 'server' && env.SERVER_IMAGE || env.PANEL_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.name }}-${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}-${{ matrix.platform }}
+
+      - name: Keep the digest
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/${DIGEST#sha256:}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.name }}-${{ strategy.job-index }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        name: [server, panel]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digest-${{ matrix.name }}-*
+          merge-multiple: true
+
       - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -50,7 +105,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
-          images: ${{ matrix.image }}
+          images: ${{ matrix.name == 'server' && env.SERVER_IMAGE || env.PANEL_IMAGE }}
           flavor: |
             latest=false
           tags: |
@@ -59,14 +114,16 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
 
-      - name: Build and push
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
-        with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.file }}
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.name }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+      - name: One manifest over both architectures
+        working-directory: /tmp/digests
+        env:
+          IMAGE: ${{ matrix.name == 'server' && env.SERVER_IMAGE || env.PANEL_IMAGE }}
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf "$IMAGE@sha256:%s " *)
+
+      - name: What was published
+        env:
+          IMAGE: ${{ matrix.name == 'server' && env.SERVER_IMAGE || env.PANEL_IMAGE }}
+        run: docker buildx imagetools inspect "$IMAGE:${{ steps.meta.outputs.version }}"
