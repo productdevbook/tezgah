@@ -417,6 +417,11 @@ impl From<tax::TaxLine> for TaxLineView {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+// Named for the document, not renamed in Rust: `admin_order` has a type of
+// the same name and a wider shape, and schemars would otherwise disambiguate
+// the two with a numeric suffix decided by generation order — a name that
+// moves when somebody adds a type, and that a client binds to.
+#[schemars(rename = "StoreOrderView")]
 pub struct OrderView {
     pub id: OrderId,
     pub display_id: Option<i64>,
@@ -547,6 +552,11 @@ impl From<order::ReturnReason> for ReturnReasonView {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+// Named for the document, not renamed in Rust: `admin_order` has a type of
+// the same name and a wider shape, and schemars would otherwise disambiguate
+// the two with a numeric suffix decided by generation order — a name that
+// moves when somebody adds a type, and that a client binds to.
+#[schemars(rename = "StoreReturnView")]
 pub struct ReturnView {
     pub id: crate::id::ReturnId,
     pub order_id: OrderId,
@@ -2437,6 +2447,11 @@ pub struct ReturnLineInput {
 }
 
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+// Named for the document, not renamed in Rust: `admin_order` has a type of
+// the same name and a wider shape, and schemars would otherwise disambiguate
+// the two with a numeric suffix decided by generation order — a name that
+// moves when somebody adds a type, and that a client binds to.
+#[schemars(rename = "StoreRequestReturn")]
 #[serde(deny_unknown_fields)]
 pub struct RequestReturn {
     pub order_id: OrderId,
