@@ -5,11 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "bun run patch && tsc -b && vite build",
     "lint": "eslint .",
     "format": "prettier --write \"**/*.{ts,tsx}\"",
-    "typecheck": "tsc -b",
-    "preview": "vite preview"
+    "typecheck": "bun run patch && tsc -b",
+    "preview": "vite preview",
+    "patch": "node patches/apply.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
