@@ -18,12 +18,12 @@ and 34 locales, and the shortfall lines up with a handful of specific
 absences. Some of them have moved since — what follows is where each stands.
 
 **Filtering and searching where the API offers them; sorting on one list.**
-Products, orders and customers have a search box in their address; products
-also chooses between newest-first and by-title, because that is the one list
-the crate can order two ways. Every other list orders by when a row was
-written, and the panel offers no control that would say otherwise — a
-sortable header on a list the API cannot sort is a claim about the pages that
-are not on screen.
+Products, orders and customers have a search box in their address; and all three choose an
+ordering: products between newest-first and by-title, orders and customers
+between newest-first and by-address. Every other list orders by when a row
+was written and offers no control that would say otherwise — a sortable
+header on a list the API cannot sort is a claim about the pages that are not
+on screen.
 
 **Translation is a dictionary with almost nothing in it.** `panel/i18n`
 holds English and Turkish and the compiler enforces that they match, and what

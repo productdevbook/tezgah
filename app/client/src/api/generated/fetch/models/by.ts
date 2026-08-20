@@ -18,4 +18,4 @@
  * two go together: adding a variant here without teaching the list to bind
  * the matching key gives an ordering that pages back to the beginning.
  */
-export type By = 'created' | 'title';
+export type By = 'created' | 'title' | 'email';

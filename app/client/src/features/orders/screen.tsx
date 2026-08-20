@@ -6,6 +6,13 @@ import { Badge } from "@/components/ui/badge"
 import { usePagedList } from "@/lib/paged"
 import { PageHeading } from "@/components/page-heading"
 import { SearchBox } from "@/components/search-box"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 /**
  * An order carries three statuses that move independently — itself, its money
@@ -83,22 +90,39 @@ const columns: Columns<Order> = [
 export function Orders({
   after,
   q,
+  by,
   onAfterChange,
   onQChange,
+  onByChange,
 }: {
   after: string | undefined
   q: string | undefined
+  by: "created" | "email"
   onAfterChange: (after: string | undefined) => void
   onQChange: (q: string | undefined) => void
+  onByChange: (by: "created" | "email") => void
 }) {
-  const paged = usePagedList(["orders", q ?? ""], "/admin/orders", order, {
+  const paged = usePagedList(["orders", q ?? "", by], "/admin/orders", order, {
     after,
     onAfterChange,
-    query: { q },
+    query: { q, by },
   })
   return (
     <div className="space-y-4">
       <PageHeading title="Orders" subtitle="Drafts are listed too, and say so.">
+        <Select
+          value={by}
+          onValueChange={(value) => onByChange(value as "created" | "email")}
+        >
+          <SelectTrigger className="w-36" size="sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {/* Two, because the crate orders this list two ways. */}
+            <SelectItem value="created">Newest first</SelectItem>
+            <SelectItem value="email">By e-mail</SelectItem>
+          </SelectContent>
+        </Select>
         <SearchBox
           value={q}
           onChange={onQChange}

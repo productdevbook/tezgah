@@ -5,6 +5,7 @@
  * A commerce engine for Rust: products, carts, orders, payments, inventory, and a workflow runner that unwinds what it started.
  * OpenAPI spec version: 0.0.0
  */
+import type { By } from './by';
 import type { CustomerId } from './customerId';
 import type { Order } from './order';
 
@@ -13,6 +14,10 @@ export type GetAdminOrdersParams = {
  * @nullable
  */
 after?: string | null;
+/**
+ * Which column. `created` is the default; `email` is the other one.
+ */
+by?: By | null;
 customer_id?: CustomerId | null;
 /**
  * @minimum 0
