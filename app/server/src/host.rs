@@ -193,10 +193,10 @@ impl Dispatcher {
             tezgah::subscription::DUNNING_JOB => {
                 let Some(renewals) = self.renewals.as_ref() else {
                     return Err(tezgah::Error::invalid(
-                        "this server has no recurring payment provider: kasapay 0.0.5 \
-                         cannot name the saved instrument a stored charge should take, \
-                         so nothing here implements RecurringProvider — see \
-                         app/server/src/provider.rs",
+                        "this server has no recurring payment provider: no published \
+                         kasapay names the saved instrument a stored charge should take, \
+                         so nothing here implements RecurringProvider — \
+                         productdevbook/kasapay#225 asks for the release that would",
                     ));
                 };
 

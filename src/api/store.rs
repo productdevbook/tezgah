@@ -954,8 +954,12 @@ pub async fn list_products(
         channels: Some(channels),
         search: query.q.as_deref().and_then(crate::page::Search::new),
         // Oldest first, and no way to ask otherwise: a catalogue a shopper
-        // walks is not a queue an operator works through.
+        // walks is not a queue an operator works through. By the same
+        // reasoning it is ordered by when a product was added, not by title —
+        // a storefront that wants alphabetical wants it per collection, which
+        // is a different question than this route answers.
         order: crate::page::Order::Oldest,
+        by: crate::page::By::Created,
     };
 
     let page = catalogue::products(

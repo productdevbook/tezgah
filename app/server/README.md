@@ -215,10 +215,22 @@ itself counts as an owner, and has to.
 
 **This is authorization at the door, not at the row.** It answers "may this
 person refund anything at all"; it does not answer "may this person refund
-*this* order". That second question is what `tezgah::ports::Authorizer` is
-for, and `ServerHost` still answers it by granting everything — which is the
-right shape for a library that asks a host, and the thing a shop with finer
-rules brings its own answer to. #214 is where that is argued.
+*this* order". That second question is `tezgah::ports::Authorizer`'s, and
+`ServerHost` answers it by granting everything.
+
+Writing a real authorizer here would be dead code, and it is worth saying why
+rather than leaving it as an obvious next step. `Resource` carries the owner
+on the five kinds that have one — cart, order, payment, credit, subscription
+— so a per-row rule needs no lookup, only an actor to compare against. This
+binary has none to compare: the back office is `Actor::Staff`, and the
+storefront is `Actor::Guest { cart }` with the cart id taken from the same
+path parameter the rule would be asked about. Actor and resource agree by
+construction.
+
+What would make it bite is a storefront sign-in — an `Actor::Customer` whose
+id came from a session rather than from the URL. That is a feature this
+binary does not have, and it comes before the authorizer rather than after.
+#214 is where that is argued.
 
 ## What runs without being asked
 
@@ -246,16 +258,18 @@ tezgah enqueues, so a declined subscription renewal was retried never.
 
 Dispatching that one needs a `RecurringProvider`, and there is none. Charging
 a card a shopper left on file means naming which card, and kasapay 0.0.5 —
-the version this crate pins — has no field for one: `ChargeRequest` carries a
-customer and nothing to say which of their saved instruments to take. Naming
-the customer alone and calling it a stored charge is the "accept a field and
-drop it" kasapay's own documentation refuses, so `src/provider.rs` implements
-neither and says so where somebody would look for it.
+the version this crate pins, and the newest published — has no field for one.
 
-tezgah's rule is that a missing provider capability is opened on kasapay
-rather than worked around here. Until it arrives a dunning retry records
-exactly that as its reason — which is still an improvement on being marked
-done by a worker that did nothing.
+It is not missing from kasapay, only from every version of it: the commit
+adding `ChargeRequest::instrument` landed eleven hours after v0.0.5 was
+tagged, so it is on main and in no release. productdevbook/kasapay#225 asks
+for one.
+
+Naming the customer alone and calling it a stored charge is the "accept a
+field and drop it" kasapay's own documentation refuses, so `src/provider.rs`
+implements neither and says so where somebody would look for it. Until there
+is a release a dunning retry records exactly that as its reason — still an
+improvement on being marked done by a worker that did nothing.
 
 ## Route table
 

@@ -290,15 +290,14 @@ pub async fn stock_locations(
          limit $4",
     )
     .bind(ctx.scope.0)
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id.as_uuid(),
+    Ok(Page::build(rows, paging, |row| {
+        Cursor::at(row.created_at, row.id.as_uuid())
     }))
 }
 
@@ -667,15 +666,14 @@ pub async fn locations_for_sales_channel(
     )
     .bind(ctx.scope.0)
     .bind(sales_channel_id.as_uuid())
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id.as_uuid(),
+    Ok(Page::build(rows, paging, |row| {
+        Cursor::at(row.created_at, row.id.as_uuid())
     }))
 }
 
@@ -758,15 +756,14 @@ pub async fn inventory_items(
          limit $4",
     )
     .bind(ctx.scope.0)
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id.as_uuid(),
+    Ok(Page::build(rows, paging, |row| {
+        Cursor::at(row.created_at, row.id.as_uuid())
     }))
 }
 
@@ -1048,15 +1045,14 @@ pub async fn levels_for_item(
     ))
     .bind(ctx.scope.0)
     .bind(inventory_item_id.as_uuid())
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id.as_uuid(),
+    Ok(Page::build(rows, paging, |row| {
+        Cursor::at(row.created_at, row.id.as_uuid())
     }))
 }
 
@@ -1408,15 +1404,14 @@ pub async fn transfers_for_item(
     ))
     .bind(ctx.scope.0)
     .bind(inventory_item_id.as_uuid())
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id.as_uuid(),
+    Ok(Page::build(rows, paging, |row| {
+        Cursor::at(row.created_at, row.id.as_uuid())
     }))
 }
 
@@ -2360,15 +2355,14 @@ pub async fn reservations_for_line_item(
     ))
     .bind(ctx.scope.0)
     .bind(line_item_id.as_uuid())
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id.as_uuid(),
+    Ok(Page::build(rows, paging, |row| {
+        Cursor::at(row.created_at, row.id.as_uuid())
     }))
 }
 
@@ -2388,15 +2382,14 @@ pub async fn reservations(
          limit $4"
     ))
     .bind(ctx.scope.0)
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id.as_uuid(),
+    Ok(Page::build(rows, paging, |row| {
+        Cursor::at(row.created_at, row.id.as_uuid())
     }))
 }
 
@@ -3051,15 +3044,14 @@ pub async fn lots_for_item(
     .bind(ctx.scope.0)
     .bind(inventory_item_id.as_uuid())
     .bind(location_id.map(|id| id.as_uuid()))
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id.as_uuid(),
+    Ok(Page::build(rows, paging, |row| {
+        Cursor::at(row.created_at, row.id.as_uuid())
     }))
 }
 
@@ -3086,15 +3078,14 @@ pub async fn expiring_lots(
     ))
     .bind(ctx.scope.0)
     .bind(before)
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id.as_uuid(),
+    Ok(Page::build(rows, paging, |row| {
+        Cursor::at(row.created_at, row.id.as_uuid())
     }))
 }
 
@@ -3140,15 +3131,14 @@ pub async fn orders_for_lot(
     )
     .bind(ctx.scope.0)
     .bind(lot_id.as_uuid())
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id,
+    Ok(Page::build(rows, paging, |row| {
+        Cursor::at(row.created_at, row.id)
     }))
 }
 

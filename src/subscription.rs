@@ -388,15 +388,14 @@ pub async fn plan_groups(
          limit $4"
     ))
     .bind(ctx.scope.0)
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id.as_uuid(),
+    Ok(Page::build(rows, paging, |row| {
+        Cursor::at(row.created_at, row.id.as_uuid())
     }))
 }
 
@@ -494,15 +493,14 @@ pub async fn plans(
     ))
     .bind(ctx.scope.0)
     .bind(group_id.as_uuid())
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id.as_uuid(),
+    Ok(Page::build(rows, paging, |row| {
+        Cursor::at(row.created_at, row.id.as_uuid())
     }))
 }
 
@@ -809,15 +807,14 @@ pub async fn list(
     ))
     .bind(ctx.scope.0)
     .bind(customer.map(CustomerId::as_uuid))
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id.as_uuid(),
+    Ok(Page::build(rows, paging, |row| {
+        Cursor::at(row.created_at, row.id.as_uuid())
     }))
 }
 
@@ -852,15 +849,14 @@ pub async fn due(
     ))
     .bind(ctx.scope.0)
     .bind(at)
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| Cursor {
-        at: row.next_billing_at,
-        id: row.id.as_uuid(),
+    Ok(Page::build(rows, paging, |row| {
+        Cursor::at(row.next_billing_at, row.id.as_uuid())
     }))
 }
 
@@ -904,15 +900,14 @@ pub async fn events(
     ))
     .bind(ctx.scope.0)
     .bind(id.as_uuid())
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| Cursor {
-        at: row.at,
-        id: row.id.as_uuid(),
+    Ok(Page::build(rows, paging, |row| {
+        Cursor::at(row.at, row.id.as_uuid())
     }))
 }
 
@@ -1559,15 +1554,17 @@ pub async fn due_deliveries(
     ))
     .bind(ctx.scope.0)
     .bind(at)
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| Cursor {
-        at: row.next_delivery_at.unwrap_or(row.created_at),
-        id: row.id.as_uuid(),
+    Ok(Page::build(rows, paging, |row| {
+        Cursor::at(
+            row.next_delivery_at.unwrap_or(row.created_at),
+            row.id.as_uuid(),
+        )
     }))
 }
 

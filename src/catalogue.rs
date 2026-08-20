@@ -18,7 +18,7 @@ use crate::id::{
     CategoryId, CollectionId, OptionId, OptionValueId, ProductId, ProductImageId, ProductTagId,
     ProductTypeId, SalesChannelId, VariantId,
 };
-use crate::page::{Cursor, Order, Page, Paging, Search};
+use crate::page::{By, Cursor, Order, Page, Paging, Search};
 use crate::ports::{Action, AuditEntry, Ctx, Event, Permit, Resource, Tx};
 
 /// Most options one product may be generated from, and most variants one
@@ -409,6 +409,10 @@ pub struct ProductFilter {
     /// Which end first. A storefront walks a catalogue oldest-first; a back
     /// office opening Products wants what was added yesterday.
     pub order: Order,
+    /// Which column. `Title` is the one an operator looking for a product by
+    /// name reaches for, and the only list in the crate that offers a second
+    /// ordering so far.
+    pub by: By,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -719,6 +723,15 @@ pub async fn products(
     let _: Permit = ctx.permit(Action::View, Resource::Product { id: None })?;
 
     let (beyond, direction) = (filter.order.beyond(), filter.order.direction());
+    // The column is interpolated and the key is bound. Both predicates are in
+    // the query and only one is ever bound to something — the other's
+    // parameter is null, which is what makes it do nothing.
+    let column = match filter.by {
+        By::Created => "p.created_at",
+        By::Title => "p.title",
+    };
+    let after_at = paging.after.as_ref().and_then(Cursor::timestamp);
+    let after_title = paging.after.as_ref().and_then(|c| c.text_key());
 
     let rows = sqlx::query_as::<_, Product>(&format!(
         concat!(
@@ -759,14 +772,16 @@ pub async fn products(
                 or p.handle ilike $8
                 or p.subtitle ilike $8)
            and ($9::timestamptz is null or (p.created_at, p.id) {beyond} ($9, $10))
-         order by p.created_at {direction}, p.id {direction}
-         limit $11"
+           and ($11::text is null or (p.title, p.id) {beyond} ($11, $10))
+         order by {column} {direction}, p.id {direction}
+         limit $12"
         ),
         // Named rather than captured: `format_args!` cannot capture from the
         // surrounding scope when the format string came out of a macro, and
         // this one comes out of `concat!`.
         beyond = beyond,
         direction = direction,
+        column = column,
     ))
     .bind(ctx.scope.0)
     .bind(filter.status)
@@ -776,15 +791,21 @@ pub async fn products(
     .bind(filter.tag.map(ProductTagId::as_uuid))
     .bind(filter.channels)
     .bind(filter.search.as_ref().map(Search::pattern))
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(after_at)
+    .bind(paging.after.as_ref().map(|c| c.id))
+    .bind(after_title)
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id.as_uuid(),
+    Ok(Page::build(rows, paging, |row| {
+        // The cursor a page hands back names the column it was ordered by, so
+        // the next page resumes from the same one. A page ordered by title
+        // that handed back a timestamp would silently start over.
+        match filter.by {
+            By::Created => Cursor::at(row.created_at, row.id.as_uuid()),
+            By::Title => Cursor::text(row.title.clone(), row.id.as_uuid()),
+        }
     }))
 }
 
@@ -1379,15 +1400,14 @@ pub async fn variants(
     ))
     .bind(ctx.scope.0)
     .bind(product_id.as_uuid())
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id.as_uuid(),
+    Ok(Page::build(rows, paging, |row| {
+        Cursor::at(row.created_at, row.id.as_uuid())
     }))
 }
 
@@ -2195,15 +2215,14 @@ pub async fn collections(
          limit $4",
     )
     .bind(ctx.scope.0)
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id.as_uuid(),
+    Ok(Page::build(rows, paging, |row| {
+        Cursor::at(row.created_at, row.id.as_uuid())
     }))
 }
 
@@ -2289,15 +2308,14 @@ pub async fn types(tx: &mut Tx<'_>, ctx: &Ctx<'_>, paging: Paging) -> Result<Pag
          limit $4",
     )
     .bind(ctx.scope.0)
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id.as_uuid(),
+    Ok(Page::build(rows, paging, |row| {
+        Cursor::at(row.created_at, row.id.as_uuid())
     }))
 }
 
@@ -2402,15 +2420,14 @@ pub async fn tags(tx: &mut Tx<'_>, ctx: &Ctx<'_>, paging: Paging) -> Result<Page
          limit $4",
     )
     .bind(ctx.scope.0)
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id.as_uuid(),
+    Ok(Page::build(rows, paging, |row| {
+        Cursor::at(row.created_at, row.id.as_uuid())
     }))
 }
 
@@ -2620,15 +2637,14 @@ pub async fn categories(
     ))
     .bind(ctx.scope.0)
     .bind(parent.map(CategoryId::as_uuid))
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id.as_uuid(),
+    Ok(Page::build(rows, paging, |row| {
+        Cursor::at(row.created_at, row.id.as_uuid())
     }))
 }
 
@@ -2659,15 +2675,14 @@ pub async fn category_subtree(
     ))
     .bind(ctx.scope.0)
     .bind(root.as_uuid())
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id.as_uuid(),
+    Ok(Page::build(rows, paging, |row| {
+        Cursor::at(row.created_at, row.id.as_uuid())
     }))
 }
 

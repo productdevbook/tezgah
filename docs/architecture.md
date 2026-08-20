@@ -90,11 +90,11 @@ ships a shop somebody else runs.
 and `ProductFilter.search` gave the catalogue a search box — title, handle and
 subtitle, `ilike`, no index. Orders and customers still have none, and both
 take their filters as positional arguments rather than a struct, so giving
-them one is a signature change across their callers. Nothing sorts at all:
-every paged query in the crate ends `order by created_at`, and a cursor names
-a row in that ordering, so a second ordering needs the cursor to carry its own
-key rather than a timestamp. That is the piece with real design in it, and it
-is not done.
+them one is a signature change across their callers. One list sorts two ways: a cursor
+carries a key now — a timestamp or a text — so a page ordered by title
+resumes from a title, and `catalogue::products` takes `by=title`. The design
+that was named as missing is done; what is left is applying it, which is a
+column and a variant per list rather than a shape to work out.
 
 **The document described no query parameter at all until #254**, so every
 filter the crate already supported was invisible to it — `"parameters": []`
@@ -150,8 +150,22 @@ may make an account. The split is the crate's own: `ports::Action` separates
 What that answers is "may this person refund anything at all". What it does
 not answer is "may this person refund *this* order" — that is what
 `ports::Authorizer` is for, and the app still answers it by granting
-everything. A shop needing per-row rules needs an authorizer, which is the
-port tezgah asks for precisely so a host can bring one.
+everything.
+
+Worth being exact about why, because "the app should implement its authorizer"
+is the obvious next step and would be dead code today. `Resource` carries the
+owner on the five kinds that have one — a cart, an order, a payment, a credit,
+a subscription — so a per-row rule needs no database, only an actor to compare
+against. This binary has no actor to compare: it produces `Actor::Staff` for
+the back office, and for the storefront it produces `Actor::Guest { cart }`
+with the cart id taken from the same path parameter it is then asked about.
+Actor and resource agree by construction, so a rule comparing them refuses
+nothing.
+
+What would make it bite is a storefront sign-in — an `Actor::Customer` whose
+id came from a session rather than from the URL. That is a feature this
+product does not have rather than a rule it forgot, and it is the thing to
+build before the authorizer, not after.
 
 **The sweeps and the queue both run.** `cart::expire` and
 `inventory::expire_reservations` are called every five minutes by
@@ -165,9 +179,11 @@ fails with that as its reason rather than being marked done.
 
 The one kind the crate enqueues still cannot run, and now says why: a
 subscription's dunning retry needs a provider that can charge a card left on
-file, and the payment library this app pins cannot name which card. That is a
-capability to ask the payment library for, not something to work around in a
-host — so the job records it and waits.
+file, and no published version of the payment library can name which card.
+The capability is on that library's main branch and was committed eleven
+hours after its newest tag, so what is missing is a release rather than the
+work — productdevbook/kasapay#225. Asked for there rather than worked around
+here, and the job records the reason and waits.
 
 **Events go to stdout.** No outbox, no subscriber, no delivery, no retry. A
 shop that wants `order.paid` to reach its own systems, or to become an e-mail,
@@ -207,6 +223,16 @@ The schemas were always the expensive half and they were already generated.
 the compiler enforcing that the two dictionaries match, over the shared
 chrome — actions, errors, the unsaved-changes prompt. Every screen's own
 words are still English in the source.
+
+**A record's page has one editor, except the product's.** A section that can
+be changed gets its own address and its own drawer, so a save is small enough
+to describe — the product's page has three. This was written down as
+impossible once, on the reasoning that the API offers one write per record
+rather than one per part of it. The reasoning was wrong: the write takes
+every field as an option, so a form sending three of them leaves the rest
+alone. What is left is the other records, and for most of them one editor is right
+rather than unfinished: a customer has six fields to a product's seventeen,
+and splitting six across three drawers is ceremony.
 
 **Bulk is a round trip.** A page of variants out as CSV, edited, and back in
 — the export's columns and the import's are the same, which is what makes it

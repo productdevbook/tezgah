@@ -1736,8 +1736,8 @@ pub async fn runs(
     )
     .bind(ctx.scope.0)
     .bind(state.map(State::as_str))
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
@@ -1747,9 +1747,8 @@ pub async fn runs(
         .map(RunSummaryRow::into_summary)
         .collect::<Result<Vec<_>>>()?;
 
-    Ok(Page::build(summaries, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id.as_uuid(),
+    Ok(Page::build(summaries, paging, |row| {
+        Cursor::at(row.created_at, row.id.as_uuid())
     }))
 }
 
@@ -1814,15 +1813,14 @@ pub async fn dead_letters(
          limit $4",
     )
     .bind(ctx.scope.0)
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id,
+    Ok(Page::build(rows, paging, |row| {
+        Cursor::at(row.created_at, row.id)
     }))
 }
 

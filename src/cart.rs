@@ -408,15 +408,14 @@ pub async fn list(
     ))
     .bind(ctx.scope.0)
     .bind(customer_id.map(CustomerId::as_uuid))
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id.as_uuid(),
+    Ok(Page::build(rows, paging, |row| {
+        Cursor::at(row.created_at, row.id.as_uuid())
     }))
 }
 
@@ -450,15 +449,14 @@ pub async fn for_basket(
     ))
     .bind(ctx.scope.0)
     .bind(basket_id.as_uuid())
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id.as_uuid(),
+    Ok(Page::build(rows, paging, |row| {
+        Cursor::at(row.created_at, row.id.as_uuid())
     }))
 }
 

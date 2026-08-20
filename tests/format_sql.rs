@@ -148,12 +148,15 @@ const TOLERATED: [(&str, &str); 17] = [
     ),
     (
         "column",
-        "the same two shapes as `table`: a private function's own \
-         `&'static str`/`&str` parameter with every call site literal — \
-         `catalogue::link`, `catalogue::unlink`, `order::bump`, \
-         `fulfilment::move_quantities` — or an element of a literal \
-         tuple/array in the same function — `order::insert_line_money`'s \
-         `LineMoney::tables()`, the per-owner loop in `tax.rs`",
+        "three shapes now: a private function's own `&'static str`/`&str` \
+         parameter with every call site literal — `catalogue::link`, \
+         `catalogue::unlink`, `order::bump`, `fulfilment::move_quantities`; an \
+         element of a literal tuple/array in the same function — \
+         `order::insert_line_money`'s `LineMoney::tables()`, the per-owner \
+         loop in `tax.rs`; and, in `catalogue::products`, one of two column \
+         names written out in full in that function, picked by a `match` on \
+         `page::By`, a closed enum with a variant per column a list here can \
+         be ordered by. None of the three is a value a caller chose",
     ),
     (
         "ceiling",

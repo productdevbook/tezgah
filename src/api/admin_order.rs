@@ -1959,15 +1959,14 @@ pub async fn list_returns(
          limit $4"
     ))
     .bind(ctx.scope.0)
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    let page = Page::build(rows, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id.as_uuid(),
+    let page = Page::build(rows, paging, |row| {
+        Cursor::at(row.created_at, row.id.as_uuid())
     });
 
     Ok(Page {
@@ -2249,15 +2248,14 @@ pub async fn list_exchanges(
          limit $4"
     ))
     .bind(ctx.scope.0)
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    let page = Page::build(rows, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id.as_uuid(),
+    let page = Page::build(rows, paging, |row| {
+        Cursor::at(row.created_at, row.id.as_uuid())
     });
 
     Ok(Page {
@@ -2489,15 +2487,14 @@ pub async fn list_claims(
          limit $4"
     ))
     .bind(ctx.scope.0)
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    let page = Page::build(rows, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id.as_uuid(),
+    let page = Page::build(rows, paging, |row| {
+        Cursor::at(row.created_at, row.id.as_uuid())
     });
 
     Ok(Page {
@@ -2704,15 +2701,14 @@ pub async fn list_payments(
             .payment_collection_id
             .map(PaymentCollectionId::as_uuid),
     )
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    let page = Page::build(rows, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id.as_uuid(),
+    let page = Page::build(rows, paging, |row| {
+        Cursor::at(row.created_at, row.id.as_uuid())
     });
 
     Ok(Page {
@@ -2951,15 +2947,14 @@ pub async fn list_refund_reasons(
          limit $4",
     )
     .bind(ctx.scope.0)
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id,
+    Ok(Page::build(rows, paging, |row| {
+        Cursor::at(row.created_at, row.id)
     }))
 }
 
@@ -3004,15 +2999,14 @@ pub async fn list_return_reasons(
          limit $4",
     )
     .bind(ctx.scope.0)
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id,
+    Ok(Page::build(rows, paging, |row| {
+        Cursor::at(row.created_at, row.id)
     }))
 }
 
@@ -3236,15 +3230,14 @@ pub async fn order_fulfillments(
     )
     .bind(ctx.scope.0)
     .bind(order_id.as_uuid())
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    let page = Page::build(rows, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id.as_uuid(),
+    let page = Page::build(rows, paging, |row| {
+        Cursor::at(row.created_at, row.id.as_uuid())
     });
 
     Ok(Page {
@@ -3541,15 +3534,14 @@ pub async fn list_shipping_options(
          limit $4",
     )
     .bind(ctx.scope.0)
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    let page = Page::build(rows, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id.as_uuid(),
+    let page = Page::build(rows, paging, |row| {
+        Cursor::at(row.created_at, row.id.as_uuid())
     });
 
     Ok(Page {
@@ -3709,15 +3701,14 @@ pub async fn list_shipping_profiles(
          limit $4",
     )
     .bind(ctx.scope.0)
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id.as_uuid(),
+    Ok(Page::build(rows, paging, |row| {
+        Cursor::at(row.created_at, row.id.as_uuid())
     }))
 }
 
@@ -3939,15 +3930,14 @@ pub async fn list_shipping_option_types(
          limit $4",
     )
     .bind(ctx.scope.0)
-    .bind(paging.after.map(|c| c.at))
-    .bind(paging.after.map(|c| c.id))
+    .bind(paging.after.as_ref().and_then(Cursor::timestamp))
+    .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| Cursor {
-        at: row.created_at,
-        id: row.id,
+    Ok(Page::build(rows, paging, |row| {
+        Cursor::at(row.created_at, row.id)
     }))
 }
 

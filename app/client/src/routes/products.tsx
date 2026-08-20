@@ -8,6 +8,7 @@ const productsSearch = z.object({
   after: z.string().optional(),
   status: productStatus.optional(),
   q: z.string().optional(),
+  by: z.enum(["created", "title"]).optional(),
 })
 
 export const Route = createFileRoute("/products")({
@@ -27,7 +28,7 @@ export const Route = createFileRoute("/products")({
  * cursor it had.
  */
 export function RouteComponent() {
-  const { status, after, q } = Route.useSearch()
+  const { status, after, q, by } = Route.useSearch()
   const navigate = Route.useNavigate()
 
   return (
@@ -36,6 +37,19 @@ export function RouteComponent() {
         status={status ?? "all"}
         after={after}
         q={q}
+        by={by ?? "created"}
+        onByChange={(next) =>
+          // A cursor names a row in the ordering it was issued under, so
+          // changing the ordering starts the list again rather than resuming
+          // somewhere that means nothing.
+          void navigate({
+            search: (prev) => ({
+              ...prev,
+              by: next === "created" ? undefined : next,
+              after: undefined,
+            }),
+          })
+        }
         onQChange={(next) =>
           // The cursor goes with it: a cursor names a row in the ordering it
           // was issued under and means nothing under another filter.

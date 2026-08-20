@@ -9,7 +9,7 @@ use tezgah::catalogue::{
     ProductFilter, ProductStatus, ProductTranslation, VariantPlan,
 };
 use tezgah::id::{CategoryId, ProductId};
-use tezgah::page::{Paging, Search};
+use tezgah::page::{By, Paging, Search};
 use tezgah::ports::Actor;
 use uuid::Uuid;
 
@@ -1285,4 +1285,63 @@ async fn a_blank_search_lists_everything() {
     .expect("to list");
 
     assert_eq!(all.items.len(), 2);
+}
+
+/// The second ordering, and the half of it that is easy to get wrong: a page
+/// ordered by title has to resume from a title.
+#[tokio::test]
+async fn a_list_ordered_by_title_pages_by_title() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    // Written in an order that is not alphabetical, so ordering by title
+    // cannot pass by accident.
+    for (handle, title) in [
+        ("rug", "Rug"),
+        ("apron", "Apron"),
+        ("kilim", "Kilim"),
+        ("basket", "Basket"),
+    ] {
+        catalogue::create_product(&mut tx, &ctx, draft(handle, title))
+            .await
+            .expect("a product");
+    }
+
+    let by_title = ProductFilter {
+        by: By::Title,
+        ..ProductFilter::default()
+    };
+
+    let first = catalogue::products(&mut tx, &ctx, by_title.clone(), Paging::first(2))
+        .await
+        .expect("to list");
+    assert_eq!(
+        first
+            .items
+            .iter()
+            .map(|p| p.title.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Apron", "Basket"]
+    );
+
+    let next = first.next.as_ref().expect("another page");
+    let rest = catalogue::products(
+        &mut tx,
+        &ctx,
+        by_title,
+        Paging::after(tezgah::page::Cursor::decode(next).expect("a cursor"), 2),
+    )
+    .await
+    .expect("to list");
+
+    assert_eq!(
+        rest.items
+            .iter()
+            .map(|p| p.title.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Kilim", "Rug"],
+        "the second page resumed from a title, not from a timestamp"
+    );
+    assert!(rest.next.is_none());
 }
