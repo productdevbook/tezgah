@@ -20,7 +20,15 @@ export const GetAdminOrderBasketsByIdParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminOrderBasketsByIdResponse = zod.unknown()
+export const GetAdminOrderBasketsByIdResponse = zod.object({
+  "completed_at": zod.iso.datetime({"offset":true}).nullable(),
+  "currency_code": zod.string(),
+  "customer_id": zod.union([zod.uuid().describe('Identifies one customer.'),zod.null()]),
+  "display_id": zod.int().nullable(),
+  "email": zod.string().nullable(),
+  "id": zod.uuid().describe('Identifies one order basket.'),
+  "payment_collection_id": zod.union([zod.uuid().describe('Identifies one payment collection.'),zod.null()])
+})
 
 /**
  * @summary This scope's own carts under a basket, the next leg to place
@@ -29,7 +37,19 @@ export const GetAdminOrderBasketsByIdCartsParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminOrderBasketsByIdCartsResponse = zod.unknown()
+export const GetAdminOrderBasketsByIdCartsResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "completed_at": zod.iso.datetime({"offset":true}).nullable(),
+  "currency_code": zod.string(),
+  "customer_id": zod.union([zod.uuid().describe('Identifies one customer.'),zod.null()]),
+  "email": zod.string().nullable(),
+  "id": zod.uuid().describe('Identifies one cart.'),
+  "region_id": zod.union([zod.uuid().describe('Identifies one region.'),zod.null()])
+}))
+}))
 
 /**
  * @summary This scope's own orders under a basket
@@ -38,7 +58,27 @@ export const GetAdminOrderBasketsByIdOrdersParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminOrderBasketsByIdOrdersResponse = zod.unknown()
+export const GetAdminOrderBasketsByIdOrdersResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "basket_id": zod.union([zod.uuid().describe('Identifies one order basket.'),zod.null()]).describe('The basket this order was split from, if a checkout that spanned more\nthan one seller-scope opened one.'),
+  "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
+  "completed_at": zod.iso.datetime({"offset":true}).nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "currency_code": zod.string(),
+  "display_id": zod.int().nullable(),
+  "email": zod.string().nullable(),
+  "fulfillment_status": zod.string(),
+  "id": zod.uuid().describe('Identifies one order.'),
+  "is_draft": zod.boolean(),
+  "payment_collection_id": zod.union([zod.uuid().describe('Identifies one payment collection.'),zod.null()]),
+  "payment_status": zod.string(),
+  "status": zod.string(),
+  "version": zod.int()
+}).describe('An order as a back office sees it. Not `order::Order`: that is a row, it\ngrows a column whenever a migration says so, and it carries the scope.'))
+}))
 
 /**
  * @summary Say which collection paid for a basket
