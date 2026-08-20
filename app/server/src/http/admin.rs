@@ -97,9 +97,7 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         ("POST", "/admin/subscriptions/{id}/pause"),
         ("POST", "/admin/subscriptions/{id}/resume"),
         ("POST", "/admin/subscriptions/{id}/skip"),
-        ("POST", "/admin/subscriptions/{id}/renew"),
         ("POST", "/admin/subscriptions/{id}/swap"),
-        ("POST", "/admin/subscriptions/{id}/card"),
         ("POST", "/admin/subscriptions/{id}/deliver"),
         ("GET", "/admin/regions"),
         ("GET", "/admin/regions/{id}"),
@@ -252,9 +250,7 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
             post(resume_subscription),
         )
         .route("/admin/subscriptions/{id}/skip", post(skip_subscription))
-        .route("/admin/subscriptions/{id}/renew", post(renew_subscription))
         .route("/admin/subscriptions/{id}/swap", post(swap_subscription))
-        .route("/admin/subscriptions/{id}/card", post(repoint_card))
         .route(
             "/admin/subscriptions/{id}/deliver",
             post(deliver_subscription),
@@ -1171,9 +1167,17 @@ async fn create_inventory_item(
 
 /// What a shop does to a contract after it exists.
 ///
-/// Nine routes, all declared since subscriptions were written and bound by
+/// Seven routes, all declared since subscriptions were written and bound by
 /// nothing — so this panel could list a subscription and offer no way to stop
 /// it, which is the one thing a shop is asked to do about one.
+///
+/// Two of the nine stay unbound, and not by choice. `renew` and `card` take a
+/// `subscription::Renewals`, which takes a `RecurringProvider`, and this
+/// binary has none: charging a card a shopper left on file means naming which
+/// card, and kasapay 0.0.5 has no field for one — `src/provider.rs` carries
+/// that in full, and it is the same reason `host::Dispatcher` renews nothing.
+/// Binding them would mean building a `Renewals` out of a provider that
+/// cannot do the one thing it is for.
 async fn subscription_events(
     State(state): State<AppState>,
     Extension(caller): Extension<Caller>,
@@ -1237,23 +1241,6 @@ async fn skip_subscription(
     Ok(Json(view))
 }
 
-/// Billing a cycle the contract owes. This is the one a shop reaches for when
-/// a renewal failed and the card has since been fixed — the job worker's
-/// dunning retry cannot do it, because kasapay 0.0.5 cannot name a saved
-/// card (productdevbook/kasapay#225), and an operator with the customer on
-/// the phone can.
-async fn renew_subscription(
-    State(state): State<AppState>,
-    Extension(caller): Extension<Caller>,
-    Path(id): Path<SubscriptionId>,
-) -> Result<Json<subscription::RenewedView>, ApiError> {
-    let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state, &caller);
-    let view = subscription::renew(&mut tx, &ctx, id).await?;
-    tx.commit().await?;
-    Ok(Json(view))
-}
-
 async fn swap_subscription(
     State(state): State<AppState>,
     Extension(caller): Extension<Caller>,
@@ -1263,19 +1250,6 @@ async fn swap_subscription(
     let mut tx = begin(&state.pool, state.scope).await?;
     let ctx = ctx_for(&state, &caller);
     let view = subscription::swap_subscription(&mut tx, &ctx, id, body).await?;
-    tx.commit().await?;
-    Ok(Json(view))
-}
-
-async fn repoint_card(
-    State(state): State<AppState>,
-    Extension(caller): Extension<Caller>,
-    Path(id): Path<SubscriptionId>,
-    Json(body): Json<subscription::RepointCard>,
-) -> Result<Json<subscription::SubscriptionView>, ApiError> {
-    let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state, &caller);
-    let view = subscription::repoint_subscription_card(&mut tx, &ctx, id, body).await?;
     tx.commit().await?;
     Ok(Json(view))
 }

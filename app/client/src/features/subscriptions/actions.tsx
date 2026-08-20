@@ -32,9 +32,11 @@ function movesFor(status: string): { label: string; path: string }[] {
         { label: "Pause", path: "pause" },
         { label: "Cancel", path: "cancel" },
       ]
+    // No "bill the cycle it owes" here: `POST .../renew` needs a recurring
+    // payment provider and this binary has none, so the route is not bound.
+    // Offering it would be a menu item that always answers 404.
     case "past_due":
       return [
-        { label: "Bill the cycle it owes", path: "renew" },
         { label: "Pause", path: "pause" },
         { label: "Cancel", path: "cancel" },
       ]
