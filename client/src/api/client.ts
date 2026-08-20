@@ -47,7 +47,7 @@ export class ApiError extends Error {
     kind: ApiErrorKind,
     status: number,
     message: string,
-    code?: string,
+    code?: string
   ) {
     super(message)
     this.name = "ApiError"
@@ -87,7 +87,7 @@ export async function get<S extends z.ZodTypeAny>(
     params?: Record<string, string>
     query?: Record<string, string | number | undefined>
     signal?: AbortSignal
-  },
+  }
 ): Promise<z.infer<S>> {
   const url = new URL(BASE + fill(path, options.params ?? {}), location.origin)
   for (const [key, value] of Object.entries(options.query ?? {})) {
@@ -106,13 +106,10 @@ export async function get<S extends z.ZodTypeAny>(
   }
 
   if (!response.ok) {
-    const body: unknown = await response.json().catch(() => null)
-    const said = (body ?? {}) as { code?: string; message?: string }
     throw new ApiError(
       kindOf(response.status, token !== null),
       response.status,
-      said.message ?? response.statusText,
-      said.code,
+      ...(await said(response))
     )
   }
 
@@ -124,7 +121,78 @@ export async function get<S extends z.ZodTypeAny>(
       parsed.error.issues
         .slice(0, 3)
         .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
-        .join("; "),
+        .join("; ")
+    )
+  }
+  return parsed.data
+}
+
+/**
+ * `server/src/http/mod.rs`'s `ApiError` answers `{"error": {"code",
+ * "message"}}`, never the two fields at the top level.
+ */
+async function said(
+  response: Response
+): Promise<[message: string, code?: string]> {
+  const body: unknown = await response.json().catch(() => null)
+  const fields = ((body as { error?: unknown } | null)?.error ?? {}) as {
+    code?: string
+    message?: string
+  }
+  return [fields.message ?? response.statusText, fields.code]
+}
+
+export async function post<S extends z.ZodTypeAny>(
+  path: ApiPath,
+  options: {
+    schema: S
+    body: unknown
+    params?: Record<string, string>
+    signal?: AbortSignal
+  }
+): Promise<z.infer<S>> {
+  const url = new URL(BASE + fill(path, options.params ?? {}), location.origin)
+
+  const token = held()
+  const headers: Record<string, string> = {
+    accept: "application/json",
+    "content-type": "application/json",
+  }
+  if (token) headers.authorization = `Bearer ${token}`
+
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      signal: options.signal,
+      headers,
+      body: JSON.stringify(options.body),
+    })
+  } catch {
+    throw new ApiError("unreachable", 0, `no host answered at ${BASE}`)
+  }
+
+  if (!response.ok) {
+    throw new ApiError(
+      kindOf(response.status, token !== null),
+      response.status,
+      ...(await said(response))
+    )
+  }
+
+  // `link_variant_price_set` answers `204 No Content`; a caller expecting
+  // that passes `z.void()` as its schema.
+  if (response.status === 204) return options.schema.parse(undefined)
+
+  const parsed = options.schema.safeParse(await response.json())
+  if (!parsed.success) {
+    throw new ApiError(
+      "drifted",
+      response.status,
+      parsed.error.issues
+        .slice(0, 3)
+        .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
+        .join("; ")
     )
   }
   return parsed.data

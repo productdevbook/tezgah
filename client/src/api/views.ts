@@ -178,6 +178,108 @@ export const salesChannel = z.object({
 export type SalesChannel = z.infer<typeof salesChannel>
 
 /**
+ * What the twelve write routes take and the two of their answers that have
+ * no declared shape to check against.
+ *
+ * `tests/snapshots/openapi.json` names these paths but gives every one of
+ * them a bodyless `"200": {"description": "The call succeeded."}` — no
+ * request schema, and for `POST /admin/currencies` and
+ * `/admin/publishable-api-keys`, no response schema either, because
+ * `CurrencyView` and `IssuedKeyView` never appear in a *documented* response
+ * (productdevbook/tezgah#202). So none of the schemas below can join
+ * `SchemasMatchTheDocument`; each is transcribed straight from the request or
+ * response struct it names, and only a diff against that struct keeps it
+ * honest until #202 closes.
+ */
+
+/**
+ * `src/api/admin_catalogue.rs` — `CreateProduct`. Its full request has
+ * eighteen fields; this is the subset the "New product" form sends, every
+ * one of them present in the Rust struct with the type it declares there.
+ */
+export const createProduct = z.object({
+  handle: z
+    .string()
+    .trim()
+    .min(1, "a handle is needed")
+    .regex(/^\S+$/, "a handle has no spaces in it"),
+  title: z.string().trim().min(1, "a title is needed"),
+  subtitle: z.string().trim().optional(),
+  description: z.string().trim().optional(),
+  status: productStatus.optional(),
+})
+export type CreateProduct = z.infer<typeof createProduct>
+
+/** `src/api/admin_rest.rs` — `CreateCurrency`. */
+export const createCurrency = z.object({
+  code: z
+    .string()
+    .trim()
+    .length(3, "a currency code is three letters")
+    .regex(/^[A-Za-z]{3}$/, "a currency code is three letters"),
+  numeric_code: z.string().trim().optional(),
+  exponent: z
+    .number()
+    .int()
+    .min(0)
+    .max(4, "a currency's exponent is between 0 and 4"),
+  symbol: z.string().trim().min(1, "a currency needs a symbol"),
+  symbol_native: z.string().trim().min(1, "a currency needs a native symbol"),
+  name: z.string().trim().min(1, "a currency needs a name"),
+})
+export type CreateCurrency = z.infer<typeof createCurrency>
+
+/** `src/api/admin_rest.rs` — `CurrencyView`. Not in `Declared` — see above. */
+export const currency = z.object({
+  code: z.string(),
+  symbol: z.string(),
+  name: z.string(),
+  exponent: z.number(),
+})
+export type Currency = z.infer<typeof currency>
+
+/** `src/api/admin_rest.rs` — `CreateRegion`. */
+export const createRegion = z.object({
+  name: z.string().trim().min(1, "a region needs a name"),
+  currency_code: z
+    .string()
+    .trim()
+    .length(3, "a currency code is three letters")
+    .regex(/^[A-Za-z]{3}$/, "a currency code is three letters"),
+  is_tax_inclusive: z.boolean(),
+  has_automatic_taxes: z.boolean(),
+})
+export type CreateRegion = z.infer<typeof createRegion>
+
+/** `src/api/admin_rest.rs` — `CreateSalesChannel`. */
+export const createSalesChannel = z.object({
+  name: z.string().trim().min(1, "a sales channel needs a name"),
+  description: z.string().trim().optional(),
+  is_disabled: z.boolean(),
+})
+export type CreateSalesChannel = z.infer<typeof createSalesChannel>
+
+/** `src/api/admin_rest.rs` — `CreatePublishableKey`. */
+export const createPublishableKey = z.object({
+  title: z.string().trim().min(1, "a publishable key needs a title"),
+})
+export type CreatePublishableKey = z.infer<typeof createPublishableKey>
+
+/**
+ * `src/api/admin_rest.rs` — `IssuedKeyView`: `PublishableKeyView` flattened
+ * with the raw `token`, sent once. Not in `Declared` — see above.
+ */
+export const issuedKey = z.object({
+  id,
+  title: z.string(),
+  revoked_at: timestamp.nullable(),
+  last_used_at: timestamp.nullable(),
+  created_at: timestamp,
+  token: z.string(),
+})
+export type IssuedKey = z.infer<typeof issuedKey>
+
+/**
  * What stops the schemas above being wrong.
  *
  * Each line asserts that the type zod produces is *exactly* the type the
