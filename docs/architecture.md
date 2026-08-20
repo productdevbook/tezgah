@@ -208,6 +208,15 @@ the compiler enforcing that the two dictionaries match, over the shared
 chrome — actions, errors, the unsaved-changes prompt. Every screen's own
 words are still English in the source.
 
+**A record's page has one editor, except the product's.** A section that can
+be changed gets its own address and its own drawer, so a save is small enough
+to describe — the product's page has three. This was written down as
+impossible once, on the reasoning that the API offers one write per record
+rather than one per part of it. The reasoning was wrong: the write takes
+every field as an option, so a form sending three of them leaves the rest
+alone. What is left is the other fifteen records, which is work rather than a
+constraint.
+
 **Bulk is a round trip.** A page of variants out as CSV, edited, and back in
 — the export's columns and the import's are the same, which is what makes it
 one. Multi-select on a list and an edit grid in the browser are still absent;

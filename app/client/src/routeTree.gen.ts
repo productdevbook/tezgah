@@ -71,7 +71,10 @@ import { Route as CustomersIdEditRouteImport } from './routes/customers_.$id.edi
 import { Route as FulfilmentShippingOptionsIdRouteImport } from './routes/fulfilment_.shipping-options.$id'
 import { Route as FulfilmentShippingProfilesIdRouteImport } from './routes/fulfilment_.shipping-profiles.$id'
 import { Route as PricingPriceListsIdRouteImport } from './routes/pricing_.price-lists.$id'
+import { Route as ProductsIdAttributesRouteImport } from './routes/products_.$id.attributes'
 import { Route as ProductsIdEditRouteImport } from './routes/products_.$id.edit'
+import { Route as ProductsIdMediaRouteImport } from './routes/products_.$id.media'
+import { Route as ProductsIdOrganisationRouteImport } from './routes/products_.$id.organisation'
 import { Route as PromotionsIdEditRouteImport } from './routes/promotions_.$id.edit'
 import { Route as StoreCurrenciesNewRouteImport } from './routes/store.currencies.new'
 import { Route as StoreKeysNewRouteImport } from './routes/store.keys.new'
@@ -399,9 +402,24 @@ const PricingPriceListsIdRoute = PricingPriceListsIdRouteImport.update({
   path: '/pricing/price-lists/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProductsIdAttributesRoute = ProductsIdAttributesRouteImport.update({
+  id: '/attributes',
+  path: '/attributes',
+  getParentRoute: () => ProductsIdRoute,
+} as any)
 const ProductsIdEditRoute = ProductsIdEditRouteImport.update({
   id: '/edit',
   path: '/edit',
+  getParentRoute: () => ProductsIdRoute,
+} as any)
+const ProductsIdMediaRoute = ProductsIdMediaRouteImport.update({
+  id: '/media',
+  path: '/media',
+  getParentRoute: () => ProductsIdRoute,
+} as any)
+const ProductsIdOrganisationRoute = ProductsIdOrganisationRouteImport.update({
+  id: '/organisation',
+  path: '/organisation',
   getParentRoute: () => ProductsIdRoute,
 } as any)
 const PromotionsIdEditRoute = PromotionsIdEditRouteImport.update({
@@ -524,7 +542,10 @@ export interface FileRoutesByFullPath {
   '/fulfilment/shipping-options/$id': typeof FulfilmentShippingOptionsIdRoute
   '/fulfilment/shipping-profiles/$id': typeof FulfilmentShippingProfilesIdRoute
   '/pricing/price-lists/$id': typeof PricingPriceListsIdRoute
+  '/products/$id/attributes': typeof ProductsIdAttributesRoute
   '/products/$id/edit': typeof ProductsIdEditRoute
+  '/products/$id/media': typeof ProductsIdMediaRoute
+  '/products/$id/organisation': typeof ProductsIdOrganisationRoute
   '/promotions/$id/edit': typeof PromotionsIdEditRoute
   '/store/currencies/new': typeof StoreCurrenciesNewRoute
   '/store/keys/new': typeof StoreKeysNewRoute
@@ -593,7 +614,10 @@ export interface FileRoutesByTo {
   '/fulfilment/shipping-options/$id': typeof FulfilmentShippingOptionsIdRoute
   '/fulfilment/shipping-profiles/$id': typeof FulfilmentShippingProfilesIdRoute
   '/pricing/price-lists/$id': typeof PricingPriceListsIdRoute
+  '/products/$id/attributes': typeof ProductsIdAttributesRoute
   '/products/$id/edit': typeof ProductsIdEditRoute
+  '/products/$id/media': typeof ProductsIdMediaRoute
+  '/products/$id/organisation': typeof ProductsIdOrganisationRoute
   '/promotions/$id/edit': typeof PromotionsIdEditRoute
   '/store/currencies/new': typeof StoreCurrenciesNewRoute
   '/store/keys/new': typeof StoreKeysNewRoute
@@ -670,7 +694,10 @@ export interface FileRoutesById {
   '/fulfilment_/shipping-options/$id': typeof FulfilmentShippingOptionsIdRoute
   '/fulfilment_/shipping-profiles/$id': typeof FulfilmentShippingProfilesIdRoute
   '/pricing_/price-lists/$id': typeof PricingPriceListsIdRoute
+  '/products_/$id/attributes': typeof ProductsIdAttributesRoute
   '/products_/$id/edit': typeof ProductsIdEditRoute
+  '/products_/$id/media': typeof ProductsIdMediaRoute
+  '/products_/$id/organisation': typeof ProductsIdOrganisationRoute
   '/promotions_/$id/edit': typeof PromotionsIdEditRoute
   '/store/currencies/new': typeof StoreCurrenciesNewRoute
   '/store/keys/new': typeof StoreKeysNewRoute
@@ -748,7 +775,10 @@ export interface FileRouteTypes {
     | '/fulfilment/shipping-options/$id'
     | '/fulfilment/shipping-profiles/$id'
     | '/pricing/price-lists/$id'
+    | '/products/$id/attributes'
     | '/products/$id/edit'
+    | '/products/$id/media'
+    | '/products/$id/organisation'
     | '/promotions/$id/edit'
     | '/store/currencies/new'
     | '/store/keys/new'
@@ -817,7 +847,10 @@ export interface FileRouteTypes {
     | '/fulfilment/shipping-options/$id'
     | '/fulfilment/shipping-profiles/$id'
     | '/pricing/price-lists/$id'
+    | '/products/$id/attributes'
     | '/products/$id/edit'
+    | '/products/$id/media'
+    | '/products/$id/organisation'
     | '/promotions/$id/edit'
     | '/store/currencies/new'
     | '/store/keys/new'
@@ -893,7 +926,10 @@ export interface FileRouteTypes {
     | '/fulfilment_/shipping-options/$id'
     | '/fulfilment_/shipping-profiles/$id'
     | '/pricing_/price-lists/$id'
+    | '/products_/$id/attributes'
     | '/products_/$id/edit'
+    | '/products_/$id/media'
+    | '/products_/$id/organisation'
     | '/promotions_/$id/edit'
     | '/store/currencies/new'
     | '/store/keys/new'
@@ -1383,11 +1419,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PricingPriceListsIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/products_/$id/attributes': {
+      id: '/products_/$id/attributes'
+      path: '/attributes'
+      fullPath: '/products/$id/attributes'
+      preLoaderRoute: typeof ProductsIdAttributesRouteImport
+      parentRoute: typeof ProductsIdRoute
+    }
     '/products_/$id/edit': {
       id: '/products_/$id/edit'
       path: '/edit'
       fullPath: '/products/$id/edit'
       preLoaderRoute: typeof ProductsIdEditRouteImport
+      parentRoute: typeof ProductsIdRoute
+    }
+    '/products_/$id/media': {
+      id: '/products_/$id/media'
+      path: '/media'
+      fullPath: '/products/$id/media'
+      preLoaderRoute: typeof ProductsIdMediaRouteImport
+      parentRoute: typeof ProductsIdRoute
+    }
+    '/products_/$id/organisation': {
+      id: '/products_/$id/organisation'
+      path: '/organisation'
+      fullPath: '/products/$id/organisation'
+      preLoaderRoute: typeof ProductsIdOrganisationRouteImport
       parentRoute: typeof ProductsIdRoute
     }
     '/promotions_/$id/edit': {
@@ -1670,11 +1727,17 @@ const CustomersIdRouteWithChildren = CustomersIdRoute._addFileChildren(
 )
 
 interface ProductsIdRouteChildren {
+  ProductsIdAttributesRoute: typeof ProductsIdAttributesRoute
   ProductsIdEditRoute: typeof ProductsIdEditRoute
+  ProductsIdMediaRoute: typeof ProductsIdMediaRoute
+  ProductsIdOrganisationRoute: typeof ProductsIdOrganisationRoute
 }
 
 const ProductsIdRouteChildren: ProductsIdRouteChildren = {
+  ProductsIdAttributesRoute: ProductsIdAttributesRoute,
   ProductsIdEditRoute: ProductsIdEditRoute,
+  ProductsIdMediaRoute: ProductsIdMediaRoute,
+  ProductsIdOrganisationRoute: ProductsIdOrganisationRoute,
 }
 
 const ProductsIdRouteWithChildren = ProductsIdRoute._addFileChildren(

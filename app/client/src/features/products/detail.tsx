@@ -136,7 +136,26 @@ export function ProductDetail({
             }
             side={
               <>
-                <Section title="Organisation">
+                <Section
+                  title="Organisation"
+                  actions={
+                    <ActionMenu
+                      groups={[
+                        [
+                          {
+                            label: "Edit",
+                            render: (
+                              <Link
+                                to="/products/$id/organisation"
+                                params={{ id: item.id }}
+                              />
+                            ),
+                          },
+                        ],
+                      ]}
+                    />
+                  }
+                >
                   <SectionRows>
                     <SectionRow
                       label="Product type"
@@ -150,13 +169,52 @@ export function ProductDetail({
                   </SectionRows>
                 </Section>
 
-                <Section title="Media">
+                <Section
+                  title="Media"
+                  actions={
+                    <ActionMenu
+                      groups={[
+                        [
+                          {
+                            label: "Edit",
+                            render: (
+                              <Link
+                                to="/products/$id/media"
+                                params={{ id: item.id }}
+                              />
+                            ),
+                          },
+                        ],
+                      ]}
+                    />
+                  }
+                >
                   <SectionRows>
                     <SectionRow label="Thumbnail" value={item.thumbnail_url} />
                   </SectionRows>
                 </Section>
 
-                <Section title="Shipping">
+                <Section
+                  title="Shipping"
+                  description="What a carrier needs to quote, and what customs needs to let it through."
+                  actions={
+                    <ActionMenu
+                      groups={[
+                        [
+                          {
+                            label: "Edit",
+                            render: (
+                              <Link
+                                to="/products/$id/attributes"
+                                params={{ id: item.id }}
+                              />
+                            ),
+                          },
+                        ],
+                      ]}
+                    />
+                  }
+                >
                   <SectionRows>
                     <SectionRow label="Weight" value={item.weight} />
                     <SectionRow label="Length" value={item.length} />

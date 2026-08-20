@@ -41,11 +41,19 @@ RFC 4180 answers all three the same way and that is the whole of what is
 there. Round-tripped against the real code — quotes, commas, an embedded
 newline, CRLF from a spreadsheet, and a file that is only a header.
 
-**A section can be read and not changed.** A record's page is a stack of
-sections, and only the one carrying the fields `PATCH` accepts has an action
-on it. That is the API's shape rather than a decision here: there is one
-write route per record, not one per part of it, so a product's media and its
-organisation cannot be saved apart the way an established platform's can.
+**Only the product's page has section editors.** A section that can be
+changed has its own address and its own drawer — `/products/$id/organisation`
+is one form, not a tab of a big one — and that is what keeps a save small
+enough to describe: an operator who changed the origin country did not also
+submit the title.
+
+That was written here as impossible once, on the reasoning that the API has
+one write route per record rather than one per part of it. The reasoning was
+wrong: `PATCH /admin/products/{id}` takes every field as an `Option`, so a
+form that sends three of them leaves the rest alone — which is what an
+established platform's per-section drawers do too. Every other record's page
+still has one editor, and that is now a thing to finish rather than a thing
+the API prevents.
 
 **Mountable in the parts that talk, not yet in the parts that route.** No
 screen reaches for a global any more: the API address, the token, what to do
