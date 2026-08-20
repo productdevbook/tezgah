@@ -34,11 +34,16 @@ const STORE_SCHEME: &str = "publishableKey";
 /// A back office's token. tezgah does not issue it; the host's authorizer
 /// reads it and answers.
 const ADMIN_SCHEME: &str = "adminBearer";
+/// A signature over the exact body. Which header carries it and how it is
+/// computed are the host's, because the secret is the host's — tezgah says
+/// only that something has to be checked before the body is believed.
+const WEBHOOK_SCHEME: &str = "providerSignature";
 
 fn scheme(surface: Surface) -> &'static str {
     match surface {
         Surface::Store => STORE_SCHEME,
         Surface::Admin => ADMIN_SCHEME,
+        Surface::Webhook => WEBHOOK_SCHEME,
     }
 }
 
@@ -933,6 +938,21 @@ static BODIES: &[Body] = &[
         response: None,
     },
     Body {
+        operation_id: "postWebhooksPaymentsByProvider",
+        request: Some(schema_of::<admin_order::ProviderCallback>),
+        response: Some(schema_of::<admin_order::CallbackView>),
+    },
+    Body {
+        operation_id: "getAdminPaymentWebhooks",
+        request: None,
+        response: Some(page_of::<admin_order::PendingCallbackView>),
+    },
+    Body {
+        operation_id: "postAdminPaymentWebhooksByIdProcessed",
+        request: None,
+        response: None,
+    },
+    Body {
         operation_id: "postAdminPrices",
         request: Some(schema_of::<admin_catalogue::AddPrice>),
         response: Some(schema_of::<admin_catalogue::PriceView>),
@@ -1437,6 +1457,12 @@ pub fn document() -> Value {
                     "type": "http",
                     "scheme": "bearer",
                     "description": "A back office's token. tezgah does not issue it; the host's authorizer reads it.",
+                },
+                WEBHOOK_SCHEME: {
+                    "type": "apiKey",
+                    "in": "header",
+                    "name": "x-provider-signature",
+                    "description": "A signature over the exact body, checked by the host against the secret the provider was configured with. tezgah never sees the secret; the header's name is the host's own and this is what the binary in app/server reads.",
                 },
             },
             "schemas": components,

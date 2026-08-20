@@ -110,12 +110,20 @@ and the wrong shape for a back office, which wants to say "1–50 of 41,309".
 A count is a second, cheaper question (`count(*)` under the same filter,
 answered once and cached by the caller), not a change to how paging works.
 
-**No route accepts a provider's callback.** `payment::record_webhook` is
-written, tested, and stores `(provider, event_id)` uniquely so a redelivery
-lands once — and nothing in `src/api/` declares a path for it. Any payment
-confirmed asynchronously (3-D Secure, a hosted form, a bank transfer) has
-nowhere to be confirmed *to*. The library should declare the route; the host
-supplies the signature check, because the secret is the host's.
+**A provider's callback is received, and nothing acts on it.**
+`POST /webhooks/payments/{provider}` is declared on its own surface —
+`Surface::Webhook`, because neither a shopper's key nor a back office's token
+is what authenticates it — and `app/server` mounts it only when a secret was
+configured, checking a signature over the exact bytes before the body is
+believed. A redelivery lands once, against the unique `(provider, event_id)`.
+
+What is left is the second step. Recording is all the route does: capturing,
+moving an order's state, anything that follows from what the provider *said*
+is provider-specific mapping, and `GET /admin/payment-webhooks` hands back
+what has arrived and not been acted on. That split is deliberate — the row is
+durable before anything acts, so a crash between the two resumes rather than
+loses — but until something acts, an asynchronously confirmed payment is
+written down rather than applied.
 
 **A resource whose owner is discovered by loading it is judged after the
 load.** 89 routes answer `not_found` to a caller who would have been denied,
@@ -206,7 +214,7 @@ notification and a password-reset link cannot exist, and a product image can
 only be a URL somebody else hosts. A shop can reach mail through the webhook
 today; that it has to is the gap.
 
-**113 of 483 declared routes are bound.** The panel draws 228. The difference
+**116 of 486 declared routes are bound.** The panel draws 228. The difference
 is not a mistake — each binding is written by hand, deliberately — but it does
 mean the panel and the binary disagree about what the product is, and the
 number will not close by hand at that rate. Either the route table grows a

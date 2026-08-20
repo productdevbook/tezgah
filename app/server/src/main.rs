@@ -165,6 +165,14 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         (false, true) => println!("admin surface bound: {operators} operator account(s)"),
     }
 
+    let webhook_secret: Option<Arc<str>> = config.webhook_secret.as_deref().map(Arc::from);
+    if webhook_secret.is_none() {
+        println!(
+            "payment callbacks not received: TEZGAH_PAYMENT_WEBHOOK_SECRET is unset — \
+             a provider confirming asynchronously has nowhere to confirm to"
+        );
+    }
+
     let state = http::AppState {
         pool,
         host,
@@ -172,6 +180,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         scope,
         admin_token,
         has_operators,
+        webhook_secret,
     };
 
     let (router, bound) = http::router(state);

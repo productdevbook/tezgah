@@ -45,6 +45,7 @@ naming what is wrong, rather than on the first request that needed a pool.
 | `TEZGAH_CURRENCY_EXPONENT` | no | `2` | this shop's one currency's decimal places, for the payment provider wrapper |
 | `TEZGAH_EVENT_WEBHOOK` | no | unset | where an outbox row is posted; unset leaves every event written and unsent — see "Events leave the building" |
 | `TEZGAH_EVENT_SECRET` | with the above | unset | signs the body. Startup fails if a webhook is set without one |
+| `TEZGAH_PAYMENT_WEBHOOK_SECRET` | no | unset | the secret a payment provider's callback is signed with; unset leaves that route unmounted — see "A provider calls back" |
 
 Configuration comes from the environment and nowhere else: no config file
 format, because a container is not handed one separately from the
@@ -125,7 +126,7 @@ asks, and every one of those paths already refuses an unauthorised caller on
 its own; a description that needed protecting would mean the protection *was*
 the description.
 
-Neither counts against the 483: they describe them.
+Neither counts against the 486: they describe them.
 
 **It is thinner than it looks.** The document declares every operation and, for
 most of them, no request or response body at all — `productdevbook/tezgah#202`
@@ -136,7 +137,7 @@ serving.
 
 Not "the process is running" — a probe can already tell that from the socket
 accepting a connection — but "a query against Postgres still answers". Bound
-unconditionally, unauthenticated, and not one of tezgah's own 483 declared
+unconditionally, unauthenticated, and not one of tezgah's own 486 declared
 routes: it belongs to this binary, not to the crate.
 
 ## Who may reach the back office
@@ -180,7 +181,7 @@ find. Startup says which of the two it found.
 | `POST /admin/operators/{id}/password` | no | sets somebody else's — owner only, and ends every session they hold |
 | `PATCH /admin/operators/{id}` | no | changes a role, disables or re-enables one — owner only, never itself, never the last owner |
 
-None of these is one of tezgah's 483 — the crate declares no route for
+None of these is one of tezgah's 486 — the crate declares no route for
 something it does not do — so the startup tally does not count them, the same
 way it does not count `GET /health`.
 
@@ -275,6 +276,49 @@ implements neither and says so where somebody would look for it. Until there
 is a release a dunning retry records exactly that as its reason — still an
 improvement on being marked done by a worker that did nothing.
 
+## A provider calls back
+
+`POST /webhooks/payments/{provider}`, mounted only when
+`TEZGAH_PAYMENT_WEBHOOK_SECRET` is set. Any payment confirmed asynchronously —
+3-D Secure, a hosted form, a bank transfer — is confirmed here.
+
+It is neither the storefront's surface nor the back office's, and the route
+table says so: `Surface::Webhook`. A shopper's publishable key and an
+operator's token both mean nothing to it. What it checks is
+`x-provider-signature` against the body's exact bytes, in constant time, and
+refuses with the same answer whether the header was missing, malformed or
+wrong — an endpoint that replies differently to a near-miss tells whoever is
+guessing that they are close.
+
+    POST /webhooks/payments/demo-bank
+    x-provider-signature: sha256=<hmac of the exact body>
+
+    {"event_id": "evt_…", "event_type": "payment_intent.succeeded",
+     "kind": "authorized", "session_id": null, "amount": null,
+     "payload": { …the provider's own body… }}
+
+`kind` is one of `authorized`, `captured`, `refunded`, `canceled`, `failed` or
+`other`. `payload` is kept verbatim: the audit trail wants what arrived rather
+than what tezgah understood of it.
+
+**A redelivery lands once.** The write is `on conflict do nothing` against the
+unique `(scope, provider, event_id)`, so a second arrival writes no row and
+answers `{"recorded": false}` — acknowledged, and nothing changed. That is the
+whole reason a callback goes through a table rather than straight into a
+capture.
+
+**Recorded, not acted on.** Capturing, moving an order's state, anything that
+follows from what the provider *said* is a second step against a row that is
+now durable, so a crash between the two resumes rather than loses.
+`GET /admin/payment-webhooks` hands back what has arrived and not been acted
+on, and `POST /admin/payment-webhooks/{id}/processed` says one is done. What
+does the acting is still a shop's to write, and `docs/architecture.md` counts
+that as the open half.
+
+Unset secret, unmounted route — a 404 rather than an endpoint that believes
+anybody. A provider retries a 404 and says so on its dashboard; an unsigned
+endpoint accepts a forged capture quietly.
+
 ## Events leave the building
 
 `ports::EventSink` writes a row in `server_event`, inside the transaction of
@@ -318,11 +362,11 @@ a gap, and `docs/architecture.md` counts it as one.
 
 ## Route table
 
-`tezgah::api::routes()` names 483 operations. This binary binds a fraction,
+`tezgah::api::routes()` names 486 operations. This binary binds a fraction,
 by hand, and says exactly how many out loud at startup:
 
 ```
-bound 113 of 483 declared routes
+bound 116 of 486 declared routes
   GET    /store/products
   GET    /store/products/{handle}
   POST   /store/carts
@@ -434,7 +478,7 @@ bound 113 of 483 declared routes
   POST   /admin/variants/{id}/digital-content
   DELETE /admin/digital-content/{id}
   GET    /admin/carts
-  plus GET /health, which is this binary's own and not one of the 483
+  plus GET /health, which is this binary's own and not one of the 486
 ```
 
 That is the count with `ADMIN_TOKEN`, `TEZGAH_STOCK_LOCATION_ID` and
@@ -596,7 +640,7 @@ not already offer:
   rather than 34.
 
 Everything else `tezgah::api` offers stays unbound; wiring in more of the
-483 is a matter of adding a handler in `src/http/admin.rs` or
+486 is a matter of adding a handler in `src/http/admin.rs` or
 `src/http/store.rs`, not a limitation of the approach.
 
 Every one of the eight single-row reads the panel's own screens use asks

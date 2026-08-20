@@ -1,6 +1,6 @@
 //! Signing in, signing out, and the accounts that make either possible.
 //!
-//! This binary's own routes, not part of `tezgah::api::routes()`'s 483 — the
+//! This binary's own routes, not part of `tezgah::api::routes()`'s 486 — the
 //! crate authenticates nobody and this is the host doing it, so the tally
 //! `http::mod` logs at startup does not count them, the same way it does not
 //! count `GET /health`.

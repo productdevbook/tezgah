@@ -109,6 +109,22 @@ pub struct PagingQuery {
     pub limit: Option<u32>,
 }
 
+impl PagingQuery {
+    /// A malformed cursor is an error rather than a first page: a caller
+    /// walking a list with a cursor this crate did not issue should be told,
+    /// not quietly sent back to the beginning.
+    pub fn paging(&self) -> crate::error::Result<crate::page::Paging> {
+        let limit = self.limit.unwrap_or(crate::page::DEFAULT_LIMIT);
+        match self.after.as_deref() {
+            Some(text) => Ok(crate::page::Paging::after(
+                crate::page::Cursor::decode(text)?,
+                limit,
+            )),
+            None => Ok(crate::page::Paging::first(limit)),
+        }
+    }
+}
+
 /// Which surface a route belongs to. The same resource is usually reachable on
 /// both and answers differently: a shopper sees a published product, an
 /// operator sees the draft beside it.
@@ -118,6 +134,11 @@ pub enum Surface {
     Store,
     /// Reached by a back office.
     Admin,
+    /// Reached by an outside system that was told where to send something —
+    /// today, a payment provider's callback. Neither a shopper's key nor a
+    /// back office's token opens it: what authenticates it is a signature the
+    /// host checks, because the secret is the host's and tezgah never sees it.
+    Webhook,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

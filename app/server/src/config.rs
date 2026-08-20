@@ -57,6 +57,9 @@ pub struct Config {
     /// Required whenever `event_webhook` is set: an unsigned webhook is an
     /// endpoint anybody who guesses the URL can post to.
     pub event_secret: Option<String>,
+    /// The secret a payment provider's callback is signed with. Unset leaves
+    /// `POST /webhooks/payments/{provider}` unmounted rather than open.
+    pub webhook_secret: Option<String>,
 }
 
 #[derive(Debug)]
@@ -167,6 +170,17 @@ impl Config {
             ));
         }
 
+        let webhook_secret = match std::env::var("TEZGAH_PAYMENT_WEBHOOK_SECRET") {
+            Ok(secret) if secret.trim().is_empty() => {
+                return Err(err(
+                    "TEZGAH_PAYMENT_WEBHOOK_SECRET is set but empty — unset it to leave the \
+                     callback route unmounted",
+                ));
+            }
+            Ok(secret) => Some(secret),
+            Err(_) => None,
+        };
+
         Ok(Config {
             database_url,
             port,
@@ -177,6 +191,7 @@ impl Config {
             demo_bank_enabled,
             event_webhook,
             event_secret,
+            webhook_secret,
         })
     }
 }
