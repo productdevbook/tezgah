@@ -11,6 +11,15 @@ import * as zod from 'zod';
 /**
  * @summary List inventory items
  */
+export const getAdminInventoryItemsQueryLimitMin = 0;
+
+
+
+export const GetAdminInventoryItemsQueryParams = zod.object({
+  "after": zod.string().nullish(),
+  "limit": zod.int().min(getAdminInventoryItemsQueryLimitMin).nullish()
+})
+
 export const GetAdminInventoryItemsResponse = zod.object({
   "items": zod.array(zod.unknown()),
   "next": zod.string().nullish()

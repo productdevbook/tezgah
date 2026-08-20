@@ -9,6 +9,7 @@ import type {
   CreateInventoryItem,
   CreateStockLocation,
   GetAdminInventoryItems200,
+  GetAdminInventoryItemsParams,
   InventoryItemView,
   InventoryLevelView,
   RenameStockLocation,
@@ -47,20 +48,27 @@ export type getAdminInventoryItemsResponseError = (getAdminInventoryItemsRespons
 
 export type getAdminInventoryItemsResponse = (getAdminInventoryItemsResponseSuccess | getAdminInventoryItemsResponseError)
 
-export const getGetAdminInventoryItemsUrl = () => {
+export const getGetAdminInventoryItemsUrl = (params?: GetAdminInventoryItemsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/admin/inventory-items`
+  return stringifiedParams.length > 0 ? `/admin/inventory-items?${stringifiedParams}` : `/admin/inventory-items`
 }
 
 /**
  * @summary List inventory items
  */
-export const getAdminInventoryItems = async ( options?: Parameters<typeof apiMutator>[1]): Promise<getAdminInventoryItemsResponse> => {
+export const getAdminInventoryItems = async (params?: GetAdminInventoryItemsParams, options?: Parameters<typeof apiMutator>[1]): Promise<getAdminInventoryItemsResponse> => {
 
-  return apiMutator<getAdminInventoryItemsResponse>(getGetAdminInventoryItemsUrl(),
+  return apiMutator<getAdminInventoryItemsResponse>(getGetAdminInventoryItemsUrl(params),
   {
     ...options,
     method: 'GET'

@@ -6,7 +6,9 @@
  * OpenAPI spec version: 0.0.0
  */
 import type {
+  GetAdminCampaignsParams,
   GetAdminPromotions200,
+  GetAdminPromotionsParams,
   PromotionView,
   UpdatePromotion
 } from '../models';
@@ -42,20 +44,27 @@ export type getAdminCampaignsResponseError = (getAdminCampaignsResponse400 | get
 
 export type getAdminCampaignsResponse = (getAdminCampaignsResponseSuccess | getAdminCampaignsResponseError)
 
-export const getGetAdminCampaignsUrl = () => {
+export const getGetAdminCampaignsUrl = (params?: GetAdminCampaignsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/admin/campaigns`
+  return stringifiedParams.length > 0 ? `/admin/campaigns?${stringifiedParams}` : `/admin/campaigns`
 }
 
 /**
  * @summary List campaigns
  */
-export const getAdminCampaigns = async ( options?: Parameters<typeof apiMutator>[1]): Promise<getAdminCampaignsResponse> => {
+export const getAdminCampaigns = async (params?: GetAdminCampaignsParams, options?: Parameters<typeof apiMutator>[1]): Promise<getAdminCampaignsResponse> => {
 
-  return apiMutator<getAdminCampaignsResponse>(getGetAdminCampaignsUrl(),
+  return apiMutator<getAdminCampaignsResponse>(getGetAdminCampaignsUrl(params),
   {
     ...options,
     method: 'GET'
@@ -460,20 +469,27 @@ export type getAdminPromotionsResponseError = (getAdminPromotionsResponse400 | g
 
 export type getAdminPromotionsResponse = (getAdminPromotionsResponseSuccess | getAdminPromotionsResponseError)
 
-export const getGetAdminPromotionsUrl = () => {
+export const getGetAdminPromotionsUrl = (params?: GetAdminPromotionsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/admin/promotions`
+  return stringifiedParams.length > 0 ? `/admin/promotions?${stringifiedParams}` : `/admin/promotions`
 }
 
 /**
  * @summary List promotions
  */
-export const getAdminPromotions = async ( options?: Parameters<typeof apiMutator>[1]): Promise<getAdminPromotionsResponse> => {
+export const getAdminPromotions = async (params?: GetAdminPromotionsParams, options?: Parameters<typeof apiMutator>[1]): Promise<getAdminPromotionsResponse> => {
 
-  return apiMutator<getAdminPromotionsResponse>(getGetAdminPromotionsUrl(),
+  return apiMutator<getAdminPromotionsResponse>(getGetAdminPromotionsUrl(params),
   {
     ...options,
     method: 'GET'

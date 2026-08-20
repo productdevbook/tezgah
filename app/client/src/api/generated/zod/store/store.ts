@@ -64,6 +64,15 @@ export const PostAdminLocalesResponse = zod.unknown()
 /**
  * @summary List the storefront keys, live and revoked
  */
+export const getAdminPublishableApiKeysQueryLimitMin = 0;
+
+
+
+export const GetAdminPublishableApiKeysQueryParams = zod.object({
+  "after": zod.string().nullish(),
+  "limit": zod.int().min(getAdminPublishableApiKeysQueryLimitMin).nullish()
+})
+
 export const GetAdminPublishableApiKeysResponse = zod.unknown()
 
 /**
@@ -131,6 +140,15 @@ export const DeleteAdminPublishableApiKeysByIdSalesChannelsByChannelIdResponse =
 /**
  * @summary List regions
  */
+export const getAdminRegionsQueryLimitMin = 0;
+
+
+
+export const GetAdminRegionsQueryParams = zod.object({
+  "after": zod.string().nullish(),
+  "limit": zod.int().min(getAdminRegionsQueryLimitMin).nullish()
+})
+
 export const GetAdminRegionsResponse = zod.object({
   "items": zod.array(zod.unknown()),
   "next": zod.string().nullish()
@@ -220,6 +238,15 @@ export const GetAdminRegionsByIdCountriesParams = zod.object({
   "id": zod.string()
 })
 
+export const getAdminRegionsByIdCountriesQueryLimitMin = 0;
+
+
+
+export const GetAdminRegionsByIdCountriesQueryParams = zod.object({
+  "after": zod.string().nullish(),
+  "limit": zod.int().min(getAdminRegionsByIdCountriesQueryLimitMin).nullish()
+})
+
 export const GetAdminRegionsByIdCountriesResponse = zod.unknown()
 
 /**
@@ -244,6 +271,15 @@ export const DeleteAdminRegionsByIdCountriesByCountryCodeResponse = zod.unknown(
 /**
  * @summary List sales channels
  */
+export const getAdminSalesChannelsQueryLimitMin = 0;
+
+
+
+export const GetAdminSalesChannelsQueryParams = zod.object({
+  "after": zod.string().nullish(),
+  "limit": zod.int().min(getAdminSalesChannelsQueryLimitMin).nullish()
+})
+
 export const GetAdminSalesChannelsResponse = zod.object({
   "items": zod.array(zod.unknown()),
   "next": zod.string().nullish()

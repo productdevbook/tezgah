@@ -9,6 +9,7 @@ import type {
   CartCreditView,
   GetAdminGiftCards200,
   GetAdminGiftCardsByIdTransactions200,
+  GetAdminGiftCardsParams,
   GetAdminStoreCreditsByIdTransactions200,
   GiftCardView,
   StoreCreditView
@@ -149,20 +150,27 @@ export type getAdminGiftCardsResponseError = (getAdminGiftCardsResponse400 | get
 
 export type getAdminGiftCardsResponse = (getAdminGiftCardsResponseSuccess | getAdminGiftCardsResponseError)
 
-export const getGetAdminGiftCardsUrl = () => {
+export const getGetAdminGiftCardsUrl = (params?: GetAdminGiftCardsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/admin/gift-cards`
+  return stringifiedParams.length > 0 ? `/admin/gift-cards?${stringifiedParams}` : `/admin/gift-cards`
 }
 
 /**
  * @summary List gift cards
  */
-export const getAdminGiftCards = async ( options?: Parameters<typeof apiMutator>[1]): Promise<getAdminGiftCardsResponse> => {
+export const getAdminGiftCards = async (params?: GetAdminGiftCardsParams, options?: Parameters<typeof apiMutator>[1]): Promise<getAdminGiftCardsResponse> => {
 
-  return apiMutator<getAdminGiftCardsResponse>(getGetAdminGiftCardsUrl(),
+  return apiMutator<getAdminGiftCardsResponse>(getGetAdminGiftCardsUrl(params),
   {
     ...options,
     method: 'GET'

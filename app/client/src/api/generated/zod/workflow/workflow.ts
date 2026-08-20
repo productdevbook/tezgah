@@ -27,6 +27,16 @@ export const GetAdminWorkflowDeadLettersResponse = zod.object({
 /**
  * @summary List workflow runs, optionally in one state
  */
+export const getAdminWorkflowsExecutionsQueryLimitMin = 0;
+
+
+
+export const GetAdminWorkflowsExecutionsQueryParams = zod.object({
+  "after": zod.string().nullish(),
+  "limit": zod.int().min(getAdminWorkflowsExecutionsQueryLimitMin).nullish(),
+  "state": zod.string().nullish()
+})
+
 export const GetAdminWorkflowsExecutionsResponse = zod.object({
   "items": zod.array(zod.unknown()),
   "next": zod.string().nullish()

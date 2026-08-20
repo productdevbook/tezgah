@@ -88,6 +88,16 @@ export const DeleteAdminTaxIdsByIdResponse = zod.unknown()
 /**
  * @summary List tax rates, optionally within one region
  */
+export const getAdminTaxRatesQueryLimitMin = 0;
+
+
+
+export const GetAdminTaxRatesQueryParams = zod.object({
+  "after": zod.string().nullish(),
+  "limit": zod.int().min(getAdminTaxRatesQueryLimitMin).nullish(),
+  "tax_region_id": zod.union([zod.uuid().describe('Identifies one tax region.'),zod.null()]).optional()
+})
+
 export const getAdminTaxRatesResponseTwoItemsItemRateRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
 
 
@@ -188,6 +198,15 @@ export const DeleteAdminTaxRatesByIdRulesByRuleIdResponse = zod.unknown()
 /**
  * @summary List tax regions
  */
+export const getAdminTaxRegionsQueryLimitMin = 0;
+
+
+
+export const GetAdminTaxRegionsQueryParams = zod.object({
+  "after": zod.string().nullish(),
+  "limit": zod.int().min(getAdminTaxRegionsQueryLimitMin).nullish()
+})
+
 export const GetAdminTaxRegionsResponse = zod.object({
   "items": zod.array(zod.unknown()),
   "next": zod.string().nullish()

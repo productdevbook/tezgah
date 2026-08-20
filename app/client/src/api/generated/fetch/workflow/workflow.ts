@@ -8,6 +8,7 @@
 import type {
   GetAdminWorkflowDeadLetters200,
   GetAdminWorkflowsExecutions200,
+  GetAdminWorkflowsExecutionsParams,
   WorkflowRunView,
   WorkflowStepView
 } from '../models';
@@ -95,20 +96,27 @@ export type getAdminWorkflowsExecutionsResponseError = (getAdminWorkflowsExecuti
 
 export type getAdminWorkflowsExecutionsResponse = (getAdminWorkflowsExecutionsResponseSuccess | getAdminWorkflowsExecutionsResponseError)
 
-export const getGetAdminWorkflowsExecutionsUrl = () => {
+export const getGetAdminWorkflowsExecutionsUrl = (params?: GetAdminWorkflowsExecutionsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/admin/workflows-executions`
+  return stringifiedParams.length > 0 ? `/admin/workflows-executions?${stringifiedParams}` : `/admin/workflows-executions`
 }
 
 /**
  * @summary List workflow runs, optionally in one state
  */
-export const getAdminWorkflowsExecutions = async ( options?: Parameters<typeof apiMutator>[1]): Promise<getAdminWorkflowsExecutionsResponse> => {
+export const getAdminWorkflowsExecutions = async (params?: GetAdminWorkflowsExecutionsParams, options?: Parameters<typeof apiMutator>[1]): Promise<getAdminWorkflowsExecutionsResponse> => {
 
-  return apiMutator<getAdminWorkflowsExecutionsResponse>(getGetAdminWorkflowsExecutionsUrl(),
+  return apiMutator<getAdminWorkflowsExecutionsResponse>(getGetAdminWorkflowsExecutionsUrl(params),
   {
     ...options,
     method: 'GET'

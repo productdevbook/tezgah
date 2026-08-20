@@ -8,7 +8,9 @@
 import type {
   ExemptionView,
   GetAdminTaxRates200,
+  GetAdminTaxRatesParams,
   GetAdminTaxRegions200,
+  GetAdminTaxRegionsParams,
   RegistrationView,
   TaxIdView,
   TaxRateRuleView,
@@ -359,20 +361,27 @@ export type getAdminTaxRatesResponseError = (getAdminTaxRatesResponse400 | getAd
 
 export type getAdminTaxRatesResponse = (getAdminTaxRatesResponseSuccess | getAdminTaxRatesResponseError)
 
-export const getGetAdminTaxRatesUrl = () => {
+export const getGetAdminTaxRatesUrl = (params?: GetAdminTaxRatesParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/admin/tax-rates`
+  return stringifiedParams.length > 0 ? `/admin/tax-rates?${stringifiedParams}` : `/admin/tax-rates`
 }
 
 /**
  * @summary List tax rates, optionally within one region
  */
-export const getAdminTaxRates = async ( options?: Parameters<typeof apiMutator>[1]): Promise<getAdminTaxRatesResponse> => {
+export const getAdminTaxRates = async (params?: GetAdminTaxRatesParams, options?: Parameters<typeof apiMutator>[1]): Promise<getAdminTaxRatesResponse> => {
 
-  return apiMutator<getAdminTaxRatesResponse>(getGetAdminTaxRatesUrl(),
+  return apiMutator<getAdminTaxRatesResponse>(getGetAdminTaxRatesUrl(params),
   {
     ...options,
     method: 'GET'
@@ -777,20 +786,27 @@ export type getAdminTaxRegionsResponseError = (getAdminTaxRegionsResponse400 | g
 
 export type getAdminTaxRegionsResponse = (getAdminTaxRegionsResponseSuccess | getAdminTaxRegionsResponseError)
 
-export const getGetAdminTaxRegionsUrl = () => {
+export const getGetAdminTaxRegionsUrl = (params?: GetAdminTaxRegionsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/admin/tax-regions`
+  return stringifiedParams.length > 0 ? `/admin/tax-regions?${stringifiedParams}` : `/admin/tax-regions`
 }
 
 /**
  * @summary List tax regions
  */
-export const getAdminTaxRegions = async ( options?: Parameters<typeof apiMutator>[1]): Promise<getAdminTaxRegionsResponse> => {
+export const getAdminTaxRegions = async (params?: GetAdminTaxRegionsParams, options?: Parameters<typeof apiMutator>[1]): Promise<getAdminTaxRegionsResponse> => {
 
-  return apiMutator<getAdminTaxRegionsResponse>(getGetAdminTaxRegionsUrl(),
+  return apiMutator<getAdminTaxRegionsResponse>(getGetAdminTaxRegionsUrl(params),
   {
     ...options,
     method: 'GET'

@@ -7,7 +7,10 @@
  */
 import type {
   CustomerView,
+  GetAdminCustomerGroupsByIdCustomersParams,
+  GetAdminCustomerGroupsParams,
   GetAdminCustomers200,
+  GetAdminCustomersByIdAddressesParams,
   GetAdminCustomersParams,
   UpdateCustomer
 } from '../models';
@@ -43,20 +46,27 @@ export type getAdminCustomerGroupsResponseError = (getAdminCustomerGroupsRespons
 
 export type getAdminCustomerGroupsResponse = (getAdminCustomerGroupsResponseSuccess | getAdminCustomerGroupsResponseError)
 
-export const getGetAdminCustomerGroupsUrl = () => {
+export const getGetAdminCustomerGroupsUrl = (params?: GetAdminCustomerGroupsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/admin/customer-groups`
+  return stringifiedParams.length > 0 ? `/admin/customer-groups?${stringifiedParams}` : `/admin/customer-groups`
 }
 
 /**
  * @summary List customer groups
  */
-export const getAdminCustomerGroups = async ( options?: Parameters<typeof apiMutator>[1]): Promise<getAdminCustomerGroupsResponse> => {
+export const getAdminCustomerGroups = async (params?: GetAdminCustomerGroupsParams, options?: Parameters<typeof apiMutator>[1]): Promise<getAdminCustomerGroupsResponse> => {
 
-  return apiMutator<getAdminCustomerGroupsResponse>(getGetAdminCustomerGroupsUrl(),
+  return apiMutator<getAdminCustomerGroupsResponse>(getGetAdminCustomerGroupsUrl(params),
   {
     ...options,
     method: 'GET'
@@ -251,20 +261,29 @@ export type getAdminCustomerGroupsByIdCustomersResponseError = (getAdminCustomer
 
 export type getAdminCustomerGroupsByIdCustomersResponse = (getAdminCustomerGroupsByIdCustomersResponseSuccess | getAdminCustomerGroupsByIdCustomersResponseError)
 
-export const getGetAdminCustomerGroupsByIdCustomersUrl = (id: string,) => {
+export const getGetAdminCustomerGroupsByIdCustomersUrl = (id: string,
+    params?: GetAdminCustomerGroupsByIdCustomersParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/admin/customer-groups/${id}/customers`
+  return stringifiedParams.length > 0 ? `/admin/customer-groups/${id}/customers?${stringifiedParams}` : `/admin/customer-groups/${id}/customers`
 }
 
 /**
  * @summary List a group's members
  */
-export const getAdminCustomerGroupsByIdCustomers = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<getAdminCustomerGroupsByIdCustomersResponse> => {
+export const getAdminCustomerGroupsByIdCustomers = async (id: string,
+    params?: GetAdminCustomerGroupsByIdCustomersParams, options?: Parameters<typeof apiMutator>[1]): Promise<getAdminCustomerGroupsByIdCustomersResponse> => {
 
-  return apiMutator<getAdminCustomerGroupsByIdCustomersResponse>(getGetAdminCustomerGroupsByIdCustomersUrl(id),
+  return apiMutator<getAdminCustomerGroupsByIdCustomersResponse>(getGetAdminCustomerGroupsByIdCustomersUrl(id,params),
   {
     ...options,
     method: 'GET'
@@ -677,20 +696,29 @@ export type getAdminCustomersByIdAddressesResponseError = (getAdminCustomersById
 
 export type getAdminCustomersByIdAddressesResponse = (getAdminCustomersByIdAddressesResponseSuccess | getAdminCustomersByIdAddressesResponseError)
 
-export const getGetAdminCustomersByIdAddressesUrl = (id: string,) => {
+export const getGetAdminCustomersByIdAddressesUrl = (id: string,
+    params?: GetAdminCustomersByIdAddressesParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/admin/customers/${id}/addresses`
+  return stringifiedParams.length > 0 ? `/admin/customers/${id}/addresses?${stringifiedParams}` : `/admin/customers/${id}/addresses`
 }
 
 /**
  * @summary List a customer's addresses
  */
-export const getAdminCustomersByIdAddresses = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<getAdminCustomersByIdAddressesResponse> => {
+export const getAdminCustomersByIdAddresses = async (id: string,
+    params?: GetAdminCustomersByIdAddressesParams, options?: Parameters<typeof apiMutator>[1]): Promise<getAdminCustomersByIdAddressesResponse> => {
 
-  return apiMutator<getAdminCustomersByIdAddressesResponse>(getGetAdminCustomersByIdAddressesUrl(id),
+  return apiMutator<getAdminCustomersByIdAddressesResponse>(getGetAdminCustomersByIdAddressesUrl(id,params),
   {
     ...options,
     method: 'GET'

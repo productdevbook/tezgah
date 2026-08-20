@@ -11,6 +11,15 @@ import * as zod from 'zod';
 /**
  * @summary List campaigns
  */
+export const getAdminCampaignsQueryLimitMin = 0;
+
+
+
+export const GetAdminCampaignsQueryParams = zod.object({
+  "after": zod.string().nullish(),
+  "limit": zod.int().min(getAdminCampaignsQueryLimitMin).nullish()
+})
+
 export const GetAdminCampaignsResponse = zod.unknown()
 
 /**
@@ -76,6 +85,15 @@ export const DeleteAdminCampaignsByIdPromotionsByPromotionIdResponse = zod.unkno
 /**
  * @summary List promotions
  */
+export const getAdminPromotionsQueryLimitMin = 0;
+
+
+
+export const GetAdminPromotionsQueryParams = zod.object({
+  "after": zod.string().nullish(),
+  "limit": zod.int().min(getAdminPromotionsQueryLimitMin).nullish()
+})
+
 export const GetAdminPromotionsResponse = zod.object({
   "items": zod.array(zod.unknown()),
   "next": zod.string().nullish()

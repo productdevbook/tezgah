@@ -11,6 +11,15 @@ import * as zod from 'zod';
 /**
  * @summary List collections
  */
+export const getAdminCollectionsQueryLimitMin = 0;
+
+
+
+export const GetAdminCollectionsQueryParams = zod.object({
+  "after": zod.string().nullish(),
+  "limit": zod.int().min(getAdminCollectionsQueryLimitMin).nullish()
+})
+
 export const GetAdminCollectionsResponse = zod.unknown()
 
 /**
@@ -720,6 +729,15 @@ export const GetAdminProductsByIdTranslationsByLocaleResponse = zod.unknown()
  */
 export const GetAdminProductsByIdVariantsParams = zod.object({
   "id": zod.string()
+})
+
+export const getAdminProductsByIdVariantsQueryLimitMin = 0;
+
+
+
+export const GetAdminProductsByIdVariantsQueryParams = zod.object({
+  "after": zod.string().nullish(),
+  "limit": zod.int().min(getAdminProductsByIdVariantsQueryLimitMin).nullish()
 })
 
 export const GetAdminProductsByIdVariantsResponse = zod.unknown()
