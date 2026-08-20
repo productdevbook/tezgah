@@ -257,7 +257,10 @@ impl Search {
 }
 
 /// What a caller asks for.
-#[derive(Debug, Clone, Copy, Default)]
+///
+/// `Clone` and not `Copy`: a cursor carries a key, and a key can be a title —
+/// so a `Paging` owns a `String` and moving one has to be visible.
+#[derive(Debug, Clone, Default)]
 pub struct Paging {
     pub after: Option<Cursor>,
     limit: Option<u32>,
