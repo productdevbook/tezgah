@@ -59,7 +59,7 @@ impl Listing {
 
 /// An amount as it arrives over the wire. Never a float, and the currency is
 /// carried with it so nothing has to guess which shop's money this is.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct MoneyIn {
     pub amount: Decimal,
@@ -72,7 +72,7 @@ impl MoneyIn {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct MoneyView {
     pub amount: Decimal,
     pub currency: String,
@@ -157,7 +157,7 @@ impl From<order::Order> for OrderView {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct LineItemView {
     pub id: LineItemId,
     pub title: String,
@@ -179,7 +179,7 @@ impl From<order::OrderLineItem> for LineItemView {
 }
 
 /// One line at one version, with every quantity that has moved on it.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct OrderItemView {
     pub id: OrderItemId,
     pub order_line_item_id: LineItemId,
@@ -212,7 +212,7 @@ impl From<order::OrderItem> for OrderItemView {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct ShippingMethodView {
     pub id: Uuid,
     pub version: i32,
@@ -233,7 +233,7 @@ impl From<order::OrderShippingMethod> for ShippingMethodView {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct TotalsView {
     pub subtotal: MoneyView,
     pub discount: MoneyView,
@@ -242,7 +242,7 @@ pub struct TotalsView {
     pub total: MoneyView,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct SummaryView {
     pub order_id: OrderId,
     pub version: i32,
@@ -252,7 +252,7 @@ pub struct SummaryView {
 
 /// What the money on an order comes to. Worked out from the transactions
 /// rather than stored, so it cannot drift from them.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct LedgerView {
     pub authorized: MoneyView,
     pub captured: MoneyView,
@@ -275,7 +275,7 @@ impl From<order::Ledger> for LedgerView {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct TransactionView {
     pub id: crate::id::OrderTransactionId,
     pub order_id: OrderId,
@@ -300,7 +300,7 @@ impl From<order::OrderTransaction> for TransactionView {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct ChangeView {
     pub id: OrderChangeId,
     pub order_id: OrderId,
@@ -331,7 +331,7 @@ impl From<order::OrderChange> for ChangeView {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct ChangeActionView {
     pub id: Uuid,
     pub order_change_id: Option<OrderChangeId>,
@@ -363,13 +363,13 @@ impl From<order::OrderChangeAction> for ChangeActionView {
 }
 
 /// A change with its actions, which is the only shape anybody looks at one in.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct ChangeDetailView {
     pub change: ChangeView,
     pub actions: Vec<ChangeActionView>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct ReturnView {
     pub id: ReturnId,
     pub order_id: OrderId,
@@ -404,7 +404,7 @@ impl From<order::Return> for ReturnView {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct ReturnItemView {
     pub id: Uuid,
     pub order_line_item_id: LineItemId,
@@ -429,7 +429,7 @@ impl From<order::ReturnItem> for ReturnItemView {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct ExchangeView {
     pub id: ExchangeId,
     pub order_id: OrderId,
@@ -460,7 +460,7 @@ impl From<order::Exchange> for ExchangeView {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct ClaimView {
     pub id: ClaimId,
     pub order_id: OrderId,
@@ -494,7 +494,7 @@ impl From<order::Claim> for ClaimView {
 /// One line of a claim: what was wrong with it, or what is being sent
 /// instead — [`order::ClaimLine::images`] is what a support agent judges the
 /// damage from.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct ClaimItemView {
     pub id: Uuid,
     pub order_claim_id: ClaimId,
@@ -656,7 +656,7 @@ pub struct ProviderView {
 
 /// A refund reason or a return reason. The two tables differ by a column name
 /// and nothing a caller cares about.
-#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, sqlx::FromRow, schemars::JsonSchema)]
 pub struct ReasonView {
     pub id: Uuid,
     pub code: String,
@@ -1078,7 +1078,7 @@ pub async fn get_order(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: OrderId) -> Result<Or
     Ok(order::get(tx, ctx, id).await?.into())
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct NewLineIn {
     pub variant_id: Option<crate::id::VariantId>,
@@ -1141,7 +1141,7 @@ impl NewLineIn {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct NewShippingIn {
     pub name: String,
@@ -1187,7 +1187,7 @@ fn taxed(rate: Decimal) -> Vec<order::NewTaxLine> {
     vec![order::NewTaxLine::of(rate, "standard", "Standard")]
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateOrder {
     pub currency: String,
@@ -1264,7 +1264,7 @@ pub async fn archive_order(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: OrderId) -> Resul
     move_order(tx, ctx, id, order::OrderStatus::Archived).await
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AddressIn {
     pub company: Option<String>,
@@ -1326,7 +1326,7 @@ pub async fn update_order_billing_address(
     )
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UpdateEmail {
     pub email: String,
@@ -1435,7 +1435,7 @@ pub async fn order_transactions(
     Ok(rows.into_iter().map(TransactionView::from).collect())
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RecordTransaction {
     pub amount: MoneyIn,
@@ -1464,7 +1464,7 @@ pub async fn record_transaction(
     Ok(row.into())
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AttachPaymentCollection {
     pub payment_collection_id: PaymentCollectionId,
@@ -1557,7 +1557,7 @@ pub async fn create_draft_order(
         .into())
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ConvertDraft {
     pub payment_collection_id: PaymentCollectionId,
@@ -1590,7 +1590,7 @@ pub async fn cancel_draft_order(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: OrderId) -> 
 // Edits — the one mechanism, wearing four names
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct OpenEdit {
     pub description: Option<String>,
@@ -1655,7 +1655,7 @@ pub async fn get_order_change(
 }
 
 /// What a caller may ask a change to do to a line.
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ItemAction {
     Add,
@@ -1675,7 +1675,7 @@ impl ItemAction {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AddItemAction {
     pub action: ItemAction,
@@ -1713,7 +1713,7 @@ impl AddItemAction {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AddShippingAction {
     pub name: String,
@@ -1790,7 +1790,7 @@ pub async fn confirm_order_edit(
     Ok(order::confirm_change(tx, ctx, id).await?.into())
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DeclineChange {
     pub reason: Option<String>,
@@ -1885,7 +1885,7 @@ pub async fn decline_draft_edit(
 // Returns
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ReturnLineIn {
     pub order_line_item_id: LineItemId,
@@ -1905,7 +1905,7 @@ impl ReturnLineIn {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RequestReturn {
     pub order_id: OrderId,
@@ -1977,7 +1977,7 @@ pub async fn return_items(
     Ok(rows.into_iter().map(ReturnItemView::from).collect())
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ReceivedLineIn {
     pub order_line_item_id: LineItemId,
@@ -1996,7 +1996,7 @@ impl ReceivedLineIn {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ReceiveReturn {
     pub lines: Vec<ReceivedLineIn>,
@@ -2076,7 +2076,7 @@ async fn drop_parent_action(
     drop_action(tx, ctx, change.id, action_id).await
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct LineQuantity {
     pub order_line_item_id: LineItemId,
@@ -2162,7 +2162,7 @@ pub async fn confirm_return_request(
 // Exchanges
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ExchangeLineIn {
     pub order_line_item_id: LineItemId,
@@ -2170,7 +2170,7 @@ pub struct ExchangeLineIn {
     pub note: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RequestExchange {
     pub order_id: OrderId,
@@ -2374,7 +2374,7 @@ pub async fn confirm_exchange_request(
 // Claims
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ClaimKind {
     Refund,
@@ -2390,7 +2390,7 @@ impl ClaimKind {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ClaimLineIn {
     pub order_line_item_id: LineItemId,
@@ -2415,7 +2415,7 @@ impl ClaimLineIn {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RequestClaim {
     pub order_id: OrderId,
@@ -2914,7 +2914,7 @@ pub async fn create_payment_session(
 // Reasons
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct NewReason {
     pub code: String,
@@ -3027,7 +3027,7 @@ pub async fn create_return_reason(
     .await?)
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ReturnReasonTranslationView {
     pub return_reason_id: Uuid,
     pub locale: String,
@@ -3058,7 +3058,7 @@ pub async fn list_return_reason_translations(
         .collect())
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PutReturnReasonTranslation {
     pub locale: String,
@@ -3092,7 +3092,7 @@ pub async fn remove_return_reason_translation(
     order::remove_return_reason_translation(tx, ctx, return_reason_id, locale).await
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct LocalisedReturnReasonView {
     pub return_reason_id: Uuid,
     pub locale: Option<String>,

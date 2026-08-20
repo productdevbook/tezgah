@@ -25,7 +25,8 @@ use serde_json::{Map, Value, json};
 use crate::page::Page;
 
 use super::{
-    Method, Route, Surface, admin_catalogue, admin_order, admin_rest, payout, routes, subscription,
+    Method, Route, Surface, admin_catalogue, admin_order, admin_rest, agreement, payout, routes,
+    store, subscription,
 };
 
 /// A storefront's key, which pins it to its sales channels.
@@ -136,14 +137,24 @@ struct Body {
 }
 
 /// The payout domain was the pilot for tezgah#202: request and response
-/// bodies both, `Page<T>` used three different ways. What follows it is the
-/// seven domains `client/` actually reads — catalogue, order, inventory,
+/// bodies both, `Page<T>` used three different ways. Next came the seven
+/// domains `client/` actually reads — catalogue, order, inventory,
 /// customer, promotion, subscription, store — each wired for exactly the
 /// view type `client/src/api/views.ts` hand-transcribes, on the list and
-/// single-fetch operations that return it. None of those seven has taken a
-/// request body here yet: nothing `client/` writes to them, so the create
-/// and edit routes still carry no entry, the same as before this module
-/// knew how.
+/// single-fetch operations that return it.
+///
+/// The `order` domain is filled in next, past what `client/` reads: every
+/// operation across `admin_order`, `agreement` and `store` tagged `"order"`
+/// in [`routes`] gets a body here, except the handful that answer `()` —
+/// dropping an action off an open change, say — which have nothing to
+/// schema. `admin_order::OrderView`, `admin_order::ReturnView` and
+/// `admin_order::RequestReturn` share a short name with a distinct
+/// `store::` type of the same purpose but a narrower, customer-facing
+/// shape; `schemars::SchemaGenerator` disambiguates same-generator name
+/// clashes on its own by suffixing the second registration (`OrderView2`),
+/// so the document stays correct, but a reader of `components/schemas`
+/// should not assume `OrderView2` is a typo — it is the storefront's view,
+/// named that only because `OrderView` was taken.
 static BODIES: &[Body] = &[
     Body {
         operation_id: "postAdminCommissionRules",
@@ -261,6 +272,502 @@ static BODIES: &[Body] = &[
         operation_id: "getAdminSalesChannelsById",
         request: None,
         response: Some(schema_of::<admin_rest::SalesChannelView>),
+    },
+    // ==================================================================== order
+    // --------------------------------------------------------------------- orders
+    Body {
+        operation_id: "postAdminOrders",
+        request: Some(schema_of::<admin_order::CreateOrder>),
+        response: Some(schema_of::<admin_order::OrderView>),
+    },
+    Body {
+        operation_id: "postAdminOrdersByIdComplete",
+        request: None,
+        response: Some(schema_of::<admin_order::OrderView>),
+    },
+    Body {
+        operation_id: "postAdminOrdersByIdCancel",
+        request: None,
+        response: Some(schema_of::<admin_order::OrderView>),
+    },
+    Body {
+        operation_id: "postAdminOrdersByIdArchive",
+        request: None,
+        response: Some(schema_of::<admin_order::OrderView>),
+    },
+    Body {
+        operation_id: "patchAdminOrdersByIdShippingAddress",
+        request: Some(schema_of::<admin_order::AddressIn>),
+        response: Some(schema_of::<admin_order::OrderView>),
+    },
+    Body {
+        operation_id: "patchAdminOrdersByIdBillingAddress",
+        request: Some(schema_of::<admin_order::AddressIn>),
+        response: Some(schema_of::<admin_order::OrderView>),
+    },
+    Body {
+        operation_id: "patchAdminOrdersByIdEmail",
+        request: Some(schema_of::<admin_order::UpdateEmail>),
+        response: Some(schema_of::<admin_order::OrderView>),
+    },
+    Body {
+        operation_id: "getAdminOrdersByIdLineItems",
+        request: None,
+        response: Some(schema_of::<Vec<admin_order::LineItemView>>),
+    },
+    Body {
+        operation_id: "getAdminOrdersByIdItems",
+        request: None,
+        response: Some(schema_of::<Vec<admin_order::OrderItemView>>),
+    },
+    Body {
+        operation_id: "getAdminOrdersByIdShippingMethods",
+        request: None,
+        response: Some(schema_of::<Vec<admin_order::ShippingMethodView>>),
+    },
+    Body {
+        operation_id: "getAdminOrdersByIdSummary",
+        request: None,
+        response: Some(schema_of::<admin_order::SummaryView>),
+    },
+    Body {
+        operation_id: "getAdminOrdersByIdTotals",
+        request: None,
+        response: Some(schema_of::<admin_order::TotalsView>),
+    },
+    Body {
+        operation_id: "getAdminOrdersByIdLedger",
+        request: None,
+        response: Some(schema_of::<admin_order::LedgerView>),
+    },
+    Body {
+        operation_id: "getAdminOrdersByIdTransactions",
+        request: None,
+        response: Some(schema_of::<Vec<admin_order::TransactionView>>),
+    },
+    Body {
+        operation_id: "postAdminOrdersByIdTransactions",
+        request: Some(schema_of::<admin_order::RecordTransaction>),
+        response: Some(schema_of::<admin_order::TransactionView>),
+    },
+    Body {
+        operation_id: "postAdminOrdersByIdPaymentCollection",
+        request: Some(schema_of::<admin_order::AttachPaymentCollection>),
+        response: Some(schema_of::<admin_order::OrderView>),
+    },
+    Body {
+        operation_id: "getAdminOrdersByIdChanges",
+        request: None,
+        response: Some(page_of::<admin_order::ChangeView>),
+    },
+    Body {
+        operation_id: "getAdminOrdersByIdReturns",
+        request: None,
+        response: Some(page_of::<admin_order::ReturnView>),
+    },
+    // --------------------------------------------------------------- draft orders
+    Body {
+        operation_id: "getAdminDraftOrders",
+        request: None,
+        response: Some(page_of::<admin_order::OrderView>),
+    },
+    Body {
+        operation_id: "postAdminDraftOrders",
+        request: Some(schema_of::<admin_order::CreateOrder>),
+        response: Some(schema_of::<admin_order::OrderView>),
+    },
+    Body {
+        operation_id: "getAdminDraftOrdersById",
+        request: None,
+        response: Some(schema_of::<admin_order::OrderView>),
+    },
+    Body {
+        operation_id: "deleteAdminDraftOrdersById",
+        request: None,
+        response: Some(schema_of::<admin_order::OrderView>),
+    },
+    Body {
+        operation_id: "postAdminDraftOrdersByIdConvertToOrder",
+        request: Some(schema_of::<admin_order::ConvertDraft>),
+        response: Some(schema_of::<admin_order::OrderView>),
+    },
+    Body {
+        operation_id: "getAdminDraftOrdersByIdEdit",
+        request: None,
+        response: Some(schema_of::<admin_order::ChangeDetailView>),
+    },
+    Body {
+        operation_id: "postAdminDraftOrdersByIdEdit",
+        request: Some(schema_of::<admin_order::OpenEdit>),
+        response: Some(schema_of::<admin_order::ChangeView>),
+    },
+    Body {
+        operation_id: "deleteAdminDraftOrdersByIdEdit",
+        request: Some(schema_of::<admin_order::DeclineChange>),
+        response: Some(schema_of::<admin_order::ChangeView>),
+    },
+    Body {
+        operation_id: "postAdminDraftOrdersByIdEditItems",
+        request: Some(schema_of::<admin_order::AddItemAction>),
+        response: Some(schema_of::<admin_order::ChangeActionView>),
+    },
+    Body {
+        operation_id: "postAdminDraftOrdersByIdEditShippingMethods",
+        request: Some(schema_of::<admin_order::AddShippingAction>),
+        response: Some(schema_of::<admin_order::ChangeActionView>),
+    },
+    Body {
+        operation_id: "postAdminDraftOrdersByIdEditConfirm",
+        request: None,
+        response: Some(schema_of::<admin_order::OrderView>),
+    },
+    // ---------------------------------------------------------------- order edits
+    Body {
+        operation_id: "getAdminOrdersByIdOrderEdits",
+        request: None,
+        response: Some(page_of::<admin_order::ChangeView>),
+    },
+    Body {
+        operation_id: "postAdminOrdersByIdOrderEdits",
+        request: Some(schema_of::<admin_order::OpenEdit>),
+        response: Some(schema_of::<admin_order::ChangeView>),
+    },
+    Body {
+        operation_id: "getAdminOrderEditsById",
+        request: None,
+        response: Some(schema_of::<admin_order::ChangeDetailView>),
+    },
+    Body {
+        operation_id: "deleteAdminOrderEditsById",
+        request: Some(schema_of::<admin_order::DeclineChange>),
+        response: Some(schema_of::<admin_order::ChangeView>),
+    },
+    Body {
+        operation_id: "postAdminOrderEditsByIdItems",
+        request: Some(schema_of::<admin_order::AddItemAction>),
+        response: Some(schema_of::<admin_order::ChangeActionView>),
+    },
+    Body {
+        operation_id: "postAdminOrderEditsByIdShippingMethod",
+        request: Some(schema_of::<admin_order::AddShippingAction>),
+        response: Some(schema_of::<admin_order::ChangeActionView>),
+    },
+    Body {
+        operation_id: "postAdminOrderEditsByIdConfirm",
+        request: None,
+        response: Some(schema_of::<admin_order::OrderView>),
+    },
+    // -------------------------------------------------------------- order changes
+    Body {
+        operation_id: "getAdminOrderChangesById",
+        request: None,
+        response: Some(schema_of::<admin_order::ChangeDetailView>),
+    },
+    // -------------------------------------------------------------------- returns
+    Body {
+        operation_id: "getAdminReturns",
+        request: None,
+        response: Some(page_of::<admin_order::ReturnView>),
+    },
+    Body {
+        operation_id: "postAdminReturns",
+        request: Some(schema_of::<admin_order::RequestReturn>),
+        response: Some(schema_of::<admin_order::ReturnView>),
+    },
+    Body {
+        operation_id: "getAdminReturnsById",
+        request: None,
+        response: Some(schema_of::<admin_order::ReturnView>),
+    },
+    Body {
+        operation_id: "getAdminReturnsByIdItems",
+        request: None,
+        response: Some(schema_of::<Vec<admin_order::ReturnItemView>>),
+    },
+    Body {
+        operation_id: "postAdminReturnsByIdReceive",
+        request: Some(schema_of::<admin_order::ReceiveReturn>),
+        response: Some(schema_of::<admin_order::ReturnView>),
+    },
+    Body {
+        operation_id: "postAdminReturnsByIdDismissItems",
+        request: Some(schema_of::<admin_order::ReceiveReturn>),
+        response: Some(schema_of::<admin_order::ReturnView>),
+    },
+    Body {
+        operation_id: "postAdminReturnsByIdCancel",
+        request: None,
+        response: Some(schema_of::<admin_order::ReturnView>),
+    },
+    Body {
+        operation_id: "postAdminReturnsByIdRequestItems",
+        request: Some(schema_of::<admin_order::LineQuantity>),
+        response: Some(schema_of::<admin_order::ChangeActionView>),
+    },
+    Body {
+        operation_id: "postAdminReturnsByIdReceiveItems",
+        request: Some(schema_of::<admin_order::LineQuantity>),
+        response: Some(schema_of::<admin_order::ChangeActionView>),
+    },
+    Body {
+        operation_id: "postAdminReturnsByIdShippingMethod",
+        request: Some(schema_of::<admin_order::AddShippingAction>),
+        response: Some(schema_of::<admin_order::ChangeActionView>),
+    },
+    Body {
+        operation_id: "postAdminReturnsByIdRequest",
+        request: None,
+        response: Some(schema_of::<admin_order::ReturnView>),
+    },
+    // ------------------------------------------------------------------ exchanges
+    Body {
+        operation_id: "getAdminExchanges",
+        request: None,
+        response: Some(page_of::<admin_order::ExchangeView>),
+    },
+    Body {
+        operation_id: "postAdminExchanges",
+        request: Some(schema_of::<admin_order::RequestExchange>),
+        response: Some(schema_of::<admin_order::ExchangeView>),
+    },
+    Body {
+        operation_id: "getAdminExchangesById",
+        request: None,
+        response: Some(schema_of::<admin_order::ExchangeView>),
+    },
+    Body {
+        operation_id: "getAdminExchangesByIdItems",
+        request: None,
+        response: Some(schema_of::<admin_order::ChangeDetailView>),
+    },
+    Body {
+        operation_id: "postAdminExchangesByIdCancel",
+        request: None,
+        response: Some(schema_of::<admin_order::ExchangeView>),
+    },
+    Body {
+        operation_id: "postAdminExchangesByIdInboundItems",
+        request: Some(schema_of::<admin_order::LineQuantity>),
+        response: Some(schema_of::<admin_order::ChangeActionView>),
+    },
+    Body {
+        operation_id: "postAdminExchangesByIdInboundShippingMethod",
+        request: Some(schema_of::<admin_order::AddShippingAction>),
+        response: Some(schema_of::<admin_order::ChangeActionView>),
+    },
+    Body {
+        operation_id: "postAdminExchangesByIdOutboundItems",
+        request: Some(schema_of::<admin_order::LineQuantity>),
+        response: Some(schema_of::<admin_order::ChangeActionView>),
+    },
+    Body {
+        operation_id: "postAdminExchangesByIdOutboundShippingMethod",
+        request: Some(schema_of::<admin_order::AddShippingAction>),
+        response: Some(schema_of::<admin_order::ChangeActionView>),
+    },
+    Body {
+        operation_id: "postAdminExchangesByIdRequest",
+        request: None,
+        response: Some(schema_of::<admin_order::ExchangeView>),
+    },
+    // --------------------------------------------------------------------- claims
+    Body {
+        operation_id: "getAdminClaims",
+        request: None,
+        response: Some(page_of::<admin_order::ClaimView>),
+    },
+    Body {
+        operation_id: "postAdminClaims",
+        request: Some(schema_of::<admin_order::RequestClaim>),
+        response: Some(schema_of::<admin_order::ClaimView>),
+    },
+    Body {
+        operation_id: "getAdminClaimsById",
+        request: None,
+        response: Some(schema_of::<admin_order::ClaimView>),
+    },
+    Body {
+        operation_id: "getAdminClaimsByIdLines",
+        request: None,
+        response: Some(schema_of::<Vec<admin_order::ClaimItemView>>),
+    },
+    Body {
+        operation_id: "getAdminClaimsByIdItems",
+        request: None,
+        response: Some(schema_of::<admin_order::ChangeDetailView>),
+    },
+    Body {
+        operation_id: "postAdminClaimsByIdCancel",
+        request: None,
+        response: Some(schema_of::<admin_order::ClaimView>),
+    },
+    Body {
+        operation_id: "postAdminClaimsByIdClaimItems",
+        request: Some(schema_of::<admin_order::LineQuantity>),
+        response: Some(schema_of::<admin_order::ChangeActionView>),
+    },
+    Body {
+        operation_id: "postAdminClaimsByIdInboundItems",
+        request: Some(schema_of::<admin_order::LineQuantity>),
+        response: Some(schema_of::<admin_order::ChangeActionView>),
+    },
+    Body {
+        operation_id: "postAdminClaimsByIdInboundShippingMethod",
+        request: Some(schema_of::<admin_order::AddShippingAction>),
+        response: Some(schema_of::<admin_order::ChangeActionView>),
+    },
+    Body {
+        operation_id: "postAdminClaimsByIdOutboundItems",
+        request: Some(schema_of::<admin_order::LineQuantity>),
+        response: Some(schema_of::<admin_order::ChangeActionView>),
+    },
+    Body {
+        operation_id: "postAdminClaimsByIdOutboundShippingMethod",
+        request: Some(schema_of::<admin_order::AddShippingAction>),
+        response: Some(schema_of::<admin_order::ChangeActionView>),
+    },
+    Body {
+        operation_id: "postAdminClaimsByIdRequest",
+        request: None,
+        response: Some(schema_of::<admin_order::ClaimView>),
+    },
+    // ------------------------------------------------------------- return reasons
+    Body {
+        operation_id: "getAdminReturnReasons",
+        request: None,
+        response: Some(page_of::<admin_order::ReasonView>),
+    },
+    Body {
+        operation_id: "postAdminReturnReasons",
+        request: Some(schema_of::<admin_order::NewReason>),
+        response: Some(schema_of::<admin_order::ReasonView>),
+    },
+    Body {
+        operation_id: "getAdminReturnReasonsByIdTranslations",
+        request: None,
+        response: Some(schema_of::<Vec<admin_order::ReturnReasonTranslationView>>),
+    },
+    Body {
+        operation_id: "postAdminReturnReasonsByIdTranslations",
+        request: Some(schema_of::<admin_order::PutReturnReasonTranslation>),
+        response: Some(schema_of::<admin_order::ReturnReasonTranslationView>),
+    },
+    Body {
+        operation_id: "getAdminReturnReasonsByIdTranslationsByLocale",
+        request: None,
+        response: Some(schema_of::<admin_order::LocalisedReturnReasonView>),
+    },
+    // ----------------------------------------------------------------- agreements
+    Body {
+        operation_id: "postAdminAgreements",
+        request: Some(schema_of::<agreement::PublishAgreement>),
+        response: Some(schema_of::<agreement::AgreementVersionView>),
+    },
+    Body {
+        operation_id: "getAdminAgreements",
+        request: None,
+        response: Some(page_of::<agreement::AgreementVersionView>),
+    },
+    Body {
+        operation_id: "getAdminAgreementsById",
+        request: None,
+        response: Some(schema_of::<agreement::AgreementVersionView>),
+    },
+    Body {
+        operation_id: "getAdminOrdersByIdAgreements",
+        request: None,
+        response: Some(schema_of::<Vec<agreement::OrderAgreementView>>),
+    },
+    Body {
+        operation_id: "getAdminOrdersByIdAgreementsByKind",
+        request: None,
+        response: Some(schema_of::<agreement::AgreementVersionView>),
+    },
+    Body {
+        operation_id: "getAdminOrdersByIdWithdrawal",
+        request: None,
+        response: Some(schema_of::<Vec<agreement::WithdrawalView>>),
+    },
+    Body {
+        operation_id: "postAdminReturnsByIdWithdrawal",
+        request: None,
+        response: Some(schema_of::<agreement::WithdrawalNoticeView>),
+    },
+    Body {
+        operation_id: "getAdminOrdersByIdInvoices",
+        request: None,
+        response: Some(schema_of::<Vec<agreement::InvoiceView>>),
+    },
+    Body {
+        operation_id: "postAdminOrdersByIdInvoices",
+        request: Some(schema_of::<agreement::RecordInvoice>),
+        response: Some(schema_of::<agreement::InvoiceView>),
+    },
+    Body {
+        operation_id: "postAdminOrdersByIdInvoicesByInvoiceIdCreditNote",
+        request: Some(schema_of::<agreement::RecordInvoice>),
+        response: Some(schema_of::<agreement::InvoiceView>),
+    },
+    Body {
+        operation_id: "patchAdminInvoicesById",
+        request: Some(schema_of::<agreement::SetInvoiceStatus>),
+        response: Some(schema_of::<agreement::InvoiceView>),
+    },
+    Body {
+        operation_id: "postStoreOrdersByIdAgreements",
+        request: Some(schema_of::<agreement::AcceptAgreement>),
+        response: Some(schema_of::<agreement::OrderAgreementView>),
+    },
+    Body {
+        operation_id: "getStoreOrdersByIdAgreementsByKind",
+        request: None,
+        response: Some(schema_of::<agreement::AgreementVersionView>),
+    },
+    // ---------------------------------------------------------- storefront orders
+    Body {
+        operation_id: "getStoreOrders",
+        request: None,
+        response: Some(page_of::<store::OrderView>),
+    },
+    Body {
+        operation_id: "getStoreOrdersById",
+        request: None,
+        response: Some(schema_of::<store::OrderView>),
+    },
+    Body {
+        operation_id: "postStoreOrdersByIdTransferRequest",
+        request: Some(schema_of::<store::RequestTransfer>),
+        response: Some(schema_of::<store::RequestedTransferView>),
+    },
+    Body {
+        operation_id: "postStoreOrdersByIdTransferAccept",
+        request: Some(schema_of::<store::ClaimTransfer>),
+        response: Some(schema_of::<store::OrderView>),
+    },
+    Body {
+        operation_id: "postStoreOrdersByIdTransferDecline",
+        request: Some(schema_of::<store::ClaimTransfer>),
+        response: Some(schema_of::<store::TransferView>),
+    },
+    Body {
+        operation_id: "postStoreOrdersByIdTransferCancel",
+        request: None,
+        response: Some(schema_of::<store::TransferView>),
+    },
+    Body {
+        operation_id: "postStoreReturns",
+        request: Some(schema_of::<store::RequestReturn>),
+        response: Some(schema_of::<store::ReturnView>),
+    },
+    Body {
+        operation_id: "getStoreReturnReasons",
+        request: None,
+        response: Some(page_of::<store::ReturnReasonView>),
+    },
+    Body {
+        operation_id: "getStoreReturnReasonsById",
+        request: None,
+        response: Some(schema_of::<store::ReturnReasonView>),
     },
 ];
 
@@ -516,9 +1023,12 @@ mod tests {
         let document = document();
 
         // Every `rust_decimal::Decimal` field BODIES currently reaches,
-        // response side: payout's own money, and catalogue's dimensions,
-        // which ride the same `for_serialize` generator and must answer the
-        // same way even though they are not money.
+        // response side: payout's own money, catalogue's dimensions, and the
+        // order domain's — `MoneyView` once for every view built through
+        // `amount_view`/`From<Money>`, plus the two invoices carry a total
+        // outside that helper — all riding the same `for_serialize`
+        // generator and answering the same way even though not all of them
+        // are money.
         for pointer in [
             "/components/schemas/BalanceView/properties/amount",
             "/components/schemas/PayoutView/properties/amount",
@@ -528,6 +1038,8 @@ mod tests {
             "/components/schemas/ProductView/properties/length",
             "/components/schemas/ProductView/properties/height",
             "/components/schemas/ProductView/properties/width",
+            "/components/schemas/MoneyView/properties/amount",
+            "/components/schemas/InvoiceView/properties/total_amount",
         ] {
             let schema = document
                 .pointer(pointer)
@@ -547,19 +1059,27 @@ mod tests {
             );
         }
 
-        // The one Decimal BODIES reaches on the request side accepts both,
-        // because that is what serde-with-str actually parses.
-        let value = document
-            .pointer("/components/schemas/SetCommissionRule/properties/value")
-            .expect("SetCommissionRule.value to carry a schema");
-        let types: Vec<&str> = value
-            .get("type")
-            .and_then(Value::as_array)
-            .map(|many| many.iter().filter_map(Value::as_str).collect())
-            .unwrap_or_default();
-        assert!(
-            types.contains(&"string") && types.contains(&"number"),
-            "a request Decimal must accept both string and number: {value}"
-        );
+        // Every Decimal BODIES reaches on the request side accepts both,
+        // because that is what serde-with-str actually parses: payout's own
+        // commission rate, `MoneyIn.amount` behind every order-domain write
+        // that takes an amount, and the invoice's own total.
+        for pointer in [
+            "/components/schemas/SetCommissionRule/properties/value",
+            "/components/schemas/MoneyIn/properties/amount",
+            "/components/schemas/RecordInvoice/properties/total",
+        ] {
+            let value = document
+                .pointer(pointer)
+                .unwrap_or_else(|| panic!("{pointer} to carry a schema"));
+            let types: Vec<&str> = value
+                .get("type")
+                .and_then(Value::as_array)
+                .map(|many| many.iter().filter_map(Value::as_str).collect())
+                .unwrap_or_default();
+            assert!(
+                types.contains(&"string") && types.contains(&"number"),
+                "a request Decimal must accept both string and number: {value}"
+            );
+        }
     }
 }

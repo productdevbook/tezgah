@@ -101,3 +101,37 @@ fn the_snapshot_is_valid_json_and_says_which_openapi_it_is() {
         "the snapshot documents no paths at all"
     );
 }
+
+/// No schema name ends in a digit, because `schemars` puts one there.
+///
+/// Two Rust types with the same short name get disambiguated by a numeric
+/// suffix — `OrderView` and `OrderView2` — and which one gets the suffix is
+/// decided by the order the generator walks them in. A client binds to a
+/// name; a name that moves when somebody adds a type is a client that reads
+/// the wrong shape and says nothing.
+///
+/// It happened: `admin_order::OrderView` and `store::OrderView` collided, the
+/// storefront's narrower type took the plain name, and `client/`'s compile-time
+/// binding to `OrderView` started describing the wrong one. `#[schemars(rename
+/// = "Store…")]` on the three storefront types fixed it — in the document,
+/// without renaming anything in Rust.
+///
+/// Zero today. A new one means two types share a short name and one of them
+/// needs a `rename` rather than a suffix nobody chose.
+#[test]
+fn no_schema_name_was_disambiguated_by_a_number() {
+    let document = tezgah::api::openapi::document();
+    let suffixed: Vec<&str> = document["components"]["schemas"]
+        .as_object()
+        .expect("the document has schemas")
+        .keys()
+        .filter(|name| name.ends_with(|c: char| c.is_ascii_digit()))
+        .map(String::as_str)
+        .collect();
+
+    assert!(
+        suffixed.is_empty(),
+        "schemars numbered these because two Rust types share a short name; \
+         give one of each pair a #[schemars(rename = \"…\")] instead: {suffixed:?}"
+    );
+}
