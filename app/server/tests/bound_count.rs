@@ -11,7 +11,10 @@
 //! sentence moving fails here, and so does a sentence moved without a route.
 //!
 //! No database is dialled: `PgPool::connect_lazy` parses a URL and never
-//! connects, and nothing here sends a request.
+//! connects, and nothing here sends a request. It does want a Tokio context
+//! to exist while it builds its idle pool, though, which is why these are
+//! `#[tokio::test]` despite awaiting nothing — `sqlx` panics with "this
+//! functionality requires a Tokio context" otherwise.
 
 use std::sync::Arc;
 
@@ -48,8 +51,8 @@ fn fullest() -> http::Bound {
     bound
 }
 
-#[test]
-fn the_readme_says_how_many_routes_are_bound() {
+#[tokio::test]
+async fn the_readme_says_how_many_routes_are_bound() {
     let bound = fullest();
     let counted = bound.paths.len();
 
@@ -77,8 +80,8 @@ fn the_readme_says_how_many_routes_are_bound() {
 /// Every path this binary mounts out of the table is a path the table
 /// declares. A typo in a route string binds something nothing describes, and
 /// the panel's generated client would never call it.
-#[test]
-fn nothing_is_bound_that_the_table_does_not_declare() {
+#[tokio::test]
+async fn nothing_is_bound_that_the_table_does_not_declare() {
     let bound = fullest();
     let declared: Vec<(String, &str)> = tezgah::api::routes()
         .into_iter()
@@ -107,8 +110,8 @@ fn nothing_is_bound_that_the_table_does_not_declare() {
 /// And nothing is bound twice. Two entries for one path would inflate the
 /// count without serving anything more, which is the quietest way for the
 /// number above to become a lie while still matching.
-#[test]
-fn nothing_is_counted_twice() {
+#[tokio::test]
+async fn nothing_is_counted_twice() {
     let bound = fullest();
     let mut seen = std::collections::BTreeSet::new();
     let doubled: Vec<String> = bound
