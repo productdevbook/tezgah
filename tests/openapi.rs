@@ -120,7 +120,7 @@ fn the_snapshot_is_valid_json_and_says_which_openapi_it_is() {
 /// needs a `rename` rather than a suffix nobody chose.
 #[test]
 fn no_schema_name_was_disambiguated_by_a_number() {
-    let document = document();
+    let document = tezgah::api::openapi::document();
     let suffixed: Vec<&str> = document["components"]["schemas"]
         .as_object()
         .expect("the document has schemas")
