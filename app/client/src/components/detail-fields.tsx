@@ -1,6 +1,12 @@
+import { Section, SectionBody } from "@/components/section"
+
 /** A record's fields, laid out so every one of them stays visible — nothing here decides what a screen hides. */
 export function FieldGrid({ children }: { children: React.ReactNode }) {
-  return <dl className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">{children}</dl>
+  return (
+    <dl className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
+      {children}
+    </dl>
+  )
 }
 
 export function DetailField({
@@ -36,5 +42,21 @@ export function Metadata({ value }: { value: unknown }) {
     <pre className="max-w-full overflow-x-auto rounded-md bg-muted p-2 text-xs">
       {JSON.stringify(value, null, 2)}
     </pre>
+  )
+}
+
+/** An id, a key, a code: something to be copied rather than read. */
+export function Mono({ children }: { children: React.ReactNode }) {
+  return <span className="font-mono text-xs break-all">{children}</span>
+}
+
+/** Every record has one and it is always the same section. */
+export function MetadataSection({ value }: { value: unknown }) {
+  return (
+    <Section title="Metadata">
+      <SectionBody>
+        <Metadata value={value} />
+      </SectionBody>
+    </Section>
   )
 }

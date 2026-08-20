@@ -14,7 +14,9 @@ const columns: Columns<SalesChannel> = [
     header: "Description",
     accessorKey: "description",
     cell: ({ row }) =>
-      row.original.description ?? <span className="text-muted-foreground">—</span>,
+      row.original.description ?? (
+        <span className="text-muted-foreground">—</span>
+      ),
     meta: { className: "max-w-96 truncate text-sm" },
   },
   {
@@ -44,33 +46,36 @@ export function StoreSalesChannels({
   )
 
   return (
-    <div className="space-y-3">
-      <div className="flex justify-end">
-        <Button
-          size="sm"
-          nativeButton={false}
-          render={<Link to="/store/sales-channels/new" />}
-        >
-          <HugeiconsIcon icon={Add01Icon} strokeWidth={2} />
-          New sales channel
-        </Button>
-      </div>
-      <DataTable
-        paged={paged}
-        columns={columns}
-        rowLink={(row) => (
-          <Link
-            to="/store/sales-channels/$id"
-            params={{ id: row.id }}
-            className="absolute inset-0"
-            aria-label={`Open ${row.name}`}
-          />
-        )}
-        empty={{
-          title: "No sales channels",
-          description: "A channel decides which products a storefront can see.",
-        }}
-      />
-    </div>
+    <DataTable
+      header={{
+        title: "Sales channels",
+        description:
+          "Where a product is sold. A product belongs to some channels and not others.",
+        actions: (
+          <Button
+            size="sm"
+            nativeButton={false}
+            render={<Link to="/store/sales-channels/new" />}
+          >
+            <HugeiconsIcon icon={Add01Icon} strokeWidth={2} />
+            New sales channel
+          </Button>
+        ),
+      }}
+      paged={paged}
+      columns={columns}
+      rowLink={(row) => (
+        <Link
+          to="/store/sales-channels/$id"
+          params={{ id: row.id }}
+          className="absolute inset-0"
+          aria-label={`Open ${row.name}`}
+        />
+      )}
+      empty={{
+        title: "No sales channels",
+        description: "A channel decides which products a storefront can see.",
+      }}
+    />
   )
 }

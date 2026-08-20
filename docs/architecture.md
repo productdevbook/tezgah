@@ -167,26 +167,36 @@ what is missing.
 **No filtering, searching or sorting** — because the API offers none. This is
 the library gap above, seen from the screen.
 
-**No form library.** Forms are hand-rolled: no `react-hook-form`, no resolver
-wiring zod schemas to fields, so validation, dirty state, field errors and
-unsaved-change guards are each written per screen or not at all. The zod
-schemas are already generated; the resolver is the missing half.
+**Most forms are still hand-rolled.** `react-hook-form` and a zod resolver
+arrived with the route-modal work, and one domain uses them; the rest still
+carry a `useState`, a `safeParse` and a hand-built map of field errors each.
+The schemas were always the expensive half and they were already generated.
 
-**No translation.** Not a locale file in the tree. A panel with one language
-is a panel for one market, and this is the cheapest of the gaps to close
-before there are hundreds of strings rather than thousands.
+**Translation exists and covers almost nothing.** English and Turkish, with
+the compiler enforcing that the two dictionaries match, over the shared
+chrome — actions, errors, the unsaved-changes prompt. Every screen's own
+words are still English in the source.
 
 **Nothing bulk.** No multi-select, no bulk edit grid, no import or export
 screen — although `batch` is a domain here with three routed endpoints for
 products, prices and stock. Nothing draws them.
 
-**Not mountable.** The panel assumes it is the whole application: its own
-router root, its own token screen, its own API base. An application embedding
-the library and wanting these screens inside its own back office cannot have
-them, and would rewrite all 67. Making the feature layer take its API client,
-its locale, its link component and its route base from a provider is what
-turns a panel into something reusable — and is far cheaper to do at 67 screens
-than at 200.
+**Mountable in what it says, not in how it routes.** No screen reaches for a
+global any more: where the API is, what token to send, what to do when it is
+refused and which language to draw in are a host's answers, which is what
+lets an application embedding the library put these screens in its own back
+office. What is still the standalone application's own is routing — file
+routes under a fixed root, and a sidebar written as a switch over that closed
+route union. A host mounting them under a path of its own needs a basepath
+and a shell of its own, and that is the rest of the seam.
+
+**A child route whose parent draws no outlet is a screen nothing can reach,
+and nothing says so.** All five of the panel's "edit a record" screens were
+in that state from the commit that added them: the route file was right, the
+screen was right, the router reported a match, and the form never drew. The
+router's own generated tree is what finds it — routes with children, checked
+against whether that component renders an outlet — and it is worth a test
+rather than a habit.
 
 ## What is deliberately not here
 

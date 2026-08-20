@@ -59,21 +59,29 @@ export function StoreKeys({
   )
 
   return (
-    <div className="space-y-3">
-      <div className="flex justify-end">
-        <Button size="sm" nativeButton={false} render={<Link to="/store/keys/new" />}>
-          <HugeiconsIcon icon={Add01Icon} strokeWidth={2} />
-          Mint key
-        </Button>
-      </div>
-      <DataTable
-        paged={paged}
-        columns={columns}
-        empty={{
-          title: "No publishable keys",
-          description: "What a storefront sends as x-publishable-key. Shown once when minted.",
-        }}
-      />
-    </div>
+    <DataTable
+      header={{
+        title: "Publishable keys",
+        description:
+          "A key pins a storefront to the channels it may read. The token is shown once, when it is minted.",
+        actions: (
+          <Button
+            size="sm"
+            nativeButton={false}
+            render={<Link to="/store/keys/new" />}
+          >
+            <HugeiconsIcon icon={Add01Icon} strokeWidth={2} />
+            Mint key
+          </Button>
+        ),
+      }}
+      paged={paged}
+      columns={columns}
+      empty={{
+        title: "No publishable keys",
+        description:
+          "What a storefront sends as x-publishable-key. Shown once when minted.",
+      }}
+    />
   )
 }

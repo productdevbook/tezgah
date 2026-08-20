@@ -361,13 +361,19 @@ In `app/`:
 In the panel:
 
 - [ ] filtering, searching and sorting, once the library offers them
-- [ ] a form library — the zod schemas are generated and nothing resolves
-      them against fields, so validation and dirty state are per screen
-- [ ] translation — not a locale file in the tree
+- [ ] the rest of the forms on the resolver — one domain uses
+      `react-hook-form` against its zod schema; the others still hand-roll a
+      `useState` and a map of field errors each
+- [ ] the screens' own words in the dictionary — English and Turkish exist
+      and the compiler keeps them in step, over the shared chrome only
 - [ ] anything bulk: multi-select, a bulk edit grid, and a screen for the
       three `batch` endpoints that are routed and drawn by nothing
-- [ ] a mountable feature layer — the panel assumes it is the whole
-      application, so an embedder wanting these screens rewrites all 67
+- [ ] the routing half of the seam — what a screen says and sends is a
+      host's answer now; where it lives is still a fixed route root and a
+      sidebar switched over a closed route union
+- [ ] a test for a child route whose parent draws no outlet — all five "edit
+      a record" screens were unreachable that way, silently, from the commit
+      that added them
 
 ## Deliberately not built
 

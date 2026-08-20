@@ -25,18 +25,28 @@ export function FulfilmentSets({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
-  const paged = usePagedList(["fulfilment-sets"], "/admin/fulfillment-sets", fulfilmentSet, {
-    after,
-    onAfterChange,
-  })
+  const paged = usePagedList(
+    ["fulfilment-sets"],
+    "/admin/fulfillment-sets",
+    fulfilmentSet,
+    {
+      after,
+      onAfterChange,
+    }
+  )
 
   return (
     <DataTable
+      header={{
+        title: "Fulfilment sets",
+        description: "A set groups the service zones one carrier serves.",
+      }}
       paged={paged}
       columns={columns}
       empty={{
         title: "No fulfilment sets",
-        description: "A set groups the service zones a location or a store ships through.",
+        description:
+          "A set groups the service zones a location or a store ships through.",
       }}
     />
   )

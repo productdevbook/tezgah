@@ -38,10 +38,18 @@ export function Payments({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
-  const paged = usePagedList(["payments"], "/admin/payments", payment, { after, onAfterChange })
+  const paged = usePagedList(["payments"], "/admin/payments", payment, {
+    after,
+    onAfterChange,
+  })
 
   return (
     <DataTable
+      header={{
+        title: "Payments",
+        description:
+          "Authorising and capturing are separate acts, so a payment that exists is not yet money taken.",
+      }}
       paged={paged}
       columns={columns}
       rowLink={(row) => (
@@ -52,7 +60,10 @@ export function Payments({
           aria-label={`Open payment ${row.id}`}
         />
       )}
-      empty={{ title: "No payments", description: "Nothing has been taken yet." }}
+      empty={{
+        title: "No payments",
+        description: "Nothing has been taken yet.",
+      }}
     />
   )
 }

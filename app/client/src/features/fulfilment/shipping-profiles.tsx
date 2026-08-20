@@ -22,13 +22,23 @@ export function ShippingProfiles({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
-  const paged = usePagedList(["shipping-profiles"], "/admin/shipping-profiles", shippingProfile, {
-    after,
-    onAfterChange,
-  })
+  const paged = usePagedList(
+    ["shipping-profiles"],
+    "/admin/shipping-profiles",
+    shippingProfile,
+    {
+      after,
+      onAfterChange,
+    }
+  )
 
   return (
     <DataTable
+      header={{
+        title: "Shipping profiles",
+        description:
+          "What an option is allowed to carry: goods that travel together, and goods that cannot.",
+      }}
       paged={paged}
       columns={columns}
       rowLink={(row) => (
@@ -41,7 +51,8 @@ export function ShippingProfiles({
       )}
       empty={{
         title: "No shipping profiles",
-        description: "A product ships under a profile, which decides which options fit it.",
+        description:
+          "A product ships under a profile, which decides which options fit it.",
       }}
     />
   )

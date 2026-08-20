@@ -16,7 +16,9 @@ const columns: Columns<TaxRegion> = [
     accessorKey: "province_code",
     cell: ({ row }) =>
       row.original.province_code ? (
-        <span className="font-mono text-xs uppercase">{row.original.province_code}</span>
+        <span className="font-mono text-xs uppercase">
+          {row.original.province_code}
+        </span>
       ) : (
         <Empty />
       ),
@@ -43,6 +45,10 @@ export function TaxRegions({
 
   return (
     <DataTable
+      header={{
+        title: "Tax regions",
+        description: "Nested: a province's rates sit under its country's.",
+      }}
       paged={paged}
       columns={columns}
       rowLink={(row) => (
@@ -55,7 +61,8 @@ export function TaxRegions({
       )}
       empty={{
         title: "No tax regions",
-        description: "A country or province with no region here charges no tax.",
+        description:
+          "A country or province with no region here charges no tax.",
       }}
     />
   )

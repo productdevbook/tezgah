@@ -1,9 +1,8 @@
 import { shippingProfile } from "@/api/schemas"
-import { DetailField, FieldGrid } from "@/components/detail-fields"
-import { DetailHeader } from "@/components/detail-header"
-import { QueryState } from "@/components/query-state"
+import { Mono } from "@/components/detail-fields"
+import { DetailPage } from "@/components/detail-page"
+import { Section, SectionRow, SectionRows } from "@/components/section"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent } from "@/components/ui/card"
 import { dateTime, useDetail } from "@/lib/detail"
 
 export function ShippingProfileDetail({ id }: { id: string }) {
@@ -15,30 +14,31 @@ export function ShippingProfileDetail({ id }: { id: string }) {
   )
 
   return (
-    <div className="max-w-3xl space-y-4">
-      <QueryState
-        query={result}
-        empty={{ title: "No shipping profile", description: "Nothing to show." }}
-      >
-        {(item) => (
-          <>
-            <DetailHeader back="shipping profiles" title={item.name}>
-              <Badge variant="outline">{item.kind}</Badge>
-            </DetailHeader>
-            <Card>
-              <CardContent>
-                <FieldGrid>
-                  <DetailField label="ID">
-                    <span className="font-mono text-xs">{item.id}</span>
-                  </DetailField>
-                  <DetailField label="Kind">{item.kind}</DetailField>
-                  <DetailField label="Created">{dateTime(item.created_at)}</DetailField>
-                </FieldGrid>
-              </CardContent>
-            </Card>
-          </>
-        )}
-      </QueryState>
-    </div>
+    <DetailPage
+      query={result}
+      empty={{ title: "No shipping profile", description: "Nothing to show." }}
+      back="shipping profiles"
+      title={(item) => item.name}
+      actions={(item) => <Badge variant="outline">{item.kind}</Badge>}
+      main={(item) => (
+        <Section
+          title="The profile"
+          description="What a shipping option is allowed to carry — goods that travel together, and goods that cannot."
+        >
+          <SectionRows>
+            <SectionRow label="Name" value={item.name} />
+            <SectionRow label="Kind" value={item.kind} />
+          </SectionRows>
+        </Section>
+      )}
+      side={(item) => (
+        <Section title="Details">
+          <SectionRows>
+            <SectionRow label="ID" value={<Mono>{item.id}</Mono>} />
+            <SectionRow label="Created" value={dateTime(item.created_at)} />
+          </SectionRows>
+        </Section>
+      )}
+    />
   )
 }

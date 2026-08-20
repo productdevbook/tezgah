@@ -1,6 +1,8 @@
-import { useState, type FormEvent } from "react"
+import { zodResolver } from "@hookform/resolvers/zod"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { Link, useNavigate } from "@tanstack/react-router"
+import { useNavigate } from "@tanstack/react-router"
+import { useForm } from "react-hook-form"
+import { z } from "zod"
 
 import { post } from "@/api/client"
 import {
@@ -8,97 +10,114 @@ import {
   salesChannel,
   type CreateSalesChannel,
 } from "@/api/schemas"
+import { FormField } from "@/components/form/form"
 import { FormError } from "@/components/form-error"
-import { PageHeading } from "@/components/page-heading"
+import { RouteFocusModal } from "@/components/modals/route-focus-modal"
+import { useRouteModal } from "@/components/modals/route-modal-context"
+import { RouteModalForm } from "@/components/modals/route-modal-form"
 import { Button } from "@/components/ui/button"
-import { Field, FieldError, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
+import { Textarea } from "@/components/ui/textarea"
+import { useT } from "@/panel/i18n"
 
-const EMPTY_FORM = { name: "", description: "", is_disabled: false }
+const fields = createSalesChannel
+  .omit({ description: true })
+  .extend({ description: z.string().trim() })
+
+type Fields = z.infer<typeof fields>
 
 export function NewSalesChannel() {
+  const navigate = useNavigate()
+
+  return (
+    <RouteFocusModal
+      onClose={() => void navigate({ to: "/store/sales-channels" })}
+    >
+      <Body />
+    </RouteFocusModal>
+  )
+}
+
+function Body() {
+  const t = useT()
   const client = useQueryClient()
   const navigate = useNavigate()
-  const [form, setForm] = useState(EMPTY_FORM)
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const { close, markSaved } = useRouteModal()
+
+  const form = useForm<Fields>({
+    resolver: zodResolver(fields),
+    defaultValues: { name: "", description: "", is_disabled: false },
+  })
 
   const mutation = useMutation({
     mutationFn: (body: CreateSalesChannel) =>
       post("/admin/sales-channels", { schema: salesChannel, body }),
-    onSuccess: () => {
+    onSuccess: (created) => {
       void client.invalidateQueries({ queryKey: ["sales-channels"] })
-      void navigate({ to: "/store/sales-channels" })
+      markSaved()
+      void navigate({
+        to: "/store/sales-channels/$id",
+        params: { id: created.id },
+      })
     },
   })
 
-  function submit(event: FormEvent) {
-    event.preventDefault()
-    const parsed = createSalesChannel.safeParse({
-      name: form.name,
-      description: form.description.trim() === "" ? undefined : form.description,
-      is_disabled: form.is_disabled,
-    })
-    if (!parsed.success) {
-      const errors: Record<string, string> = {}
-      for (const issue of parsed.error.issues)
-        errors[String(issue.path[0])] = issue.message
-      setFieldErrors(errors)
-      return
-    }
-    setFieldErrors({})
-    mutation.mutate(parsed.data)
-  }
-
   return (
-    <div className="max-w-xl space-y-4">
-      <PageHeading
+    <RouteModalForm
+      form={form}
+      onSubmit={(values) =>
+        mutation.mutateAsync({
+          name: values.name,
+          description:
+            values.description.trim() === "" ? undefined : values.description,
+          is_disabled: values.is_disabled,
+        })
+      }
+    >
+      <RouteFocusModal.Header
         title="New sales channel"
-        subtitle="A channel decides which products a storefront can see."
+        description="Where a product is sold: a web shop, an app, a market stall. A product belongs to some of them and not others."
       />
-      <form className="space-y-4" onSubmit={submit}>
-        {mutation.isError ? <FormError error={mutation.error} /> : null}
-        <Field data-invalid={!!fieldErrors.name}>
-          <FieldLabel htmlFor="channel-name">Name</FieldLabel>
-          <Input
-            id="channel-name"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            placeholder="Web storefront"
-            aria-invalid={!!fieldErrors.name}
-          />
-          <FieldError>{fieldErrors.name}</FieldError>
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="channel-description">Description</FieldLabel>
-          <Input
-            id="channel-description"
-            value={form.description}
-            onChange={(e) => setForm({ ...form, description: e.target.value })}
-          />
-        </Field>
-        <Field orientation="horizontal">
-          <Switch
-            id="channel-disabled"
-            checked={form.is_disabled}
-            onCheckedChange={(checked) => setForm({ ...form, is_disabled: checked })}
-          />
-          <FieldLabel htmlFor="channel-disabled">Start disabled</FieldLabel>
-        </Field>
-        <div className="flex items-center gap-2">
-          <Button type="submit" disabled={mutation.isPending}>
-            {mutation.isPending ? "Creating…" : "Create sales channel"}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            nativeButton={false}
-            render={<Link to="/store/sales-channels" />}
+      <RouteFocusModal.Body>
+        <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
+          {mutation.isError ? <FormError error={mutation.error} /> : null}
+          <FormField control={form.control} name="name" label="Name">
+            {(field) => <Input id={field.name} {...field} />}
+          </FormField>
+          <FormField
+            control={form.control}
+            name="description"
+            label="Description"
           >
-            Cancel
-          </Button>
+            {(field) => <Textarea id={field.name} {...field} rows={4} />}
+          </FormField>
+          <FormField
+            control={form.control}
+            name="is_disabled"
+            label="Disabled"
+            description="A disabled channel keeps its products and stops selling them."
+          >
+            {(field) => (
+              <Switch
+                id={field.name}
+                checked={field.value}
+                onCheckedChange={(checked) => field.onChange(checked)}
+              />
+            )}
+          </FormField>
         </div>
-      </form>
-    </div>
+      </RouteFocusModal.Body>
+      <RouteFocusModal.Footer>
+        <Button type="button" variant="outline" onClick={close}>
+          {t("actions.cancel")}
+        </Button>
+        <Button type="submit" disabled={form.formState.isSubmitting}>
+          {form.formState.isSubmitting
+            ? t("actions.saving")
+            : t("actions.create")}
+        </Button>
+      </RouteFocusModal.Footer>
+    </RouteModalForm>
   )
 }

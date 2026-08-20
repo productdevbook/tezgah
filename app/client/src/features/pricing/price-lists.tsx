@@ -38,6 +38,11 @@ export function PriceLists({
 
   return (
     <DataTable
+      header={{
+        title: "Price lists",
+        description:
+          "Dated or conditional prices — a sale that says so, or an override that does not.",
+      }}
       paged={paged}
       columns={columns}
       rowLink={(row) => (
@@ -50,7 +55,8 @@ export function PriceLists({
       )}
       empty={{
         title: "No price lists",
-        description: "A price list overrides a price set's own prices for a rule it matches.",
+        description:
+          "A price list overrides a price set's own prices for a rule it matches.",
       }}
     />
   )

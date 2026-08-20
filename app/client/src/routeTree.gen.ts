@@ -48,8 +48,8 @@ import { Route as PricingPriceListsRouteImport } from './routes/pricing.price-li
 import { Route as PricingPricePreferencesRouteImport } from './routes/pricing.price-preferences'
 import { Route as PricingPriceSetsRouteImport } from './routes/pricing.price-sets'
 import { Route as PricingPricesRouteImport } from './routes/pricing.prices'
+import { Route as ProductsNewRouteImport } from './routes/products.new'
 import { Route as ProductsIdRouteImport } from './routes/products_.$id'
-import { Route as ProductsNewRouteImport } from './routes/products_.new'
 import { Route as PromotionsIdRouteImport } from './routes/promotions_.$id'
 import { Route as StoreIndexRouteImport } from './routes/store.index'
 import { Route as StoreCurrenciesRouteImport } from './routes/store.currencies'
@@ -70,12 +70,12 @@ import { Route as FulfilmentShippingProfilesIdRouteImport } from './routes/fulfi
 import { Route as PricingPriceListsIdRouteImport } from './routes/pricing_.price-lists.$id'
 import { Route as ProductsIdEditRouteImport } from './routes/products_.$id.edit'
 import { Route as PromotionsIdEditRouteImport } from './routes/promotions_.$id.edit'
-import { Route as StoreCurrenciesNewRouteImport } from './routes/store_.currencies.new'
-import { Route as StoreKeysNewRouteImport } from './routes/store_.keys.new'
+import { Route as StoreCurrenciesNewRouteImport } from './routes/store.currencies.new'
+import { Route as StoreKeysNewRouteImport } from './routes/store.keys.new'
+import { Route as StoreRegionsNewRouteImport } from './routes/store.regions.new'
+import { Route as StoreSalesChannelsNewRouteImport } from './routes/store.sales-channels.new'
 import { Route as StoreRegionsIdRouteImport } from './routes/store_.regions.$id'
-import { Route as StoreRegionsNewRouteImport } from './routes/store_.regions.new'
 import { Route as StoreSalesChannelsIdRouteImport } from './routes/store_.sales-channels.$id'
-import { Route as StoreSalesChannelsNewRouteImport } from './routes/store_.sales-channels.new'
 import { Route as TaxRatesIdRouteImport } from './routes/tax_.rates.$id'
 import { Route as TaxRegionsIdRouteImport } from './routes/tax_.regions.$id'
 import { Route as StoreRegionsIdEditRouteImport } from './routes/store_.regions.$id.edit'
@@ -279,14 +279,14 @@ const PricingPricesRoute = PricingPricesRouteImport.update({
   path: '/prices',
   getParentRoute: () => PricingRoute,
 } as any)
+const ProductsNewRoute = ProductsNewRouteImport.update({
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => ProductsRoute,
+} as any)
 const ProductsIdRoute = ProductsIdRouteImport.update({
   id: '/products_/$id',
   path: '/products/$id',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ProductsNewRoute = ProductsNewRouteImport.update({
-  id: '/products_/new',
-  path: '/products/new',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PromotionsIdRoute = PromotionsIdRouteImport.update({
@@ -392,33 +392,33 @@ const PromotionsIdEditRoute = PromotionsIdEditRouteImport.update({
   getParentRoute: () => PromotionsIdRoute,
 } as any)
 const StoreCurrenciesNewRoute = StoreCurrenciesNewRouteImport.update({
-  id: '/store_/currencies/new',
-  path: '/store/currencies/new',
-  getParentRoute: () => rootRouteImport,
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => StoreCurrenciesRoute,
 } as any)
 const StoreKeysNewRoute = StoreKeysNewRouteImport.update({
-  id: '/store_/keys/new',
-  path: '/store/keys/new',
-  getParentRoute: () => rootRouteImport,
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => StoreKeysRoute,
+} as any)
+const StoreRegionsNewRoute = StoreRegionsNewRouteImport.update({
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => StoreRegionsRoute,
+} as any)
+const StoreSalesChannelsNewRoute = StoreSalesChannelsNewRouteImport.update({
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => StoreSalesChannelsRoute,
 } as any)
 const StoreRegionsIdRoute = StoreRegionsIdRouteImport.update({
   id: '/store_/regions/$id',
   path: '/store/regions/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
-const StoreRegionsNewRoute = StoreRegionsNewRouteImport.update({
-  id: '/store_/regions/new',
-  path: '/store/regions/new',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const StoreSalesChannelsIdRoute = StoreSalesChannelsIdRouteImport.update({
   id: '/store_/sales-channels/$id',
   path: '/store/sales-channels/$id',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const StoreSalesChannelsNewRoute = StoreSalesChannelsNewRouteImport.update({
-  id: '/store_/sales-channels/new',
-  path: '/store/sales-channels/new',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TaxRatesIdRoute = TaxRatesIdRouteImport.update({
@@ -456,7 +456,7 @@ export interface FileRoutesByFullPath {
   '/payments': typeof PaymentsRouteWithChildren
   '/payouts': typeof PayoutsRouteWithChildren
   '/pricing': typeof PricingRouteWithChildren
-  '/products': typeof ProductsRoute
+  '/products': typeof ProductsRouteWithChildren
   '/promotions': typeof PromotionsRoute
   '/store': typeof StoreRouteWithChildren
   '/subscriptions': typeof SubscriptionsRoute
@@ -479,13 +479,13 @@ export interface FileRoutesByFullPath {
   '/pricing/price-preferences': typeof PricingPricePreferencesRoute
   '/pricing/price-sets': typeof PricingPriceSetsRoute
   '/pricing/prices': typeof PricingPricesRoute
-  '/products/$id': typeof ProductsIdRouteWithChildren
   '/products/new': typeof ProductsNewRoute
+  '/products/$id': typeof ProductsIdRouteWithChildren
   '/promotions/$id': typeof PromotionsIdRouteWithChildren
-  '/store/currencies': typeof StoreCurrenciesRoute
-  '/store/keys': typeof StoreKeysRoute
-  '/store/regions': typeof StoreRegionsRoute
-  '/store/sales-channels': typeof StoreSalesChannelsRoute
+  '/store/currencies': typeof StoreCurrenciesRouteWithChildren
+  '/store/keys': typeof StoreKeysRouteWithChildren
+  '/store/regions': typeof StoreRegionsRouteWithChildren
+  '/store/sales-channels': typeof StoreSalesChannelsRouteWithChildren
   '/subscriptions/$id': typeof SubscriptionsIdRoute
   '/tax/rates': typeof TaxRatesRoute
   '/tax/regions': typeof TaxRegionsRoute
@@ -507,10 +507,10 @@ export interface FileRoutesByFullPath {
   '/promotions/$id/edit': typeof PromotionsIdEditRoute
   '/store/currencies/new': typeof StoreCurrenciesNewRoute
   '/store/keys/new': typeof StoreKeysNewRoute
-  '/store/regions/$id': typeof StoreRegionsIdRouteWithChildren
   '/store/regions/new': typeof StoreRegionsNewRoute
-  '/store/sales-channels/$id': typeof StoreSalesChannelsIdRouteWithChildren
   '/store/sales-channels/new': typeof StoreSalesChannelsNewRoute
+  '/store/regions/$id': typeof StoreRegionsIdRouteWithChildren
+  '/store/sales-channels/$id': typeof StoreSalesChannelsIdRouteWithChildren
   '/tax/rates/$id': typeof TaxRatesIdRoute
   '/tax/regions/$id': typeof TaxRegionsIdRoute
   '/store/regions/$id/edit': typeof StoreRegionsIdEditRoute
@@ -525,7 +525,7 @@ export interface FileRoutesByTo {
   '/customers': typeof CustomersRoute
   '/inventory': typeof InventoryRoute
   '/orders': typeof OrdersRoute
-  '/products': typeof ProductsRoute
+  '/products': typeof ProductsRouteWithChildren
   '/promotions': typeof PromotionsRoute
   '/subscriptions': typeof SubscriptionsRoute
   '/baskets/$id': typeof BasketsIdRoute
@@ -545,13 +545,13 @@ export interface FileRoutesByTo {
   '/pricing/price-preferences': typeof PricingPricePreferencesRoute
   '/pricing/price-sets': typeof PricingPriceSetsRoute
   '/pricing/prices': typeof PricingPricesRoute
-  '/products/$id': typeof ProductsIdRouteWithChildren
   '/products/new': typeof ProductsNewRoute
+  '/products/$id': typeof ProductsIdRouteWithChildren
   '/promotions/$id': typeof PromotionsIdRouteWithChildren
-  '/store/currencies': typeof StoreCurrenciesRoute
-  '/store/keys': typeof StoreKeysRoute
-  '/store/regions': typeof StoreRegionsRoute
-  '/store/sales-channels': typeof StoreSalesChannelsRoute
+  '/store/currencies': typeof StoreCurrenciesRouteWithChildren
+  '/store/keys': typeof StoreKeysRouteWithChildren
+  '/store/regions': typeof StoreRegionsRouteWithChildren
+  '/store/sales-channels': typeof StoreSalesChannelsRouteWithChildren
   '/subscriptions/$id': typeof SubscriptionsIdRoute
   '/tax/rates': typeof TaxRatesRoute
   '/tax/regions': typeof TaxRegionsRoute
@@ -573,10 +573,10 @@ export interface FileRoutesByTo {
   '/promotions/$id/edit': typeof PromotionsIdEditRoute
   '/store/currencies/new': typeof StoreCurrenciesNewRoute
   '/store/keys/new': typeof StoreKeysNewRoute
-  '/store/regions/$id': typeof StoreRegionsIdRouteWithChildren
   '/store/regions/new': typeof StoreRegionsNewRoute
-  '/store/sales-channels/$id': typeof StoreSalesChannelsIdRouteWithChildren
   '/store/sales-channels/new': typeof StoreSalesChannelsNewRoute
+  '/store/regions/$id': typeof StoreRegionsIdRouteWithChildren
+  '/store/sales-channels/$id': typeof StoreSalesChannelsIdRouteWithChildren
   '/tax/rates/$id': typeof TaxRatesIdRoute
   '/tax/regions/$id': typeof TaxRegionsIdRoute
   '/store/regions/$id/edit': typeof StoreRegionsIdEditRoute
@@ -596,7 +596,7 @@ export interface FileRoutesById {
   '/payments': typeof PaymentsRouteWithChildren
   '/payouts': typeof PayoutsRouteWithChildren
   '/pricing': typeof PricingRouteWithChildren
-  '/products': typeof ProductsRoute
+  '/products': typeof ProductsRouteWithChildren
   '/promotions': typeof PromotionsRoute
   '/store': typeof StoreRouteWithChildren
   '/subscriptions': typeof SubscriptionsRoute
@@ -619,13 +619,13 @@ export interface FileRoutesById {
   '/pricing/price-preferences': typeof PricingPricePreferencesRoute
   '/pricing/price-sets': typeof PricingPriceSetsRoute
   '/pricing/prices': typeof PricingPricesRoute
+  '/products/new': typeof ProductsNewRoute
   '/products_/$id': typeof ProductsIdRouteWithChildren
-  '/products_/new': typeof ProductsNewRoute
   '/promotions_/$id': typeof PromotionsIdRouteWithChildren
-  '/store/currencies': typeof StoreCurrenciesRoute
-  '/store/keys': typeof StoreKeysRoute
-  '/store/regions': typeof StoreRegionsRoute
-  '/store/sales-channels': typeof StoreSalesChannelsRoute
+  '/store/currencies': typeof StoreCurrenciesRouteWithChildren
+  '/store/keys': typeof StoreKeysRouteWithChildren
+  '/store/regions': typeof StoreRegionsRouteWithChildren
+  '/store/sales-channels': typeof StoreSalesChannelsRouteWithChildren
   '/subscriptions_/$id': typeof SubscriptionsIdRoute
   '/tax/rates': typeof TaxRatesRoute
   '/tax/regions': typeof TaxRegionsRoute
@@ -645,12 +645,12 @@ export interface FileRoutesById {
   '/pricing_/price-lists/$id': typeof PricingPriceListsIdRoute
   '/products_/$id/edit': typeof ProductsIdEditRoute
   '/promotions_/$id/edit': typeof PromotionsIdEditRoute
-  '/store_/currencies/new': typeof StoreCurrenciesNewRoute
-  '/store_/keys/new': typeof StoreKeysNewRoute
+  '/store/currencies/new': typeof StoreCurrenciesNewRoute
+  '/store/keys/new': typeof StoreKeysNewRoute
+  '/store/regions/new': typeof StoreRegionsNewRoute
+  '/store/sales-channels/new': typeof StoreSalesChannelsNewRoute
   '/store_/regions/$id': typeof StoreRegionsIdRouteWithChildren
-  '/store_/regions/new': typeof StoreRegionsNewRoute
   '/store_/sales-channels/$id': typeof StoreSalesChannelsIdRouteWithChildren
-  '/store_/sales-channels/new': typeof StoreSalesChannelsNewRoute
   '/tax_/rates/$id': typeof TaxRatesIdRoute
   '/tax_/regions/$id': typeof TaxRegionsIdRoute
   '/store_/regions/$id/edit': typeof StoreRegionsIdEditRoute
@@ -694,8 +694,8 @@ export interface FileRouteTypes {
     | '/pricing/price-preferences'
     | '/pricing/price-sets'
     | '/pricing/prices'
-    | '/products/$id'
     | '/products/new'
+    | '/products/$id'
     | '/promotions/$id'
     | '/store/currencies'
     | '/store/keys'
@@ -722,10 +722,10 @@ export interface FileRouteTypes {
     | '/promotions/$id/edit'
     | '/store/currencies/new'
     | '/store/keys/new'
-    | '/store/regions/$id'
     | '/store/regions/new'
-    | '/store/sales-channels/$id'
     | '/store/sales-channels/new'
+    | '/store/regions/$id'
+    | '/store/sales-channels/$id'
     | '/tax/rates/$id'
     | '/tax/regions/$id'
     | '/store/regions/$id/edit'
@@ -760,8 +760,8 @@ export interface FileRouteTypes {
     | '/pricing/price-preferences'
     | '/pricing/price-sets'
     | '/pricing/prices'
-    | '/products/$id'
     | '/products/new'
+    | '/products/$id'
     | '/promotions/$id'
     | '/store/currencies'
     | '/store/keys'
@@ -788,10 +788,10 @@ export interface FileRouteTypes {
     | '/promotions/$id/edit'
     | '/store/currencies/new'
     | '/store/keys/new'
-    | '/store/regions/$id'
     | '/store/regions/new'
-    | '/store/sales-channels/$id'
     | '/store/sales-channels/new'
+    | '/store/regions/$id'
+    | '/store/sales-channels/$id'
     | '/tax/rates/$id'
     | '/tax/regions/$id'
     | '/store/regions/$id/edit'
@@ -833,8 +833,8 @@ export interface FileRouteTypes {
     | '/pricing/price-preferences'
     | '/pricing/price-sets'
     | '/pricing/prices'
+    | '/products/new'
     | '/products_/$id'
-    | '/products_/new'
     | '/promotions_/$id'
     | '/store/currencies'
     | '/store/keys'
@@ -859,12 +859,12 @@ export interface FileRouteTypes {
     | '/pricing_/price-lists/$id'
     | '/products_/$id/edit'
     | '/promotions_/$id/edit'
-    | '/store_/currencies/new'
-    | '/store_/keys/new'
+    | '/store/currencies/new'
+    | '/store/keys/new'
+    | '/store/regions/new'
+    | '/store/sales-channels/new'
     | '/store_/regions/$id'
-    | '/store_/regions/new'
     | '/store_/sales-channels/$id'
-    | '/store_/sales-channels/new'
     | '/tax_/rates/$id'
     | '/tax_/regions/$id'
     | '/store_/regions/$id/edit'
@@ -884,7 +884,7 @@ export interface RootRouteChildren {
   PaymentsRoute: typeof PaymentsRouteWithChildren
   PayoutsRoute: typeof PayoutsRouteWithChildren
   PricingRoute: typeof PricingRouteWithChildren
-  ProductsRoute: typeof ProductsRoute
+  ProductsRoute: typeof ProductsRouteWithChildren
   PromotionsRoute: typeof PromotionsRoute
   StoreRoute: typeof StoreRouteWithChildren
   SubscriptionsRoute: typeof SubscriptionsRoute
@@ -897,19 +897,14 @@ export interface RootRouteChildren {
   OrdersIdRoute: typeof OrdersIdRoute
   PaymentsIdRoute: typeof PaymentsIdRoute
   ProductsIdRoute: typeof ProductsIdRouteWithChildren
-  ProductsNewRoute: typeof ProductsNewRoute
   PromotionsIdRoute: typeof PromotionsIdRouteWithChildren
   SubscriptionsIdRoute: typeof SubscriptionsIdRoute
   WorkflowsIdRoute: typeof WorkflowsIdRoute
   FulfilmentShippingOptionsIdRoute: typeof FulfilmentShippingOptionsIdRoute
   FulfilmentShippingProfilesIdRoute: typeof FulfilmentShippingProfilesIdRoute
   PricingPriceListsIdRoute: typeof PricingPriceListsIdRoute
-  StoreCurrenciesNewRoute: typeof StoreCurrenciesNewRoute
-  StoreKeysNewRoute: typeof StoreKeysNewRoute
   StoreRegionsIdRoute: typeof StoreRegionsIdRouteWithChildren
-  StoreRegionsNewRoute: typeof StoreRegionsNewRoute
   StoreSalesChannelsIdRoute: typeof StoreSalesChannelsIdRouteWithChildren
-  StoreSalesChannelsNewRoute: typeof StoreSalesChannelsNewRoute
   TaxRatesIdRoute: typeof TaxRatesIdRoute
   TaxRegionsIdRoute: typeof TaxRegionsIdRoute
 }
@@ -1189,18 +1184,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PricingPricesRouteImport
       parentRoute: typeof PricingRoute
     }
+    '/products/new': {
+      id: '/products/new'
+      path: '/new'
+      fullPath: '/products/new'
+      preLoaderRoute: typeof ProductsNewRouteImport
+      parentRoute: typeof ProductsRoute
+    }
     '/products_/$id': {
       id: '/products_/$id'
       path: '/products/$id'
       fullPath: '/products/$id'
       preLoaderRoute: typeof ProductsIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/products_/new': {
-      id: '/products_/new'
-      path: '/products/new'
-      fullPath: '/products/new'
-      preLoaderRoute: typeof ProductsNewRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/promotions_/$id': {
@@ -1343,19 +1338,33 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PromotionsIdEditRouteImport
       parentRoute: typeof PromotionsIdRoute
     }
-    '/store_/currencies/new': {
-      id: '/store_/currencies/new'
-      path: '/store/currencies/new'
+    '/store/currencies/new': {
+      id: '/store/currencies/new'
+      path: '/new'
       fullPath: '/store/currencies/new'
       preLoaderRoute: typeof StoreCurrenciesNewRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof StoreCurrenciesRoute
     }
-    '/store_/keys/new': {
-      id: '/store_/keys/new'
-      path: '/store/keys/new'
+    '/store/keys/new': {
+      id: '/store/keys/new'
+      path: '/new'
       fullPath: '/store/keys/new'
       preLoaderRoute: typeof StoreKeysNewRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof StoreKeysRoute
+    }
+    '/store/regions/new': {
+      id: '/store/regions/new'
+      path: '/new'
+      fullPath: '/store/regions/new'
+      preLoaderRoute: typeof StoreRegionsNewRouteImport
+      parentRoute: typeof StoreRegionsRoute
+    }
+    '/store/sales-channels/new': {
+      id: '/store/sales-channels/new'
+      path: '/new'
+      fullPath: '/store/sales-channels/new'
+      preLoaderRoute: typeof StoreSalesChannelsNewRouteImport
+      parentRoute: typeof StoreSalesChannelsRoute
     }
     '/store_/regions/$id': {
       id: '/store_/regions/$id'
@@ -1364,25 +1373,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StoreRegionsIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/store_/regions/new': {
-      id: '/store_/regions/new'
-      path: '/store/regions/new'
-      fullPath: '/store/regions/new'
-      preLoaderRoute: typeof StoreRegionsNewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/store_/sales-channels/$id': {
       id: '/store_/sales-channels/$id'
       path: '/store/sales-channels/$id'
       fullPath: '/store/sales-channels/$id'
       preLoaderRoute: typeof StoreSalesChannelsIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/store_/sales-channels/new': {
-      id: '/store_/sales-channels/new'
-      path: '/store/sales-channels/new'
-      fullPath: '/store/sales-channels/new'
-      preLoaderRoute: typeof StoreSalesChannelsNewRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/tax_/rates/$id': {
@@ -1484,19 +1479,78 @@ const PricingRouteChildren: PricingRouteChildren = {
 const PricingRouteWithChildren =
   PricingRoute._addFileChildren(PricingRouteChildren)
 
+interface ProductsRouteChildren {
+  ProductsNewRoute: typeof ProductsNewRoute
+}
+
+const ProductsRouteChildren: ProductsRouteChildren = {
+  ProductsNewRoute: ProductsNewRoute,
+}
+
+const ProductsRouteWithChildren = ProductsRoute._addFileChildren(
+  ProductsRouteChildren,
+)
+
+interface StoreCurrenciesRouteChildren {
+  StoreCurrenciesNewRoute: typeof StoreCurrenciesNewRoute
+}
+
+const StoreCurrenciesRouteChildren: StoreCurrenciesRouteChildren = {
+  StoreCurrenciesNewRoute: StoreCurrenciesNewRoute,
+}
+
+const StoreCurrenciesRouteWithChildren = StoreCurrenciesRoute._addFileChildren(
+  StoreCurrenciesRouteChildren,
+)
+
+interface StoreKeysRouteChildren {
+  StoreKeysNewRoute: typeof StoreKeysNewRoute
+}
+
+const StoreKeysRouteChildren: StoreKeysRouteChildren = {
+  StoreKeysNewRoute: StoreKeysNewRoute,
+}
+
+const StoreKeysRouteWithChildren = StoreKeysRoute._addFileChildren(
+  StoreKeysRouteChildren,
+)
+
+interface StoreRegionsRouteChildren {
+  StoreRegionsNewRoute: typeof StoreRegionsNewRoute
+}
+
+const StoreRegionsRouteChildren: StoreRegionsRouteChildren = {
+  StoreRegionsNewRoute: StoreRegionsNewRoute,
+}
+
+const StoreRegionsRouteWithChildren = StoreRegionsRoute._addFileChildren(
+  StoreRegionsRouteChildren,
+)
+
+interface StoreSalesChannelsRouteChildren {
+  StoreSalesChannelsNewRoute: typeof StoreSalesChannelsNewRoute
+}
+
+const StoreSalesChannelsRouteChildren: StoreSalesChannelsRouteChildren = {
+  StoreSalesChannelsNewRoute: StoreSalesChannelsNewRoute,
+}
+
+const StoreSalesChannelsRouteWithChildren =
+  StoreSalesChannelsRoute._addFileChildren(StoreSalesChannelsRouteChildren)
+
 interface StoreRouteChildren {
-  StoreCurrenciesRoute: typeof StoreCurrenciesRoute
-  StoreKeysRoute: typeof StoreKeysRoute
-  StoreRegionsRoute: typeof StoreRegionsRoute
-  StoreSalesChannelsRoute: typeof StoreSalesChannelsRoute
+  StoreCurrenciesRoute: typeof StoreCurrenciesRouteWithChildren
+  StoreKeysRoute: typeof StoreKeysRouteWithChildren
+  StoreRegionsRoute: typeof StoreRegionsRouteWithChildren
+  StoreSalesChannelsRoute: typeof StoreSalesChannelsRouteWithChildren
   StoreIndexRoute: typeof StoreIndexRoute
 }
 
 const StoreRouteChildren: StoreRouteChildren = {
-  StoreCurrenciesRoute: StoreCurrenciesRoute,
-  StoreKeysRoute: StoreKeysRoute,
-  StoreRegionsRoute: StoreRegionsRoute,
-  StoreSalesChannelsRoute: StoreSalesChannelsRoute,
+  StoreCurrenciesRoute: StoreCurrenciesRouteWithChildren,
+  StoreKeysRoute: StoreKeysRouteWithChildren,
+  StoreRegionsRoute: StoreRegionsRouteWithChildren,
+  StoreSalesChannelsRoute: StoreSalesChannelsRouteWithChildren,
   StoreIndexRoute: StoreIndexRoute,
 }
 
@@ -1604,7 +1658,7 @@ const rootRouteChildren: RootRouteChildren = {
   PaymentsRoute: PaymentsRouteWithChildren,
   PayoutsRoute: PayoutsRouteWithChildren,
   PricingRoute: PricingRouteWithChildren,
-  ProductsRoute: ProductsRoute,
+  ProductsRoute: ProductsRouteWithChildren,
   PromotionsRoute: PromotionsRoute,
   StoreRoute: StoreRouteWithChildren,
   SubscriptionsRoute: SubscriptionsRoute,
@@ -1617,19 +1671,14 @@ const rootRouteChildren: RootRouteChildren = {
   OrdersIdRoute: OrdersIdRoute,
   PaymentsIdRoute: PaymentsIdRoute,
   ProductsIdRoute: ProductsIdRouteWithChildren,
-  ProductsNewRoute: ProductsNewRoute,
   PromotionsIdRoute: PromotionsIdRouteWithChildren,
   SubscriptionsIdRoute: SubscriptionsIdRoute,
   WorkflowsIdRoute: WorkflowsIdRoute,
   FulfilmentShippingOptionsIdRoute: FulfilmentShippingOptionsIdRoute,
   FulfilmentShippingProfilesIdRoute: FulfilmentShippingProfilesIdRoute,
   PricingPriceListsIdRoute: PricingPriceListsIdRoute,
-  StoreCurrenciesNewRoute: StoreCurrenciesNewRoute,
-  StoreKeysNewRoute: StoreKeysNewRoute,
   StoreRegionsIdRoute: StoreRegionsIdRouteWithChildren,
-  StoreRegionsNewRoute: StoreRegionsNewRoute,
   StoreSalesChannelsIdRoute: StoreSalesChannelsIdRouteWithChildren,
-  StoreSalesChannelsNewRoute: StoreSalesChannelsNewRoute,
   TaxRatesIdRoute: TaxRatesIdRoute,
   TaxRegionsIdRoute: TaxRegionsIdRoute,
 }

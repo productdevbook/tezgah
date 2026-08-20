@@ -11,7 +11,7 @@ const columns: Columns<CommissionRule> = [
       row.original.category_id ? (
         <span className="font-mono text-xs">{row.original.category_id}</span>
       ) : (
-        <span className="text-muted-foreground text-xs">every category</span>
+        <span className="text-xs text-muted-foreground">every category</span>
       ),
   },
   {
@@ -37,13 +37,23 @@ export function CommissionRules({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
-  const paged = usePagedList(["commission-rules"], "/admin/commission-rules", commissionRule, {
-    after,
-    onAfterChange,
-  })
+  const paged = usePagedList(
+    ["commission-rules"],
+    "/admin/commission-rules",
+    commissionRule,
+    {
+      after,
+      onAfterChange,
+    }
+  )
 
   return (
     <DataTable
+      header={{
+        title: "Commission rules",
+        description:
+          "What the marketplace keeps from a seller's line, and on what.",
+      }}
       paged={paged}
       columns={columns}
       empty={{
