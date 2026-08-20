@@ -18,14 +18,25 @@
 //! creates for itself and that tezgah owns no migration for, and
 //! `spawn_worker` claims and runs what was written, on its own connection,
 //! with `for update skip locked` so two workers cannot take the same row.
+//!
+//! For a while the second half of that was not true in the way it read: the
+//! loop claimed a row, printed it, and marked it processed whatever its kind
+//! was. So the one kind tezgah enqueues — a subscription's dunning retry —
+//! was swallowed on every tick, and a declined renewal was retried never.
+//! [`Dispatcher`] is what a kind is now run by, and a kind nothing handles
+//! fails with a reason rather than being marked done.
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use std::sync::Arc;
+
 use sqlx::PgPool;
+use tezgah::id::SubscriptionId;
 use tezgah::ports::{
-    Action, Actor, AuditEntry, AuditSink, Authorizer, Clock, Event, EventSink, JobSpec, Jobs,
-    Permit, Resource, Tx,
+    Action, Actor, AuditEntry, AuditSink, Authorizer, Clock, Ctx, Event, EventSink, Host, JobSpec,
+    Jobs, Permit, Resource, Scope, Tx,
 };
+use tezgah::subscription::Renewals;
 use uuid::Uuid;
 
 #[derive(Debug, Default)]
@@ -97,13 +108,17 @@ impl Jobs for ServerHost {
     }
 }
 
-/// Creates the table `enqueue` writes to and `spawn_worker` reads from.
+/// Creates the table `enqueue` writes to and the worker reads from.
 ///
 /// Not a tezgah migration — tezgah owns no table by this name and never will,
 /// the same way it owns none of a host's own bookkeeping. Made ahead of
 /// `tezgah::MIGRATIONS`, carrying no `scope` column and no row-level
 /// security, because it is not one of tezgah's tables and nothing in it is a
 /// shop's data.
+///
+/// `alter table ... if not exists` rather than a second create: this table
+/// shipped without the three columns a retry needs, and an installation that
+/// already has rows in it should keep them.
 pub async fn create_jobs_table(pool: &PgPool) -> tezgah::Result<()> {
     sqlx::query(
         "create table if not exists server_job (
@@ -117,56 +132,196 @@ pub async fn create_jobs_table(pool: &PgPool) -> tezgah::Result<()> {
     )
     .execute(pool)
     .await?;
+
+    for column in [
+        "attempts integer not null default 0",
+        "failure text",
+        "dead_at timestamptz",
+    ] {
+        sqlx::query(&format!(
+            "alter table server_job add column if not exists {column}"
+        ))
+        .execute(pool)
+        .await?;
+    }
+
     Ok(())
+}
+
+/// How many times a failing job is tried before it is left alone.
+const MAX_ATTEMPTS: i32 = 5;
+
+/// The wait before the next attempt, doubling. Five attempts reach roughly
+/// half an hour, which is the right order for a card that was declined and a
+/// provider that was briefly unreachable alike.
+fn backoff(attempts: i32) -> chrono::Duration {
+    chrono::Duration::seconds(60 * i64::from(1 << attempts.clamp(0, 5)))
+}
+
+/// What a job kind is dispatched to.
+///
+/// One kind today, because the crate enqueues one: a subscription's dunning
+/// retry. The registry is a `match` rather than a map because a job this
+/// binary cannot handle must be visible as such — see [`drain_once`].
+pub struct Dispatcher {
+    /// `None` when this binary has no `RecurringProvider` and no stock
+    /// location to renew into — the same two things `main.rs` needs before it
+    /// can bind checkout. A dunning retry then fails with that as its
+    /// recorded reason rather than being marked done by a worker that did
+    /// nothing.
+    pub renewals: Option<Arc<Renewals>>,
+    pub scope: Scope,
+}
+
+impl std::fmt::Debug for Dispatcher {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Dispatcher")
+            .field("renewals", &self.renewals.is_some())
+            .field("scope", &self.scope)
+            .finish()
+    }
+}
+
+impl Dispatcher {
+    async fn run(
+        &self,
+        pool: &PgPool,
+        kind: &str,
+        payload: &serde_json::Value,
+    ) -> tezgah::Result<()> {
+        match kind {
+            tezgah::subscription::DUNNING_JOB => {
+                let Some(renewals) = self.renewals.as_ref() else {
+                    return Err(tezgah::Error::invalid(
+                        "this server has no recurring payment provider, so a dunning \
+                         retry cannot be attempted — see docs/self-hosting.md",
+                    ));
+                };
+
+                let id = payload
+                    .get("subscription")
+                    .and_then(serde_json::Value::as_str)
+                    .and_then(|text| Uuid::parse_str(text).ok())
+                    .ok_or_else(|| {
+                        tezgah::Error::invalid("that job names no subscription to renew")
+                    })?;
+
+                let host = ServerHost;
+                // `Actor::System`: nobody asked for this. `docs/hosting.md` is
+                // explicit that an authorizer denying `Actor::System` stops
+                // every renewal a shop has.
+                let ctx = Ctx::new(self.scope, Actor::System, &host as &dyn Host);
+                renewals
+                    .renew(pool, &ctx, SubscriptionId::from_uuid(id))
+                    .await?;
+                Ok(())
+            }
+            other => Err(tezgah::Error::invalid(format!(
+                "nothing in this binary handles a job of kind {other:?}"
+            ))),
+        }
+    }
 }
 
 /// The other half of `Jobs`: a loop that claims what `enqueue` wrote and
 /// actually runs it, on a five-second tick.
-///
-/// This binary itself enqueues nothing on the bound routes — only a
-/// subscription's dunning retry does, in `src/subscription.rs`, and
-/// `/admin/subscriptions` is bound read-only here. The loop still runs,
-/// because a job written through some other route this server grows later
-/// should not silently wait for a worker that was never started.
-pub fn spawn_worker(pool: PgPool) {
+pub fn spawn_worker(pool: PgPool, dispatcher: Arc<Dispatcher>) {
     tokio::spawn(async move {
         let mut ticks = tokio::time::interval(std::time::Duration::from_secs(5));
         loop {
             ticks.tick().await;
-            if let Err(err) = drain_once(&pool).await {
+            if let Err(err) = drain_once(&pool, dispatcher.as_ref()).await {
                 eprintln!("job worker: {err}");
             }
         }
     });
 }
 
-async fn drain_once(pool: &PgPool) -> tezgah::Result<()> {
-    let mut tx = pool.begin().await?;
+/// Claims what is due and runs it.
+///
+/// The claim and the outcome are two transactions on purpose. A job that calls
+/// a payment provider holds no row lock while it waits — the claim moves
+/// `run_after` out to the next backoff first, so a second worker will not take
+/// the same row, and the outcome is written afterwards.
+///
+/// What changed here, and it is the bug rather than the feature: this loop
+/// used to print every row and mark it processed. A kind nothing handled was
+/// therefore *done*, silently, and a subscription's dunning retry — the only
+/// kind tezgah enqueues — was swallowed on every tick. A job now fails with a
+/// reason, waits, and after [`MAX_ATTEMPTS`] is left dead with that reason
+/// still on it.
+async fn drain_once(pool: &PgPool, dispatcher: &Dispatcher) -> tezgah::Result<()> {
+    let due: Vec<(Uuid, String, serde_json::Value, i32)> = {
+        let mut tx = pool.begin().await?;
 
-    let due: Vec<(Uuid, String, serde_json::Value)> = sqlx::query_as(
-        "select id, kind, payload from server_job
-         where processed_at is null and (run_after is null or run_after <= now())
-         order by created_at
-         limit 10
-         for update skip locked",
-    )
-    .fetch_all(&mut *tx)
-    .await?;
+        let claimed: Vec<(Uuid, String, serde_json::Value, i32)> = sqlx::query_as(
+            "select id, kind, payload, attempts from server_job
+             where processed_at is null
+               and dead_at is null
+               and (run_after is null or run_after <= now())
+             order by created_at
+             limit 10
+             for update skip locked",
+        )
+        .fetch_all(&mut *tx)
+        .await?;
 
-    for (id, kind, payload) in due {
-        // A real dispatch reads `kind` here — a declined renewal's next
-        // attempt, a reminder. Nothing bound yet writes a job this loop needs
-        // to act on beyond marking it seen.
-        println!(
-            "{}",
-            serde_json::json!({ "kind": "job_ran", "job_kind": kind, "job_id": id, "payload": payload })
-        );
-        sqlx::query("update server_job set processed_at = now() where id = $1")
-            .bind(id)
-            .execute(&mut *tx)
-            .await?;
+        for (id, _, _, attempts) in &claimed {
+            sqlx::query("update server_job set run_after = $2 where id = $1")
+                .bind(id)
+                .bind(chrono::Utc::now() + backoff(*attempts))
+                .execute(&mut *tx)
+                .await?;
+        }
+
+        tx.commit().await?;
+        claimed
+    };
+
+    for (id, kind, payload, attempts) in due {
+        match dispatcher.run(pool, &kind, &payload).await {
+            Ok(()) => {
+                sqlx::query(
+                    "update server_job set processed_at = now(), failure = null where id = $1",
+                )
+                .bind(id)
+                .execute(pool)
+                .await?;
+                println!(
+                    "{}",
+                    serde_json::json!({ "kind": "job_ran", "job_kind": kind, "job_id": id })
+                );
+            }
+            Err(err) => {
+                let attempts = attempts + 1;
+                let dead = attempts >= MAX_ATTEMPTS;
+                sqlx::query(
+                    "update server_job
+                     set attempts = $2,
+                         failure = $3,
+                         dead_at = case when $4 then now() else null end
+                     where id = $1",
+                )
+                .bind(id)
+                .bind(attempts)
+                .bind(err.to_string())
+                .bind(dead)
+                .execute(pool)
+                .await?;
+
+                eprintln!(
+                    "{}",
+                    serde_json::json!({
+                        "kind": if dead { "job_dead" } else { "job_failed" },
+                        "job_kind": kind,
+                        "job_id": id,
+                        "attempts": attempts,
+                        "failure": err.to_string(),
+                    })
+                );
+            }
+        }
     }
 
-    tx.commit().await?;
     Ok(())
 }

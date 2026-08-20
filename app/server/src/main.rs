@@ -15,8 +15,9 @@ use std::sync::Arc;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use tezgah::checkout::Checkout;
-use tezgah::payment::PaymentProvider;
+use tezgah::payment::{PaymentProvider, RecurringProvider};
 use tezgah::ports::Scope;
+use tezgah::subscription::Renewals;
 use tezgah_server::config::Config;
 use tezgah_server::{host, http, identity, provider, schedule, seed};
 use tokio::net::TcpListener;
@@ -80,19 +81,28 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     host::create_jobs_table(&pool).await?;
-    host::spawn_worker(pool.clone());
     identity::create_tables(&pool).await?;
 
     let scope = bootstrap_scope(&pool).await?;
     schedule::spawn(pool.clone(), scope);
     let host = Arc::new(host::ServerHost);
 
+    let mut renewals: Option<Arc<Renewals>> = None;
+
     let checkout = match (config.stock_location_id, config.demo_bank_enabled) {
         (Some(location_id), true) => {
             let bank: Arc<dyn kasapay_core::Provider> = Arc::new(provider::DemoBank);
-            let kasapay_provider: Arc<dyn PaymentProvider> = Arc::new(
-                provider::KasapayProvider::new(bank, config.currency_exponent),
-            );
+            let mapped = Arc::new(provider::KasapayProvider::new(
+                bank,
+                config.currency_exponent,
+            ));
+            // The same provider, seen through the two traits a shop needs it
+            // for: one to take a payment somebody is present for, one to
+            // charge an instrument they left on file.
+            let recurring: Arc<dyn RecurringProvider> = mapped.clone();
+            renewals = Some(Arc::new(Renewals::new(recurring, location_id)));
+
+            let kasapay_provider: Arc<dyn PaymentProvider> = mapped;
             Some(Arc::new(Checkout::new(kasapay_provider, location_id)))
         }
         (None, _) => {
@@ -109,6 +119,14 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             None
         }
     };
+
+    if renewals.is_none() {
+        println!(
+            "subscription renewals not dispatched: the same TEZGAH_STOCK_LOCATION_ID and \
+             TEZGAH_DEMO_BANK checkout needs — a dunning retry will record that as its reason"
+        );
+    }
+    host::spawn_worker(pool.clone(), Arc::new(host::Dispatcher { renewals, scope }));
 
     let admin_token: Option<Arc<str>> = config.admin_token.as_deref().map(Arc::from);
     let operators = identity::count(&pool).await?;
