@@ -88,6 +88,27 @@ jobs:
           echo "::error::src/api/schema.d.ts is stale — regenerate it from tests/snapshots/openapi.json and commit the result." >&2
           git diff --stat -- src/api/schema.d.ts
           exit 1
+      # Both are committed, not produced by `build`, because `tsc -b` needs
+      # them before Vite ever runs a plugin. Regenerating and diffing is what
+      # stands in for a build-time freshness check.
+      - name: The generated fetch client and zod schemas are current
+        run: |
+          bunx orval
+          if git diff --quiet -- src/api/generated; then
+            exit 0
+          fi
+          echo "::error::src/api/generated is stale — run 'bunx orval' and commit the result." >&2
+          git diff --stat -- src/api/generated
+          exit 1
+      - name: The route tree is current
+        run: |
+          node scripts/generate-routes.mjs
+          if git diff --quiet -- src/routeTree.gen.ts; then
+            exit 0
+          fi
+          echo "::error::src/routeTree.gen.ts is stale — run 'node scripts/generate-routes.mjs' and commit the result." >&2
+          git diff --stat -- src/routeTree.gen.ts
+          exit 1
 
   # The images, built and thrown away. Nothing else reads server/Dockerfile's
   # stand-in list, so a crate target added anywhere else broke the image while

@@ -32,4 +32,15 @@ export default defineConfig([
       'react-hooks/set-state-in-effect': 'off',
     },
   },
+  // Every file here exports `Route` — `@tanstack/router-plugin`'s own
+  // convention, not a component. Its own component is `RouteComponent`,
+  // exported alongside it (not inlined) because a hook may only be called
+  // from something react-hooks recognises as a component, and an unexported
+  // one still has to be named like it calls hooks.
+  {
+    files: ['src/routes/**'],
+    rules: {
+      'react-refresh/only-export-components': ['error', { allowExportNames: ['Route'] }],
+    },
+  },
 ])

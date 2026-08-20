@@ -3,9 +3,9 @@ import { RouterProvider } from "@tanstack/react-router"
 import { useState } from "react"
 
 import { ApiError } from "@/api/client"
+import { Connect } from "@/components/connect"
 import { held } from "@/lib/token"
 import { router } from "@/router"
-import { Connect } from "@/screens/connect"
 
 const queryClient = new QueryClient({
   defaultOptions: {
