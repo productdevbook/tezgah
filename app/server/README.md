@@ -427,11 +427,23 @@ a gap, and `docs/architecture.md` counts it as one.
 
 ## Route table
 
+<!-- bound-routes: 160 -->
+
+That number is checked rather than remembered: `tests/bound_count.rs` builds
+the fullest router this binary can make without a payment provider, counts
+what it mounted out of `tezgah::api::routes()`, and fails if the comment above
+disagrees. It moved by hand six times in one day before that existed, and was
+wrong on at least two of them.
+
+Configuring checkout adds one more — `POST /store/carts/{id}/complete` — which
+is why the number is stated without it.
+
+
 `tezgah::api::routes()` names 486 operations. This binary binds a fraction,
 by hand, and says exactly how many out loud at startup:
 
 ```
-bound 154 of 486 declared routes
+bound 160 of 486 declared routes
   GET    /store/products
   GET    /store/products/{handle}
   POST   /store/carts

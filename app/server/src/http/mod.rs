@@ -69,13 +69,18 @@ pub struct AppState {
 
 /// The paths this binary actually serves out of `tezgah::api::routes()`,
 /// versus how many that table declares — logged once at startup and never
-/// silently different from what `router()` below mounted. `health` is
-/// counted separately: `GET /health` is this binary's own, not one of
-/// tezgah's 486, and folding it into the same tally would inflate the count
-/// against a table it was never part of.
+/// silently different from what `router()` below mounted.
+///
+/// `health` is counted separately, and so is `own`: `GET /health`, the two
+/// file routes and the accounts are this binary's, not tezgah's, and folding
+/// any of them into the same tally would inflate the count against a table
+/// they were never part of. That is not hypothetical — the file routes did
+/// exactly that between the commit that added them and this one.
 #[derive(Debug)]
 pub struct Bound {
     pub paths: Vec<(&'static str, &'static str)>,
+    /// This binary's own, counted apart from the table's.
+    pub own: Vec<(&'static str, &'static str)>,
     pub declared: usize,
     pub health: bool,
 }
@@ -89,6 +94,9 @@ impl Bound {
         );
         for (method, path) in &self.paths {
             println!("  {method:<6} {path}");
+        }
+        for (method, path) in &self.own {
+            println!("  {method:<6} {path}   (this binary's own, not one of the table's)");
         }
         if self.health {
             println!("  plus GET /health, which is this binary's own and not one of the 486");
@@ -134,9 +142,14 @@ pub fn router(state: AppState) -> (Router, Bound) {
     // Reading a file back is open: an image on a storefront is public, and a
     // signed URL for a product photo is ceremony. Uploading one is not, and
     // goes in with the admin surface below.
+    //
+    // Into `own` rather than `bound`: neither file route is in
+    // `tezgah::api::routes()`, so counting them against it would say this
+    // binary serves more of the table than it does.
+    let mut own = Vec::new();
     let (file_router, file_bound) = files::router(state.files.is_some());
     app = app.merge(file_router);
-    bound.extend(file_bound);
+    own.extend(file_bound);
 
     // Mounted when there is any way to authenticate at all. Before operators
     // existed that was `ADMIN_TOKEN` alone, and an unset one meant the admin
@@ -151,7 +164,7 @@ pub fn router(state: AppState) -> (Router, Bound) {
         let (admin_router, admin_bound) = admin::router();
         let (upload_router, upload_bound) = files::admin_router(state.files.is_some());
         let admin_router = admin_router.merge(upload_router);
-        bound.extend(upload_bound);
+        own.extend(upload_bound);
         // `route_layer`, not `layer`: `layer` also wraps a router's own
         // fallback, and `Router::merge` picks the *other* router's fallback
         // when both are still the untouched default — so a `.layer`'d
@@ -173,6 +186,7 @@ pub fn router(state: AppState) -> (Router, Bound) {
     let declared = tezgah::api::routes().len();
     let report = Bound {
         paths: bound,
+        own,
         declared,
         health: true,
     };
