@@ -53,7 +53,28 @@ export const PostAdminInventoryItemsResponse = zod.object({
 /**
  * @summary Set the counted stock of many items at many locations
  */
-export const PostAdminInventoryItemsBatchResponse = zod.unknown()
+export const PostAdminInventoryItemsBatchBody = zod.object({
+  "levels": zod.array(zod.object({
+  "incoming_quantity": zod.int().nullish(),
+  "inventory_item_id": zod.uuid().describe('Identifies one inventory item.'),
+  "location_id": zod.uuid().describe('Identifies one stock location.'),
+  "stocked_quantity": zod.int()
+}))
+})
+
+export const postAdminInventoryItemsBatchResponseAppliedMin = 0;
+
+export const postAdminInventoryItemsBatchResponseRejectedItemRowMin = 0;
+
+
+
+export const PostAdminInventoryItemsBatchResponse = zod.object({
+  "applied": zod.int().min(postAdminInventoryItemsBatchResponseAppliedMin),
+  "rejected": zod.array(zod.object({
+  "reason": zod.string(),
+  "row": zod.int().min(postAdminInventoryItemsBatchResponseRejectedItemRowMin)
+}))
+})
 
 /**
  * @summary Delete an inventory item
@@ -86,7 +107,21 @@ export const GetAdminInventoryItemsByIdLocationLevelsParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminInventoryItemsByIdLocationLevelsResponse = zod.unknown()
+export const GetAdminInventoryItemsByIdLocationLevelsResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "available_quantity": zod.int(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one inventory level.'),
+  "incoming_quantity": zod.int(),
+  "inventory_item_id": zod.uuid().describe('Identifies one inventory item.'),
+  "location_id": zod.uuid().describe('Identifies one stock location.'),
+  "reserved_quantity": zod.int(),
+  "stocked_quantity": zod.int()
+}))
+}))
 
 /**
  * @summary Set the counted stock at one location
@@ -120,7 +155,16 @@ export const GetAdminInventoryItemsByIdLocationLevelsByLocationIdParams = zod.ob
   "location_id": zod.string()
 })
 
-export const GetAdminInventoryItemsByIdLocationLevelsByLocationIdResponse = zod.unknown()
+export const GetAdminInventoryItemsByIdLocationLevelsByLocationIdResponse = zod.object({
+  "available_quantity": zod.int(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one inventory level.'),
+  "incoming_quantity": zod.int(),
+  "inventory_item_id": zod.uuid().describe('Identifies one inventory item.'),
+  "location_id": zod.uuid().describe('Identifies one stock location.'),
+  "reserved_quantity": zod.int(),
+  "stocked_quantity": zod.int()
+})
 
 /**
  * @summary Move the stock at one location by a delta
@@ -286,7 +330,17 @@ export const GetAdminSalesChannelsByIdStockLocationsResponse = zod.unknown()
 /**
  * @summary List stock locations
  */
-export const GetAdminStockLocationsResponse = zod.unknown()
+export const GetAdminStockLocationsResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "address_id": zod.uuid().nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one stock location.'),
+  "name": zod.string()
+}))
+}))
 
 /**
  * @summary Create a stock location

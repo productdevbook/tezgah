@@ -183,7 +183,30 @@ export const PostAdminPricesResponse = zod.object({
 /**
  * @summary Move many prices at once, one currency to a call
  */
-export const PostAdminPricesBatchResponse = zod.unknown()
+export const postAdminPricesBatchBodyPricesItemAmountRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+
+
+export const PostAdminPricesBatchBody = zod.object({
+  "prices": zod.array(zod.object({
+  "amount": zod.union([zod.string().regex(postAdminPricesBatchBodyPricesItemAmountRegExpOne),zod.number()]),
+  "currency_code": zod.string(),
+  "id": zod.uuid().describe('Identifies one price.')
+}))
+})
+
+export const postAdminPricesBatchResponseAppliedMin = 0;
+
+export const postAdminPricesBatchResponseRejectedItemRowMin = 0;
+
+
+
+export const PostAdminPricesBatchResponse = zod.object({
+  "applied": zod.int().min(postAdminPricesBatchResponseAppliedMin),
+  "rejected": zod.array(zod.object({
+  "reason": zod.string(),
+  "row": zod.int().min(postAdminPricesBatchResponseRejectedItemRowMin)
+}))
+})
 
 /**
  * @summary Delete a price

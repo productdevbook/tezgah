@@ -32,6 +32,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { Variants } from "@/features/products/variants"
 import { dateTime, useDetail } from "@/lib/detail"
 
 /**
@@ -121,9 +122,11 @@ export function ProductDetail({
                   </SectionRows>
                 </Section>
 
+                <Variants productId={item.id} />
+
                 <Section
                   title="Digital content"
-                  description="A file belongs to one variant, and no route lists a product's variants — paste the variant's id to see or add what it carries."
+                  description="A file belongs to one variant — take an id from the variants above to see or add what it carries."
                 >
                   <div className="px-6 py-4">
                     <DigitalContentByVariant

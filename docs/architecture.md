@@ -191,7 +191,7 @@ has nowhere to say so. A file store and a mailer are the same absence seen
 from a different side: a product image can only be a URL somebody else hosts,
 and nothing in the product can send a receipt.
 
-**111 of 483 declared routes are bound.** The panel draws 228. The difference
+**113 of 483 declared routes are bound.** The panel draws 228. The difference
 is not a mistake — each binding is written by hand, deliberately — but it does
 mean the panel and the binary disagree about what the product is, and the
 number will not close by hand at that rate. Either the route table grows a
@@ -237,10 +237,10 @@ and splitting six across three drawers is ceremony.
 **Bulk is a round trip.** A page of variants out as CSV, edited, and back in
 — the export's columns and the import's are the same, which is what makes it
 one. Multi-select and a bulk delete are on the products
-list; and prices have an edit grid, which they can have because
-their batch route takes the rows together. A list whose writes are one row at
-a time cannot have a grid worth using, and the round trip is what a shop
-changing four hundred of anything else reaches for.
+list; prices and an item's stock levels each have an edit grid, which they
+can have because their batch routes take the rows together. A list whose
+writes are one row at a time cannot have a grid worth using, and the round
+trip is what a shop changing four hundred of anything else reaches for.
 
 **Mountable in what it says, not in how it routes.** No screen reaches for a
 global any more: where the API is, what token to send, what to do when it is

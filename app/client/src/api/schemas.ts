@@ -4,11 +4,16 @@ import {
   GetAdminCustomersByIdResponse,
   PatchAdminCustomersByIdBody,
 } from "@/api/generated/zod/customer/customer"
-import { GetAdminInventoryItemsByIdResponse } from "@/api/generated/zod/inventory/inventory"
+import {
+  GetAdminInventoryItemsByIdLocationLevelsByLocationIdResponse,
+  GetAdminInventoryItemsByIdResponse,
+  PostAdminStockLocationsResponse,
+} from "@/api/generated/zod/inventory/inventory"
 import { GetAdminOrdersByIdResponse } from "@/api/generated/zod/order/order"
 import {
   GetAdminProductsByIdResponse,
   PatchAdminProductsByIdBody,
+  PostAdminProductsByIdVariantsResponse,
 } from "@/api/generated/zod/catalogue/catalogue"
 import {
   GetAdminPromotionsByIdResponse,
@@ -92,6 +97,25 @@ export type Order = z.infer<typeof order>
 
 export const inventoryItem = GetAdminInventoryItemsByIdResponse
 export type InventoryItem = z.infer<typeof inventoryItem>
+
+/**
+ * The three below are named after the route that returns one on its own,
+ * which for two of them is a `POST`.
+ *
+ * A page's schema is generated as an intersection, so the item inside it is
+ * not exported by itself; a variant and a stock location have no `GET` of
+ * their own to be named after. Creating one answers with the same view the
+ * page carries, so this is that view — generated, not transcribed.
+ */
+export const inventoryLevel =
+  GetAdminInventoryItemsByIdLocationLevelsByLocationIdResponse
+export type InventoryLevel = z.infer<typeof inventoryLevel>
+
+export const variant = PostAdminProductsByIdVariantsResponse
+export type Variant = z.infer<typeof variant>
+
+export const stockLocation = PostAdminStockLocationsResponse
+export type StockLocation = z.infer<typeof stockLocation>
 
 export const customer = GetAdminCustomersByIdResponse
 export type Customer = z.infer<typeof customer>

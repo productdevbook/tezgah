@@ -365,7 +365,7 @@ In `app/`:
       row, each in the transaction of the change it belongs to, read at
       `/records` — but nothing delivers them, and a product image is still a
       URL somebody else hosts
-- [ ] the rest of the route table: 111 of 483 bound by hand, 228 drawn by the
+- [ ] the rest of the route table: 113 of 483 bound by hand, 228 drawn by the
       panel
 - [ ] tracing, metrics, a request log, readiness apart from liveness, a CORS
       policy, a rate limit
@@ -378,9 +378,10 @@ In the panel:
       `useState` and a map of field errors each
 - [ ] the screens' own words in the dictionary — English and Turkish exist
       and the compiler keeps them in step, over the shared chrome only
-- [ ] an edit grid past prices — `/pricing/prices` has one, because
-      `POST /admin/prices/batch` takes the rows together; a list whose writes
-      are one row at a time cannot have one worth using
+- [x] an edit grid past prices — an inventory item's levels are counted in
+      one, for the same reason `/pricing/prices` can be one: the batch route
+      takes the rows together. A list whose writes are one row at a time
+      still cannot have one worth using, so the third is not free
 - [ ] the routing half of the seam — what a screen says and sends is a
       host's answer now; where it lives is still a fixed route root and a
       sidebar switched over a closed route union

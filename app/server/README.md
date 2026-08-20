@@ -279,7 +279,7 @@ improvement on being marked done by a worker that did nothing.
 by hand, and says exactly how many out loud at startup:
 
 ```
-bound 111 of 483 declared routes
+bound 113 of 483 declared routes
   GET    /store/products
   GET    /store/products/{handle}
   POST   /store/carts

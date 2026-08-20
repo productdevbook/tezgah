@@ -387,7 +387,44 @@ export const PostAdminProductsResponse = zod.object({
 /**
  * @summary Write and delete many products in one call
  */
-export const PostAdminProductsBatchResponse = zod.unknown()
+export const postAdminProductsBatchBodyDeleteDefault = [];
+export const postAdminProductsBatchBodyRowsItemPriceAmountRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+
+
+export const PostAdminProductsBatchBody = zod.object({
+  "delete": zod.array(zod.uuid().describe('Identifies one product.')).default(postAdminProductsBatchBodyDeleteDefault),
+  "rows": zod.array(zod.object({
+  "description": zod.string().nullish(),
+  "handle": zod.string(),
+  "price_amount": zod.union([zod.string().regex(postAdminProductsBatchBodyRowsItemPriceAmountRegExpOne),zod.number()]).nullish(),
+  "price_currency": zod.string().nullish(),
+  "sku": zod.string().nullish(),
+  "status": zod.union([zod.enum(['draft', 'proposed', 'published', 'archived', 'rejected']).describe('Where a product is in its life. `draft` is invisible, `published` is for\nsale, `archived` is kept for the orders that already name it. `proposed`\nand `rejected` are a marketplace\'s review of a seller\'s submission —\ninvisible the same as `draft`, but reached only through\n[`submit_for_review`], [`approve_product`] and [`reject_product`], not\nthrough a plain edit.'),zod.null()]).optional(),
+  "subtitle": zod.string().nullish(),
+  "title": zod.string(),
+  "variant_title": zod.string().nullish()
+}))
+}).describe('The rows themselves, never a URL to fetch them from: where the file lives is\nthe host\'s business, and tezgah does not read one.')
+
+export const postAdminProductsBatchResponseCreatedMin = 0;
+
+export const postAdminProductsBatchResponseDeletedMin = 0;
+
+export const postAdminProductsBatchResponseRejectedItemRowMin = 0;
+
+export const postAdminProductsBatchResponseUpdatedMin = 0;
+
+
+
+export const PostAdminProductsBatchResponse = zod.object({
+  "created": zod.int().min(postAdminProductsBatchResponseCreatedMin),
+  "deleted": zod.int().min(postAdminProductsBatchResponseDeletedMin),
+  "rejected": zod.array(zod.object({
+  "reason": zod.string(),
+  "row": zod.int().min(postAdminProductsBatchResponseRejectedItemRowMin)
+})),
+  "updated": zod.int().min(postAdminProductsBatchResponseUpdatedMin)
+})
 
 /**
  * @summary A page of variants, flat enough to write as CSV
@@ -751,7 +788,43 @@ export const GetAdminProductsByIdVariantsQueryParams = zod.object({
   "limit": zod.int().min(getAdminProductsByIdVariantsQueryLimitMin).nullish()
 })
 
-export const GetAdminProductsByIdVariantsResponse = zod.unknown()
+export const getAdminProductsByIdVariantsResponseTwoItemsItemHeightRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+export const getAdminProductsByIdVariantsResponseTwoItemsItemLengthRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+export const getAdminProductsByIdVariantsResponseTwoItemsItemWeightRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+export const getAdminProductsByIdVariantsResponseTwoItemsItemWidthRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const GetAdminProductsByIdVariantsResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "allows_backorder": zod.boolean(),
+  "barcode": zod.string().nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "ean": zod.string().nullable(),
+  "height": zod.string().regex(getAdminProductsByIdVariantsResponseTwoItemsItemHeightRegExp).nullable(),
+  "hs_code": zod.string().nullable(),
+  "id": zod.uuid().describe('Identifies one variant.'),
+  "is_giftcard": zod.boolean(),
+  "length": zod.string().regex(getAdminProductsByIdVariantsResponseTwoItemsItemLengthRegExp).nullable(),
+  "manages_inventory": zod.boolean(),
+  "material": zod.string().nullable(),
+  "metadata": zod.unknown(),
+  "mid_code": zod.string().nullable(),
+  "origin_country": zod.string().nullable(),
+  "product_id": zod.uuid().describe('Identifies one product.'),
+  "rank": zod.int(),
+  "requires_shipping": zod.boolean(),
+  "sku": zod.string().nullable(),
+  "title": zod.string(),
+  "upc": zod.string().nullable(),
+  "updated_at": zod.iso.datetime({"offset":true}),
+  "weight": zod.string().regex(getAdminProductsByIdVariantsResponseTwoItemsItemWeightRegExp).nullable(),
+  "width": zod.string().regex(getAdminProductsByIdVariantsResponseTwoItemsItemWidthRegExp).nullable(),
+  "withdrawal_exclusion": zod.string().nullable()
+}))
+}))
 
 /**
  * @summary Create a variant of a product

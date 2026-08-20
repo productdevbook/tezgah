@@ -110,11 +110,13 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         ("POST", "/admin/publishable-api-keys"),
         ("POST", "/admin/stock-locations"),
         ("POST", "/admin/products"),
+        ("GET", "/admin/products/{id}/variants"),
         ("POST", "/admin/products/{id}/variants"),
         ("POST", "/admin/price-sets"),
         ("POST", "/admin/product-variants/{id}/price-set"),
         ("POST", "/admin/prices"),
         ("POST", "/admin/inventory-items"),
+        ("GET", "/admin/inventory-items/{id}/location-levels"),
         ("POST", "/admin/inventory-items/{id}/location-levels"),
         ("GET", "/admin/order-baskets/{id}"),
         ("GET", "/admin/order-baskets/{id}/orders"),
@@ -242,7 +244,10 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
             "/admin/stock-locations/{id}",
             patch(update_stock_location).delete(delete_stock_location),
         )
-        .route("/admin/products/{id}/variants", post(create_variant))
+        .route(
+            "/admin/products/{id}/variants",
+            get(list_variants).post(create_variant),
+        )
         .route("/admin/price-sets", post(create_price_set))
         .route(
             "/admin/product-variants/{id}/price-set",
@@ -251,7 +256,7 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         .route("/admin/prices", post(add_price))
         .route(
             "/admin/inventory-items/{id}/location-levels",
-            post(set_stock),
+            get(list_levels).post(set_stock),
         )
         .route("/admin/order-baskets/{id}", get(get_basket))
         .route("/admin/order-baskets/{id}/orders", get(basket_orders))
@@ -1088,6 +1093,42 @@ async fn create_inventory_item(
     let item = admin_catalogue::create_inventory_item(&mut tx, &ctx, body).await?;
     tx.commit().await?;
     Ok(Json(item))
+}
+
+/// A product's variants.
+///
+/// Declared with a paging query since the catalogue was written and bound by
+/// nothing, so the panel could show a product and not what a shop actually
+/// sells — the variant is the thing with a price, a SKU and stock behind it.
+async fn list_variants(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ProductId>,
+    Query(query): Query<admin_catalogue::ListQuery>,
+) -> Result<Json<tezgah::page::Page<admin_catalogue::VariantView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let page = admin_catalogue::list_variants(&mut tx, &ctx, id, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+/// What is where, for one item.
+///
+/// Declared in `tezgah::api::routes()` since the inventory domain was written
+/// and bound by nothing until now, so the panel could show an item without
+/// ever saying how many there were.
+async fn list_levels(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<InventoryItemId>,
+    Query(query): Query<admin_catalogue::ListQuery>,
+) -> Result<Json<tezgah::page::Page<admin_catalogue::InventoryLevelView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let page = admin_catalogue::list_levels(&mut tx, &ctx, id, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
 }
 
 async fn set_stock(
