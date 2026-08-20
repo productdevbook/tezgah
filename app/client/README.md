@@ -23,12 +23,6 @@ crate, and every paged query ends `order by created_at`. A sortable header
 here would be claiming something about the pages that are not on screen. This
 one cannot be fixed in the panel.
 
-**Most forms are still hand-rolled.** `features/products/` resolves its zod
-schema against its fields through `FormField`; the four remaining
-`*-edit.tsx` screens still keep a `useState`, a `safeParse` and a
-`Record<string, string>` of errors of their own. Converting each is
-mechanical now that the pattern is there.
-
 **Translation is a dictionary with almost nothing in it.** `panel/i18n`
 holds English and Turkish and the compiler enforces that they match, and what
 they cover is the shared chrome — actions, errors, the unsaved-changes
@@ -37,6 +31,12 @@ prompt. Every screen's own words are still English in the source.
 **Nothing is bulk.** No multi-select, no edit grid, and no screen at all for
 the three `batch` endpoints — products, prices and stock — that are routed
 and drawn by nobody.
+
+**A section can be read and not changed.** A record's page is a stack of
+sections, and only the one carrying the fields `PATCH` accepts has an action
+on it. That is the API's shape rather than a decision here: there is one
+write route per record, not one per part of it, so a product's media and its
+organisation cannot be saved apart the way an established platform's can.
 
 **Mountable in the parts that talk, not yet in the parts that route.** No
 screen reaches for a global any more: the API address, the token, what to do
@@ -197,6 +197,54 @@ removing it. The sixteen built sections each have a real route; `digital`
 falls through to `src/routes/$section.tsx`, which is what `NotBuilt` used to
 be reached through — a static route always wins the match over a dynamic
 one, so a slug that gains a screen just needs a file added here.
+
+### A record's page is a stack of sections
+
+`components/detail-page.tsx` is what all sixteen of them are built from:
+loading, refusal and drift come from `QueryState`, going back comes from
+`DetailHeader`, and what a screen decides is what the record is called, what
+can be done to it, and which facts belong together. `main` is the record
+itself, `side` is what it belongs to — one column on a narrow screen, in that
+order.
+
+Grouping is the whole work, and it is per record rather than mechanical. An
+order's three statuses are one section because they move independently and
+reading them together is the point. A subscription's dunning attempts sit
+beside its status, because "retrying a failed charge" and "cancelled" are the
+two an operator confuses. A tax rate's "default for its region" and
+"combinable" belong together because the second only makes sense against the
+first.
+
+`Section`, `SectionRow`, `SectionRows` and `SectionBody` are the parts;
+`ActionMenu` is what a section carries in its corner when there is something
+to do to it. `MetadataSection` is the one every record has.
+
+### A list is a framed container with a header
+
+`DataTable` draws the frame, and `header` is the sentence saying what the
+rows are. That matters most where there is no page title: `/tax/rates`,
+`/fulfilment/providers`, `/payments/refund-reasons` and eleven more are tabs
+under one heading, and without it each is a grid of rows and nothing that
+says what they hold. `TableFrame` is the same frame for the three lists that
+answer a plain array rather than `Page<T>` and so build their own table.
+
+No feature is registered on TanStack Table, and there is no search box, no
+filter and no sortable header. Every list handler in the crate takes a cursor
+and a limit and nothing else, so all three would be claiming something about
+the pages that are not on screen. It is a gap in the API, and
+[`../../docs/architecture.md`](../../docs/architecture.md) carries it.
+
+### ⌘K
+
+`components/command-palette.tsx` searches the sections and nothing else. No
+route searches products, orders or customers, so a palette offering to would
+promise something the API cannot answer; when one arrives, that is where it
+goes.
+
+Reaching a section from a runtime slug takes a switch, because the router's
+route union is closed and a template string cannot join it.
+`components/section-link.tsx` is that switch, once, for the sidebar and the
+palette both.
 
 ### A form is a route, drawn over the page it came from
 

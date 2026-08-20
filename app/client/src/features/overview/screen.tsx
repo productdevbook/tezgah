@@ -3,14 +3,9 @@ import { useQuery } from "@tanstack/react-query"
 import { z } from "zod"
 
 import { ApiError, get } from "@/api/client"
+import { Section, SectionBody } from "@/components/section"
+import { SectionLink } from "@/components/section-link"
 import { Badge } from "@/components/ui/badge"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { COVERAGE, GROUPS } from "@/lib/nav"
 import { PageHeading } from "@/components/page-heading"
@@ -27,13 +22,19 @@ export function Overview() {
     queryKey: ["host"],
     // Only whether anybody answers; the shape is deliberately not asserted.
     queryFn: ({ signal }) =>
-      get("/admin/currencies", { signal, schema: z.unknown(), query: { limit: 1 } }),
+      get("/admin/currencies", {
+        signal,
+        schema: z.unknown(),
+        query: { limit: 1 },
+      }),
     retry: false,
   })
 
   const reachable = host.isSuccess
   const unreachable =
-    host.isError && host.error instanceof ApiError && host.error.kind === "unreachable"
+    host.isError &&
+    host.error instanceof ApiError &&
+    host.error.kind === "unreachable"
 
   const percent = Math.round((COVERAGE.covered / COVERAGE.operations) * 100)
 
@@ -45,14 +46,11 @@ export function Overview() {
       />
 
       <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">The host</CardTitle>
-            <CardDescription>
-              tezgah is a library. Something else has to mount `api::routes()`.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+        <Section
+          title="The host"
+          description="tezgah is a library. Something else has to mount api::routes()."
+        >
+          <SectionBody>
             {host.isPending ? (
               <Badge variant="outline">asking…</Badge>
             ) : reachable ? (
@@ -60,58 +58,61 @@ export function Overview() {
             ) : unreachable ? (
               <div className="space-y-1">
                 <Badge variant="destructive">nobody answering</Badge>
-                <p className="text-muted-foreground text-xs">
+                <p className="text-xs text-muted-foreground">
                   Set <code>VITE_TEZGAH_API</code> to where the API is served.
                 </p>
               </div>
             ) : (
               <Badge variant="outline">answered, but refused</Badge>
             )}
-          </CardContent>
-        </Card>
+          </SectionBody>
+        </Section>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Coverage</CardTitle>
-            <CardDescription>
-              {COVERAGE.covered} of {COVERAGE.operations} declared admin
-              operations sit behind a screen.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <Progress value={percent} />
-            <p className="text-muted-foreground text-xs">{percent}%</p>
-          </CardContent>
-        </Card>
+        <Section
+          title="Coverage"
+          description={`${COVERAGE.covered} of ${COVERAGE.operations} declared admin operations sit behind a screen.`}
+        >
+          <SectionBody>
+            <div className="space-y-2">
+              <Progress value={percent} />
+              <p className="text-xs text-muted-foreground">{percent}%</p>
+            </div>
+          </SectionBody>
+        </Section>
       </div>
 
       <div className="space-y-4">
         {GROUPS.map((group) => (
           <div key={group.title} className="space-y-2">
-            <h2 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+            <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
               {group.title}
             </h2>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              {group.sections.filter((s) => !s.folded).map((section) => (
-                <div
-                  key={section.slug}
-                  className="flex items-center justify-between gap-2 rounded-md border px-3 py-2"
-                >
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-medium">
-                      {section.title}
-                    </div>
-                    <div className="text-muted-foreground text-xs">
-                      {section.operations} operations
-                    </div>
-                  </div>
-                  {section.built ? (
-                    <Badge>built</Badge>
-                  ) : (
-                    <Badge variant="outline">soon</Badge>
-                  )}
-                </div>
-              ))}
+              {group.sections
+                .filter((s) => !s.folded)
+                .map((section) => (
+                  // A tile that names a section and does not go there is a
+                  // dead end on the first screen somebody sees.
+                  <SectionLink
+                    key={section.slug}
+                    slug={section.slug}
+                    className="flex items-center justify-between gap-2 rounded-xl border bg-card px-3 py-2 transition-colors hover:bg-accent"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium">
+                        {section.title}
+                      </span>
+                      <span className="block text-xs text-muted-foreground">
+                        {section.operations} operations
+                      </span>
+                    </span>
+                    {section.built ? (
+                      <Badge>built</Badge>
+                    ) : (
+                      <Badge variant="outline">soon</Badge>
+                    )}
+                  </SectionLink>
+                ))}
             </div>
           </div>
         ))}
