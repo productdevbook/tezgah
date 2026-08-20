@@ -1,6 +1,219 @@
 {
   "components": {
     "schemas": {
+      "AcceptAgreement": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "agreement_version_id": {
+            "$ref": "#/components/schemas/AgreementVersionId"
+          },
+          "ip": {
+            "description": "Where from and with what, as the host saw it. tezgah does not read a\nrequest, so whoever does hands these over.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "metadata": true,
+          "user_agent": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "agreement_version_id"
+        ],
+        "type": "object"
+      },
+      "AddItemAction": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/ItemAction"
+          },
+          "internal_note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "order_line_item_id": {
+            "$ref": "#/components/schemas/LineItemId"
+          },
+          "quantity": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "unit_price": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "action",
+          "order_line_item_id",
+          "quantity"
+        ],
+        "type": "object"
+      },
+      "AddShippingAction": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/MoneyIn"
+          },
+          "internal_note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "amount"
+        ],
+        "type": "object"
+      },
+      "AddressIn": {
+        "additionalProperties": false,
+        "properties": {
+          "address_1": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "address_2": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "city": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "company": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "country_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "first_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "phone": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "postal_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "province": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "AgreementVersionId": {
+        "description": "Identifies one agreement version.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "AgreementVersionView": {
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "body_hash": {
+            "description": "What the acceptance points at, so two copies of a text can be compared\nwithout reading them.",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "effective_from": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/AgreementVersionId"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "locale": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "locale",
+          "body",
+          "body_hash",
+          "effective_from",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "AttachPaymentCollection": {
+        "additionalProperties": false,
+        "properties": {
+          "payment_collection_id": {
+            "$ref": "#/components/schemas/PaymentCollectionId"
+          }
+        },
+        "required": [
+          "payment_collection_id"
+        ],
+        "type": "object"
+      },
       "BalanceView": {
         "properties": {
           "amount": {
@@ -26,6 +239,339 @@
         "description": "Identifies one category.",
         "format": "uuid",
         "type": "string"
+      },
+      "ChangeActionView": {
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "applied": {
+            "type": "boolean"
+          },
+          "details": true,
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "order_change_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrderChangeId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ordering": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "reference_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "order_change_id",
+          "ordering",
+          "action",
+          "reference_id",
+          "details",
+          "amount",
+          "applied"
+        ],
+        "type": "object"
+      },
+      "ChangeDetailView": {
+        "description": "A change with its actions, which is the only shape anybody looks at one in.",
+        "properties": {
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/ChangeActionView"
+            },
+            "type": "array"
+          },
+          "change": {
+            "$ref": "#/components/schemas/ChangeView"
+          }
+        },
+        "required": [
+          "change",
+          "actions"
+        ],
+        "type": "object"
+      },
+      "ChangeView": {
+        "properties": {
+          "change_type": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/OrderChangeId"
+          },
+          "order_claim_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClaimId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "order_exchange_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExchangeId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "order_id": {
+            "$ref": "#/components/schemas/OrderId"
+          },
+          "order_return_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReturnId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "version": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "order_id",
+          "order_return_id",
+          "order_exchange_id",
+          "order_claim_id",
+          "version",
+          "change_type",
+          "status",
+          "description",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "ClaimId": {
+        "description": "Identifies one claim.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "ClaimItemView": {
+        "description": "One line of a claim: what was wrong with it, or what is being sent\ninstead — [`order::ClaimLine::images`] is what a support agent judges the\ndamage from.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "images": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "is_additional_item": {
+            "type": "boolean"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "order_claim_id": {
+            "$ref": "#/components/schemas/ClaimId"
+          },
+          "order_line_item_id": {
+            "$ref": "#/components/schemas/LineItemId"
+          },
+          "quantity": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "order_claim_id",
+          "order_line_item_id",
+          "reason",
+          "quantity",
+          "is_additional_item",
+          "images",
+          "note",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "ClaimKind": {
+        "enum": [
+          "refund",
+          "replace"
+        ],
+        "type": "string"
+      },
+      "ClaimLineIn": {
+        "additionalProperties": false,
+        "properties": {
+          "images": {
+            "default": [],
+            "description": "Photos of the damage, as URLs into wherever the host keeps files —\ntezgah stores none of its own.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "order_line_item_id": {
+            "$ref": "#/components/schemas/LineItemId"
+          },
+          "quantity": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "order_line_item_id",
+          "quantity"
+        ],
+        "type": "object"
+      },
+      "ClaimTransfer": {
+        "additionalProperties": false,
+        "properties": {
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "type": "object"
+      },
+      "ClaimView": {
+        "properties": {
+          "canceled_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "claim_type": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "display_id": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/ClaimId"
+          },
+          "order_id": {
+            "$ref": "#/components/schemas/OrderId"
+          },
+          "order_return_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReturnId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "order_version": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "refund_amount": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "order_id",
+          "order_return_id",
+          "order_version",
+          "display_id",
+          "claim_type",
+          "refund_amount",
+          "canceled_at",
+          "created_at"
+        ],
+        "type": "object"
       },
       "CollectionId": {
         "description": "Identifies one collection.",
@@ -72,6 +618,86 @@
           "kind",
           "value",
           "currency_code"
+        ],
+        "type": "object"
+      },
+      "ConvertDraft": {
+        "additionalProperties": false,
+        "properties": {
+          "payment_collection_id": {
+            "$ref": "#/components/schemas/PaymentCollectionId"
+          }
+        },
+        "required": [
+          "payment_collection_id"
+        ],
+        "type": "object"
+      },
+      "CreateOrder": {
+        "additionalProperties": false,
+        "properties": {
+          "currency": {
+            "type": "string"
+          },
+          "customer_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CustomerId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/NewLineIn"
+            },
+            "type": "array"
+          },
+          "locale": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "metadata": true,
+          "region_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RegionId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sales_channel_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SalesChannelId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "shipping": {
+            "items": {
+              "$ref": "#/components/schemas/NewShippingIn"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "currency",
+          "lines"
         ],
         "type": "object"
       },
@@ -168,6 +794,113 @@
         ],
         "type": "object"
       },
+      "DeclineChange": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "ExchangeId": {
+        "description": "Identifies one exchange.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "ExchangeLineIn": {
+        "additionalProperties": false,
+        "properties": {
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "order_line_item_id": {
+            "$ref": "#/components/schemas/LineItemId"
+          },
+          "quantity": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "order_line_item_id",
+          "quantity"
+        ],
+        "type": "object"
+      },
+      "ExchangeView": {
+        "properties": {
+          "allow_backorder": {
+            "type": "boolean"
+          },
+          "canceled_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "difference_due": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "display_id": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/ExchangeId"
+          },
+          "order_id": {
+            "$ref": "#/components/schemas/OrderId"
+          },
+          "order_return_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReturnId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "order_version": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "order_id",
+          "order_return_id",
+          "order_version",
+          "display_id",
+          "difference_due",
+          "allow_backorder",
+          "canceled_at",
+          "created_at"
+        ],
+        "type": "object"
+      },
       "InventoryItemId": {
         "description": "Identifies one inventory item.",
         "format": "uuid",
@@ -207,13 +940,541 @@
         ],
         "type": "object"
       },
+      "InvoiceView": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "currency_code": {
+            "type": "string"
+          },
+          "document_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "external_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/OrderInvoiceId"
+          },
+          "issued_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "number": {
+            "type": "string"
+          },
+          "order_id": {
+            "$ref": "#/components/schemas/OrderId"
+          },
+          "order_version": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "replaces_invoice_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrderInvoiceId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "total_amount": {
+            "pattern": "^-?\\d+(\\.\\d+)?$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "order_id",
+          "order_version",
+          "kind",
+          "number",
+          "external_id",
+          "provider",
+          "status",
+          "issued_at",
+          "document_url",
+          "total_amount",
+          "currency_code",
+          "replaces_invoice_id",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "ItemAction": {
+        "description": "What a caller may ask a change to do to a line.",
+        "enum": [
+          "add",
+          "update",
+          "remove",
+          "write_off"
+        ],
+        "type": "string"
+      },
+      "LedgerView": {
+        "description": "What the money on an order comes to. Worked out from the transactions\nrather than stored, so it cannot drift from them.",
+        "properties": {
+          "authorized": {
+            "$ref": "#/components/schemas/MoneyView"
+          },
+          "captured": {
+            "$ref": "#/components/schemas/MoneyView"
+          },
+          "due": {
+            "$ref": "#/components/schemas/MoneyView"
+          },
+          "paid": {
+            "$ref": "#/components/schemas/MoneyView"
+          },
+          "refunded": {
+            "$ref": "#/components/schemas/MoneyView"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "authorized",
+          "captured",
+          "refunded",
+          "paid",
+          "due",
+          "state"
+        ],
+        "type": "object"
+      },
+      "LineItemId": {
+        "description": "Identifies one line item.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "LineItemView": {
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/LineItemId"
+          },
+          "requires_shipping": {
+            "type": "boolean"
+          },
+          "title": {
+            "type": "string"
+          },
+          "unit_price": {
+            "$ref": "#/components/schemas/MoneyView"
+          },
+          "variant_sku": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "variant_sku",
+          "unit_price",
+          "requires_shipping"
+        ],
+        "type": "object"
+      },
+      "LineQuantity": {
+        "additionalProperties": false,
+        "properties": {
+          "order_line_item_id": {
+            "$ref": "#/components/schemas/LineItemId"
+          },
+          "quantity": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "order_line_item_id",
+          "quantity"
+        ],
+        "type": "object"
+      },
+      "LocalisedReturnReasonView": {
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "is_fallback": {
+            "type": "boolean"
+          },
+          "label": {
+            "type": "string"
+          },
+          "locale": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "return_reason_id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "return_reason_id",
+          "locale",
+          "label",
+          "description",
+          "is_fallback"
+        ],
+        "type": "object"
+      },
+      "MoneyIn": {
+        "additionalProperties": false,
+        "description": "An amount as it arrives over the wire. Never a float, and the currency is\ncarried with it so nothing has to guess which shop's money this is.",
+        "properties": {
+          "amount": {
+            "pattern": "^-?\\d+(\\.\\d+)?([eE]\\d+)?$",
+            "type": [
+              "string",
+              "number"
+            ]
+          },
+          "currency": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount",
+          "currency"
+        ],
+        "type": "object"
+      },
+      "MoneyView": {
+        "properties": {
+          "amount": {
+            "pattern": "^-?\\d+(\\.\\d+)?$",
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount",
+          "currency"
+        ],
+        "type": "object"
+      },
+      "NewLineIn": {
+        "additionalProperties": false,
+        "properties": {
+          "discount": {
+            "default": "0",
+            "pattern": "^-?\\d+(\\.\\d+)?([eE]\\d+)?$",
+            "type": [
+              "string",
+              "number"
+            ]
+          },
+          "is_giftcard": {
+            "default": false,
+            "description": "Whether this line sells a gift card. Said here for the same reason:\na draft order's line need name no variant to look the answer up on.",
+            "type": "boolean"
+          },
+          "is_tax_inclusive": {
+            "default": false,
+            "type": "boolean"
+          },
+          "product_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quantity": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "requires_shipping": {
+            "default": false,
+            "type": "boolean"
+          },
+          "tax_rate": {
+            "default": "0",
+            "pattern": "^-?\\d+(\\.\\d+)?([eE]\\d+)?$",
+            "type": [
+              "string",
+              "number"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "unit_price": {
+            "$ref": "#/components/schemas/MoneyIn"
+          },
+          "variant_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VariantId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "withdrawal_exclusion": {
+            "description": "Why this line is outside the right of withdrawal. A draft order is\nwritten by staff who know what they are selling, so it is said here\nrather than looked up.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "title",
+          "quantity",
+          "unit_price"
+        ],
+        "type": "object"
+      },
+      "NewReason": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "label"
+        ],
+        "type": "object"
+      },
+      "NewShippingIn": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/MoneyIn"
+          },
+          "discount": {
+            "default": "0",
+            "pattern": "^-?\\d+(\\.\\d+)?([eE]\\d+)?$",
+            "type": [
+              "string",
+              "number"
+            ]
+          },
+          "is_tax_inclusive": {
+            "default": false,
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "shipping_option_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShippingOptionId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tax_rate": {
+            "default": "0",
+            "pattern": "^-?\\d+(\\.\\d+)?([eE]\\d+)?$",
+            "type": [
+              "string",
+              "number"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "amount"
+        ],
+        "type": "object"
+      },
+      "OpenEdit": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "OrderAgreementId": {
+        "description": "Identifies one order agreement.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "OrderAgreementView": {
+        "properties": {
+          "accepted_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "agreement_version_id": {
+            "$ref": "#/components/schemas/AgreementVersionId"
+          },
+          "body_hash": {
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/OrderAgreementId"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "order_id": {
+            "$ref": "#/components/schemas/OrderId"
+          }
+        },
+        "required": [
+          "id",
+          "order_id",
+          "agreement_version_id",
+          "kind",
+          "body_hash",
+          "accepted_at"
+        ],
+        "type": "object"
+      },
       "OrderBasketId": {
         "description": "Identifies one order basket.",
         "format": "uuid",
         "type": "string"
       },
+      "OrderChangeId": {
+        "description": "Identifies one order change.",
+        "format": "uuid",
+        "type": "string"
+      },
       "OrderId": {
         "description": "Identifies one order.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "OrderInvoiceId": {
+        "description": "Identifies one order invoice.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "OrderItemId": {
+        "description": "Identifies one order item.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "OrderItemView": {
+        "description": "One line at one version, with every quantity that has moved on it.",
+        "properties": {
+          "delivered_quantity": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "fulfilled_quantity": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "id": {
+            "$ref": "#/components/schemas/OrderItemId"
+          },
+          "order_line_item_id": {
+            "$ref": "#/components/schemas/LineItemId"
+          },
+          "quantity": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "return_dismissed_quantity": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "return_received_quantity": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "return_requested_quantity": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "shipped_quantity": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "version": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "written_off_quantity": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "order_line_item_id",
+          "version",
+          "quantity",
+          "fulfilled_quantity",
+          "shipped_quantity",
+          "delivered_quantity",
+          "return_requested_quantity",
+          "return_received_quantity",
+          "return_dismissed_quantity",
+          "written_off_quantity"
+        ],
+        "type": "object"
+      },
+      "OrderTransactionId": {
+        "description": "Identifies one order transaction.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "OrderTransferId": {
+        "description": "Identifies one order transfer.",
         "format": "uuid",
         "type": "string"
       },
@@ -671,6 +1932,201 @@
         ],
         "type": "object"
       },
+      "PublishAgreement": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "effective_from": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "locale": {
+            "type": "string"
+          },
+          "metadata": true
+        },
+        "required": [
+          "kind",
+          "locale",
+          "body"
+        ],
+        "type": "object"
+      },
+      "PutReturnReasonTranslation": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "locale": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "locale",
+          "label"
+        ],
+        "type": "object"
+      },
+      "ReasonView": {
+        "description": "A refund reason or a return reason. The two tables differ by a column name\nand nothing a caller cares about.",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "label",
+          "description",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "ReceiveReturn": {
+        "additionalProperties": false,
+        "properties": {
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/ReceivedLineIn"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "lines"
+        ],
+        "type": "object"
+      },
+      "ReceivedLineIn": {
+        "additionalProperties": false,
+        "properties": {
+          "damaged": {
+            "default": 0,
+            "format": "int32",
+            "type": "integer"
+          },
+          "order_line_item_id": {
+            "$ref": "#/components/schemas/LineItemId"
+          },
+          "quantity": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "order_line_item_id",
+          "quantity"
+        ],
+        "type": "object"
+      },
+      "RecordInvoice": {
+        "additionalProperties": false,
+        "properties": {
+          "currency_code": {
+            "type": "string"
+          },
+          "document_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "external_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "issued_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "metadata": true,
+          "number": {
+            "type": "string"
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "total": {
+            "pattern": "^-?\\d+(\\.\\d+)?([eE]\\d+)?$",
+            "type": [
+              "string",
+              "number"
+            ]
+          }
+        },
+        "required": [
+          "number",
+          "status",
+          "total",
+          "currency_code"
+        ],
+        "type": "object"
+      },
+      "RecordTransaction": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/MoneyIn"
+          },
+          "reference": {
+            "type": "string"
+          },
+          "reference_id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount",
+          "reference",
+          "reference_id"
+        ],
+        "type": "object"
+      },
       "RegionId": {
         "description": "Identifies one region.",
         "format": "uuid",
@@ -711,6 +2167,416 @@
           "is_tax_inclusive",
           "has_automatic_taxes",
           "payment_providers",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "RequestClaim": {
+        "additionalProperties": false,
+        "properties": {
+          "claim_type": {
+            "$ref": "#/components/schemas/ClaimKind"
+          },
+          "collect": {
+            "default": false,
+            "type": "boolean"
+          },
+          "faulty": {
+            "items": {
+              "$ref": "#/components/schemas/ClaimLineIn"
+            },
+            "type": "array"
+          },
+          "location_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StockLocationId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "order_id": {
+            "$ref": "#/components/schemas/OrderId"
+          },
+          "refund_amount": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "replacements": {
+            "items": {
+              "$ref": "#/components/schemas/ClaimLineIn"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "order_id",
+          "claim_type",
+          "faulty"
+        ],
+        "type": "object"
+      },
+      "RequestExchange": {
+        "additionalProperties": false,
+        "properties": {
+          "allow_backorder": {
+            "default": false,
+            "type": "boolean"
+          },
+          "difference_due": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "location_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StockLocationId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "order_id": {
+            "$ref": "#/components/schemas/OrderId"
+          },
+          "outbound": {
+            "items": {
+              "$ref": "#/components/schemas/ExchangeLineIn"
+            },
+            "type": "array"
+          },
+          "returning": {
+            "items": {
+              "$ref": "#/components/schemas/ReturnLineIn"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "order_id",
+          "returning",
+          "outbound"
+        ],
+        "type": "object"
+      },
+      "RequestReturn": {
+        "additionalProperties": false,
+        "properties": {
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/ReturnLineIn"
+            },
+            "type": "array"
+          },
+          "location_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StockLocationId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "order_id": {
+            "$ref": "#/components/schemas/OrderId"
+          }
+        },
+        "required": [
+          "order_id",
+          "lines"
+        ],
+        "type": "object"
+      },
+      "RequestTransfer": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "to_email": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "to_email",
+          "expires_at"
+        ],
+        "type": "object"
+      },
+      "RequestedTransferView": {
+        "description": "The token is here and nowhere else: it is not stored and this response is\nthe only time it can be read.",
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "transfer": {
+            "$ref": "#/components/schemas/TransferView"
+          }
+        },
+        "required": [
+          "transfer",
+          "token"
+        ],
+        "type": "object"
+      },
+      "ReturnId": {
+        "description": "Identifies one return.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "ReturnItemView": {
+        "properties": {
+          "damaged_quantity": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "order_line_item_id": {
+            "$ref": "#/components/schemas/LineItemId"
+          },
+          "quantity": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "received_quantity": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "return_reason_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "order_line_item_id",
+          "return_reason_id",
+          "quantity",
+          "received_quantity",
+          "damaged_quantity",
+          "note"
+        ],
+        "type": "object"
+      },
+      "ReturnLineIn": {
+        "additionalProperties": false,
+        "properties": {
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "order_line_item_id": {
+            "$ref": "#/components/schemas/LineItemId"
+          },
+          "quantity": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "return_reason_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "order_line_item_id",
+          "quantity"
+        ],
+        "type": "object"
+      },
+      "ReturnLineInput": {
+        "additionalProperties": false,
+        "properties": {
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "order_line_item_id": {
+            "$ref": "#/components/schemas/LineItemId"
+          },
+          "quantity": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "return_reason_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "order_line_item_id",
+          "quantity"
+        ],
+        "type": "object"
+      },
+      "ReturnReasonTranslationView": {
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "locale": {
+            "type": "string"
+          },
+          "return_reason_id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "return_reason_id",
+          "locale",
+          "label",
+          "description"
+        ],
+        "type": "object"
+      },
+      "ReturnReasonView": {
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "value",
+          "label",
+          "description"
+        ],
+        "type": "object"
+      },
+      "ReturnView": {
+        "properties": {
+          "canceled_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "display_id": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/ReturnId"
+          },
+          "location_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "order_id": {
+            "$ref": "#/components/schemas/OrderId"
+          },
+          "order_version": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "received_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "refund_amount": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requested_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "order_id",
+          "order_version",
+          "display_id",
+          "status",
+          "location_id",
+          "refund_amount",
+          "requested_at",
+          "received_at",
+          "canceled_at",
           "created_at"
         ],
         "type": "object"
@@ -792,6 +2658,150 @@
         ],
         "type": "object"
       },
+      "SetInvoiceStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
+      "ShippingMethodView": {
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/MoneyView"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "shipping_option_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShippingOptionId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "name",
+          "amount",
+          "shipping_option_id"
+        ],
+        "type": "object"
+      },
+      "ShippingOptionId": {
+        "description": "Identifies one shipping option.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "StockLocationId": {
+        "description": "Identifies one stock location.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "StoreOrderView": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "currency_code": {
+            "type": "string"
+          },
+          "display_id": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fulfillment_status": {
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/OrderId"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "display_id",
+          "email",
+          "currency_code",
+          "status",
+          "fulfillment_status",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "StoreRequestReturn": {
+        "additionalProperties": false,
+        "properties": {
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/ReturnLineInput"
+            },
+            "type": "array"
+          },
+          "order_id": {
+            "$ref": "#/components/schemas/OrderId"
+          }
+        },
+        "required": [
+          "order_id",
+          "lines"
+        ],
+        "type": "object"
+      },
+      "StoreReturnView": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/ReturnId"
+          },
+          "order_id": {
+            "$ref": "#/components/schemas/OrderId"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "order_id",
+          "status",
+          "created_at"
+        ],
+        "type": "object"
+      },
       "SubscriptionId": {
         "description": "Identifies one subscription.",
         "format": "uuid",
@@ -861,6 +2871,213 @@
           "dunning_attempts"
         ],
         "type": "object"
+      },
+      "SummaryView": {
+        "properties": {
+          "currency_code": {
+            "type": "string"
+          },
+          "order_id": {
+            "$ref": "#/components/schemas/OrderId"
+          },
+          "totals": true,
+          "version": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "order_id",
+          "version",
+          "currency_code",
+          "totals"
+        ],
+        "type": "object"
+      },
+      "TotalsView": {
+        "properties": {
+          "discount": {
+            "$ref": "#/components/schemas/MoneyView"
+          },
+          "shipping": {
+            "$ref": "#/components/schemas/MoneyView"
+          },
+          "subtotal": {
+            "$ref": "#/components/schemas/MoneyView"
+          },
+          "tax": {
+            "$ref": "#/components/schemas/MoneyView"
+          },
+          "total": {
+            "$ref": "#/components/schemas/MoneyView"
+          }
+        },
+        "required": [
+          "subtotal",
+          "discount",
+          "shipping",
+          "tax",
+          "total"
+        ],
+        "type": "object"
+      },
+      "TransactionView": {
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/MoneyView"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/OrderTransactionId"
+          },
+          "order_id": {
+            "$ref": "#/components/schemas/OrderId"
+          },
+          "reference": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reference_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "order_id",
+          "version",
+          "amount",
+          "reference",
+          "reference_id",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "TransferView": {
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/OrderTransferId"
+          },
+          "order_id": {
+            "$ref": "#/components/schemas/OrderId"
+          },
+          "status": {
+            "type": "string"
+          },
+          "to_email": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "order_id",
+          "to_email",
+          "status",
+          "expires_at"
+        ],
+        "type": "object"
+      },
+      "UpdateEmail": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "type": "object"
+      },
+      "VariantId": {
+        "description": "Identifies one variant.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "WithdrawalNoticeView": {
+        "properties": {
+          "notified_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "order_id": {
+            "$ref": "#/components/schemas/OrderId"
+          },
+          "refund_due_by": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "return_id": {
+            "$ref": "#/components/schemas/ReturnId"
+          }
+        },
+        "required": [
+          "return_id",
+          "order_id",
+          "notified_at",
+          "refund_due_by"
+        ],
+        "type": "object"
+      },
+      "WithdrawalView": {
+        "properties": {
+          "deadline": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "delivered_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "eligible": {
+            "type": "boolean"
+          },
+          "exclusion_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "order_line_item_id": {
+            "$ref": "#/components/schemas/LineItemId"
+          }
+        },
+        "required": [
+          "order_line_item_id",
+          "eligible",
+          "exclusion_reason",
+          "delivered_at",
+          "deadline"
+        ],
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -894,6 +3111,27 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/AgreementVersionView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -920,8 +3158,25 @@
       "post": {
         "operationId": "postAdminAgreements",
         "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishAgreement"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgreementVersionView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -961,6 +3216,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgreementVersionView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -1289,6 +3551,27 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/ClaimView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -1315,8 +3598,25 @@
       "post": {
         "operationId": "postAdminClaims",
         "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestClaim"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -1356,6 +3656,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -1395,6 +3702,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -1432,8 +3746,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LineQuantity"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeActionView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -1518,8 +3849,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LineQuantity"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeActionView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -1604,8 +3952,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddShippingAction"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeActionView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -1645,6 +4010,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeDetailView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -1684,6 +4056,16 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ClaimItemView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -1721,8 +4103,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LineQuantity"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeActionView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -1807,8 +4206,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddShippingAction"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeActionView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -1848,6 +4264,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -3250,6 +5673,27 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/OrderView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -3276,8 +5720,25 @@
       "post": {
         "operationId": "postAdminDraftOrders",
         "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOrder"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -3317,6 +5778,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -3354,6 +5822,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -3391,8 +5866,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConvertDraft"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -3430,8 +5922,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeclineChange"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -3469,6 +5978,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeDetailView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -3504,8 +6020,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenEdit"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -3545,6 +6078,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -3582,8 +6122,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddItemAction"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeActionView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -3668,8 +6225,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddShippingAction"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeActionView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -3747,6 +6321,27 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/ExchangeView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -3773,8 +6368,25 @@
       "post": {
         "operationId": "postAdminExchanges",
         "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestExchange"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExchangeView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -3814,6 +6426,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExchangeView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -3853,6 +6472,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExchangeView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -3890,8 +6516,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LineQuantity"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeActionView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -3976,8 +6619,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddShippingAction"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeActionView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -4017,6 +6677,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeDetailView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -4054,8 +6721,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LineQuantity"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeActionView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -4140,8 +6824,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddShippingAction"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeActionView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -4181,6 +6882,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExchangeView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -5508,8 +8216,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetInvoiceStatus"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -5793,6 +8518,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeDetailView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -5830,8 +8562,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeclineChange"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -5869,6 +8618,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeDetailView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -5908,6 +8664,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -5945,8 +8708,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddItemAction"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeActionView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -6031,8 +8811,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddShippingAction"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeActionView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -6157,8 +8954,25 @@
       "post": {
         "operationId": "postAdminOrders",
         "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOrder"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -6244,6 +9058,16 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OrderAgreementView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -6291,6 +9115,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgreementVersionView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -6330,6 +9161,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -6367,8 +9205,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddressIn"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -6408,6 +9263,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -6447,6 +9309,27 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/ChangeView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -6486,6 +9369,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -6523,8 +9413,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateEmail"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -6953,6 +9860,16 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/InvoiceView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -6988,8 +9905,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordInvoice"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -7035,8 +9969,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordInvoice"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -7076,6 +10027,16 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OrderItemView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -7115,6 +10076,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -7154,6 +10122,16 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LineItemView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -7193,6 +10171,27 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/ChangeView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -7228,8 +10227,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenEdit"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -7267,8 +10283,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttachPaymentCollection"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -7407,6 +10440,27 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/ReturnView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -7483,8 +10537,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddressIn"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -7524,6 +10595,16 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ShippingMethodView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -7602,6 +10683,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummaryView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -7641,6 +10729,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TotalsView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -7680,6 +10775,16 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TransactionView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -7715,8 +10820,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordTransaction"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -7756,6 +10878,16 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WithdrawalView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -12776,6 +15908,27 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/ReasonView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -12802,8 +15955,25 @@
       "post": {
         "operationId": "postAdminReturnReasons",
         "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewReason"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReasonView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -12843,6 +16013,16 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ReturnReasonTranslationView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -12878,8 +16058,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutReturnReasonTranslation"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReturnReasonTranslationView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -12972,6 +16169,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalisedReturnReasonView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -13002,6 +16206,27 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/ReturnView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -13028,8 +16253,25 @@
       "post": {
         "operationId": "postAdminReturns",
         "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestReturn"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReturnView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -13069,6 +16311,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReturnView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -13108,6 +16357,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReturnView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -13145,8 +16401,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceiveReturn"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReturnView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -13186,6 +16459,16 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ReturnItemView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -13223,8 +16506,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceiveReturn"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReturnView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -13262,8 +16562,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LineQuantity"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeActionView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -13350,6 +16667,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReturnView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -13387,8 +16711,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LineQuantity"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeActionView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -13473,8 +16814,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddShippingAction"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeActionView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -13561,6 +16919,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithdrawalNoticeView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -17799,6 +21164,27 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/StoreOrderView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -17838,6 +21224,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreOrderView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -17875,8 +21268,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptAgreement"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderAgreementView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -17924,6 +21334,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgreementVersionView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -17961,8 +21378,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimTransfer"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreOrderView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -18002,6 +21436,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransferView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -18039,8 +21480,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimTransfer"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransferView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -18078,8 +21536,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestTransfer"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestedTransferView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -18692,6 +22167,27 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/ReturnReasonView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -18731,6 +22227,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReturnReasonView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -18759,8 +22262,25 @@
       "post": {
         "operationId": "postStoreReturns",
         "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreRequestReturn"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreReturnView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {

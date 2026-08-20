@@ -6251,6 +6251,66 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AcceptAgreement: {
+            /** Format: date-time */
+            accepted_at?: string | null;
+            agreement_version_id: components["schemas"]["AgreementVersionId"];
+            /**
+             * @description Where from and with what, as the host saw it. tezgah does not read a
+             *     request, so whoever does hands these over.
+             */
+            ip?: string | null;
+            metadata?: unknown;
+            user_agent?: string | null;
+        };
+        AddItemAction: {
+            action: components["schemas"]["ItemAction"];
+            internal_note?: string | null;
+            order_line_item_id: components["schemas"]["LineItemId"];
+            /** Format: int32 */
+            quantity: number;
+            unit_price?: components["schemas"]["MoneyIn"] | null;
+        };
+        AddShippingAction: {
+            amount: components["schemas"]["MoneyIn"];
+            internal_note?: string | null;
+            name: string;
+        };
+        AddressIn: {
+            address_1?: string | null;
+            address_2?: string | null;
+            city?: string | null;
+            company?: string | null;
+            country_code?: string | null;
+            first_name?: string | null;
+            last_name?: string | null;
+            phone?: string | null;
+            postal_code?: string | null;
+            province?: string | null;
+        };
+        /**
+         * Format: uuid
+         * @description Identifies one agreement version.
+         */
+        AgreementVersionId: string;
+        AgreementVersionView: {
+            body: string;
+            /**
+             * @description What the acceptance points at, so two copies of a text can be compared
+             *     without reading them.
+             */
+            body_hash: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            effective_from: string;
+            id: components["schemas"]["AgreementVersionId"];
+            kind: string;
+            locale: string;
+        };
+        AttachPaymentCollection: {
+            payment_collection_id: components["schemas"]["PaymentCollectionId"];
+        };
         BalanceView: {
             amount: string;
             currency_code: string;
@@ -6265,6 +6325,95 @@ export interface components {
          * @description Identifies one category.
          */
         CategoryId: string;
+        ChangeActionView: {
+            action: string;
+            amount: components["schemas"]["MoneyView"] | null;
+            applied: boolean;
+            details: unknown;
+            /** Format: uuid */
+            id: string;
+            order_change_id: components["schemas"]["OrderChangeId"] | null;
+            /** Format: int32 */
+            ordering: number;
+            /** Format: uuid */
+            reference_id: string | null;
+        };
+        /** @description A change with its actions, which is the only shape anybody looks at one in. */
+        ChangeDetailView: {
+            actions: components["schemas"]["ChangeActionView"][];
+            change: components["schemas"]["ChangeView"];
+        };
+        ChangeView: {
+            change_type: string;
+            /** Format: date-time */
+            created_at: string;
+            description: string | null;
+            id: components["schemas"]["OrderChangeId"];
+            order_claim_id: components["schemas"]["ClaimId"] | null;
+            order_exchange_id: components["schemas"]["ExchangeId"] | null;
+            order_id: components["schemas"]["OrderId"];
+            order_return_id: components["schemas"]["ReturnId"] | null;
+            status: string;
+            /** Format: int32 */
+            version: number;
+        };
+        /**
+         * Format: uuid
+         * @description Identifies one claim.
+         */
+        ClaimId: string;
+        /**
+         * @description One line of a claim: what was wrong with it, or what is being sent
+         *     instead — [`order::ClaimLine::images`] is what a support agent judges the
+         *     damage from.
+         */
+        ClaimItemView: {
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            id: string;
+            images: string[];
+            is_additional_item: boolean;
+            note: string | null;
+            order_claim_id: components["schemas"]["ClaimId"];
+            order_line_item_id: components["schemas"]["LineItemId"];
+            /** Format: int32 */
+            quantity: number;
+            reason: string | null;
+        };
+        /** @enum {string} */
+        ClaimKind: "refund" | "replace";
+        ClaimLineIn: {
+            /**
+             * @description Photos of the damage, as URLs into wherever the host keeps files —
+             *     tezgah stores none of its own.
+             * @default []
+             */
+            images: string[];
+            note?: string | null;
+            order_line_item_id: components["schemas"]["LineItemId"];
+            /** Format: int32 */
+            quantity: number;
+            reason?: string | null;
+        };
+        ClaimTransfer: {
+            token: string;
+        };
+        ClaimView: {
+            /** Format: date-time */
+            canceled_at: string | null;
+            claim_type: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: int64 */
+            display_id: number | null;
+            id: components["schemas"]["ClaimId"];
+            order_id: components["schemas"]["OrderId"];
+            order_return_id: components["schemas"]["ReturnId"] | null;
+            /** Format: int32 */
+            order_version: number;
+            refund_amount: components["schemas"]["MoneyView"] | null;
+        };
         /**
          * Format: uuid
          * @description Identifies one collection.
@@ -6281,6 +6430,20 @@ export interface components {
             id: components["schemas"]["CommissionRuleId"];
             kind: string;
             value: string;
+        };
+        ConvertDraft: {
+            payment_collection_id: components["schemas"]["PaymentCollectionId"];
+        };
+        CreateOrder: {
+            currency: string;
+            customer_id?: components["schemas"]["CustomerId"] | null;
+            email?: string | null;
+            lines: components["schemas"]["NewLineIn"][];
+            locale?: string | null;
+            metadata?: unknown;
+            region_id?: components["schemas"]["RegionId"] | null;
+            sales_channel_id?: components["schemas"]["SalesChannelId"] | null;
+            shipping?: components["schemas"]["NewShippingIn"][];
         };
         CreatePayout: {
             currency_code: string;
@@ -6309,6 +6472,35 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
+        DeclineChange: {
+            reason?: string | null;
+        };
+        /**
+         * Format: uuid
+         * @description Identifies one exchange.
+         */
+        ExchangeId: string;
+        ExchangeLineIn: {
+            note?: string | null;
+            order_line_item_id: components["schemas"]["LineItemId"];
+            /** Format: int32 */
+            quantity: number;
+        };
+        ExchangeView: {
+            allow_backorder: boolean;
+            /** Format: date-time */
+            canceled_at: string | null;
+            /** Format: date-time */
+            created_at: string;
+            difference_due: components["schemas"]["MoneyView"] | null;
+            /** Format: int64 */
+            display_id: number | null;
+            id: components["schemas"]["ExchangeId"];
+            order_id: components["schemas"]["OrderId"];
+            order_return_id: components["schemas"]["ReturnId"] | null;
+            /** Format: int32 */
+            order_version: number;
+        };
         /**
          * Format: uuid
          * @description Identifies one inventory item.
@@ -6322,6 +6514,141 @@ export interface components {
             sku: string | null;
             title: string | null;
         };
+        InvoiceView: {
+            /** Format: date-time */
+            created_at: string;
+            currency_code: string;
+            document_url: string | null;
+            external_id: string | null;
+            id: components["schemas"]["OrderInvoiceId"];
+            /** Format: date-time */
+            issued_at: string | null;
+            kind: string;
+            number: string;
+            order_id: components["schemas"]["OrderId"];
+            /** Format: int32 */
+            order_version: number;
+            provider: string | null;
+            replaces_invoice_id: components["schemas"]["OrderInvoiceId"] | null;
+            status: string;
+            total_amount: string;
+        };
+        /**
+         * @description What a caller may ask a change to do to a line.
+         * @enum {string}
+         */
+        ItemAction: "add" | "update" | "remove" | "write_off";
+        /**
+         * @description What the money on an order comes to. Worked out from the transactions
+         *     rather than stored, so it cannot drift from them.
+         */
+        LedgerView: {
+            authorized: components["schemas"]["MoneyView"];
+            captured: components["schemas"]["MoneyView"];
+            due: components["schemas"]["MoneyView"];
+            paid: components["schemas"]["MoneyView"];
+            refunded: components["schemas"]["MoneyView"];
+            state: string;
+        };
+        /**
+         * Format: uuid
+         * @description Identifies one line item.
+         */
+        LineItemId: string;
+        LineItemView: {
+            id: components["schemas"]["LineItemId"];
+            requires_shipping: boolean;
+            title: string;
+            unit_price: components["schemas"]["MoneyView"];
+            variant_sku: string | null;
+        };
+        LineQuantity: {
+            order_line_item_id: components["schemas"]["LineItemId"];
+            /** Format: int32 */
+            quantity: number;
+        };
+        LocalisedReturnReasonView: {
+            description: string | null;
+            is_fallback: boolean;
+            label: string;
+            locale: string | null;
+            /** Format: uuid */
+            return_reason_id: string;
+        };
+        /**
+         * @description An amount as it arrives over the wire. Never a float, and the currency is
+         *     carried with it so nothing has to guess which shop's money this is.
+         */
+        MoneyIn: {
+            amount: string | number;
+            currency: string;
+        };
+        MoneyView: {
+            amount: string;
+            currency: string;
+        };
+        NewLineIn: {
+            /** @default 0 */
+            discount: string | number;
+            /**
+             * @description Whether this line sells a gift card. Said here for the same reason:
+             *     a draft order's line need name no variant to look the answer up on.
+             * @default false
+             */
+            is_giftcard: boolean;
+            /** @default false */
+            is_tax_inclusive: boolean;
+            /** Format: uuid */
+            product_id?: string | null;
+            /** Format: int32 */
+            quantity: number;
+            /** @default false */
+            requires_shipping: boolean;
+            /** @default 0 */
+            tax_rate: string | number;
+            title: string;
+            unit_price: components["schemas"]["MoneyIn"];
+            variant_id?: components["schemas"]["VariantId"] | null;
+            /**
+             * @description Why this line is outside the right of withdrawal. A draft order is
+             *     written by staff who know what they are selling, so it is said here
+             *     rather than looked up.
+             */
+            withdrawal_exclusion?: string | null;
+        };
+        NewReason: {
+            code: string;
+            description?: string | null;
+            label: string;
+        };
+        NewShippingIn: {
+            amount: components["schemas"]["MoneyIn"];
+            /** @default 0 */
+            discount: string | number;
+            /** @default false */
+            is_tax_inclusive: boolean;
+            name: string;
+            shipping_option_id?: components["schemas"]["ShippingOptionId"] | null;
+            /** @default 0 */
+            tax_rate: string | number;
+        };
+        OpenEdit: {
+            description?: string | null;
+        };
+        /**
+         * Format: uuid
+         * @description Identifies one order agreement.
+         */
+        OrderAgreementId: string;
+        OrderAgreementView: {
+            /** Format: date-time */
+            accepted_at: string;
+            agreement_version_id: components["schemas"]["AgreementVersionId"];
+            body_hash: string;
+            id: components["schemas"]["OrderAgreementId"];
+            kind: string;
+            order_id: components["schemas"]["OrderId"];
+        };
         /**
          * Format: uuid
          * @description Identifies one order basket.
@@ -6329,9 +6656,57 @@ export interface components {
         OrderBasketId: string;
         /**
          * Format: uuid
+         * @description Identifies one order change.
+         */
+        OrderChangeId: string;
+        /**
+         * Format: uuid
          * @description Identifies one order.
          */
         OrderId: string;
+        /**
+         * Format: uuid
+         * @description Identifies one order invoice.
+         */
+        OrderInvoiceId: string;
+        /**
+         * Format: uuid
+         * @description Identifies one order item.
+         */
+        OrderItemId: string;
+        /** @description One line at one version, with every quantity that has moved on it. */
+        OrderItemView: {
+            /** Format: int32 */
+            delivered_quantity: number;
+            /** Format: int32 */
+            fulfilled_quantity: number;
+            id: components["schemas"]["OrderItemId"];
+            order_line_item_id: components["schemas"]["LineItemId"];
+            /** Format: int32 */
+            quantity: number;
+            /** Format: int32 */
+            return_dismissed_quantity: number;
+            /** Format: int32 */
+            return_received_quantity: number;
+            /** Format: int32 */
+            return_requested_quantity: number;
+            /** Format: int32 */
+            shipped_quantity: number;
+            /** Format: int32 */
+            version: number;
+            /** Format: int32 */
+            written_off_quantity: number;
+        };
+        /**
+         * Format: uuid
+         * @description Identifies one order transaction.
+         */
+        OrderTransactionId: string;
+        /**
+         * Format: uuid
+         * @description Identifies one order transfer.
+         */
+        OrderTransferId: string;
         /**
          * @description An order as a back office sees it. Not `order::Order`: that is a row, it
          *     grows a column whenever a migration says so, and it carries the scope.
@@ -6470,6 +6845,63 @@ export interface components {
             /** Format: int32 */
             used: number;
         };
+        PublishAgreement: {
+            body: string;
+            /** Format: date-time */
+            effective_from?: string | null;
+            kind: string;
+            locale: string;
+            metadata?: unknown;
+        };
+        PutReturnReasonTranslation: {
+            description?: string | null;
+            label: string;
+            locale: string;
+        };
+        /**
+         * @description A refund reason or a return reason. The two tables differ by a column name
+         *     and nothing a caller cares about.
+         */
+        ReasonView: {
+            code: string;
+            /** Format: date-time */
+            created_at: string;
+            description: string | null;
+            /** Format: uuid */
+            id: string;
+            label: string;
+        };
+        ReceiveReturn: {
+            lines: components["schemas"]["ReceivedLineIn"][];
+        };
+        ReceivedLineIn: {
+            /**
+             * Format: int32
+             * @default 0
+             */
+            damaged: number;
+            order_line_item_id: components["schemas"]["LineItemId"];
+            /** Format: int32 */
+            quantity: number;
+        };
+        RecordInvoice: {
+            currency_code: string;
+            document_url?: string | null;
+            external_id?: string | null;
+            /** Format: date-time */
+            issued_at?: string | null;
+            metadata?: unknown;
+            number: string;
+            provider?: string | null;
+            status: string;
+            total: string | number;
+        };
+        RecordTransaction: {
+            amount: components["schemas"]["MoneyIn"];
+            reference: string;
+            /** Format: uuid */
+            reference_id: string;
+        };
         /**
          * Format: uuid
          * @description Identifies one region.
@@ -6484,6 +6916,112 @@ export interface components {
             is_tax_inclusive: boolean;
             name: string;
             payment_providers: string[];
+        };
+        RequestClaim: {
+            claim_type: components["schemas"]["ClaimKind"];
+            /** @default false */
+            collect: boolean;
+            faulty: components["schemas"]["ClaimLineIn"][];
+            location_id?: components["schemas"]["StockLocationId"] | null;
+            order_id: components["schemas"]["OrderId"];
+            refund_amount?: components["schemas"]["MoneyIn"] | null;
+            replacements?: components["schemas"]["ClaimLineIn"][];
+        };
+        RequestExchange: {
+            /** @default false */
+            allow_backorder: boolean;
+            difference_due?: components["schemas"]["MoneyIn"] | null;
+            location_id?: components["schemas"]["StockLocationId"] | null;
+            order_id: components["schemas"]["OrderId"];
+            outbound: components["schemas"]["ExchangeLineIn"][];
+            returning: components["schemas"]["ReturnLineIn"][];
+        };
+        RequestReturn: {
+            lines: components["schemas"]["ReturnLineIn"][];
+            location_id?: components["schemas"]["StockLocationId"] | null;
+            order_id: components["schemas"]["OrderId"];
+        };
+        RequestTransfer: {
+            /** Format: date-time */
+            expires_at: string;
+            to_email: string;
+        };
+        /**
+         * @description The token is here and nowhere else: it is not stored and this response is
+         *     the only time it can be read.
+         */
+        RequestedTransferView: {
+            token: string;
+            transfer: components["schemas"]["TransferView"];
+        };
+        /**
+         * Format: uuid
+         * @description Identifies one return.
+         */
+        ReturnId: string;
+        ReturnItemView: {
+            /** Format: int32 */
+            damaged_quantity: number;
+            /** Format: uuid */
+            id: string;
+            note: string | null;
+            order_line_item_id: components["schemas"]["LineItemId"];
+            /** Format: int32 */
+            quantity: number;
+            /** Format: int32 */
+            received_quantity: number;
+            /** Format: uuid */
+            return_reason_id: string | null;
+        };
+        ReturnLineIn: {
+            note?: string | null;
+            order_line_item_id: components["schemas"]["LineItemId"];
+            /** Format: int32 */
+            quantity: number;
+            /** Format: uuid */
+            return_reason_id?: string | null;
+        };
+        ReturnLineInput: {
+            note?: string | null;
+            order_line_item_id: components["schemas"]["LineItemId"];
+            /** Format: int32 */
+            quantity: number;
+            /** Format: uuid */
+            return_reason_id?: string | null;
+        };
+        ReturnReasonTranslationView: {
+            description: string | null;
+            label: string;
+            locale: string;
+            /** Format: uuid */
+            return_reason_id: string;
+        };
+        ReturnReasonView: {
+            description: string | null;
+            /** Format: uuid */
+            id: string;
+            label: string;
+            value: string;
+        };
+        ReturnView: {
+            /** Format: date-time */
+            canceled_at: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: int64 */
+            display_id: number | null;
+            id: components["schemas"]["ReturnId"];
+            /** Format: uuid */
+            location_id: string | null;
+            order_id: components["schemas"]["OrderId"];
+            /** Format: int32 */
+            order_version: number;
+            /** Format: date-time */
+            received_at: string | null;
+            refund_amount: components["schemas"]["MoneyView"] | null;
+            /** Format: date-time */
+            requested_at: string | null;
+            status: string;
         };
         /**
          * Format: uuid
@@ -6508,6 +7046,50 @@ export interface components {
             currency_code?: string | null;
             kind: string;
             value: string | number;
+        };
+        SetInvoiceStatus: {
+            status: string;
+        };
+        ShippingMethodView: {
+            amount: components["schemas"]["MoneyView"];
+            /** Format: uuid */
+            id: string;
+            name: string;
+            shipping_option_id: components["schemas"]["ShippingOptionId"] | null;
+            /** Format: int32 */
+            version: number;
+        };
+        /**
+         * Format: uuid
+         * @description Identifies one shipping option.
+         */
+        ShippingOptionId: string;
+        /**
+         * Format: uuid
+         * @description Identifies one stock location.
+         */
+        StockLocationId: string;
+        StoreOrderView: {
+            /** Format: date-time */
+            created_at: string;
+            currency_code: string;
+            /** Format: int64 */
+            display_id: number | null;
+            email: string | null;
+            fulfillment_status: string;
+            id: components["schemas"]["OrderId"];
+            status: string;
+        };
+        StoreRequestReturn: {
+            lines: components["schemas"]["ReturnLineInput"][];
+            order_id: components["schemas"]["OrderId"];
+        };
+        StoreReturnView: {
+            /** Format: date-time */
+            created_at: string;
+            id: components["schemas"]["ReturnId"];
+            order_id: components["schemas"]["OrderId"];
+            status: string;
         };
         /**
          * Format: uuid
@@ -6539,6 +7121,65 @@ export interface components {
             selling_plan_id: components["schemas"]["SellingPlanId"];
             status: string;
         };
+        SummaryView: {
+            currency_code: string;
+            order_id: components["schemas"]["OrderId"];
+            totals: unknown;
+            /** Format: int32 */
+            version: number;
+        };
+        TotalsView: {
+            discount: components["schemas"]["MoneyView"];
+            shipping: components["schemas"]["MoneyView"];
+            subtotal: components["schemas"]["MoneyView"];
+            tax: components["schemas"]["MoneyView"];
+            total: components["schemas"]["MoneyView"];
+        };
+        TransactionView: {
+            amount: components["schemas"]["MoneyView"];
+            /** Format: date-time */
+            created_at: string;
+            id: components["schemas"]["OrderTransactionId"];
+            order_id: components["schemas"]["OrderId"];
+            reference: string | null;
+            /** Format: uuid */
+            reference_id: string | null;
+            /** Format: int32 */
+            version: number;
+        };
+        TransferView: {
+            /** Format: date-time */
+            expires_at: string;
+            id: components["schemas"]["OrderTransferId"];
+            order_id: components["schemas"]["OrderId"];
+            status: string;
+            to_email: string;
+        };
+        UpdateEmail: {
+            email: string;
+        };
+        /**
+         * Format: uuid
+         * @description Identifies one variant.
+         */
+        VariantId: string;
+        WithdrawalNoticeView: {
+            /** Format: date-time */
+            notified_at: string | null;
+            order_id: components["schemas"]["OrderId"];
+            /** Format: date-time */
+            refund_due_by: string | null;
+            return_id: components["schemas"]["ReturnId"];
+        };
+        WithdrawalView: {
+            /** Format: date-time */
+            deadline: string | null;
+            /** Format: date-time */
+            delivered_at: string | null;
+            eligible: boolean;
+            exclusion_reason: string | null;
+            order_line_item_id: components["schemas"]["LineItemId"];
+        };
     };
     responses: never;
     parameters: never;
@@ -6562,7 +7203,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["AgreementVersionView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -6594,14 +7239,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishAgreement"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["AgreementVersionView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -6642,7 +7293,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["AgreementVersionView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -7006,7 +7659,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["ClaimView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -7038,14 +7695,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RequestClaim"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ClaimView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -7086,7 +7749,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ClaimView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -7127,7 +7792,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ClaimView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -7161,14 +7828,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LineQuantity"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ChangeActionView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -7244,14 +7917,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LineQuantity"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ChangeActionView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -7327,14 +8006,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddShippingAction"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ChangeActionView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -7375,7 +8060,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ChangeDetailView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -7416,7 +8103,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ClaimItemView"][];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -7450,14 +8139,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LineQuantity"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ChangeActionView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -7533,14 +8228,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddShippingAction"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ChangeActionView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -7581,7 +8282,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ClaimView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -9095,7 +9798,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["OrderView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -9127,14 +9834,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateOrder"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["OrderView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -9175,7 +9888,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["OrderView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -9216,7 +9931,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["OrderView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -9250,14 +9967,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConvertDraft"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["OrderView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -9298,7 +10021,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ChangeDetailView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -9332,14 +10057,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpenEdit"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ChangeView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -9373,14 +10104,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeclineChange"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ChangeView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -9421,7 +10158,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["OrderView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -9455,14 +10194,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddItemAction"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ChangeActionView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -9538,14 +10283,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddShippingAction"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ChangeActionView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -9626,7 +10377,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["ExchangeView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -9658,14 +10413,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RequestExchange"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ExchangeView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -9706,7 +10467,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ExchangeView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -9747,7 +10510,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ExchangeView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -9781,14 +10546,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LineQuantity"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ChangeActionView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -9864,14 +10635,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddShippingAction"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ChangeActionView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -9912,7 +10689,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ChangeDetailView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -9946,14 +10725,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LineQuantity"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ChangeActionView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -10029,14 +10814,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddShippingAction"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ChangeActionView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -10077,7 +10868,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ExchangeView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -11532,14 +12325,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetInvoiceStatus"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["InvoiceView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -11861,7 +12660,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ChangeDetailView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -11902,7 +12703,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ChangeDetailView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -11936,14 +12739,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeclineChange"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ChangeView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -11984,7 +12793,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["OrderView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -12018,14 +12829,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddItemAction"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ChangeActionView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -12101,14 +12918,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddShippingAction"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ChangeActionView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -12225,14 +13048,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateOrder"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["OrderView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -12316,7 +13145,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["OrderAgreementView"][];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -12358,7 +13189,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["AgreementVersionView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -12399,7 +13232,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["OrderView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -12433,14 +13268,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddressIn"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["OrderView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -12481,7 +13322,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["OrderView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -12522,7 +13365,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["ChangeView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -12563,7 +13410,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["OrderView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -12597,14 +13446,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateEmail"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["OrderView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -13019,7 +13874,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["InvoiceView"][];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -13053,14 +13910,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordInvoice"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["InvoiceView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -13095,14 +13958,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordInvoice"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["InvoiceView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -13143,7 +14012,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["OrderItemView"][];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -13184,7 +14055,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["LedgerView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -13225,7 +14098,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["LineItemView"][];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -13266,7 +14141,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["ChangeView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -13300,14 +14179,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpenEdit"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ChangeView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -13341,14 +14226,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttachPaymentCollection"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["OrderView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -13475,7 +14366,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["ReturnView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -13550,14 +14445,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddressIn"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["OrderView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -13598,7 +14499,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ShippingMethodView"][];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -13680,7 +14583,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["SummaryView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -13721,7 +14626,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["TotalsView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -13762,7 +14669,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["TransactionView"][];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -13796,14 +14705,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordTransaction"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["TransactionView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -13844,7 +14759,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["WithdrawalView"][];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -19234,7 +20151,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["ReasonView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -19266,14 +20187,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewReason"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ReasonView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -19314,7 +20241,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ReturnReasonTranslationView"][];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -19348,14 +20277,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PutReturnReasonTranslation"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ReturnReasonTranslationView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -19397,7 +20332,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["LocalisedReturnReasonView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -19478,7 +20415,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["ReturnView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -19510,14 +20451,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RequestReturn"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ReturnView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -19558,7 +20505,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ReturnView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -19599,7 +20548,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ReturnView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -19633,14 +20584,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReceiveReturn"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ReturnView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -19681,7 +20638,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ReturnItemView"][];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -19715,14 +20674,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReceiveReturn"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ReturnView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -19756,14 +20721,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LineQuantity"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ChangeActionView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -19846,7 +20817,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ReturnView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -19880,14 +20853,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LineQuantity"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ChangeActionView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -19963,14 +20942,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddShippingAction"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ChangeActionView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -20053,7 +21038,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["WithdrawalNoticeView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -24787,7 +25774,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["StoreOrderView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -24828,7 +25819,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["StoreOrderView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -24862,14 +25855,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcceptAgreement"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["OrderAgreementView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -24911,7 +25910,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["AgreementVersionView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -24945,14 +25946,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClaimTransfer"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["StoreOrderView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -24993,7 +26000,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["TransferView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -25027,14 +26036,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClaimTransfer"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["TransferView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -25068,14 +26083,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RequestTransfer"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["RequestedTransferView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -25793,7 +26814,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["ReturnReasonView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -25834,7 +26859,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ReturnReasonView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -25866,14 +26893,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StoreRequestReturn"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["StoreReturnView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
