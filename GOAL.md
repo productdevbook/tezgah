@@ -342,12 +342,12 @@ In the library:
 
 In `app/`:
 
-- [ ] accounts — users, sessions, invitations, revocation. One shared
-      `ADMIN_TOKEN` today, so `Actor::Staff { id }` has never been produced
-      and no audit row can say who changed a price
-- [ ] a schedule — `cart::expire` and `inventory::expire_reservations` are
-      called by tests and nothing else, so on the shipped image a cart is
-      never swept and the stock it reserved is never released
+- [ ] invitations and a password reset — accounts, sessions and revocation
+      exist; everything that needs a letter does not, because nothing here
+      can send one
+- [ ] roles — whoever clears the gate is granted every `Action`. The seam is
+      there: `authorize` receives the action, and the request now carries who
+      is asking
 - [ ] a job worker that dispatches — it claims, prints and marks processed;
       the one job kind the crate enqueues is a dunning retry, which is
       therefore retried never

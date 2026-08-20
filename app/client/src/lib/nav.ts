@@ -35,41 +35,125 @@ export const GROUPS: Group[] = [
   {
     title: "Selling",
     sections: [
-      { slug: "products", title: "Products", tag: "catalogue", operations: 79, built: true },
-      { slug: "pricing", title: "Pricing", tag: "pricing", operations: 23, built: true },
-      { slug: "promotions", title: "Promotions", tag: "promotion", operations: 19, built: true },
+      {
+        slug: "products",
+        title: "Products",
+        tag: "catalogue",
+        operations: 79,
+        built: true,
+      },
+      {
+        slug: "pricing",
+        title: "Pricing",
+        tag: "pricing",
+        operations: 23,
+        built: true,
+      },
+      {
+        slug: "promotions",
+        title: "Promotions",
+        tag: "promotion",
+        operations: 19,
+        built: true,
+      },
     ],
   },
   {
     title: "Orders",
     sections: [
-      { slug: "orders", title: "Orders", tag: "order", operations: 112, built: true },
-      { slug: "baskets", title: "Baskets", tag: "order_basket", operations: 5, built: true },
-      { slug: "carts", title: "Carts", tag: "cart", operations: 11, built: true },
-      { slug: "subscriptions", title: "Subscriptions", tag: "subscription", operations: 26, built: true },
+      {
+        slug: "orders",
+        title: "Orders",
+        tag: "order",
+        operations: 112,
+        built: true,
+      },
+      {
+        slug: "baskets",
+        title: "Baskets",
+        tag: "order_basket",
+        operations: 5,
+        built: true,
+      },
+      {
+        slug: "carts",
+        title: "Carts",
+        tag: "cart",
+        operations: 11,
+        built: true,
+      },
+      {
+        slug: "subscriptions",
+        title: "Subscriptions",
+        tag: "subscription",
+        operations: 26,
+        built: true,
+      },
     ],
   },
   {
     title: "Getting it there",
     sections: [
-      { slug: "inventory", title: "Inventory", tag: "inventory", operations: 37, built: true },
-      { slug: "fulfilment", title: "Fulfilment", tag: "fulfilment", operations: 35, built: true },
+      {
+        slug: "inventory",
+        title: "Inventory",
+        tag: "inventory",
+        operations: 37,
+        built: true,
+      },
+      {
+        slug: "fulfilment",
+        title: "Fulfilment",
+        tag: "fulfilment",
+        operations: 35,
+        built: true,
+      },
     ],
   },
   {
     title: "Money",
     sections: [
-      { slug: "payments", title: "Payments", tag: "payment", operations: 19, built: true },
-      { slug: "credit", title: "Credit", tag: "credit", operations: 17, built: true },
-      { slug: "payouts", title: "Payouts", tag: "payout", operations: 7, built: true },
+      {
+        slug: "payments",
+        title: "Payments",
+        tag: "payment",
+        operations: 19,
+        built: true,
+      },
+      {
+        slug: "credit",
+        title: "Credit",
+        tag: "credit",
+        operations: 17,
+        built: true,
+      },
+      {
+        slug: "payouts",
+        title: "Payouts",
+        tag: "payout",
+        operations: 7,
+        built: true,
+      },
       { slug: "tax", title: "Tax", tag: "tax", operations: 24, built: true },
     ],
   },
   {
     title: "The shop",
     sections: [
-      { slug: "customers", title: "Customers", tag: "customer", operations: 25, built: true },
-      { slug: "store", title: "Store", tag: "store", operations: 32, built: true },
+      {
+        slug: "customers",
+        title: "Customers",
+        tag: "customer",
+        operations: 25,
+        built: true,
+      },
+      {
+        slug: "store",
+        title: "Store",
+        tag: "store",
+        operations: 32,
+        built: true,
+      },
       {
         slug: "digital",
         title: "Digital",
@@ -78,7 +162,13 @@ export const GROUPS: Group[] = [
         built: true,
         folded: "the order's entitlements and the product's digital content",
       },
-      { slug: "workflows", title: "Workflows", tag: "workflow", operations: 4, built: true },
+      {
+        slug: "workflows",
+        title: "Workflows",
+        tag: "workflow",
+        operations: 4,
+        built: true,
+      },
     ],
   },
 ]
@@ -98,5 +188,19 @@ export function sectionBySlug(slug: string): Section | undefined {
 /** What the admin surface declares in total, against what has a screen. */
 export const COVERAGE = {
   operations: SECTIONS.reduce((n, s) => n + s.operations, 0),
-  covered: SECTIONS.filter((s) => s.built).reduce((n, s) => n + s.operations, 0),
+  covered: SECTIONS.filter((s) => s.built).reduce(
+    (n, s) => n + s.operations,
+    0
+  ),
 }
+
+/**
+ * The host's own screens, kept apart from `GROUPS` on purpose.
+ *
+ * tezgah authenticates nobody and declares no route for an account, so an
+ * operator is not one of the 483 operations `COVERAGE` counts. Folding it in
+ * would make the tally read as progress against a surface it is not part of.
+ */
+export const SERVER_SECTIONS: { slug: string; title: string }[] = [
+  { slug: "operators", title: "Operators" },
+]

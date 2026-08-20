@@ -14,46 +14,42 @@
 //! `tezgah::api` offers stays unbound; nothing here was chosen for this
 //! binary beyond what those needs cover.
 //!
-//! # Why a bearer token, and why it is the whole of this
+//! # Two credentials, one door
 //!
-//! `docs/hosting.md` and `tezgah::ports::Authorizer` are explicit that
-//! tezgah authenticates nobody — a host supplies its own roles, or, as
-//! `ServerHost` does, supplies none and grants every actor. A production
-//! server cannot leave the back office at that. It also cannot invent a
-//! second role system on tezgah's behalf without becoming exactly the
-//! "second set of roles" the crate's own docs say a host should not be
-//! handed. `ADMIN_TOKEN` is the middle: one shared secret, checked here, in
-//! front of every route this module binds — and when it is not set, `Bound`
-//! in `http::mod` never mounts this router at all, so the admin surface does
-//! not exist to be reached rather than existing and refusing everyone. A
-//! deployment that wants real operators with real identities replaces this
-//! middleware; nothing downstream of it needs to change to allow that.
+//! `docs/hosting.md` and `tezgah::ports::Authorizer` are explicit that tezgah
+//! authenticates nobody — a host supplies its own roles, or, as `ServerHost`
+//! does, supplies none and grants every actor. That is right for a library
+//! and leaves the product a hole, which this module used to be the whole of:
+//! one shared `ADMIN_TOKEN`, so a shop with two employees had one credential
+//! between them, nothing to revoke when one left, and every audit row naming
+//! the same nil uuid.
 //!
-//! # One token still gates both reads and writes
+//! `crate::identity` is the other half now. A session token belongs to a
+//! person, expires, and dies when that person is disabled or changes their
+//! password. `ADMIN_TOKEN` stays, because something has to make the first
+//! account and something has to get back in when the last password is lost —
+//! and it is what it always was: a shared secret, not a person, which is why
+//! `Caller::actor_id` still hands tezgah the nil uuid for it rather than
+//! inventing an identity.
 //!
-//! `ADMIN_TOKEN` draws no line between them: whatever bearer clears
-//! `require_token` reaches `ctx_for` as the same `Actor::Staff`, and
-//! `ServerHost::authorize` grants every `tezgah::ports::Action` to it,
-//! `View` and `Write` and `Delete` alike. Before this change that was
-//! true of nine read routes; now it is true of a token that can also mint a
-//! publishable key or create a product. `tezgah::ports::Authorizer::authorize`
-//! already receives the `Action` on every call — that is the seam a split
-//! would use: a second token (or a role carried on the request, set by
-//! `require_token`) read here and turned into which `Action`s a `ServerHost`
-//! grants, denying `Write`/`Delete`/`Settle`/`Moderate` for a request that
-//! authenticated with a read-only credential. Left as one token for now,
-//! matching what this binary shipped with; #214 raises the question rather
-//! than answering it.
+//! What has not changed: this is still authentication, not authorization.
+//! Whoever clears the gate reaches `ctx_for` as `Actor::Staff`, and
+//! `ServerHost::authorize` grants every `tezgah::ports::Action` to it — `View`
+//! and `Write` and `Delete` alike. `Authorizer::authorize` already receives
+//! the `Action` on every call, and a `Caller` is now on the request beside it,
+//! so a role carried on an operator row is the seam a split would use.
+//! Nothing here answers that yet; #214 raises it.
 
 use std::sync::Arc;
+
+use crate::http::auth::Caller;
 
 use axum::extract::{Path, Query, Request, State};
 use axum::http::{StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post};
-use axum::{Json, Router};
-use subtle::ConstantTimeEq;
+use axum::{Extension, Json, Router};
 use tezgah::api::{
     admin_catalogue, admin_order, admin_rest, credit, digital, order_basket, payout,
     store as store_api, subscription, tax_identity,
@@ -66,7 +62,6 @@ use tezgah::id::{
     WorkflowRunId,
 };
 use tezgah::ports::{Actor, Ctx, Host};
-use uuid::Uuid;
 
 use super::{ApiError, AppState, begin};
 
@@ -370,40 +365,83 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
 /// whole back office, so every request that clears `require_token` runs as
 /// the same nil-uuid `Actor::Staff`. A host that tells its operators apart
 /// authenticates them before this point and sets a real id here.
-fn ctx_for(state: &AppState) -> Ctx<'_> {
+/// `Actor::Staff` carrying whoever cleared the gate, so an audit row can say
+/// who changed a price. It was the nil uuid for every request until operators
+/// existed, and still is for an `ADMIN_TOKEN` one — see [`Caller::actor_id`].
+fn ctx_for<'a>(state: &'a AppState, caller: &Caller) -> Ctx<'a> {
     Ctx::new(
         state.scope,
-        Actor::Staff { id: Uuid::nil() },
+        Actor::Staff {
+            id: caller.actor_id(),
+        },
         state.host.as_ref() as &dyn Host,
     )
 }
 
-/// Checked in constant time so a byte-by-byte timing difference cannot be
-/// used to guess the token — the same discipline tezgah's own webhook
-/// signature checks use `subtle` for.
-pub async fn require_token(
-    State(expected): State<Arc<str>>,
-    request: Request,
+/// What stands between a stranger and the back office.
+///
+/// Two credentials, one door. A session token belongs to a person, expires,
+/// and can be revoked; `ADMIN_TOKEN` belongs to nobody, never expires, and is
+/// how the first operator is made and how a shop that lost every password
+/// gets back in. Whichever cleared the gate is put on the request as a
+/// [`Caller`], so `ctx_for` can name a person in the audit row instead of the
+/// nil uuid every request used to carry.
+///
+/// `ADMIN_TOKEN` is compared in constant time — the same discipline tezgah's
+/// own webhook signature checks use `subtle` for. A session token is looked
+/// up by digest, so there is nothing to compare byte by byte.
+pub async fn require_operator(
+    State(gate): State<Gate>,
+    mut request: Request,
     next: Next,
 ) -> Response {
     let presented = request
         .headers()
         .get(header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.strip_prefix("Bearer "));
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .map(str::to_owned);
 
-    let authorized = match presented {
-        Some(token) if token.len() == expected.len() => {
-            bool::from(token.as_bytes().ct_eq(expected.as_bytes()))
-        }
-        _ => false,
+    let Some(token) = presented else {
+        return denied();
     };
 
-    if authorized {
-        next.run(request).await
-    } else {
-        denied()
+    if let Some(expected) = gate.admin_token.as_deref()
+        && crate::identity::is_admin_token(&token, expected)
+    {
+        request.extensions_mut().insert(Caller::AdminToken);
+        return next.run(request).await;
     }
+
+    // Shape first, so a wrong `ADMIN_TOKEN` — or anything else somebody
+    // sends — is refused without a database round trip. A session token is
+    // exactly two v4 uuids, hex, no dashes.
+    if !looks_like_session(&token) {
+        return denied();
+    }
+
+    match crate::identity::session_operator(&gate.pool, &token).await {
+        Ok(Some(operator)) => {
+            request
+                .extensions_mut()
+                .insert(Caller::Session { operator, token });
+            next.run(request).await
+        }
+        Ok(None) => denied(),
+        Err(err) => ApiError::from(err).into_response(),
+    }
+}
+
+fn looks_like_session(token: &str) -> bool {
+    token.len() == 64 && token.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+/// What `require_operator` needs to answer, and nothing else — the pool to
+/// look a session up in, and the shared secret when there is one.
+#[derive(Clone, Debug)]
+pub struct Gate {
+    pub pool: sqlx::PgPool,
+    pub admin_token: Option<Arc<str>>,
 }
 
 fn denied() -> Response {
@@ -412,7 +450,7 @@ fn denied() -> Response {
         Json(serde_json::json!({
             "error": {
                 "code": "denied",
-                "message": "send the admin token as \"authorization: Bearer <token>\"",
+                "message": "sign in at POST /auth/session, or send the admin token as \"authorization: Bearer <token>\"",
             }
         })),
     )
@@ -421,10 +459,11 @@ fn denied() -> Response {
 
 async fn list_products(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Query(query): Query<admin_catalogue::ListProducts>,
 ) -> Result<Json<tezgah::page::Page<admin_catalogue::ProductView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let page = admin_catalogue::list_products(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(page))
@@ -432,10 +471,11 @@ async fn list_products(
 
 async fn get_product(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<ProductId>,
 ) -> Result<Json<admin_catalogue::ProductView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let product = admin_catalogue::get_product(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(product))
@@ -443,11 +483,12 @@ async fn get_product(
 
 async fn update_product(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<ProductId>,
     Json(body): Json<admin_catalogue::UpdateProduct>,
 ) -> Result<Json<admin_catalogue::ProductView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let product = admin_catalogue::update_product(&mut tx, &ctx, id, body).await?;
     tx.commit().await?;
     Ok(Json(product))
@@ -455,10 +496,11 @@ async fn update_product(
 
 async fn delete_product(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<ProductId>,
 ) -> Result<StatusCode, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     admin_catalogue::delete_product(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
@@ -466,10 +508,11 @@ async fn delete_product(
 
 async fn list_orders(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Query(query): Query<admin_order::ListOrders>,
 ) -> Result<Json<tezgah::page::Page<admin_order::OrderView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let page = admin_order::list_orders(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(page))
@@ -477,10 +520,11 @@ async fn list_orders(
 
 async fn get_order(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<OrderId>,
 ) -> Result<Json<admin_order::OrderView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let order = admin_order::get_order(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(order))
@@ -488,10 +532,11 @@ async fn get_order(
 
 async fn list_inventory_items(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Query(query): Query<admin_catalogue::ListQuery>,
 ) -> Result<Json<tezgah::page::Page<admin_catalogue::InventoryItemView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let page = admin_catalogue::list_inventory_items(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(page))
@@ -499,10 +544,11 @@ async fn list_inventory_items(
 
 async fn get_inventory_item(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<InventoryItemId>,
 ) -> Result<Json<admin_catalogue::InventoryItemView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let item = admin_catalogue::get_inventory_item(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(item))
@@ -510,10 +556,11 @@ async fn get_inventory_item(
 
 async fn delete_inventory_item(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<InventoryItemId>,
 ) -> Result<StatusCode, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     admin_catalogue::delete_inventory_item(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
@@ -521,10 +568,11 @@ async fn delete_inventory_item(
 
 async fn list_customers(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Query(query): Query<admin_rest::List>,
 ) -> Result<Json<tezgah::page::Page<admin_rest::CustomerView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let page = admin_rest::list_customers(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(page))
@@ -532,10 +580,11 @@ async fn list_customers(
 
 async fn get_customer(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<CustomerId>,
 ) -> Result<Json<admin_rest::CustomerView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let customer = admin_rest::get_customer(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(customer))
@@ -543,11 +592,12 @@ async fn get_customer(
 
 async fn update_customer(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<CustomerId>,
     Json(body): Json<admin_rest::UpdateCustomer>,
 ) -> Result<Json<admin_rest::CustomerView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let customer = admin_rest::update_customer(&mut tx, &ctx, id, body).await?;
     tx.commit().await?;
     Ok(Json(customer))
@@ -555,10 +605,11 @@ async fn update_customer(
 
 async fn delete_customer(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<CustomerId>,
 ) -> Result<StatusCode, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     admin_rest::delete_customer(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
@@ -566,10 +617,11 @@ async fn delete_customer(
 
 async fn list_promotions(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Query(query): Query<admin_rest::List>,
 ) -> Result<Json<tezgah::page::Page<admin_rest::PromotionView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let page = admin_rest::list_promotions(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(page))
@@ -577,10 +629,11 @@ async fn list_promotions(
 
 async fn get_promotion(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<PromotionId>,
 ) -> Result<Json<admin_rest::PromotionView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let promotion = admin_rest::get_promotion(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(promotion))
@@ -588,11 +641,12 @@ async fn get_promotion(
 
 async fn update_promotion(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<PromotionId>,
     Json(body): Json<admin_rest::UpdatePromotion>,
 ) -> Result<Json<admin_rest::PromotionView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let promotion = admin_rest::update_promotion(&mut tx, &ctx, id, body).await?;
     tx.commit().await?;
     Ok(Json(promotion))
@@ -600,10 +654,11 @@ async fn update_promotion(
 
 async fn delete_promotion(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<PromotionId>,
 ) -> Result<StatusCode, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     admin_rest::delete_promotion(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
@@ -611,10 +666,11 @@ async fn delete_promotion(
 
 async fn list_subscriptions(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Query(query): Query<subscription::List>,
 ) -> Result<Json<tezgah::page::Page<subscription::SubscriptionView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let page = subscription::list_subscriptions(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(page))
@@ -622,10 +678,11 @@ async fn list_subscriptions(
 
 async fn get_subscription(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<SubscriptionId>,
 ) -> Result<Json<subscription::ContractView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let contract = subscription::get_subscription(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(contract))
@@ -633,10 +690,11 @@ async fn get_subscription(
 
 async fn list_regions(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Query(query): Query<admin_rest::List>,
 ) -> Result<Json<tezgah::page::Page<admin_rest::RegionView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let page = admin_rest::list_regions(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(page))
@@ -644,10 +702,11 @@ async fn list_regions(
 
 async fn get_region(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<RegionId>,
 ) -> Result<Json<admin_rest::RegionView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let region = admin_rest::get_region(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(region))
@@ -655,11 +714,12 @@ async fn get_region(
 
 async fn update_region(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<RegionId>,
     Json(body): Json<admin_rest::UpdateRegion>,
 ) -> Result<Json<admin_rest::RegionView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let region = admin_rest::update_region(&mut tx, &ctx, id, body).await?;
     tx.commit().await?;
     Ok(Json(region))
@@ -667,10 +727,11 @@ async fn update_region(
 
 async fn list_sales_channels(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Query(query): Query<admin_rest::List>,
 ) -> Result<Json<tezgah::page::Page<admin_rest::SalesChannelView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let page = admin_rest::list_sales_channels(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(page))
@@ -678,10 +739,11 @@ async fn list_sales_channels(
 
 async fn get_sales_channel(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<SalesChannelId>,
 ) -> Result<Json<admin_rest::SalesChannelView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let channel = admin_rest::get_sales_channel(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(channel))
@@ -689,11 +751,12 @@ async fn get_sales_channel(
 
 async fn update_sales_channel(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<SalesChannelId>,
     Json(body): Json<admin_rest::UpdateSalesChannel>,
 ) -> Result<Json<admin_rest::SalesChannelView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let channel = admin_rest::update_sales_channel(&mut tx, &ctx, id, body).await?;
     tx.commit().await?;
     Ok(Json(channel))
@@ -701,10 +764,11 @@ async fn update_sales_channel(
 
 async fn delete_sales_channel(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<SalesChannelId>,
 ) -> Result<StatusCode, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     admin_rest::delete_sales_channel(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
@@ -712,9 +776,10 @@ async fn delete_sales_channel(
 
 async fn list_currencies(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
 ) -> Result<Json<Vec<admin_rest::CurrencyView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let currencies = admin_rest::list_currencies(&mut tx, &ctx).await?;
     tx.commit().await?;
     Ok(Json(currencies))
@@ -722,10 +787,11 @@ async fn list_currencies(
 
 async fn create_currency(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Json(body): Json<admin_rest::CreateCurrency>,
 ) -> Result<Json<admin_rest::CurrencyView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let currency = admin_rest::create_currency(&mut tx, &ctx, body).await?;
     tx.commit().await?;
     Ok(Json(currency))
@@ -733,10 +799,11 @@ async fn create_currency(
 
 async fn create_region(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Json(body): Json<admin_rest::CreateRegion>,
 ) -> Result<Json<admin_rest::RegionView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let region = admin_rest::create_region(&mut tx, &ctx, body).await?;
     tx.commit().await?;
     Ok(Json(region))
@@ -744,10 +811,11 @@ async fn create_region(
 
 async fn create_sales_channel(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Json(body): Json<admin_rest::CreateSalesChannel>,
 ) -> Result<Json<admin_rest::SalesChannelView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let channel = admin_rest::create_sales_channel(&mut tx, &ctx, body).await?;
     tx.commit().await?;
     Ok(Json(channel))
@@ -755,10 +823,11 @@ async fn create_sales_channel(
 
 async fn list_publishable_keys(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Query(query): Query<admin_rest::List>,
 ) -> Result<Json<tezgah::page::Page<admin_rest::PublishableKeyView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let page = admin_rest::list_publishable_keys(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(page))
@@ -766,10 +835,11 @@ async fn list_publishable_keys(
 
 async fn create_publishable_key(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Json(body): Json<admin_rest::CreatePublishableKey>,
 ) -> Result<Json<admin_rest::IssuedKeyView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let key = admin_rest::create_publishable_key(&mut tx, &ctx, body).await?;
     tx.commit().await?;
     Ok(Json(key))
@@ -777,10 +847,11 @@ async fn create_publishable_key(
 
 async fn list_stock_locations(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Query(query): Query<admin_catalogue::ListQuery>,
 ) -> Result<Json<tezgah::page::Page<admin_catalogue::StockLocationView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let page = admin_catalogue::list_stock_locations(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(page))
@@ -788,10 +859,11 @@ async fn list_stock_locations(
 
 async fn create_stock_location(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Json(body): Json<admin_catalogue::CreateStockLocation>,
 ) -> Result<Json<admin_catalogue::StockLocationView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let location = admin_catalogue::create_stock_location(&mut tx, &ctx, body).await?;
     tx.commit().await?;
     Ok(Json(location))
@@ -799,11 +871,12 @@ async fn create_stock_location(
 
 async fn update_stock_location(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<StockLocationId>,
     Json(body): Json<admin_catalogue::RenameStockLocation>,
 ) -> Result<Json<admin_catalogue::StockLocationView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let location = admin_catalogue::rename_stock_location(&mut tx, &ctx, id, body).await?;
     tx.commit().await?;
     Ok(Json(location))
@@ -811,10 +884,11 @@ async fn update_stock_location(
 
 async fn delete_stock_location(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<StockLocationId>,
 ) -> Result<StatusCode, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     admin_catalogue::delete_stock_location(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
@@ -822,10 +896,11 @@ async fn delete_stock_location(
 
 async fn create_product(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Json(body): Json<admin_catalogue::CreateProduct>,
 ) -> Result<Json<admin_catalogue::ProductView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let product = admin_catalogue::create_product(&mut tx, &ctx, body).await?;
     tx.commit().await?;
     Ok(Json(product))
@@ -833,11 +908,12 @@ async fn create_product(
 
 async fn create_variant(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<ProductId>,
     Json(body): Json<admin_catalogue::CreateVariant>,
 ) -> Result<Json<admin_catalogue::VariantView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let variant = admin_catalogue::create_variant(&mut tx, &ctx, id, body).await?;
     tx.commit().await?;
     Ok(Json(variant))
@@ -845,9 +921,10 @@ async fn create_variant(
 
 async fn create_price_set(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
 ) -> Result<Json<admin_catalogue::PriceSetView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let set = admin_catalogue::create_price_set(&mut tx, &ctx).await?;
     tx.commit().await?;
     Ok(Json(set))
@@ -855,11 +932,12 @@ async fn create_price_set(
 
 async fn link_variant_price_set(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<VariantId>,
     Json(body): Json<admin_catalogue::LinkPriceSet>,
 ) -> Result<StatusCode, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     admin_catalogue::link_variant_price_set(&mut tx, &ctx, id, body).await?;
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
@@ -867,10 +945,11 @@ async fn link_variant_price_set(
 
 async fn add_price(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Json(body): Json<admin_catalogue::AddPrice>,
 ) -> Result<Json<admin_catalogue::PriceView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let price = admin_catalogue::add_price(&mut tx, &ctx, body).await?;
     tx.commit().await?;
     Ok(Json(price))
@@ -878,10 +957,11 @@ async fn add_price(
 
 async fn create_inventory_item(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Json(body): Json<admin_catalogue::CreateInventoryItem>,
 ) -> Result<Json<admin_catalogue::InventoryItemView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let item = admin_catalogue::create_inventory_item(&mut tx, &ctx, body).await?;
     tx.commit().await?;
     Ok(Json(item))
@@ -889,11 +969,12 @@ async fn create_inventory_item(
 
 async fn set_stock(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<InventoryItemId>,
     Json(body): Json<admin_catalogue::SetStock>,
 ) -> Result<Json<admin_catalogue::InventoryLevelView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let level = admin_catalogue::set_stock(&mut tx, &ctx, id, body).await?;
     tx.commit().await?;
     Ok(Json(level))
@@ -901,10 +982,11 @@ async fn set_stock(
 
 async fn get_basket(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<OrderBasketId>,
 ) -> Result<Json<order_basket::BasketView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let basket = order_basket::get_basket(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(basket))
@@ -912,11 +994,12 @@ async fn get_basket(
 
 async fn basket_orders(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<OrderBasketId>,
     Query(query): Query<order_basket::ListBasketOrders>,
 ) -> Result<Json<tezgah::page::Page<admin_order::OrderView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let page = order_basket::basket_orders(&mut tx, &ctx, id, query).await?;
     tx.commit().await?;
     Ok(Json(page))
@@ -924,11 +1007,12 @@ async fn basket_orders(
 
 async fn basket_carts(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<OrderBasketId>,
     Query(query): Query<order_basket::ListBasketOrders>,
 ) -> Result<Json<tezgah::page::Page<store_api::CartView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let page = order_basket::basket_carts(&mut tx, &ctx, id, query).await?;
     tx.commit().await?;
     Ok(Json(page))
@@ -936,10 +1020,11 @@ async fn basket_carts(
 
 async fn list_workflow_runs(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Query(query): Query<admin_rest::ListWorkflowRuns>,
 ) -> Result<Json<tezgah::page::Page<admin_rest::WorkflowRunSummaryView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let page = admin_rest::list_workflow_runs(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(page))
@@ -947,19 +1032,21 @@ async fn list_workflow_runs(
 
 async fn get_workflow_run(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<WorkflowRunId>,
 ) -> Result<Json<admin_rest::WorkflowRunView>, ApiError> {
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let run = admin_rest::get_workflow_run(&state.pool, &ctx, id).await?;
     Ok(Json(run))
 }
 
 async fn list_workflow_run_steps(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<WorkflowRunId>,
 ) -> Result<Json<Vec<admin_rest::WorkflowStepView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let steps = admin_rest::list_workflow_run_steps(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(steps))
@@ -967,10 +1054,11 @@ async fn list_workflow_run_steps(
 
 async fn list_workflow_dead_letters(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Query(query): Query<admin_rest::List>,
 ) -> Result<Json<tezgah::page::Page<admin_rest::WorkflowDeadLetterView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let page = admin_rest::list_workflow_dead_letters(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(page))
@@ -978,10 +1066,11 @@ async fn list_workflow_dead_letters(
 
 async fn commission_rules(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Query(query): Query<payout::ListQuery>,
 ) -> Result<Json<tezgah::page::Page<payout::CommissionRuleView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let page = payout::commission_rules(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(page))
@@ -989,11 +1078,12 @@ async fn commission_rules(
 
 async fn order_payout_lines(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<OrderId>,
     Query(query): Query<payout::ListQuery>,
 ) -> Result<Json<tezgah::page::Page<payout::PayoutLineView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let page = payout::order_payout_lines(&mut tx, &ctx, id, query).await?;
     tx.commit().await?;
     Ok(Json(page))
@@ -1001,10 +1091,11 @@ async fn order_payout_lines(
 
 async fn list_payouts(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Query(query): Query<payout::ListQuery>,
 ) -> Result<Json<tezgah::page::Page<payout::PayoutView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let page = payout::payouts(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(page))
@@ -1012,10 +1103,11 @@ async fn list_payouts(
 
 async fn payout_balance(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(currency_code): Path<String>,
 ) -> Result<Json<payout::BalanceView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let balance = payout::balance(&mut tx, &ctx, currency_code).await?;
     tx.commit().await?;
     Ok(Json(balance))
@@ -1028,11 +1120,12 @@ struct CountryQuery {
 
 async fn order_fulfillments(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(order_id): Path<OrderId>,
     Query(query): Query<admin_order::Listing>,
 ) -> Result<Json<tezgah::page::Page<admin_order::FulfillmentView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let page = admin_order::order_fulfillments(&mut tx, &ctx, order_id, query).await?;
     tx.commit().await?;
     Ok(Json(page))
@@ -1040,11 +1133,12 @@ async fn order_fulfillments(
 
 async fn order_shipping_options(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(order_id): Path<OrderId>,
     Query(query): Query<CountryQuery>,
 ) -> Result<Json<Vec<admin_order::ShippingOptionView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let options =
         admin_order::order_shipping_options(&mut tx, &ctx, order_id, &query.country_code).await?;
     tx.commit().await?;
@@ -1053,11 +1147,12 @@ async fn order_shipping_options(
 
 async fn return_shipping_options(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(order_id): Path<OrderId>,
     Query(query): Query<CountryQuery>,
 ) -> Result<Json<Vec<admin_order::ShippingOptionView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let options =
         admin_order::return_shipping_options(&mut tx, &ctx, order_id, &query.country_code).await?;
     tx.commit().await?;
@@ -1066,10 +1161,11 @@ async fn return_shipping_options(
 
 async fn get_fulfillment(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path((order_id, id)): Path<(OrderId, FulfillmentId)>,
 ) -> Result<Json<admin_order::FulfillmentDetailView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let fulfillment = admin_order::get_fulfillment(&mut tx, &ctx, order_id, id).await?;
     tx.commit().await?;
     Ok(Json(fulfillment))
@@ -1077,10 +1173,11 @@ async fn get_fulfillment(
 
 async fn list_fulfillment_sets(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Query(query): Query<admin_order::Listing>,
 ) -> Result<Json<tezgah::page::Page<admin_order::FulfillmentSetView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let page = admin_order::list_fulfillment_sets(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(page))
@@ -1088,10 +1185,11 @@ async fn list_fulfillment_sets(
 
 async fn service_zones(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<FulfillmentSetId>,
 ) -> Result<Json<Vec<admin_order::ServiceZoneView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let zones = admin_order::service_zones(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(zones))
@@ -1099,9 +1197,10 @@ async fn service_zones(
 
 async fn fulfillment_providers(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
 ) -> Result<Json<Vec<admin_order::ProviderView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let providers = admin_order::fulfillment_providers(&mut tx, &ctx).await?;
     tx.commit().await?;
     Ok(Json(providers))
@@ -1109,10 +1208,11 @@ async fn fulfillment_providers(
 
 async fn list_shipping_options(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Query(query): Query<admin_order::Listing>,
 ) -> Result<Json<tezgah::page::Page<admin_order::ShippingOptionView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let page = admin_order::list_shipping_options(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(page))
@@ -1120,10 +1220,11 @@ async fn list_shipping_options(
 
 async fn get_shipping_option(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<ShippingOptionId>,
 ) -> Result<Json<admin_order::ShippingOptionView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let option = admin_order::get_shipping_option(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(option))
@@ -1131,10 +1232,11 @@ async fn get_shipping_option(
 
 async fn list_shipping_option_translations(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<ShippingOptionId>,
 ) -> Result<Json<Vec<admin_order::ShippingOptionTranslationView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let translations = admin_order::list_shipping_option_translations(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(translations))
@@ -1142,10 +1244,11 @@ async fn list_shipping_option_translations(
 
 async fn localised_shipping_option(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path((id, locale)): Path<(ShippingOptionId, String)>,
 ) -> Result<Json<admin_order::LocalisedShippingOptionView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let translation = admin_order::localised_shipping_option(&mut tx, &ctx, id, &locale).await?;
     tx.commit().await?;
     Ok(Json(translation))
@@ -1153,10 +1256,11 @@ async fn localised_shipping_option(
 
 async fn list_shipping_profiles(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Query(query): Query<admin_order::Listing>,
 ) -> Result<Json<tezgah::page::Page<admin_order::ShippingProfileView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let page = admin_order::list_shipping_profiles(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(page))
@@ -1164,10 +1268,11 @@ async fn list_shipping_profiles(
 
 async fn get_shipping_profile(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<ShippingProfileId>,
 ) -> Result<Json<admin_order::ShippingProfileView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let profile = admin_order::get_shipping_profile(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(profile))
@@ -1175,10 +1280,11 @@ async fn get_shipping_profile(
 
 async fn list_shipping_option_types(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Query(query): Query<admin_order::Listing>,
 ) -> Result<Json<tezgah::page::Page<admin_order::ShippingOptionTypeView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let page = admin_order::list_shipping_option_types(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(page))
@@ -1186,10 +1292,11 @@ async fn list_shipping_option_types(
 
 async fn list_tax_regions(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Query(query): Query<admin_rest::List>,
 ) -> Result<Json<tezgah::page::Page<admin_rest::TaxRegionView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let page = admin_rest::list_tax_regions(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(page))
@@ -1197,10 +1304,11 @@ async fn list_tax_regions(
 
 async fn get_tax_region(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<TaxRegionId>,
 ) -> Result<Json<admin_rest::TaxRegionView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let region = admin_rest::get_tax_region(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(region))
@@ -1208,10 +1316,11 @@ async fn get_tax_region(
 
 async fn list_tax_rates(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Query(query): Query<admin_rest::ListTaxRates>,
 ) -> Result<Json<tezgah::page::Page<admin_rest::TaxRateView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let page = admin_rest::list_tax_rates(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(page))
@@ -1219,10 +1328,11 @@ async fn list_tax_rates(
 
 async fn get_tax_rate(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<TaxRateId>,
 ) -> Result<Json<admin_rest::TaxRateView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let rate = admin_rest::get_tax_rate(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(rate))
@@ -1230,10 +1340,11 @@ async fn get_tax_rate(
 
 async fn list_tax_rate_rules(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<TaxRateId>,
 ) -> Result<Json<Vec<admin_rest::TaxRateRuleView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let rules = admin_rest::list_tax_rate_rules(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(rules))
@@ -1241,9 +1352,10 @@ async fn list_tax_rate_rules(
 
 async fn list_tax_registrations(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
 ) -> Result<Json<Vec<tax_identity::RegistrationView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let registrations = tax_identity::list_registrations(&mut tx, &ctx).await?;
     tx.commit().await?;
     Ok(Json(registrations))
@@ -1251,10 +1363,11 @@ async fn list_tax_registrations(
 
 async fn list_customer_tax_ids(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<CustomerId>,
 ) -> Result<Json<Vec<tax_identity::TaxIdView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let ids = tax_identity::list_tax_ids(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(ids))
@@ -1262,10 +1375,11 @@ async fn list_customer_tax_ids(
 
 async fn list_customer_tax_exemptions(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<CustomerId>,
 ) -> Result<Json<Vec<tax_identity::ExemptionView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let exemptions = tax_identity::list_exemptions(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(exemptions))
@@ -1273,10 +1387,11 @@ async fn list_customer_tax_exemptions(
 
 async fn get_price_set(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<PriceSetId>,
 ) -> Result<Json<admin_catalogue::PriceSetView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let set = admin_catalogue::get_price_set(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(set))
@@ -1284,11 +1399,12 @@ async fn get_price_set(
 
 async fn list_prices(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<PriceSetId>,
     Query(query): Query<admin_catalogue::ListQuery>,
 ) -> Result<Json<tezgah::page::Page<admin_catalogue::PriceView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let page = admin_catalogue::list_prices(&mut tx, &ctx, id, query).await?;
     tx.commit().await?;
     Ok(Json(page))
@@ -1296,10 +1412,11 @@ async fn list_prices(
 
 async fn list_bundle_components(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<VariantId>,
 ) -> Result<Json<Vec<admin_catalogue::BundleComponentView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let components = admin_catalogue::list_bundle_components(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(components))
@@ -1307,11 +1424,12 @@ async fn list_bundle_components(
 
 async fn bundle_price(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<VariantId>,
     Query(query): Query<admin_catalogue::BundlePriceQuery>,
 ) -> Result<Json<admin_catalogue::BundlePriceView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let price = admin_catalogue::bundle_price(&mut tx, &ctx, id, query).await?;
     tx.commit().await?;
     Ok(Json(price))
@@ -1319,10 +1437,11 @@ async fn bundle_price(
 
 async fn list_price_rules(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<PriceId>,
 ) -> Result<Json<Vec<admin_catalogue::PriceRuleView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let rules = admin_catalogue::list_price_rules(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(rules))
@@ -1330,10 +1449,11 @@ async fn list_price_rules(
 
 async fn list_price_lists(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Query(query): Query<admin_catalogue::ListQuery>,
 ) -> Result<Json<tezgah::page::Page<admin_catalogue::PriceListView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let page = admin_catalogue::list_price_lists(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(page))
@@ -1341,10 +1461,11 @@ async fn list_price_lists(
 
 async fn get_price_list(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<PriceListId>,
 ) -> Result<Json<admin_catalogue::PriceListView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let list = admin_catalogue::get_price_list(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(list))
@@ -1352,10 +1473,11 @@ async fn get_price_list(
 
 async fn get_price_preference(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Query(query): Query<admin_catalogue::FindPricePreference>,
 ) -> Result<Json<Option<admin_catalogue::PricePreferenceView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let preference = admin_catalogue::get_price_preference(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(preference))
@@ -1363,10 +1485,11 @@ async fn get_price_preference(
 
 async fn list_payments(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Query(query): Query<admin_order::ListPayments>,
 ) -> Result<Json<tezgah::page::Page<admin_order::PaymentView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let page = admin_order::list_payments(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(page))
@@ -1374,10 +1497,11 @@ async fn list_payments(
 
 async fn get_payment(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<PaymentId>,
 ) -> Result<Json<admin_order::PaymentView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let payment = admin_order::get_payment(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(payment))
@@ -1385,9 +1509,10 @@ async fn get_payment(
 
 async fn payment_providers(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
 ) -> Result<Json<Vec<admin_order::ProviderView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let providers = admin_order::payment_providers(&mut tx, &ctx).await?;
     tx.commit().await?;
     Ok(Json(providers))
@@ -1395,10 +1520,11 @@ async fn payment_providers(
 
 async fn get_payment_collection(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<PaymentCollectionId>,
 ) -> Result<Json<admin_order::CollectionView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let collection = admin_order::get_payment_collection(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(collection))
@@ -1406,11 +1532,12 @@ async fn get_payment_collection(
 
 async fn payment_sessions(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<PaymentCollectionId>,
     Query(query): Query<admin_order::Listing>,
 ) -> Result<Json<tezgah::page::Page<admin_order::SessionView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let page = admin_order::payment_sessions(&mut tx, &ctx, id, query).await?;
     tx.commit().await?;
     Ok(Json(page))
@@ -1418,10 +1545,11 @@ async fn payment_sessions(
 
 async fn list_refund_reasons(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Query(query): Query<admin_order::Listing>,
 ) -> Result<Json<tezgah::page::Page<admin_order::ReasonView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let page = admin_order::list_refund_reasons(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(page))
@@ -1429,10 +1557,11 @@ async fn list_refund_reasons(
 
 async fn list_gift_cards(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Query(query): Query<credit::List>,
 ) -> Result<Json<tezgah::page::Page<credit::GiftCardView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let page = credit::list_gift_cards(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(page))
@@ -1440,10 +1569,11 @@ async fn list_gift_cards(
 
 async fn get_gift_card(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<GiftCardId>,
 ) -> Result<Json<credit::GiftCardView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let card = credit::get_gift_card(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(card))
@@ -1451,11 +1581,12 @@ async fn get_gift_card(
 
 async fn gift_card_movements(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<GiftCardId>,
     Query(query): Query<credit::List>,
 ) -> Result<Json<tezgah::page::Page<credit::CreditMovementView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let page = credit::gift_card_movements(&mut tx, &ctx, id, query).await?;
     tx.commit().await?;
     Ok(Json(page))
@@ -1463,11 +1594,12 @@ async fn gift_card_movements(
 
 async fn get_store_credit(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<CustomerId>,
     Query(query): Query<credit::BalanceQuery>,
 ) -> Result<Json<credit::StoreCreditView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let balance = credit::get_store_credit(&mut tx, &ctx, id, query).await?;
     tx.commit().await?;
     Ok(Json(balance))
@@ -1475,11 +1607,12 @@ async fn get_store_credit(
 
 async fn store_credit_movements(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<StoreCreditId>,
     Query(query): Query<credit::List>,
 ) -> Result<Json<tezgah::page::Page<credit::CreditMovementView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let page = credit::store_credit_movements(&mut tx, &ctx, id, query).await?;
     tx.commit().await?;
     Ok(Json(page))
@@ -1487,10 +1620,11 @@ async fn store_credit_movements(
 
 async fn list_order_entitlements(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<OrderId>,
 ) -> Result<Json<Vec<digital::EntitlementView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let entitlements = digital::list_order_entitlements(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(entitlements))
@@ -1498,11 +1632,12 @@ async fn list_order_entitlements(
 
 async fn revoke_entitlements(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<OrderId>,
     Json(body): Json<digital::RevokeEntitlements>,
 ) -> Result<Json<Vec<digital::EntitlementView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let entitlements = digital::revoke_entitlements(&mut tx, &ctx, id, body).await?;
     tx.commit().await?;
     Ok(Json(entitlements))
@@ -1510,10 +1645,11 @@ async fn revoke_entitlements(
 
 async fn list_content(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<VariantId>,
 ) -> Result<Json<Vec<digital::ContentView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let content = digital::list_content(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(content))
@@ -1521,11 +1657,12 @@ async fn list_content(
 
 async fn put_content(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<VariantId>,
     Json(body): Json<digital::PutContent>,
 ) -> Result<Json<digital::ContentView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let content = digital::put_content(&mut tx, &ctx, id, body).await?;
     tx.commit().await?;
     Ok(Json(content))
@@ -1533,10 +1670,11 @@ async fn put_content(
 
 async fn delete_content(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Path(id): Path<DigitalContentId>,
 ) -> Result<StatusCode, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     digital::delete_content(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
@@ -1544,10 +1682,11 @@ async fn delete_content(
 
 async fn list_carts(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Query(query): Query<order_basket::ListCarts>,
 ) -> Result<Json<tezgah::page::Page<store_api::CartView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
-    let ctx = ctx_for(&state);
+    let ctx = ctx_for(&state, &caller);
     let page = order_basket::list_carts(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(page))

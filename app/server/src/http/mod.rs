@@ -7,6 +7,7 @@
 //! comment for exactly which, and why those.
 
 pub mod admin;
+pub mod auth;
 pub mod docs;
 pub mod health;
 pub mod store;
@@ -37,9 +38,15 @@ pub struct AppState {
     /// no real money.
     pub checkout: Option<Arc<Checkout>>,
     pub scope: Scope,
-    /// `None` means the admin surface is not mounted — see
-    /// `admin::router`'s doc comment.
+    /// The shared secret, when there is one. `None` no longer means the admin
+    /// surface is unmounted: an installation with operators has a way in
+    /// without it — see [`router`].
     pub admin_token: Option<Arc<str>>,
+    /// Whether any operator account exists. Read once at startup, because it
+    /// decides what is mounted rather than what a request is allowed: an
+    /// account made while this is running is signed in with on the next
+    /// restart, and `main.rs` says so.
+    pub has_operators: bool,
 }
 
 /// The paths this binary actually serves out of `tezgah::api::routes()`,
@@ -102,7 +109,16 @@ pub fn router(state: AppState) -> (Router, Bound) {
     let mut app = app_base.merge(store_router);
     bound.extend(store_bound);
 
-    if let Some(token) = state.admin_token.clone() {
+    // Mounted when there is any way to authenticate at all. Before operators
+    // existed that was `ADMIN_TOKEN` alone, and an unset one meant the admin
+    // surface did not exist to be reached rather than existing and refusing
+    // everybody. Both halves of that still hold: a shop with accounts has a
+    // door, and a shop with neither has none.
+    if state.admin_token.is_some() || state.has_operators {
+        let gate = admin::Gate {
+            pool: state.pool.clone(),
+            admin_token: state.admin_token.clone(),
+        };
         let (admin_router, admin_bound) = admin::router();
         // `route_layer`, not `layer`: `layer` also wraps a router's own
         // fallback, and `Router::merge` picks the *other* router's fallback
@@ -112,8 +128,13 @@ pub fn router(state: AppState) -> (Router, Bound) {
         // wraps matched routes, so a path nothing binds still reaches the
         // ordinary 404 rather than this middleware.
         let admin_router =
-            admin_router.route_layer(middleware::from_fn_with_state(token, admin::require_token));
-        app = app.merge(admin_router);
+            admin_router
+                .merge(auth::gated_router())
+                .route_layer(middleware::from_fn_with_state(
+                    gate,
+                    admin::require_operator,
+                ));
+        app = app.merge(admin_router).merge(auth::open_router());
         bound.extend(admin_bound);
     }
 

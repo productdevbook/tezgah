@@ -5,5 +5,7 @@
 pub mod config;
 pub mod host;
 pub mod http;
+pub mod identity;
 pub mod provider;
+pub mod schedule;
 pub mod seed;

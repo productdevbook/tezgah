@@ -39,7 +39,7 @@ naming what is wrong, rather than on the first request that needed a pool.
 | `DATABASE_URL` | yes | — | a `postgres://` connection string; startup fails clearly without one |
 | `PORT` | no | `8080` | what this binary listens on |
 | `TEZGAH_SKIP_MIGRATIONS` | no | unset | set to `1` to skip `tezgah::MIGRATIONS` — the database already has them |
-| `ADMIN_TOKEN` | no | unset | the bearer token that unlocks `/admin/*` — see below |
+| `ADMIN_TOKEN` | no | unset | the shared secret that makes the first operator account and gets back in when a password is lost — see "Who may reach the back office" |
 | `TEZGAH_STOCK_LOCATION_ID` | no | unset | the one warehouse checkout reserves and ships from — see below |
 | `TEZGAH_DEMO_BANK` | no | unset | set to exactly `i-understand-this-takes-no-money` to run checkout against the demo payment provider — see below |
 | `TEZGAH_CURRENCY_EXPONENT` | no | `2` | this shop's one currency's decimal places, for the payment provider wrapper |
@@ -137,31 +137,80 @@ accepting a connection — but "a query against Postgres still answers". Bound
 unconditionally, unauthenticated, and not one of tezgah's own 483 declared
 routes: it belongs to this binary, not to the crate.
 
-## The admin surface, and why it can be switched off entirely
+## Who may reach the back office
 
 tezgah authenticates nobody — `tezgah::ports::Authorizer` is a question a
 host answers, and this binary's own `ServerHost` answers it by granting every
 actor, `Actor::System` included, because `docs/hosting.md` says denying that
-silently stops every subscription renewal. A production server cannot leave
-the back office at that, and it also should not invent a second role system
-on tezgah's behalf — that is exactly the "second set of roles" tezgah's own
-docs say a host should not be handed.
+silently stops every subscription renewal. That is right for a library and
+leaves the product to answer the rest.
 
-`ADMIN_TOKEN` is the middle: one shared secret, checked in constant time
-against the `authorization: Bearer <token>` header, in front of every
-`/admin/*` route. And when it is not set, the admin surface is not mounted on
-the router at all — not bound and refusing every caller, genuinely absent, so
-there is nothing there for a stranger to find. A closed default is the only
-one that does not depend on an operator remembering to set something.
+**Operators.** `src/identity.rs` holds accounts with names and argon2id
+passwords, and sessions that expire after thirty days. A session dies when
+the account is disabled and when its password changes, so revoking somebody
+is one request rather than a rotation everybody else has to be told about.
+The tables are this binary's — no `scope`, no row-level security — for the
+same reason `server_job` is: a person who runs the shop is not one of the
+shop's rows.
 
-One token still gates reads and writes alike — a bearer that can list
-customers can also mint a publishable key or create a product, now that the
-write routes below are bound. `src/http/admin.rs`'s own doc comment says
-where a split would go: `tezgah::ports::Authorizer::authorize` already
-receives the `Action` on every call, so a second token (or a role
-`require_token` attaches to the request) turned into which `Action`s
-`ServerHost` grants is the seam, not a change to tezgah itself. Not done here
-— #214 raises the question rather than answering it.
+**`ADMIN_TOKEN`.** Still here, still one shared secret checked in constant
+time. It is how the first account is made, and how a shop that lost every
+password gets back in. It is not a person, and nothing pretends otherwise:
+an `ADMIN_TOKEN` request reaches tezgah as `Actor::Staff` carrying the nil
+uuid, so an audit row written under it says plainly that nobody in
+particular did it.
+
+The admin surface is mounted when there is any way in — a token, or at least
+one operator. With neither it is not bound at all: genuinely absent rather
+than present and refusing everybody, so there is nothing for a stranger to
+find. Startup says which of the two it found.
+
+| Route | Open? | What it does |
+|---|---|---|
+| `POST /auth/session` | yes | e-mail and password in, a session token out |
+| `DELETE /auth/session` | no | ends the session doing the asking |
+| `GET /auth/me` | no | who the caller is; `null` for `ADMIN_TOKEN` |
+| `POST /auth/password` | no | changes the caller's own, ending every other session they hold |
+| `GET /admin/operators` | no | the accounts, and which are disabled |
+| `POST /admin/operators` | no | makes one |
+| `PATCH /admin/operators/{id}` | no | disables or re-enables one; never itself |
+
+None of these is one of tezgah's 483 — the crate declares no route for
+something it does not do — so the startup tally does not count them, the same
+way it does not count `GET /health`.
+
+**No invitation and no password reset.** Both need a letter and this binary
+has no mailer; a reset link it cannot send would be worse than one it never
+offered. An account is made with a password by somebody already inside, and
+`ADMIN_TOKEN` is the way back in.
+
+**Authentication, not authorization.** Whoever clears the gate reaches
+`ctx_for` as `Actor::Staff` and `ServerHost` grants every `Action` to it —
+a caller who can list customers can also mint a publishable key or create a
+product. `src/http/admin.rs`'s own doc comment says where the split would go:
+`Authorizer::authorize` already receives the `Action`, and the request now
+carries who is asking, so a role on the operator row is the seam. Not done
+here — #214 raises the question rather than answering it.
+
+## What runs without being asked
+
+`src/schedule.rs`, every five minutes, as `Actor::System`:
+
+- `cart::expire` — abandoned carts, and the stock their lines were holding.
+- `inventory::expire_reservations` — every hold whose time has run out.
+- expired sessions, dropped.
+
+Both sweeps are things `tests/reachable.rs` in the crate root tolerates with
+the reason "a sweep a host runs on a schedule". This is that host; until it
+ran them, an abandoned cart on the shipped image was never cleared and the
+stock it reserved was held for ever.
+
+Not jobs. `ports::Jobs` is enqueue-only by design — tezgah writes a job in
+the transaction the change belongs to and never decides when it runs — so
+recurrence is the host's and lives here. The queue itself is still a gap:
+`host::spawn_worker` claims what was enqueued, prints it and marks it
+processed, and the one kind tezgah enqueues is a subscription's dunning
+retry.
 
 ## Route table
 

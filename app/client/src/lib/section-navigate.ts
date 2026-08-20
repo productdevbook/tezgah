@@ -41,6 +41,8 @@ export function useSectionNavigate() {
         return void navigate({ to: "/credit" })
       case "carts":
         return void navigate({ to: "/carts" })
+      case "operators":
+        return void navigate({ to: "/operators" })
       default:
         return void navigate({ to: "/$section", params: { section: slug } })
     }
