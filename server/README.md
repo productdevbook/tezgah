@@ -169,7 +169,7 @@ receives the `Action` on every call, so a second token (or a role
 by hand, and says exactly how many out loud at startup:
 
 ```
-bound 71 of 483 declared routes
+bound 79 of 483 declared routes
   GET    /store/products
   GET    /store/products/{handle}
   POST   /store/carts
@@ -241,6 +241,14 @@ bound 71 of 483 declared routes
   GET    /admin/tax-registrations
   GET    /admin/customers/{id}/tax-ids
   GET    /admin/customers/{id}/tax-exemptions
+  GET    /admin/price-sets/{id}
+  GET    /admin/price-sets/{id}/prices
+  GET    /admin/product-variants/{id}/bundle/components
+  GET    /admin/product-variants/{id}/bundle/price
+  GET    /admin/prices/{id}/rules
+  GET    /admin/price-lists
+  GET    /admin/price-lists/{id}
+  GET    /admin/price-preferences
   plus GET /health, which is this binary's own and not one of the 483
 ```
 
@@ -313,6 +321,14 @@ not already offer:
   three in `tax_identity` has a single-row read by id in the crate — a
   registration, a tax number and a certificate are read as their owner's
   whole list, never one at a time.
+- **pricing** — one price set and the page of prices under it, a bundle's
+  components and what it prices at right now, the rules on one price, price
+  lists with a list and single read on both, and a price preference found
+  by attribute rather than by id (`admin_catalogue::get_price_set`,
+  `list_prices`, `list_bundle_components`, `bundle_price`,
+  `list_price_rules`, `list_price_lists`, `get_price_list`,
+  `get_price_preference`). The last answers `null` rather than a 404: no
+  preference set for an attribute is the common case, not a missing row.
 
 Everything else `tezgah::api` offers stays unbound; wiring in more of the
 483 is a matter of adding a handler in `src/http/admin.rs` or

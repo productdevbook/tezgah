@@ -66,9 +66,9 @@ use tezgah::api::{
     subscription, tax_identity,
 };
 use tezgah::id::{
-    CustomerId, FulfillmentId, FulfillmentSetId, InventoryItemId, OrderBasketId, OrderId,
-    ProductId, PromotionId, RegionId, SalesChannelId, ShippingOptionId, ShippingProfileId,
-    SubscriptionId, TaxRateId, TaxRegionId, VariantId, WorkflowRunId,
+    CustomerId, FulfillmentId, FulfillmentSetId, InventoryItemId, OrderBasketId, OrderId, PriceId,
+    PriceListId, PriceSetId, ProductId, PromotionId, RegionId, SalesChannelId, ShippingOptionId,
+    ShippingProfileId, SubscriptionId, TaxRateId, TaxRegionId, VariantId, WorkflowRunId,
 };
 use tezgah::ports::{Actor, Ctx, Host};
 use uuid::Uuid;
@@ -141,6 +141,14 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         ("GET", "/admin/tax-registrations"),
         ("GET", "/admin/customers/{id}/tax-ids"),
         ("GET", "/admin/customers/{id}/tax-exemptions"),
+        ("GET", "/admin/price-sets/{id}"),
+        ("GET", "/admin/price-sets/{id}/prices"),
+        ("GET", "/admin/product-variants/{id}/bundle/components"),
+        ("GET", "/admin/product-variants/{id}/bundle/price"),
+        ("GET", "/admin/prices/{id}/rules"),
+        ("GET", "/admin/price-lists"),
+        ("GET", "/admin/price-lists/{id}"),
+        ("GET", "/admin/price-preferences"),
     ];
 
     let router = Router::new()
@@ -251,7 +259,21 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         .route(
             "/admin/customers/{id}/tax-exemptions",
             get(list_customer_tax_exemptions),
-        );
+        )
+        .route("/admin/price-sets/{id}", get(get_price_set))
+        .route("/admin/price-sets/{id}/prices", get(list_prices))
+        .route(
+            "/admin/product-variants/{id}/bundle/components",
+            get(list_bundle_components),
+        )
+        .route(
+            "/admin/product-variants/{id}/bundle/price",
+            get(bundle_price),
+        )
+        .route("/admin/prices/{id}/rules", get(list_price_rules))
+        .route("/admin/price-lists", get(list_price_lists))
+        .route("/admin/price-lists/{id}", get(get_price_list))
+        .route("/admin/price-preferences", get(get_price_preference));
 
     (router, bound)
 }
@@ -1021,4 +1043,94 @@ async fn list_customer_tax_exemptions(
     let exemptions = tax_identity::list_exemptions(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(exemptions))
+}
+
+async fn get_price_set(
+    State(state): State<AppState>,
+    Path(id): Path<PriceSetId>,
+) -> Result<Json<admin_catalogue::PriceSetView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let set = admin_catalogue::get_price_set(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(set))
+}
+
+async fn list_prices(
+    State(state): State<AppState>,
+    Path(id): Path<PriceSetId>,
+    Query(query): Query<admin_catalogue::ListQuery>,
+) -> Result<Json<tezgah::page::Page<admin_catalogue::PriceView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = admin_catalogue::list_prices(&mut tx, &ctx, id, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn list_bundle_components(
+    State(state): State<AppState>,
+    Path(id): Path<VariantId>,
+) -> Result<Json<Vec<admin_catalogue::BundleComponentView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let components = admin_catalogue::list_bundle_components(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(components))
+}
+
+async fn bundle_price(
+    State(state): State<AppState>,
+    Path(id): Path<VariantId>,
+    Query(query): Query<admin_catalogue::BundlePriceQuery>,
+) -> Result<Json<admin_catalogue::BundlePriceView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let price = admin_catalogue::bundle_price(&mut tx, &ctx, id, query).await?;
+    tx.commit().await?;
+    Ok(Json(price))
+}
+
+async fn list_price_rules(
+    State(state): State<AppState>,
+    Path(id): Path<PriceId>,
+) -> Result<Json<Vec<admin_catalogue::PriceRuleView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let rules = admin_catalogue::list_price_rules(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(rules))
+}
+
+async fn list_price_lists(
+    State(state): State<AppState>,
+    Query(query): Query<admin_catalogue::ListQuery>,
+) -> Result<Json<tezgah::page::Page<admin_catalogue::PriceListView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = admin_catalogue::list_price_lists(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn get_price_list(
+    State(state): State<AppState>,
+    Path(id): Path<PriceListId>,
+) -> Result<Json<admin_catalogue::PriceListView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let list = admin_catalogue::get_price_list(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(list))
+}
+
+async fn get_price_preference(
+    State(state): State<AppState>,
+    Query(query): Query<admin_catalogue::FindPricePreference>,
+) -> Result<Json<Option<admin_catalogue::PricePreferenceView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let preference = admin_catalogue::get_price_preference(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(preference))
 }

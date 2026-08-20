@@ -984,6 +984,47 @@ static BODIES: &[Body] = &[
         request: None,
         response: Some(schema_of::<Vec<tax_identity::ExemptionView>>),
     },
+    // -------------------------------------------------------------- pricing
+    Body {
+        operation_id: "getAdminPriceSetsById",
+        request: None,
+        response: Some(schema_of::<admin_catalogue::PriceSetView>),
+    },
+    Body {
+        operation_id: "getAdminPriceSetsByIdPrices",
+        request: None,
+        response: Some(page_of::<admin_catalogue::PriceView>),
+    },
+    Body {
+        operation_id: "getAdminProductVariantsByIdBundleComponents",
+        request: None,
+        response: Some(schema_of::<Vec<admin_catalogue::BundleComponentView>>),
+    },
+    Body {
+        operation_id: "getAdminProductVariantsByIdBundlePrice",
+        request: None,
+        response: Some(schema_of::<admin_catalogue::BundlePriceView>),
+    },
+    Body {
+        operation_id: "getAdminPricesByIdRules",
+        request: None,
+        response: Some(schema_of::<Vec<admin_catalogue::PriceRuleView>>),
+    },
+    Body {
+        operation_id: "getAdminPriceLists",
+        request: None,
+        response: Some(page_of::<admin_catalogue::PriceListView>),
+    },
+    Body {
+        operation_id: "getAdminPriceListsById",
+        request: None,
+        response: Some(schema_of::<admin_catalogue::PriceListView>),
+    },
+    Body {
+        operation_id: "getAdminPricePreferences",
+        request: None,
+        response: Some(schema_of::<Option<admin_catalogue::PricePreferenceView>>),
+    },
 ];
 
 fn operation(
@@ -1241,9 +1282,10 @@ mod tests {
         // response side: payout's own money, catalogue's dimensions, the
         // order domain's — `MoneyView` once for every view built through
         // `amount_view`/`From<Money>`, plus the two invoices carry a total
-        // outside that helper — and pricing's own `PriceView.amount`, all
-        // riding the same `for_serialize` generator and answering the same
-        // way even though not all of them are money.
+        // outside that helper — and pricing's own `PriceView.amount` and a
+        // bundle's own priced total and its components' shares, all riding
+        // the same `for_serialize` generator and answering the same way
+        // even though not all of them are money.
         for pointer in [
             "/components/schemas/BalanceView/properties/amount",
             "/components/schemas/PayoutView/properties/amount",
@@ -1256,6 +1298,9 @@ mod tests {
             "/components/schemas/MoneyView/properties/amount",
             "/components/schemas/InvoiceView/properties/total_amount",
             "/components/schemas/PriceView/properties/amount",
+            "/components/schemas/BundlePriceView/properties/total",
+            "/components/schemas/BundlePriceComponentView/properties/unit_price",
+            "/components/schemas/BundlePriceComponentView/properties/allocated_total",
         ] {
             let schema = document
                 .pointer(pointer)
