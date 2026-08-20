@@ -67,6 +67,16 @@ export const DeleteAdminCustomerGroupsByIdCustomersByCustomerIdResponse = zod.un
 /**
  * @summary List customers
  */
+export const getAdminCustomersQueryLimitMin = 0;
+
+
+
+export const GetAdminCustomersQueryParams = zod.object({
+  "after": zod.string().nullish(),
+  "limit": zod.int().min(getAdminCustomersQueryLimitMin).nullish(),
+  "q": zod.string().nullish()
+})
+
 export const GetAdminCustomersResponse = zod.object({
   "items": zod.array(zod.unknown()),
   "next": zod.string().nullish()

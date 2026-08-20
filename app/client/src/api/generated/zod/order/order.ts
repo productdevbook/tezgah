@@ -1431,7 +1431,8 @@ export const getAdminOrdersQueryLimitMin = 0;
 export const GetAdminOrdersQueryParams = zod.object({
   "after": zod.string().nullish(),
   "customer_id": zod.union([zod.uuid().describe('Identifies one customer.'),zod.null()]).optional(),
-  "limit": zod.int().min(getAdminOrdersQueryLimitMin).nullish()
+  "limit": zod.int().min(getAdminOrdersQueryLimitMin).nullish(),
+  "q": zod.string().nullish()
 })
 
 export const GetAdminOrdersResponse = zod.object({

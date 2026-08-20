@@ -2566,6 +2566,34 @@
         ],
         "type": "object"
       },
+      "ListCustomers": {
+        "additionalProperties": false,
+        "description": "Customers have a search box and the other twenty-odd lists sharing [`List`]\ndo not, so they get a query type of their own rather than a `q` those\ntwenty-odd would accept and silently ignore — `deny_unknown_fields` is what\nmakes refusing it the honest answer there.",
+        "properties": {
+          "after": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "q": {
+            "description": "Matched against e-mail, first and last name, and company. Blank is not\na search.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "ListOrders": {
         "additionalProperties": false,
         "properties": {
@@ -2590,6 +2618,13 @@
             "minimum": 0,
             "type": [
               "integer",
+              "null"
+            ]
+          },
+          "q": {
+            "description": "What a back office typed into its search box, matched against the\ne-mail on an order and its display number. Blank is not a search.",
+            "type": [
+              "string",
               "null"
             ]
           }
@@ -8397,7 +8432,44 @@
     "/admin/customers": {
       "get": {
         "operationId": "getAdminCustomers",
-        "parameters": [],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "description": "Matched against e-mail, first and last name, and company. Blank is not\na search.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -12596,6 +12668,18 @@
               "minimum": 0,
               "type": [
                 "integer",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "description": "What a back office typed into its search box, matched against the\ne-mail on an order and its display number. Blank is not a search.",
+              "type": [
+                "string",
                 "null"
               ]
             }

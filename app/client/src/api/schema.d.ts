@@ -6971,11 +6971,32 @@ export interface components {
         LinkPriceSet: {
             price_set_id: components["schemas"]["PriceSetId"];
         };
+        /**
+         * @description Customers have a search box and the other twenty-odd lists sharing [`List`]
+         *     do not, so they get a query type of their own rather than a `q` those
+         *     twenty-odd would accept and silently ignore — `deny_unknown_fields` is what
+         *     makes refusing it the honest answer there.
+         */
+        ListCustomers: {
+            after?: string | null;
+            /** Format: uint32 */
+            limit?: number | null;
+            /**
+             * @description Matched against e-mail, first and last name, and company. Blank is not
+             *     a search.
+             */
+            q?: string | null;
+        };
         ListOrders: {
             after?: string | null;
             customer_id?: components["schemas"]["CustomerId"] | null;
             /** Format: uint32 */
             limit?: number | null;
+            /**
+             * @description What a back office typed into its search box, matched against the
+             *     e-mail on an order and its display number. Blank is not a search.
+             */
+            q?: string | null;
         };
         ListProducts: {
             after?: string | null;
@@ -10055,7 +10076,11 @@ export interface operations {
     };
     getAdminCustomers: {
         parameters: {
-            query?: never;
+            query?: {
+                after?: string | null;
+                limit?: number | null;
+                q?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -14067,6 +14092,7 @@ export interface operations {
                 after?: string | null;
                 customer_id?: components["schemas"]["CustomerId"] | null;
                 limit?: number | null;
+                q?: string | null;
             };
             header?: never;
             path?: never;

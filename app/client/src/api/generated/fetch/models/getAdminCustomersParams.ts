@@ -5,22 +5,20 @@
  * A commerce engine for Rust: products, carts, orders, payments, inventory, and a workflow runner that unwinds what it started.
  * OpenAPI spec version: 0.0.0
  */
-import type { CustomerId } from './customerId';
 
-export type GetAdminOrdersParams = {
+export type GetAdminCustomersParams = {
 /**
  * @nullable
  */
 after?: string | null;
-customer_id?: CustomerId | null;
 /**
  * @minimum 0
  * @nullable
  */
 limit?: number | null;
 /**
- * What a back office typed into its search box, matched against the
- * e-mail on an order and its display number. Blank is not a search.
+ * Matched against e-mail, first and last name, and company. Blank is not
+ * a search.
  * @nullable
  */
 q?: string | null;

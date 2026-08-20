@@ -8,6 +8,7 @@
 import type {
   CustomerView,
   GetAdminCustomers200,
+  GetAdminCustomersParams,
   UpdateCustomer
 } from '../models';
 
@@ -408,20 +409,27 @@ export type getAdminCustomersResponseError = (getAdminCustomersResponse400 | get
 
 export type getAdminCustomersResponse = (getAdminCustomersResponseSuccess | getAdminCustomersResponseError)
 
-export const getGetAdminCustomersUrl = () => {
+export const getGetAdminCustomersUrl = (params?: GetAdminCustomersParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/admin/customers`
+  return stringifiedParams.length > 0 ? `/admin/customers?${stringifiedParams}` : `/admin/customers`
 }
 
 /**
  * @summary List customers
  */
-export const getAdminCustomers = async ( options?: Parameters<typeof apiMutator>[1]): Promise<getAdminCustomersResponse> => {
+export const getAdminCustomers = async (params?: GetAdminCustomersParams, options?: Parameters<typeof apiMutator>[1]): Promise<getAdminCustomersResponse> => {
 
-  return apiMutator<getAdminCustomersResponse>(getGetAdminCustomersUrl(),
+  return apiMutator<getAdminCustomersResponse>(getGetAdminCustomersUrl(params),
   {
     ...options,
     method: 'GET'
