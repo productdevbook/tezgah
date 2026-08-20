@@ -1429,7 +1429,7 @@ pub struct CreateSalesChannel {
     pub is_disabled: bool,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UpdateSalesChannel {
     pub name: Option<String>,

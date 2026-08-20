@@ -273,6 +273,16 @@ static BODIES: &[Body] = &[
         request: None,
         response: Some(schema_of::<admin_rest::SalesChannelView>),
     },
+    Body {
+        operation_id: "patchAdminSalesChannelsById",
+        request: Some(schema_of::<admin_rest::UpdateSalesChannel>),
+        response: Some(schema_of::<admin_rest::SalesChannelView>),
+    },
+    Body {
+        operation_id: "deleteAdminSalesChannelsById",
+        request: None,
+        response: None,
+    },
     // ==================================================================== order
     // --------------------------------------------------------------------- orders
     Body {

@@ -18,8 +18,12 @@
 //! `/admin/orders/{id}/payout-lines`, `/admin/payouts` and
 //! `/admin/payout-balance/{currency_code}` — none of the three has a screen
 //! in `client/` yet, so nothing calls them but this binary's own startup
-//! count. Everything else `tezgah::api` offers stays unbound; nothing here
-//! was chosen for this binary beyond what those needs cover.
+//! count. Past all of that, editing and deleting a row a screen already
+//! lists: `PATCH /admin/sales-channels/{id}` (`admin_rest::update_sales_channel`,
+//! `Action::Write`) and `DELETE /admin/sales-channels/{id}`
+//! (`admin_rest::delete_sales_channel`, `Action::Delete`). Everything else
+//! `tezgah::api` offers stays unbound; nothing here was chosen for this
+//! binary beyond what those needs cover.
 //!
 //! # Why a bearer token, and why it is the whole of this
 //!
@@ -92,6 +96,8 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         ("GET", "/admin/regions/{id}"),
         ("GET", "/admin/sales-channels"),
         ("GET", "/admin/sales-channels/{id}"),
+        ("PATCH", "/admin/sales-channels/{id}"),
+        ("DELETE", "/admin/sales-channels/{id}"),
         ("GET", "/admin/currencies"),
         ("GET", "/admin/publishable-api-keys"),
         ("GET", "/admin/stock-locations"),
@@ -142,7 +148,12 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
             "/admin/sales-channels",
             get(list_sales_channels).post(create_sales_channel),
         )
-        .route("/admin/sales-channels/{id}", get(get_sales_channel))
+        .route(
+            "/admin/sales-channels/{id}",
+            get(get_sales_channel)
+                .patch(update_sales_channel)
+                .delete(delete_sales_channel),
+        )
         .route(
             "/admin/currencies",
             get(list_currencies).post(create_currency),
@@ -414,6 +425,29 @@ async fn get_sales_channel(
     let channel = admin_rest::get_sales_channel(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(channel))
+}
+
+async fn update_sales_channel(
+    State(state): State<AppState>,
+    Path(id): Path<SalesChannelId>,
+    Json(body): Json<admin_rest::UpdateSalesChannel>,
+) -> Result<Json<admin_rest::SalesChannelView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let channel = admin_rest::update_sales_channel(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(channel))
+}
+
+async fn delete_sales_channel(
+    State(state): State<AppState>,
+    Path(id): Path<SalesChannelId>,
+) -> Result<StatusCode, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    admin_rest::delete_sales_channel(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn list_currencies(
