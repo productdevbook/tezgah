@@ -51,7 +51,7 @@ use crate::id::{
     StockLocationId, SubscriptionId, VariantId,
 };
 use crate::money::{Currency, Money};
-use crate::page::{Cursor, Page, Paging, Search};
+use crate::page::{Cursor, Order as Direction, Page, Paging, Search};
 use crate::ports::{Action, Actor, AuditEntry, Ctx, Event, Permit, Resource, Tx};
 
 const ORDER_COLUMNS: &str = "id, display_id, region_id, sales_channel_id, customer_id, \
@@ -1314,6 +1314,10 @@ pub struct OrderFilter {
     /// message. Not the order's id: nobody types a uuid, and the two routes
     /// that take one take it in the path.
     pub search: Option<Search>,
+    /// Which end first. A back office opening Orders wants today's, not the
+    /// first order the shop ever took — so the admin surface asks for
+    /// `Newest` and the storefront leaves it alone.
+    pub order: Direction,
 }
 
 /// Orders, newest last.
@@ -1331,6 +1335,8 @@ pub async fn list(
         },
     )?;
 
+    let (beyond, direction) = (filter.order.beyond(), filter.order.direction());
+
     let rows = sqlx::query_as::<_, Order>(&format!(
         r#"select {ORDER_COLUMNS} from "order"
            where scope = $1
@@ -1339,8 +1345,8 @@ pub async fn list(
              and ($4::text is null
                   or email ilike $4
                   or display_id::text ilike $4)
-             and ($5::timestamptz is null or (created_at, id) > ($5, $6))
-           order by created_at, id
+             and ($5::timestamptz is null or (created_at, id) {beyond} ($5, $6))
+           order by created_at {direction}, id {direction}
            limit $7"#
     ))
     .bind(ctx.scope.0)

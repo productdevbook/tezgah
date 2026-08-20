@@ -13,7 +13,7 @@ use sqlx::FromRow;
 
 use crate::error::{Error, Result};
 use crate::id::{AddressId, CustomerGroupId, CustomerId};
-use crate::page::{Cursor, Page, Paging, Search};
+use crate::page::{Cursor, Order, Page, Paging, Search};
 use crate::payment;
 use crate::ports::{Action, AuditEntry, Ctx, Event, Permit, Resource, Tx};
 
@@ -244,6 +244,9 @@ pub async fn by_email(tx: &mut Tx<'_>, ctx: &Ctx<'_>, email: &str) -> Result<Cus
 /// that took theirs positionally.
 #[derive(Debug, Clone, Default)]
 pub struct CustomerFilter {
+    /// Which end first. A back office opening Customers wants whoever
+    /// arrived this week.
+    pub order: Order,
     /// Matched against e-mail, first and last name, and company — the four
     /// ways somebody asks for a person. A guest with none of them set is
     /// findable through the order they left, not here.
@@ -258,6 +261,8 @@ pub async fn list(
 ) -> Result<Page<Customer>> {
     let _: Permit = ctx.permit(Action::View, Resource::Customer { id: None })?;
 
+    let (beyond, direction) = (filter.order.beyond(), filter.order.direction());
+
     let rows = sqlx::query_as::<_, Customer>(&format!(
         "select {COLUMNS} from customer
          where scope = $1
@@ -267,8 +272,8 @@ pub async fn list(
                 or first_name ilike $2
                 or last_name ilike $2
                 or company_name ilike $2)
-           and ($3::timestamptz is null or (created_at, id) > ($3, $4))
-         order by created_at, id
+           and ($3::timestamptz is null or (created_at, id) {beyond} ($3, $4))
+         order by created_at {direction}, id {direction}
          limit $5"
     ))
     .bind(ctx.scope.0)

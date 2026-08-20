@@ -59,6 +59,57 @@ impl Cursor {
     }
 }
 
+/// Which end of the list comes first.
+///
+/// Every list in this crate has answered `Oldest` since it was written, which
+/// is right for a shopper walking a catalogue and backwards for a back office:
+/// an operator opening Orders wants today's, not the first order the shop ever
+/// took.
+///
+/// This costs nothing to support and needs no new cursor, which is worth
+/// saying plainly because it looks like it should. A cursor here is
+/// `(created_at, id)` — the sort key of *both* directions — so newest-first is
+/// the same tuple compared the other way and ordered the other way.
+/// **Sorting by some other column is the change this is not**: that needs the
+/// cursor to carry that column's value instead of a timestamp, and it is not
+/// done.
+///
+/// It lives on a filter rather than on [`Paging`] on purpose. Four lists
+/// honour it and sixty-odd do not; on `Paging` those sixty-odd would take a
+/// direction and silently ignore it, which is the failure this codebase has
+/// written down more than once. On a filter, a list that cannot answer never
+/// offers the question.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, schemars::JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum Order {
+    /// Oldest first — what every list did before there was a choice.
+    #[default]
+    Oldest,
+    /// Newest first.
+    Newest,
+}
+
+impl Order {
+    /// How a row is compared against the cursor: past it, in whichever
+    /// direction "past" means here.
+    pub fn beyond(self) -> &'static str {
+        match self {
+            Order::Oldest => ">",
+            Order::Newest => "<",
+        }
+    }
+
+    /// What follows each column of the `order by`.
+    pub fn direction(self) -> &'static str {
+        match self {
+            Order::Oldest => "asc",
+            Order::Newest => "desc",
+        }
+    }
+}
+
 /// What somebody typed into a search box.
 ///
 /// A back office with forty thousand orders cannot find one by paging to it,
@@ -251,6 +302,17 @@ mod tests {
 
         let page = Page::build(vec![1u8, 2], Paging::first(3), |_| cursor());
         assert!(page.next.is_none());
+    }
+
+    #[test]
+    fn an_order_is_the_comparison_and_the_direction_together() {
+        // The two have to agree: a `<` with an `asc` walks away from the
+        // cursor and pages backwards through a list that never ends.
+        assert_eq!(Order::default(), Order::Oldest);
+        assert_eq!(Order::Oldest.beyond(), ">");
+        assert_eq!(Order::Oldest.direction(), "asc");
+        assert_eq!(Order::Newest.beyond(), "<");
+        assert_eq!(Order::Newest.direction(), "desc");
     }
 
     #[test]

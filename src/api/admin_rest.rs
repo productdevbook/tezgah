@@ -127,6 +127,8 @@ pub struct ListCustomers {
     /// Matched against e-mail, first and last name, and company. Blank is not
     /// a search.
     pub q: Option<String>,
+    /// Which end first. Left out, this surface answers newest-first.
+    pub order: Option<crate::page::Order>,
 }
 
 impl ListCustomers {
@@ -150,6 +152,7 @@ pub async fn list_customers(
             ctx,
             customer::CustomerFilter {
                 search: query.q.as_deref().and_then(crate::page::Search::new),
+                order: query.order.unwrap_or(crate::page::Order::Newest),
             },
             query.paging()?,
         )

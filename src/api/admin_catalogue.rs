@@ -709,6 +709,10 @@ pub struct ListProducts {
     /// What a back office typed into its search box, matched against a
     /// product's title, handle and subtitle. Blank is not a search.
     pub q: Option<String>,
+    /// Which end first. Left out, this surface answers newest-first — which
+    /// is not `Order`'s own default, because the default is right for a
+    /// storefront walking a catalogue and backwards for a back office.
+    pub order: Option<crate::page::Order>,
 }
 
 pub async fn list_products(
@@ -724,6 +728,7 @@ pub async fn list_products(
         tag: query.tag,
         channels: None,
         search: query.q.as_deref().and_then(crate::page::Search::new),
+        order: query.order.unwrap_or(crate::page::Order::Newest),
     };
     let page = catalogue::products(
         tx,

@@ -953,6 +953,9 @@ pub async fn list_products(
         tag: query.tag_id,
         channels: Some(channels),
         search: query.q.as_deref().and_then(crate::page::Search::new),
+        // Oldest first, and no way to ask otherwise: a catalogue a shopper
+        // walks is not a queue an operator works through.
+        order: crate::page::Order::Oldest,
     };
 
     let page = catalogue::products(
@@ -2357,6 +2360,9 @@ pub async fn list_my_orders(
             customer: Some(who),
             drafts: Some(false),
             search: None,
+            // Newest first even here: a shopper looking at their orders is
+            // looking for the one they just placed.
+            order: crate::page::Order::Newest,
         },
         paging(query.after.as_deref(), query.limit)?,
     )

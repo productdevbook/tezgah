@@ -19,7 +19,7 @@ use tezgah::order::{
     NewOrder, NewOrderLine, NewOrderShipping, NewTaxLine, OrderAddress, OrderFilter, OrderStatus,
     ReceivedLine, ReturnLine,
 };
-use tezgah::page::{Paging, Search};
+use tezgah::page::{Order as Direction, Paging, Search};
 use tezgah::ports::{Actor, Ctx, Scope, Tx};
 use tezgah::{inventory, page};
 use uuid::Uuid;
@@ -2608,6 +2608,50 @@ async fn an_order_is_found_by_its_email_or_its_number() -> tezgah::Result<()> {
 
     let nobody = order::list(&mut tx, &ctx, searching("nobody"), Paging::first(10)).await?;
     assert!(nobody.is_empty());
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
+}
+
+/// A back office opening Orders wants today's, not the first order the shop
+/// ever took — and paging through newest-first has to keep working, which is
+/// the half that is easy to get wrong.
+#[tokio::test]
+async fn newest_first_pages_the_other_way_and_still_ends() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let mut made = Vec::new();
+    for _ in 0..3 {
+        made.push(order::create(&mut tx, &ctx, an_order(vec![a_line(1, dec!(10))])).await?);
+    }
+
+    let newest = OrderFilter {
+        order: Direction::Newest,
+        ..OrderFilter::default()
+    };
+
+    let first = order::list(&mut tx, &ctx, newest.clone(), Paging::first(2)).await?;
+    assert_eq!(first.len(), 2);
+    assert_eq!(
+        first.items[0].id, made[2].id,
+        "the newest order is on page one"
+    );
+    assert_eq!(first.items[1].id, made[1].id);
+
+    let next = first.next.as_ref().expect("another page");
+    let rest = order::list(
+        &mut tx,
+        &ctx,
+        newest,
+        Paging::after(page::Cursor::decode(next)?, 2),
+    )
+    .await?;
+    assert_eq!(rest.len(), 1, "the cursor walked backwards in time, once");
+    assert_eq!(rest.items[0].id, made[0].id);
+    assert!(rest.next.is_none());
 
     tx.rollback().await.expect("to roll back");
     shop.close().await;

@@ -1043,6 +1043,9 @@ pub struct ListOrders {
     /// What a back office typed into its search box, matched against the
     /// e-mail on an order and its display number. Blank is not a search.
     pub q: Option<String>,
+    /// Which end first. Left out, this surface answers newest-first: an
+    /// operator opening Orders wants today's, not the first the shop took.
+    pub order: Option<crate::page::Order>,
     pub customer_id: Option<crate::id::CustomerId>,
 }
 
@@ -1069,6 +1072,7 @@ pub async fn list_orders(
             customer: query.customer_id,
             drafts: Some(false),
             search: query.q.as_deref().and_then(crate::page::Search::new),
+            order: query.order.unwrap_or(crate::page::Order::Newest),
         },
         query.listing().paging()?,
     )
@@ -1537,6 +1541,7 @@ pub async fn list_draft_orders(
             customer: query.customer_id,
             drafts: Some(true),
             search: query.q.as_deref().and_then(crate::page::Search::new),
+            order: query.order.unwrap_or(crate::page::Order::Newest),
         },
         query.listing().paging()?,
     )
