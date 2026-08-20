@@ -21,6 +21,23 @@ import {
   PatchAdminSalesChannelsByIdBody,
 } from "@/api/generated/zod/store/store"
 import { GetAdminSubscriptionsByIdResponse } from "@/api/generated/zod/subscription/subscription"
+import {
+  GetAdminFulfillmentProvidersResponseItem,
+  GetAdminShippingOptionsByIdResponse,
+  GetAdminShippingProfilesByIdResponse,
+} from "@/api/generated/zod/fulfilment/fulfilment"
+import {
+  GetAdminTaxRatesByIdResponse,
+  GetAdminTaxRegionsByIdResponse,
+  GetAdminTaxRegistrationsResponseItem,
+} from "@/api/generated/zod/tax/tax"
+import {
+  GetAdminPriceListsByIdResponse,
+  GetAdminPricePreferencesResponse,
+  GetAdminPriceSetsByIdResponse,
+} from "@/api/generated/zod/pricing/pricing"
+import { GetAdminPaymentsByIdResponse } from "@/api/generated/zod/payment/payment"
+import { GetAdminGiftCardsByIdResponse } from "@/api/generated/zod/credit/credit"
 
 /**
  * What the admin surface answers with, as schemas checked at runtime.
@@ -363,3 +380,94 @@ export const cart = z.object({
   completed_at: z.string().nullable(),
 })
 export type Cart = z.infer<typeof cart>
+
+// — fulfilment, tax, pricing, payment, credit and carts: the same two halves
+// as above, generated where #202 covers the operation, hand-written where it
+// does not. A list whose item shape orval inlines into the page response
+// rather than exporting on its own (`fulfilmentSet`, `shippingOptionType`,
+// `refundReason`, `price`) is transcribed from that inline shape by hand,
+// the same discipline as the fully undocumented ones below it.
+
+export const fulfilmentProvider = GetAdminFulfillmentProvidersResponseItem
+export type FulfilmentProvider = z.infer<typeof fulfilmentProvider>
+
+/** `GET /admin/fulfillment-sets` — item embedded in the page response, not exported on its own. */
+export const fulfilmentSet = z.object({
+  id: z.string(),
+  name: z.string(),
+  kind: z.string(),
+  created_at: z.string(),
+})
+export type FulfilmentSet = z.infer<typeof fulfilmentSet>
+
+export const shippingOption = GetAdminShippingOptionsByIdResponse
+export type ShippingOption = z.infer<typeof shippingOption>
+
+/** `GET /admin/shipping-option-types` — item embedded in the page response, not exported on its own. */
+export const shippingOptionType = z.object({
+  id: z.string(),
+  code: z.string(),
+  label: z.string(),
+  description: z.string().nullable(),
+  created_at: z.string(),
+})
+export type ShippingOptionType = z.infer<typeof shippingOptionType>
+
+export const shippingProfile = GetAdminShippingProfilesByIdResponse
+export type ShippingProfile = z.infer<typeof shippingProfile>
+
+export const taxRate = GetAdminTaxRatesByIdResponse
+export type TaxRate = z.infer<typeof taxRate>
+
+export const taxRegion = GetAdminTaxRegionsByIdResponse
+export type TaxRegion = z.infer<typeof taxRegion>
+
+export const taxRegistration = GetAdminTaxRegistrationsResponseItem
+export type TaxRegistration = z.infer<typeof taxRegistration>
+
+export const priceList = GetAdminPriceListsByIdResponse
+export type PriceList = z.infer<typeof priceList>
+
+/**
+ * `GET /admin/price-preferences?attribute=...` — `src/api/admin_catalogue.rs`'s
+ * `FindPricePreference` wants `attribute` (and takes an optional `value`),
+ * neither declared in the document's `parameters` even though the handler
+ * requires the first — reached by hand through `get()`'s own `query`, the
+ * same gap `PayoutsLayout`'s lookups already work around.
+ */
+export const pricePreference = GetAdminPricePreferencesResponse
+export type PricePreference = z.infer<typeof pricePreference>
+
+export const priceSet = GetAdminPriceSetsByIdResponse
+export type PriceSet = z.infer<typeof priceSet>
+
+/** `GET /admin/price-sets/{id}/prices` — item embedded in the page response, not exported on its own. */
+export const price = z.object({
+  id: z.string(),
+  amount: z.string(),
+  currency_code: z.string(),
+  price_set_id: z.string(),
+  price_list_id: z.string().nullable(),
+  min_quantity: z.number().int().nullable(),
+  max_quantity: z.number().int().nullable(),
+  rules_count: z.number().int(),
+  title: z.string().nullable(),
+  created_at: z.string(),
+})
+export type Price = z.infer<typeof price>
+
+export const payment = GetAdminPaymentsByIdResponse
+export type Payment = z.infer<typeof payment>
+
+/** `GET /admin/refund-reasons` — item embedded in the page response, not exported on its own. */
+export const refundReason = z.object({
+  id: z.string(),
+  code: z.string(),
+  label: z.string(),
+  description: z.string().nullable(),
+  created_at: z.string(),
+})
+export type RefundReason = z.infer<typeof refundReason>
+
+export const giftCard = GetAdminGiftCardsByIdResponse
+export type GiftCard = z.infer<typeof giftCard>

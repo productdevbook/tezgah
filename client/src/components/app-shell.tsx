@@ -104,6 +104,42 @@ function SectionLink({
           {children}
         </SidebarMenuButton>
       )
+    case "fulfilment":
+      return (
+        <SidebarMenuButton isActive={active} tooltip={title} render={<Link to="/fulfilment" />}>
+          {children}
+        </SidebarMenuButton>
+      )
+    case "tax":
+      return (
+        <SidebarMenuButton isActive={active} tooltip={title} render={<Link to="/tax" />}>
+          {children}
+        </SidebarMenuButton>
+      )
+    case "pricing":
+      return (
+        <SidebarMenuButton isActive={active} tooltip={title} render={<Link to="/pricing" />}>
+          {children}
+        </SidebarMenuButton>
+      )
+    case "payments":
+      return (
+        <SidebarMenuButton isActive={active} tooltip={title} render={<Link to="/payments" />}>
+          {children}
+        </SidebarMenuButton>
+      )
+    case "credit":
+      return (
+        <SidebarMenuButton isActive={active} tooltip={title} render={<Link to="/credit" />}>
+          {children}
+        </SidebarMenuButton>
+      )
+    case "carts":
+      return (
+        <SidebarMenuButton isActive={active} tooltip={title} render={<Link to="/carts" />}>
+          {children}
+        </SidebarMenuButton>
+      )
     default:
       return (
         <SidebarMenuButton
@@ -142,6 +178,18 @@ function isActiveSection(
       return Boolean(matchRoute({ to: "/workflows", fuzzy: true }))
     case "baskets":
       return Boolean(matchRoute({ to: "/baskets", fuzzy: true }))
+    case "fulfilment":
+      return Boolean(matchRoute({ to: "/fulfilment", fuzzy: true }))
+    case "tax":
+      return Boolean(matchRoute({ to: "/tax", fuzzy: true }))
+    case "pricing":
+      return Boolean(matchRoute({ to: "/pricing", fuzzy: true }))
+    case "payments":
+      return Boolean(matchRoute({ to: "/payments", fuzzy: true }))
+    case "credit":
+      return Boolean(matchRoute({ to: "/credit", fuzzy: true }))
+    case "carts":
+      return Boolean(matchRoute({ to: "/carts", fuzzy: true }))
     default:
       return Boolean(
         matchRoute({ to: "/$section", params: { section: section.slug }, fuzzy: true })

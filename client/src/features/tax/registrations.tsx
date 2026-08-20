@@ -1,0 +1,71 @@
+import { useQuery } from "@tanstack/react-query"
+import { z } from "zod"
+
+import { get } from "@/api/client"
+import { taxRegistration, type TaxRegistration } from "@/api/schemas"
+import { QueryState } from "@/components/query-state"
+import { Empty } from "@/components/detail-fields"
+import { Badge } from "@/components/ui/badge"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+
+/**
+ * `GET /admin/tax-registrations` answers a plain array, not `Page<T>` — no
+ * cursor, so this is its own small `useQuery` rather than `usePagedList`, the
+ * same reasoning as `features/store/currencies.tsx`. No `GET .../{id}` — only
+ * `DELETE` reaches one by id — so a row here goes nowhere.
+ */
+export function TaxRegistrations() {
+  const query = useQuery({
+    queryKey: ["tax-registrations"],
+    queryFn: ({ signal }) =>
+      get("/admin/tax-registrations", { signal, schema: z.array(taxRegistration) }),
+  })
+
+  return (
+    <QueryState
+      query={query}
+      empty={{
+        title: "No registrations",
+        description: "The shop has recorded nowhere it is registered to file tax.",
+      }}
+    >
+      {(registrations: TaxRegistration[]) => (
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Country</TableHead>
+                <TableHead>Scheme</TableHead>
+                <TableHead>Tax ID</TableHead>
+                <TableHead className="text-right">Home</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {registrations.map((registration) => (
+                <TableRow key={registration.id}>
+                  <TableCell className="font-mono text-xs uppercase">
+                    {registration.country_code}
+                  </TableCell>
+                  <TableCell>{registration.scheme}</TableCell>
+                  <TableCell className="font-mono text-xs">
+                    {registration.tax_id ?? <Empty />}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {registration.is_home ? <Badge>home</Badge> : null}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </QueryState>
+  )
+}
