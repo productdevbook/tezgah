@@ -291,10 +291,127 @@
         ],
         "type": "object"
       },
+      "BasketView": {
+        "properties": {
+          "completed_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "currency_code": {
+            "type": "string"
+          },
+          "customer_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CustomerId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "display_id": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/OrderBasketId"
+          },
+          "payment_collection_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaymentCollectionId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "display_id",
+          "customer_id",
+          "currency_code",
+          "payment_collection_id",
+          "email",
+          "completed_at"
+        ],
+        "type": "object"
+      },
       "CampaignId": {
         "description": "Identifies one campaign.",
         "format": "uuid",
         "type": "string"
+      },
+      "CartId": {
+        "description": "Identifies one cart.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "CartView": {
+        "properties": {
+          "completed_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "currency_code": {
+            "type": "string"
+          },
+          "customer_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CustomerId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/CartId"
+          },
+          "region_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RegionId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "customer_id",
+          "email",
+          "region_id",
+          "currency_code",
+          "completed_at"
+        ],
+        "type": "object"
       },
       "CategoryId": {
         "description": "Identifies one category.",
@@ -4054,6 +4171,167 @@
           "exclusion_reason",
           "delivered_at",
           "deadline"
+        ],
+        "type": "object"
+      },
+      "WorkflowDeadLetterView": {
+        "description": "Same rule as [`WorkflowStepView`]: `state` is the run's full compensation\ncontext and stays out. `step_name` and `failure` are what a dead letter is\nfor a person to see.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "failure": {
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "run_id": {
+            "$ref": "#/components/schemas/WorkflowRunId"
+          },
+          "step_name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "run_id",
+          "step_name",
+          "failure",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "WorkflowRunId": {
+        "description": "Identifies one workflow run.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "WorkflowRunSummaryView": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "failure": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "finished_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/WorkflowRunId"
+          },
+          "name": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "transaction_key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "transaction_key",
+          "state",
+          "failure",
+          "created_at",
+          "finished_at"
+        ],
+        "type": "object"
+      },
+      "WorkflowRunView": {
+        "properties": {
+          "failure": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/WorkflowRunId"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "state",
+          "failure"
+        ],
+        "type": "object"
+      },
+      "WorkflowStepView": {
+        "description": "What a person debugging a stuck run needs: the step, its state, how many\ntimes it was tried, and why it failed. Not `output` — that is what the\nrunner needs to resume a step, and for a checkout it is the cart, the\naddresses and the payment context. See #123: a payload is not readable\nthrough this view, on purpose, whatever it holds.",
+        "properties": {
+          "attempts": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "failure": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "group_ordering": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "lease_until": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "max_attempts": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ordering": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "run_after": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "ordering",
+          "group_ordering",
+          "state",
+          "attempts",
+          "max_attempts",
+          "failure",
+          "run_after",
+          "lease_until"
         ],
         "type": "object"
       }
@@ -9391,6 +9669,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BasketView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -9430,6 +9715,27 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/CartView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -9469,6 +9775,27 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/OrderView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -20892,6 +21219,27 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/WorkflowDeadLetterView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -20922,6 +21270,27 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/WorkflowRunSummaryView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -20961,6 +21330,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRunView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -21000,6 +21376,16 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WorkflowStepView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
