@@ -384,9 +384,9 @@ In the panel:
 - [ ] the routing half of the seam — what a screen says and sends is a
       host's answer now; where it lives is still a fixed route root and a
       sidebar switched over a closed route union
-- [ ] a test for a child route whose parent draws no outlet — all five "edit
+- [x] a test for a child route whose parent draws no outlet — all five "edit
       a record" screens were unreachable that way, silently, from the commit
-      that added them
+      that added them. `scripts/check-outlets.mjs`, in CI
 
 ## Deliberately not built
 
