@@ -19,7 +19,14 @@ curl -O https://raw.githubusercontent.com/productdevbook/tezgah/main/.env.exampl
 cp .env.example .env
 # edit .env: at least POSTGRES_PASSWORD and ADMIN_TOKEN
 docker compose up -d
+docker compose exec tezgah-server tezgah-server seed
 ```
+
+That last line is what makes the shop worth opening the panel for — a fresh
+install starts with no currency, no region, no sales channel and no
+publishable key, and `seed` writes the smallest set of those a storefront can
+check out from. `server/README.md`'s "Seeding a shop" section says what it
+prints and why running it twice is safe.
 
 `postgres` has to answer its own healthcheck before `tezgah-server` starts,
 and `tezgah-server` has to answer `GET /health` before `tezgah-panel` starts —

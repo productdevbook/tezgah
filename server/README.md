@@ -44,6 +44,33 @@ Configuration comes from the environment and nowhere else: no config file
 format, because a container is not handed one separately from the
 environment it was started with.
 
+## Seeding a shop
+
+`docker compose up` starts an empty shop: no currency, no region, no sales
+channel, no stock location, no publishable key, and so nothing the storefront
+routes or the panel's screens have to show. `tezgah-server seed` — the same
+binary, one argument — writes the smallest shop a storefront can check out
+from:
+
+```sh
+docker compose exec tezgah-server tezgah-server seed
+# or, running the binary directly:
+cargo run --package tezgah-server -- seed
+```
+
+It prints the stock location's id and a fresh publishable key, because both
+belong in the environment next — the id as `TEZGAH_STOCK_LOCATION_ID`, so
+`POST /store/carts/{id}/complete` gets bound on the next start; the key as
+whatever a storefront sends in `x-publishable-key`. The key is shown once, the
+same as every other publishable key `POST /admin/publishable-api-keys`
+issues, and is not stored anywhere it could be read back — losing it means
+issuing another.
+
+Safe to run twice: `seed.rs`'s own doc comment says why a second run writes
+nothing rather than a second shop. It seeds no product — `POST
+/admin/products` and the write routes below are how a real catalogue goes in,
+by hand or by whatever the panel or a script does with them.
+
 ### The one shop
 
 tezgah's own README says a single-shop host sets `Scope` once and never
@@ -104,13 +131,22 @@ the router at all — not bound and refusing every caller, genuinely absent, so
 there is nothing there for a stranger to find. A closed default is the only
 one that does not depend on an operator remembering to set something.
 
+One token still gates reads and writes alike — a bearer that can list
+customers can also mint a publishable key or create a product, now that the
+write routes below are bound. `src/http/admin.rs`'s own doc comment says
+where a split would go: `tezgah::ports::Authorizer::authorize` already
+receives the `Action` on every call, so a second token (or a role
+`require_token` attaches to the request) turned into which `Action`s
+`ServerHost` grants is the seam, not a change to tezgah itself. Not done here
+— #214 raises the question rather than answering it.
+
 ## Route table
 
 `tezgah::api::routes()` names 483 operations. This binary binds a fraction,
 by hand, and says exactly how many out loud at startup:
 
 ```
-bound 15 of 483 declared routes
+bound 27 of 483 declared routes
   GET    /store/products
   GET    /store/products/{handle}
   POST   /store/carts
@@ -126,6 +162,18 @@ bound 15 of 483 declared routes
   GET    /admin/regions
   GET    /admin/sales-channels
   GET    /admin/currencies
+  POST   /admin/currencies
+  POST   /admin/regions
+  POST   /admin/sales-channels
+  POST   /admin/publishable-api-keys
+  POST   /admin/stock-locations
+  POST   /admin/products
+  POST   /admin/products/{id}/variants
+  POST   /admin/price-sets
+  POST   /admin/product-variants/{id}/price-set
+  POST   /admin/prices
+  POST   /admin/inventory-items
+  POST   /admin/inventory-items/{id}/location-levels
   plus GET /health, which is this binary's own and not one of the 483
 ```
 
@@ -138,16 +186,21 @@ is always the true count for that run, never a number copied from here.
 calls: browse the catalogue with a publishable key
 (`x-publishable-key` header), open a cart, add a line, check out.
 
-**Admin — one list per screen.** [`client/`](../client) is the admin panel
-this repository ships, and it draws seven screens: products, orders,
-inventory, customers, promotions, subscriptions, and store (which reads two
-lists of its own, regions and sales channels, plus the currencies list its
-overview reads). This binary binds exactly the list endpoint each screen
-calls and nothing past that — no fetch-by-id, no write, nothing from any
-other domain `tezgah::api` offers. A shop that needs more than a read-only
-back office is not what this binary is for yet; wiring in more of the 483 is
-a matter of adding a handler in `src/http/admin.rs`, not a limitation of the
-approach.
+**Admin — one list per screen, plus what fills a shop.** [`client/`](../client)
+is the admin panel this repository ships, and it draws seven screens:
+products, orders, inventory, customers, promotions, subscriptions, and store
+(which reads two lists of its own, regions and sales channels, plus the
+currencies list its overview reads). Nine of the twenty-one admin routes are
+exactly those list endpoints, one per screen and nothing past that. The other
+twelve are #214's list: enabling a currency, opening a region, a sales
+channel and a stock location, minting a publishable key, and creating a
+product, its variants, a price set, a price and a stocked inventory level —
+the smallest set that gets a fresh install to something a storefront can
+check out from. `tezgah-server seed` (above) does the first five of those in
+one command; the rest — a real catalogue — go in through these routes, by
+hand or by whatever the panel or a script does with them. Everything else
+`tezgah::api` offers stays unbound; wiring in more of the 483 is a matter of
+adding a handler in `src/http/admin.rs`, not a limitation of the approach.
 
 ## Docker
 
