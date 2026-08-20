@@ -133,7 +133,7 @@ impl From<catalogue::Product> for ProductView {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct VariantView {
     pub id: VariantId,
     pub product_id: ProductId,
@@ -416,7 +416,7 @@ impl From<catalogue::Localised> for LocalisedView {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct PriceSetView {
     pub id: PriceSetId,
     pub created_at: chrono::DateTime<chrono::Utc>,
@@ -431,7 +431,7 @@ impl From<pricing::PriceSet> for PriceSetView {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct PriceView {
     pub id: PriceId,
     pub price_set_id: PriceSetId,
@@ -552,7 +552,7 @@ impl From<pricing::PricePreference> for PricePreferenceView {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct StockLocationView {
     pub id: StockLocationId,
     pub name: String,
@@ -592,7 +592,7 @@ impl From<inventory::InventoryItem> for InventoryItemView {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct InventoryLevelView {
     pub id: InventoryLevelId,
     pub inventory_item_id: InventoryItemId,
@@ -731,7 +731,7 @@ pub async fn list_products(
     Ok(map_page(page))
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateProduct {
     pub handle: String,
@@ -1164,7 +1164,7 @@ pub async fn list_variants(
     Ok(map_page(page))
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateVariant {
     pub title: String,
@@ -1793,7 +1793,7 @@ pub async fn get_price_set(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: PriceSetId) -> Re
     Ok(PriceSetView::from(pricing::price_set(tx, ctx, id).await?))
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct LinkPriceSet {
     pub price_set_id: PriceSetId,
@@ -1977,7 +1977,7 @@ pub async fn list_prices(
     ))
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PriceRuleInput {
     pub attribute: String,
@@ -1997,7 +1997,7 @@ impl From<PriceRuleInput> for pricing::NewPriceRule {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AddPrice {
     pub price_set_id: PriceSetId,
@@ -2254,7 +2254,7 @@ pub async fn list_stock_locations(
     ))
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateStockLocation {
     pub name: String,
@@ -2263,7 +2263,7 @@ pub struct CreateStockLocation {
 
 /// Where a location is. The country is what makes it the origin of a supply,
 /// so it is required and the rest of the address is not.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct StockLocationAddressIn {
     pub address_1: String,
@@ -2439,7 +2439,7 @@ pub async fn list_inventory_items(
     ))
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateInventoryItem {
     pub sku: Option<String>,
@@ -2502,7 +2502,7 @@ pub async fn get_level(
     ))
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SetStock {
     pub location_id: StockLocationId,

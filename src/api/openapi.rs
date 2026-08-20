@@ -148,13 +148,13 @@ struct Body {
 /// in [`routes`] gets a body here, except the handful that answer `()` —
 /// dropping an action off an open change, say — which have nothing to
 /// schema. `admin_order::OrderView`, `admin_order::ReturnView` and
-/// `admin_order::RequestReturn` share a short name with a distinct
-/// `store::` type of the same purpose but a narrower, customer-facing
-/// shape; `schemars::SchemaGenerator` disambiguates same-generator name
-/// clashes on its own by suffixing the second registration (`OrderView2`),
-/// so the document stays correct, but a reader of `components/schemas`
-/// should not assume `OrderView2` is a typo — it is the storefront's view,
-/// named that only because `OrderView` was taken.
+/// `admin_order::RequestReturn` share a short name with a distinct,
+/// narrower `store::` type of the same purpose — the storefront's own
+/// `#[schemars(rename = "Store…")]` on those three is what keeps the two
+/// apart in `components/schemas` rather than a number schemars would
+/// otherwise pick by walk order; `no_schema_name_was_disambiguated_by_a_number`
+/// in `tests/openapi.rs` is the standing check that the next collision does
+/// not get to choose a name that way either.
 static BODIES: &[Body] = &[
     Body {
         operation_id: "postAdminCommissionRules",
@@ -769,6 +769,67 @@ static BODIES: &[Body] = &[
         request: None,
         response: Some(schema_of::<store::ReturnReasonView>),
     },
+    // ============================================== the server binds (write)
+    Body {
+        operation_id: "postAdminCurrencies",
+        request: Some(schema_of::<admin_rest::CreateCurrency>),
+        response: Some(schema_of::<admin_rest::CurrencyView>),
+    },
+    Body {
+        operation_id: "postAdminRegions",
+        request: Some(schema_of::<admin_rest::CreateRegion>),
+        response: Some(schema_of::<admin_rest::RegionView>),
+    },
+    Body {
+        operation_id: "postAdminSalesChannels",
+        request: Some(schema_of::<admin_rest::CreateSalesChannel>),
+        response: Some(schema_of::<admin_rest::SalesChannelView>),
+    },
+    Body {
+        operation_id: "postAdminPublishableApiKeys",
+        request: Some(schema_of::<admin_rest::CreatePublishableKey>),
+        response: Some(schema_of::<admin_rest::IssuedKeyView>),
+    },
+    Body {
+        operation_id: "postAdminStockLocations",
+        request: Some(schema_of::<admin_catalogue::CreateStockLocation>),
+        response: Some(schema_of::<admin_catalogue::StockLocationView>),
+    },
+    Body {
+        operation_id: "postAdminProducts",
+        request: Some(schema_of::<admin_catalogue::CreateProduct>),
+        response: Some(schema_of::<admin_catalogue::ProductView>),
+    },
+    Body {
+        operation_id: "postAdminProductsByIdVariants",
+        request: Some(schema_of::<admin_catalogue::CreateVariant>),
+        response: Some(schema_of::<admin_catalogue::VariantView>),
+    },
+    Body {
+        operation_id: "postAdminPriceSets",
+        request: None,
+        response: Some(schema_of::<admin_catalogue::PriceSetView>),
+    },
+    Body {
+        operation_id: "postAdminProductVariantsByIdPriceSet",
+        request: Some(schema_of::<admin_catalogue::LinkPriceSet>),
+        response: None,
+    },
+    Body {
+        operation_id: "postAdminPrices",
+        request: Some(schema_of::<admin_catalogue::AddPrice>),
+        response: Some(schema_of::<admin_catalogue::PriceView>),
+    },
+    Body {
+        operation_id: "postAdminInventoryItems",
+        request: Some(schema_of::<admin_catalogue::CreateInventoryItem>),
+        response: Some(schema_of::<admin_catalogue::InventoryItemView>),
+    },
+    Body {
+        operation_id: "postAdminInventoryItemsByIdLocationLevels",
+        request: Some(schema_of::<admin_catalogue::SetStock>),
+        response: Some(schema_of::<admin_catalogue::InventoryLevelView>),
+    },
 ];
 
 fn operation(
@@ -1023,12 +1084,12 @@ mod tests {
         let document = document();
 
         // Every `rust_decimal::Decimal` field BODIES currently reaches,
-        // response side: payout's own money, catalogue's dimensions, and the
+        // response side: payout's own money, catalogue's dimensions, the
         // order domain's — `MoneyView` once for every view built through
         // `amount_view`/`From<Money>`, plus the two invoices carry a total
-        // outside that helper — all riding the same `for_serialize`
-        // generator and answering the same way even though not all of them
-        // are money.
+        // outside that helper — and pricing's own `PriceView.amount`, all
+        // riding the same `for_serialize` generator and answering the same
+        // way even though not all of them are money.
         for pointer in [
             "/components/schemas/BalanceView/properties/amount",
             "/components/schemas/PayoutView/properties/amount",
@@ -1040,6 +1101,7 @@ mod tests {
             "/components/schemas/ProductView/properties/width",
             "/components/schemas/MoneyView/properties/amount",
             "/components/schemas/InvoiceView/properties/total_amount",
+            "/components/schemas/PriceView/properties/amount",
         ] {
             let schema = document
                 .pointer(pointer)
@@ -1062,11 +1124,13 @@ mod tests {
         // Every Decimal BODIES reaches on the request side accepts both,
         // because that is what serde-with-str actually parses: payout's own
         // commission rate, `MoneyIn.amount` behind every order-domain write
-        // that takes an amount, and the invoice's own total.
+        // that takes an amount, the invoice's own total, and
+        // `AddPrice.amount` behind `POST /admin/prices`.
         for pointer in [
             "/components/schemas/SetCommissionRule/properties/value",
             "/components/schemas/MoneyIn/properties/amount",
             "/components/schemas/RecordInvoice/properties/total",
+            "/components/schemas/AddPrice/properties/amount",
         ] {
             let value = document
                 .pointer(pointer)
