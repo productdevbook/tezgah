@@ -131,6 +131,7 @@ pub fn gated_router() -> Router<AppState> {
         .route("/admin/operators", get(list).post(create))
         .route("/admin/operators/{id}", patch(update))
         .route("/admin/operators/{id}/password", post(reset_password))
+        .route("/admin/invitations", get(list_invitations).post(invite))
         .route("/admin/records/audit", get(audit))
         .route("/admin/records/events", get(events))
 }

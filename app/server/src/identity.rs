@@ -344,10 +344,12 @@ pub async fn accept_invitation(
     Ok(operator)
 }
 
+type InvitationTuple = (Uuid, String, String, String, DateTime<Utc>, DateTime<Utc>);
+
 /// Invitations sent and not yet accepted, so a shop can see who is expected.
 /// The token is not here and cannot be: only its digest was kept.
 pub async fn open_invitations(pool: &PgPool) -> tezgah::Result<Vec<Invitation>> {
-    let rows: Vec<(Uuid, String, String, String, DateTime<Utc>, DateTime<Utc>)> = sqlx::query_as(
+    let rows: Vec<InvitationTuple> = sqlx::query_as(
         "select id, email, name, role, expires_at, created_at
          from server_invitation
          where accepted_at is null and expires_at > now()
