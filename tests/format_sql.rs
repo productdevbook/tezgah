@@ -258,11 +258,79 @@ fn matching_close_paren(chars: &[char], open: usize) -> Option<usize> {
 /// The first `"..."` string literal at the start of `chars` (leading
 /// whitespace allowed), unescaped quoting aside — its raw text between the
 /// quotes.
-fn leading_string_literal(chars: &[char]) -> Option<String> {
+/// The format string a `format!` was handed, whether it was written as one
+/// literal or assembled by `concat!`.
+///
+/// The `concat!` half is not decoration. Three of the crate's biggest filtered
+/// queries build their format string that way so a `where` clause can be
+/// shared with the `count(*)` beside it, and a scanner that only understood a
+/// leading literal saw none of them — `catalogue::products` had been invisible
+/// to this test since it took that shape, and `order::list` and
+/// `customer::list` joined it the day they learned to count. What is checked
+/// is what is interpolated, and a query is no less interpolated for having
+/// been spelled in pieces.
+fn format_string(chars: &[char]) -> Option<String> {
     let mut i = 0;
     while i < chars.len() && chars[i].is_whitespace() {
         i += 1;
     }
+
+    let concat: Vec<char> = "concat!(".chars().collect();
+    if i + concat.len() <= chars.len() && chars[i..i + concat.len()] == concat[..] {
+        let open = i + concat.len() - 1;
+        let close = matching_close_paren(chars, open)?;
+        let mut joined = String::new();
+        let mut at = open + 1;
+        while at < close {
+            match string_literal_at(&chars[at..close]) {
+                Some((text, len)) => {
+                    joined.push_str(&text);
+                    at += len;
+                }
+                None => at += 1,
+            }
+        }
+        return (!joined.is_empty()).then_some(joined);
+    }
+
+    string_literal_at(&chars[i..]).map(|(text, _)| text)
+}
+
+/// One literal at the very start of `chars`, and how many characters it took —
+/// `r#"…"#` included, which is how the order table's own name survives being
+/// a reserved word.
+fn string_literal_at(chars: &[char]) -> Option<(String, usize)> {
+    let mut i = 0;
+    while i < chars.len() && chars[i].is_whitespace() {
+        i += 1;
+    }
+
+    let mut hashes = 0;
+    if chars.get(i) == Some(&'r') {
+        let mut at = i + 1;
+        while chars.get(at) == Some(&'#') {
+            hashes += 1;
+            at += 1;
+        }
+        if chars.get(at) != Some(&'"') {
+            return None;
+        }
+        let start = at + 1;
+        let mut end = start;
+        while end < chars.len() {
+            if chars[end] == '"' {
+                let closing: String = chars[end + 1..(end + 1 + hashes).min(chars.len())]
+                    .iter()
+                    .collect();
+                if closing == "#".repeat(hashes) {
+                    return Some((chars[start..end].iter().collect(), end + 1 + hashes));
+                }
+            }
+            end += 1;
+        }
+        return None;
+    }
+
     if chars.get(i) != Some(&'"') {
         return None;
     }
@@ -276,7 +344,7 @@ fn leading_string_literal(chars: &[char]) -> Option<String> {
         } else if c == '\\' {
             escape = true;
         } else if c == '"' {
-            return Some(chars[start..i].iter().collect());
+            return Some((chars[start..i].iter().collect(), i + 1));
         }
         i += 1;
     }
@@ -393,7 +461,7 @@ fn dynamic_sql_interpolations(source: &str) -> Vec<Interpolation> {
         let open = i + marker.len() - 1;
         if let Some(close) = matching_close_paren(&chars, open) {
             let body = &chars[open + 1..close];
-            if let Some(literal) = leading_string_literal(body)
+            if let Some(literal) = format_string(body)
                 && is_sql_shaped(&literal)
             {
                 let line = chars[..i].iter().filter(|c| **c == '\n').count() + 1;

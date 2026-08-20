@@ -20,6 +20,12 @@ export interface ListCustomers {
   /** Which column. `created` is the default; `email` is the other one. */
   by?: By | null;
   /**
+     * Asks how many customers match, as well as this page of them. Off
+     * unless asked: it is a second query over the whole match.
+     * @nullable
+     */
+  count?: boolean | null;
+  /**
      * @minimum 0
      * @nullable
      */

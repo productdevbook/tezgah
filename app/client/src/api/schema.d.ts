@@ -7093,6 +7093,11 @@ export interface components {
             after?: string | null;
             /** @description Which column. `created` is the default; `email` is the other one. */
             by?: components["schemas"]["By"] | null;
+            /**
+             * @description Asks how many customers match, as well as this page of them. Off
+             *     unless asked: it is a second query over the whole match.
+             */
+            count?: boolean | null;
             /** Format: uint32 */
             limit?: number | null;
             /** @description Which end first. Left out, this surface answers newest-first. */
@@ -7107,6 +7112,11 @@ export interface components {
             after?: string | null;
             /** @description Which column. `created` is the default; `email` is the other one. */
             by?: components["schemas"]["By"] | null;
+            /**
+             * @description Asks how many orders match, as well as this page of them. Off unless
+             *     asked: it is a second query over the whole match.
+             */
+            count?: boolean | null;
             customer_id?: components["schemas"]["CustomerId"] | null;
             /** Format: uint32 */
             limit?: number | null;
@@ -10371,6 +10381,7 @@ export interface operations {
             query?: {
                 after?: string | null;
                 by?: components["schemas"]["By"] | null;
+                count?: boolean | null;
                 limit?: number | null;
                 order?: components["schemas"]["Order"] | null;
                 q?: string | null;
@@ -14406,6 +14417,7 @@ export interface operations {
             query?: {
                 after?: string | null;
                 by?: components["schemas"]["By"] | null;
+                count?: boolean | null;
                 customer_id?: components["schemas"]["CustomerId"] | null;
                 limit?: number | null;
                 order?: components["schemas"]["Order"] | null;
