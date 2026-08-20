@@ -46,6 +46,21 @@ and yours can be too.
 
 **Status: early.** Nothing is stable and the API will move under you.
 
+## How it is laid out
+
+    src/            the library — domains, the route table, the workflow runner
+    migrations/     the tables it owns, in your database
+    app/server/     one binary over it: axum, and the five ports answered
+    app/client/     the admin panel over that binary
+    examples/shop/  the same library with no framework around it at all
+
+`src/` does not know `app/` exists, and that is the point: everything the
+self-hosted shop needs from a host is asked for through a port, so an
+application embedding this answers the same questions with what it already
+owns. [`docs/architecture.md`](docs/architecture.md) is the long version —
+which layer owns what, and, measured rather than asserted, where the
+arrangement is not finished yet.
+
 ## What it does
 
 | Domain | What it covers |

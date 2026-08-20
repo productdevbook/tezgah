@@ -3,6 +3,20 @@
 A commerce engine as a Rust library. Read `README.md` first — it carries the
 decisions and the reasons, and this file does not repeat them.
 
+## Where things are
+
+    src/            the library — domains, the route table, the workflow runner
+    migrations/     the tables it owns
+    app/server/     one binary over it, and the five ports answered
+    app/client/     the admin panel over that binary
+    examples/shop/  the same library with no framework around it
+
+`src/` is the crate anybody embeds. `app/` is the one host this repository
+ships: a single-shop, self-hostable commerce backend, in two images that are
+useful only together. `docs/architecture.md` says which layer owns what, and
+carries the measured list of what the arrangement is still missing — read it
+before adding a platform feature, so it lands on the right side of the seam.
+
 ## This repository is public
 
 Everything here is readable by anyone, forever: code, comments, tests, commit
@@ -24,6 +38,14 @@ clippy with warnings denied, the tests against a real Postgres, the doctests,
 a dependency audit and a secret scan.
 
 ## What the code has to keep true
+
+**`src/` may not know `app/` exists, and `app/` may not decide what `src/`
+decides.** No feature shaped for one caller, no host's name in the code, no
+`if self_hosted` — when the app needs something the library will not give it,
+the answer is a port or a parameter. The other direction is the easier one to
+get wrong: a total added up in a handler, a state transition checked in
+TypeScript, a list the panel sorts because the API will not. Each is a second
+answer to a question the database already answers.
 
 **Ports ask, they do not answer.** `src/ports.rs` is the whole of what tezgah
 wants from a host. Adding a trait there is a real decision — it becomes work
