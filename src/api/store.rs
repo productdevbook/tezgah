@@ -632,7 +632,7 @@ impl PaymentSessionView {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct PaymentProviderView {
     pub code: String,
 }

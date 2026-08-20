@@ -1,17 +1,18 @@
 //! The storefront: catalogue, cart, and — when `state.checkout` is `Some` —
 //! checkout.
 //!
-//! Seven routes when a stock location is configured, six without — a browser
-//! walking catalogue to order needs exactly this shape: `examples/shop`
-//! walks the same five calls (plus checkout) directly, without a router at
-//! all, to show what these look like as plain library calls. The three
-//! catalogue-and-cart-opening routes read the caller's own
+//! Eight routes when a stock location is configured, seven without — a
+//! browser walking catalogue to order needs exactly this shape:
+//! `examples/shop` walks the same five calls (plus checkout) directly,
+//! without a router at all, to show what these look like as plain library
+//! calls. The three catalogue-and-cart-opening routes read the caller's own
 //! `x-publishable-key` header — it decides which sales channel's products a
 //! storefront may see. The two cart-by-id routes ahead of checkout take
 //! none: a cart is already scoped by its own id. `GET /store/shipping-options`
-//! takes neither — the cart it prices delivery for is named in its own
-//! query, the same as `own_cart` asks the host about for every other route
-//! here.
+//! and `GET /store/payment-providers` take neither — the cart each prices
+//! delivery for, or narrows a provider list to the region of, is named in
+//! its own query, the same as `own_cart` asks the host about for every
+//! other route here.
 
 use axum::extract::{Path, Query, State};
 use axum::http::HeaderMap;
@@ -36,6 +37,7 @@ pub fn router(checkout_configured: bool) -> (Router<AppState>, Vec<(&'static str
         ("GET", "/store/carts/{id}"),
         ("POST", "/store/carts/{id}/line-items"),
         ("GET", "/store/shipping-options"),
+        ("GET", "/store/payment-providers"),
     ];
 
     let mut router = Router::new()
@@ -44,7 +46,8 @@ pub fn router(checkout_configured: bool) -> (Router<AppState>, Vec<(&'static str
         .route("/store/carts", post(create_cart))
         .route("/store/carts/{id}", get(get_cart))
         .route("/store/carts/{id}/line-items", post(add_line_item))
-        .route("/store/shipping-options", get(list_shipping_options));
+        .route("/store/shipping-options", get(list_shipping_options))
+        .route("/store/payment-providers", get(list_payment_providers));
 
     if checkout_configured {
         router = router.route("/store/carts/{id}/complete", post(complete_cart));
@@ -166,4 +169,20 @@ async fn list_shipping_options(
     let options = store::list_shipping_options(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(options))
+}
+
+async fn list_payment_providers(
+    State(state): State<AppState>,
+    Query(query): Query<store::ListPaymentProviders>,
+) -> Result<Json<Vec<store::PaymentProviderView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(
+        &state,
+        Actor::Guest {
+            cart: query.cart_id.as_uuid(),
+        },
+    );
+    let providers = store::list_payment_providers(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(providers))
 }

@@ -66,9 +66,10 @@ use tezgah::api::{
     subscription, tax_identity,
 };
 use tezgah::id::{
-    CustomerId, FulfillmentId, FulfillmentSetId, InventoryItemId, OrderBasketId, OrderId, PriceId,
-    PriceListId, PriceSetId, ProductId, PromotionId, RegionId, SalesChannelId, ShippingOptionId,
-    ShippingProfileId, SubscriptionId, TaxRateId, TaxRegionId, VariantId, WorkflowRunId,
+    CustomerId, FulfillmentId, FulfillmentSetId, InventoryItemId, OrderBasketId, OrderId,
+    PaymentCollectionId, PaymentId, PriceId, PriceListId, PriceSetId, ProductId, PromotionId,
+    RegionId, SalesChannelId, ShippingOptionId, ShippingProfileId, SubscriptionId, TaxRateId,
+    TaxRegionId, VariantId, WorkflowRunId,
 };
 use tezgah::ports::{Actor, Ctx, Host};
 use uuid::Uuid;
@@ -149,6 +150,12 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         ("GET", "/admin/price-lists"),
         ("GET", "/admin/price-lists/{id}"),
         ("GET", "/admin/price-preferences"),
+        ("GET", "/admin/payments"),
+        ("GET", "/admin/payments/{id}"),
+        ("GET", "/admin/payments/payment-providers"),
+        ("GET", "/admin/payment-collections/{id}"),
+        ("GET", "/admin/payment-collections/{id}/payment-sessions"),
+        ("GET", "/admin/refund-reasons"),
     ];
 
     let router = Router::new()
@@ -273,7 +280,19 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         .route("/admin/prices/{id}/rules", get(list_price_rules))
         .route("/admin/price-lists", get(list_price_lists))
         .route("/admin/price-lists/{id}", get(get_price_list))
-        .route("/admin/price-preferences", get(get_price_preference));
+        .route("/admin/price-preferences", get(get_price_preference))
+        .route("/admin/payments", get(list_payments))
+        .route("/admin/payments/{id}", get(get_payment))
+        .route("/admin/payments/payment-providers", get(payment_providers))
+        .route(
+            "/admin/payment-collections/{id}",
+            get(get_payment_collection),
+        )
+        .route(
+            "/admin/payment-collections/{id}/payment-sessions",
+            get(payment_sessions),
+        )
+        .route("/admin/refund-reasons", get(list_refund_reasons));
 
     (router, bound)
 }
@@ -1133,4 +1152,70 @@ async fn get_price_preference(
     let preference = admin_catalogue::get_price_preference(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(preference))
+}
+
+async fn list_payments(
+    State(state): State<AppState>,
+    Query(query): Query<admin_order::ListPayments>,
+) -> Result<Json<tezgah::page::Page<admin_order::PaymentView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = admin_order::list_payments(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn get_payment(
+    State(state): State<AppState>,
+    Path(id): Path<PaymentId>,
+) -> Result<Json<admin_order::PaymentView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let payment = admin_order::get_payment(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(payment))
+}
+
+async fn payment_providers(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<admin_order::ProviderView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let providers = admin_order::payment_providers(&mut tx, &ctx).await?;
+    tx.commit().await?;
+    Ok(Json(providers))
+}
+
+async fn get_payment_collection(
+    State(state): State<AppState>,
+    Path(id): Path<PaymentCollectionId>,
+) -> Result<Json<admin_order::CollectionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let collection = admin_order::get_payment_collection(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(collection))
+}
+
+async fn payment_sessions(
+    State(state): State<AppState>,
+    Path(id): Path<PaymentCollectionId>,
+    Query(query): Query<admin_order::Listing>,
+) -> Result<Json<tezgah::page::Page<admin_order::SessionView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = admin_order::payment_sessions(&mut tx, &ctx, id, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn list_refund_reasons(
+    State(state): State<AppState>,
+    Query(query): Query<admin_order::Listing>,
+) -> Result<Json<tezgah::page::Page<admin_order::ReasonView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = admin_order::list_refund_reasons(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
 }

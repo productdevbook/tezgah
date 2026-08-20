@@ -1025,6 +1025,42 @@ static BODIES: &[Body] = &[
         request: None,
         response: Some(schema_of::<Option<admin_catalogue::PricePreferenceView>>),
     },
+    // -------------------------------------------------------------- payment
+    Body {
+        operation_id: "getAdminPayments",
+        request: None,
+        response: Some(page_of::<admin_order::PaymentView>),
+    },
+    Body {
+        operation_id: "getAdminPaymentsById",
+        request: None,
+        response: Some(schema_of::<admin_order::PaymentView>),
+    },
+    Body {
+        operation_id: "getAdminPaymentsPaymentProviders",
+        request: None,
+        response: Some(schema_of::<Vec<admin_order::ProviderView>>),
+    },
+    Body {
+        operation_id: "getAdminPaymentCollectionsById",
+        request: None,
+        response: Some(schema_of::<admin_order::CollectionView>),
+    },
+    Body {
+        operation_id: "getAdminPaymentCollectionsByIdPaymentSessions",
+        request: None,
+        response: Some(page_of::<admin_order::SessionView>),
+    },
+    Body {
+        operation_id: "getAdminRefundReasons",
+        request: None,
+        response: Some(page_of::<admin_order::ReasonView>),
+    },
+    Body {
+        operation_id: "getStorePaymentProviders",
+        request: None,
+        response: Some(schema_of::<Vec<store::PaymentProviderView>>),
+    },
 ];
 
 fn operation(
@@ -1282,10 +1318,13 @@ mod tests {
         // response side: payout's own money, catalogue's dimensions, the
         // order domain's — `MoneyView` once for every view built through
         // `amount_view`/`From<Money>`, plus the two invoices carry a total
-        // outside that helper — and pricing's own `PriceView.amount` and a
-        // bundle's own priced total and its components' shares, all riding
-        // the same `for_serialize` generator and answering the same way
-        // even though not all of them are money.
+        // outside that helper — pricing's own `PriceView.amount` and a
+        // bundle's own priced total and its components' shares, and a
+        // payment collection's own four running totals, which `CollectionView`
+        // carries as raw `Decimal` rather than through `amount_view` because
+        // all four already share the collection's one fixed currency, all
+        // riding the same `for_serialize` generator and answering the same
+        // way even though not all of them are money.
         for pointer in [
             "/components/schemas/BalanceView/properties/amount",
             "/components/schemas/PayoutView/properties/amount",
@@ -1301,6 +1340,10 @@ mod tests {
             "/components/schemas/BundlePriceView/properties/total",
             "/components/schemas/BundlePriceComponentView/properties/unit_price",
             "/components/schemas/BundlePriceComponentView/properties/allocated_total",
+            "/components/schemas/CollectionView/properties/amount",
+            "/components/schemas/CollectionView/properties/authorized_amount",
+            "/components/schemas/CollectionView/properties/captured_amount",
+            "/components/schemas/CollectionView/properties/refunded_amount",
         ] {
             let schema = document
                 .pointer(pointer)

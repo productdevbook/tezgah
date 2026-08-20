@@ -526,7 +526,7 @@ impl From<order::ClaimItem> for ClaimItemView {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct PaymentView {
     pub id: PaymentId,
     pub payment_collection_id: PaymentCollectionId,
@@ -593,7 +593,7 @@ impl From<payment::Refund> for RefundView {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct CollectionView {
     pub id: PaymentCollectionId,
     pub currency_code: String,
@@ -624,7 +624,7 @@ impl From<payment::PaymentCollection> for CollectionView {
 
 /// A session without its `data`: that is the provider's, and it has held a
 /// client secret before now.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct SessionView {
     pub id: PaymentSessionId,
     pub payment_collection_id: PaymentCollectionId,

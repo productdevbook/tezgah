@@ -169,7 +169,7 @@ receives the `Action` on every call, so a second token (or a role
 by hand, and says exactly how many out loud at startup:
 
 ```
-bound 79 of 483 declared routes
+bound 86 of 483 declared routes
   GET    /store/products
   GET    /store/products/{handle}
   POST   /store/carts
@@ -249,6 +249,13 @@ bound 79 of 483 declared routes
   GET    /admin/price-lists
   GET    /admin/price-lists/{id}
   GET    /admin/price-preferences
+  GET    /admin/payments
+  GET    /admin/payments/{id}
+  GET    /admin/payments/payment-providers
+  GET    /admin/payment-collections/{id}
+  GET    /admin/payment-collections/{id}/payment-sessions
+  GET    /admin/refund-reasons
+  GET    /store/payment-providers
   plus GET /health, which is this binary's own and not one of the 483
 ```
 
@@ -329,6 +336,18 @@ not already offer:
   `list_price_rules`, `list_price_lists`, `get_price_list`,
   `get_price_preference`). The last answers `null` rather than a 404: no
   preference set for an attribute is the common case, not a missing row.
+- **payment** — payments with a list and single read, which carriers a
+  shop accepts, a payment collection's single read and the sessions under
+  it, and refund reasons (`admin_order::list_payments`, `get_payment`,
+  `payment_providers`, `get_payment_collection`, `payment_sessions`,
+  `list_refund_reasons`), plus the storefront's own
+  `GET /store/payment-providers` (`store::list_payment_providers`), narrowed
+  to a cart's region the same way `GET /store/shipping-options` narrows to
+  its address. `CollectionView`'s four running totals — the collection's
+  amount, and what has been authorized, captured and refunded against it —
+  are the payment domain's own raw-`Decimal` money fields, so
+  `money_crosses_the_wire_as_a_string_not_a_number` grows four more
+  pointers for them.
 
 Everything else `tezgah::api` offers stays unbound; wiring in more of the
 483 is a matter of adding a handler in `src/http/admin.rs` or
