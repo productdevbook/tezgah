@@ -169,7 +169,7 @@ receives the `Action` on every call, so a second token (or a role
 by hand, and says exactly how many out loud at startup:
 
 ```
-bound 99 of 483 declared routes
+bound 111 of 483 declared routes
   GET    /store/products
   GET    /store/products/{handle}
   POST   /store/carts
@@ -179,23 +179,35 @@ bound 99 of 483 declared routes
   POST   /store/carts/{id}/complete
   GET    /admin/products
   GET    /admin/products/{id}
+  PATCH  /admin/products/{id}
+  DELETE /admin/products/{id}
   GET    /admin/orders
   GET    /admin/orders/{id}
   GET    /admin/inventory-items
   GET    /admin/inventory-items/{id}
+  DELETE /admin/inventory-items/{id}
   GET    /admin/customers
   GET    /admin/customers/{id}
+  PATCH  /admin/customers/{id}
+  DELETE /admin/customers/{id}
   GET    /admin/promotions
   GET    /admin/promotions/{id}
+  PATCH  /admin/promotions/{id}
+  DELETE /admin/promotions/{id}
   GET    /admin/subscriptions
   GET    /admin/subscriptions/{id}
   GET    /admin/regions
   GET    /admin/regions/{id}
+  PATCH  /admin/regions/{id}
   GET    /admin/sales-channels
   GET    /admin/sales-channels/{id}
+  PATCH  /admin/sales-channels/{id}
+  DELETE /admin/sales-channels/{id}
   GET    /admin/currencies
   GET    /admin/publishable-api-keys
   GET    /admin/stock-locations
+  PATCH  /admin/stock-locations/{id}
+  DELETE /admin/stock-locations/{id}
   POST   /admin/currencies
   POST   /admin/regions
   POST   /admin/sales-channels
@@ -301,6 +313,38 @@ inventory level — the smallest set that gets a fresh install to something a
 storefront can check out from. `tezgah-server seed` (above) does the first
 five of those in one command; the rest — a real catalogue — go in through
 these routes, by hand or by whatever the panel or a script does with them.
+
+**Editing and deleting a row, wherever `tezgah::api` has the function for
+it.** None of the seven screens could change or remove what they list before
+this: `PATCH /admin/products/{id}` (`admin_catalogue::update_product`),
+`/admin/customers/{id}` (`admin_rest::update_customer`),
+`/admin/promotions/{id}` (`update_promotion`), `/admin/regions/{id}`
+(`update_region`) and `/admin/sales-channels/{id}` (`update_sales_channel`)
+all ask `Action::Write`; `/admin/stock-locations/{id}`
+(`admin_catalogue::rename_stock_location`, also `Action::Write`) is narrower
+— a stock location's only editable field past its address is its name.
+`DELETE` follows the same five domains but regions
+(`admin_catalogue::delete_product`, `delete_stock_location`,
+`admin_rest::delete_sales_channel`, `delete_promotion`, `delete_customer`),
+plus inventory items, which has a delete and no update
+(`admin_catalogue::delete_inventory_item`) — all `Action::Delete`, and all
+soft: `delete_product`, `delete_inventory_item` and `delete_customer` set
+`deleted_at` and leave the row and what points at it in place;
+`delete_promotion` is a withdrawal, so the discounts it already granted stay
+on the orders that used them; `delete_sales_channel` refuses a shop's default
+channel; `delete_stock_location` refuses a location that still counts stock.
+
+Two of the seven have neither. Currencies have no writer past
+`create_currency` — nothing in `src/api/` updates or removes one once
+enabled. Publishable API keys have `POST /admin/publishable-api-keys/{id}/
+revoke`, which withdraws a key without forgetting it, but that route asks
+`Action::Write` on a `POST`, not `Action::Delete` on a `DELETE`, so it is not
+what this table is counting — and there is no update for a key's title
+either. Regions get the update above but no delete: `tezgah::api` has a route
+to take a country out of a region, never one to remove the region itself.
+Inventory items get the delete above but no update: the only write past
+creation is to the stock a location holds of an item, already bound at
+`POST /admin/inventory-items/{id}/location-levels`.
 
 **Past the panel: reads with no screen yet.** Ten domains had list-and-
 single-read functions sitting in `src/api/` with nothing in this binary

@@ -7,7 +7,8 @@
  */
 import type {
   GetAdminPromotions200,
-  PromotionView
+  PromotionView,
+  UpdatePromotion
 } from '../models';
 
 import { apiMutator } from '../../../mutator';
@@ -639,7 +640,7 @@ export const getAdminPromotionsById = async (id: string, options?: Parameters<ty
 
 
 export type patchAdminPromotionsByIdResponse200 = {
-  data: void
+  data: PromotionView
   status: 200
 }
 
@@ -678,14 +679,15 @@ export const getPatchAdminPromotionsByIdUrl = (id: string,) => {
 /**
  * @summary Change a promotion's code, automation or usage limits
  */
-export const patchAdminPromotionsById = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<patchAdminPromotionsByIdResponse> => {
+export const patchAdminPromotionsById = async (id: string,
+    updatePromotion: UpdatePromotion, options?: Parameters<typeof apiMutator>[1]): Promise<patchAdminPromotionsByIdResponse> => {
 
   return apiMutator<patchAdminPromotionsByIdResponse>(getPatchAdminPromotionsByIdUrl(id),
   {
     ...options,
-    method: 'PATCH'
-
-
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updatePromotion)
   }
 );}
 

@@ -1,8 +1,11 @@
-//! The admin surface: one list endpoint per screen the panel in `client/`
 //! draws, the single-row read behind a click on any of them, the twelve
-//! writes a fresh install needs to reach its first order (#214), and, past
-//! the panel, every list-and-single-read a domain already had the
-//! functions for in `src/api/` with nothing here calling them —
+//! writes a fresh install needs to reach its first order (#214), editing
+//! and deleting a row a screen already lists wherever `tezgah::api` has the
+//! function for it (`PATCH` on products, regions, sales channels,
+//! promotions, customers and stock locations; `DELETE` on all of those but
+//! regions, plus inventory items — `../README.md`'s route table names each
+//! one), and, past the panel, every list-and-single-read a domain already
+//! had the functions for in `src/api/` with nothing here calling them —
 //! order-basket, workflow, payout, fulfilment, tax, pricing, payment,
 //! credit and (list, single read and writes both, because the domain had
 //! no route at all) digital. `../README.md`'s own route table carries the
@@ -48,7 +51,7 @@ use axum::extract::{Path, Query, Request, State};
 use axum::http::{StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, patch, post};
 use axum::{Json, Router};
 use subtle::ConstantTimeEq;
 use tezgah::api::{
@@ -59,7 +62,8 @@ use tezgah::id::{
     CustomerId, DigitalContentId, FulfillmentId, FulfillmentSetId, GiftCardId, InventoryItemId,
     OrderBasketId, OrderId, PaymentCollectionId, PaymentId, PriceId, PriceListId, PriceSetId,
     ProductId, PromotionId, RegionId, SalesChannelId, ShippingOptionId, ShippingProfileId,
-    StoreCreditId, SubscriptionId, TaxRateId, TaxRegionId, VariantId, WorkflowRunId,
+    StockLocationId, StoreCreditId, SubscriptionId, TaxRateId, TaxRegionId, VariantId,
+    WorkflowRunId,
 };
 use tezgah::ports::{Actor, Ctx, Host};
 use uuid::Uuid;
@@ -70,23 +74,35 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
     let bound = vec![
         ("GET", "/admin/products"),
         ("GET", "/admin/products/{id}"),
+        ("PATCH", "/admin/products/{id}"),
+        ("DELETE", "/admin/products/{id}"),
         ("GET", "/admin/orders"),
         ("GET", "/admin/orders/{id}"),
         ("GET", "/admin/inventory-items"),
         ("GET", "/admin/inventory-items/{id}"),
+        ("DELETE", "/admin/inventory-items/{id}"),
         ("GET", "/admin/customers"),
         ("GET", "/admin/customers/{id}"),
+        ("PATCH", "/admin/customers/{id}"),
+        ("DELETE", "/admin/customers/{id}"),
         ("GET", "/admin/promotions"),
         ("GET", "/admin/promotions/{id}"),
+        ("PATCH", "/admin/promotions/{id}"),
+        ("DELETE", "/admin/promotions/{id}"),
         ("GET", "/admin/subscriptions"),
         ("GET", "/admin/subscriptions/{id}"),
         ("GET", "/admin/regions"),
         ("GET", "/admin/regions/{id}"),
+        ("PATCH", "/admin/regions/{id}"),
         ("GET", "/admin/sales-channels"),
         ("GET", "/admin/sales-channels/{id}"),
+        ("PATCH", "/admin/sales-channels/{id}"),
+        ("DELETE", "/admin/sales-channels/{id}"),
         ("GET", "/admin/currencies"),
         ("GET", "/admin/publishable-api-keys"),
         ("GET", "/admin/stock-locations"),
+        ("PATCH", "/admin/stock-locations/{id}"),
+        ("DELETE", "/admin/stock-locations/{id}"),
         ("POST", "/admin/currencies"),
         ("POST", "/admin/regions"),
         ("POST", "/admin/sales-channels"),
@@ -161,27 +177,50 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
 
     let router = Router::new()
         .route("/admin/products", get(list_products).post(create_product))
-        .route("/admin/products/{id}", get(get_product))
+        .route(
+            "/admin/products/{id}",
+            get(get_product)
+                .patch(update_product)
+                .delete(delete_product),
+        )
         .route("/admin/orders", get(list_orders))
         .route("/admin/orders/{id}", get(get_order))
         .route(
             "/admin/inventory-items",
             get(list_inventory_items).post(create_inventory_item),
         )
-        .route("/admin/inventory-items/{id}", get(get_inventory_item))
+        .route(
+            "/admin/inventory-items/{id}",
+            get(get_inventory_item).delete(delete_inventory_item),
+        )
         .route("/admin/customers", get(list_customers))
-        .route("/admin/customers/{id}", get(get_customer))
+        .route(
+            "/admin/customers/{id}",
+            get(get_customer)
+                .patch(update_customer)
+                .delete(delete_customer),
+        )
         .route("/admin/promotions", get(list_promotions))
-        .route("/admin/promotions/{id}", get(get_promotion))
+        .route(
+            "/admin/promotions/{id}",
+            get(get_promotion)
+                .patch(update_promotion)
+                .delete(delete_promotion),
+        )
         .route("/admin/subscriptions", get(list_subscriptions))
         .route("/admin/subscriptions/{id}", get(get_subscription))
         .route("/admin/regions", get(list_regions).post(create_region))
-        .route("/admin/regions/{id}", get(get_region))
+        .route("/admin/regions/{id}", get(get_region).patch(update_region))
         .route(
             "/admin/sales-channels",
             get(list_sales_channels).post(create_sales_channel),
         )
-        .route("/admin/sales-channels/{id}", get(get_sales_channel))
+        .route(
+            "/admin/sales-channels/{id}",
+            get(get_sales_channel)
+                .patch(update_sales_channel)
+                .delete(delete_sales_channel),
+        )
         .route(
             "/admin/currencies",
             get(list_currencies).post(create_currency),
@@ -193,6 +232,10 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         .route(
             "/admin/stock-locations",
             get(list_stock_locations).post(create_stock_location),
+        )
+        .route(
+            "/admin/stock-locations/{id}",
+            patch(update_stock_location).delete(delete_stock_location),
         )
         .route("/admin/products/{id}/variants", post(create_variant))
         .route("/admin/price-sets", post(create_price_set))
@@ -398,6 +441,29 @@ async fn get_product(
     Ok(Json(product))
 }
 
+async fn update_product(
+    State(state): State<AppState>,
+    Path(id): Path<ProductId>,
+    Json(body): Json<admin_catalogue::UpdateProduct>,
+) -> Result<Json<admin_catalogue::ProductView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let product = admin_catalogue::update_product(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(product))
+}
+
+async fn delete_product(
+    State(state): State<AppState>,
+    Path(id): Path<ProductId>,
+) -> Result<StatusCode, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    admin_catalogue::delete_product(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn list_orders(
     State(state): State<AppState>,
     Query(query): Query<admin_order::ListOrders>,
@@ -442,6 +508,17 @@ async fn get_inventory_item(
     Ok(Json(item))
 }
 
+async fn delete_inventory_item(
+    State(state): State<AppState>,
+    Path(id): Path<InventoryItemId>,
+) -> Result<StatusCode, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    admin_catalogue::delete_inventory_item(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn list_customers(
     State(state): State<AppState>,
     Query(query): Query<admin_rest::List>,
@@ -464,6 +541,29 @@ async fn get_customer(
     Ok(Json(customer))
 }
 
+async fn update_customer(
+    State(state): State<AppState>,
+    Path(id): Path<CustomerId>,
+    Json(body): Json<admin_rest::UpdateCustomer>,
+) -> Result<Json<admin_rest::CustomerView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let customer = admin_rest::update_customer(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(customer))
+}
+
+async fn delete_customer(
+    State(state): State<AppState>,
+    Path(id): Path<CustomerId>,
+) -> Result<StatusCode, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    admin_rest::delete_customer(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn list_promotions(
     State(state): State<AppState>,
     Query(query): Query<admin_rest::List>,
@@ -484,6 +584,29 @@ async fn get_promotion(
     let promotion = admin_rest::get_promotion(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(promotion))
+}
+
+async fn update_promotion(
+    State(state): State<AppState>,
+    Path(id): Path<PromotionId>,
+    Json(body): Json<admin_rest::UpdatePromotion>,
+) -> Result<Json<admin_rest::PromotionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let promotion = admin_rest::update_promotion(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(promotion))
+}
+
+async fn delete_promotion(
+    State(state): State<AppState>,
+    Path(id): Path<PromotionId>,
+) -> Result<StatusCode, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    admin_rest::delete_promotion(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn list_subscriptions(
@@ -530,6 +653,18 @@ async fn get_region(
     Ok(Json(region))
 }
 
+async fn update_region(
+    State(state): State<AppState>,
+    Path(id): Path<RegionId>,
+    Json(body): Json<admin_rest::UpdateRegion>,
+) -> Result<Json<admin_rest::RegionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let region = admin_rest::update_region(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(region))
+}
+
 async fn list_sales_channels(
     State(state): State<AppState>,
     Query(query): Query<admin_rest::List>,
@@ -550,6 +685,29 @@ async fn get_sales_channel(
     let channel = admin_rest::get_sales_channel(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(channel))
+}
+
+async fn update_sales_channel(
+    State(state): State<AppState>,
+    Path(id): Path<SalesChannelId>,
+    Json(body): Json<admin_rest::UpdateSalesChannel>,
+) -> Result<Json<admin_rest::SalesChannelView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let channel = admin_rest::update_sales_channel(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(channel))
+}
+
+async fn delete_sales_channel(
+    State(state): State<AppState>,
+    Path(id): Path<SalesChannelId>,
+) -> Result<StatusCode, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    admin_rest::delete_sales_channel(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn list_currencies(
@@ -637,6 +795,29 @@ async fn create_stock_location(
     let location = admin_catalogue::create_stock_location(&mut tx, &ctx, body).await?;
     tx.commit().await?;
     Ok(Json(location))
+}
+
+async fn update_stock_location(
+    State(state): State<AppState>,
+    Path(id): Path<StockLocationId>,
+    Json(body): Json<admin_catalogue::RenameStockLocation>,
+) -> Result<Json<admin_catalogue::StockLocationView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let location = admin_catalogue::rename_stock_location(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(location))
+}
+
+async fn delete_stock_location(
+    State(state): State<AppState>,
+    Path(id): Path<StockLocationId>,
+) -> Result<StatusCode, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    admin_catalogue::delete_stock_location(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn create_product(

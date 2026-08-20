@@ -328,7 +328,16 @@ export const PatchAdminStockLocationsByIdParams = zod.object({
   "id": zod.string()
 })
 
-export const PatchAdminStockLocationsByIdResponse = zod.unknown()
+export const PatchAdminStockLocationsByIdBody = zod.object({
+  "name": zod.string()
+})
+
+export const PatchAdminStockLocationsByIdResponse = zod.object({
+  "address_id": zod.uuid().nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one stock location.'),
+  "name": zod.string()
+})
 
 /**
  * @summary Read where a stock location is

@@ -84,9 +84,12 @@ impl Bound {
 /// of its routes are bound and why some of `tezgah::api`'s storefront
 /// routes still are not. The admin surface is mounted only when
 /// `state.admin_token` is `Some`; `admin::router`'s own doc comment names
-/// what it binds and `../README.md`'s route table carries the full list —
-/// requires that same bearer token: see `admin::router`'s doc comment for
-/// why an unset token means no admin surface at all rather than an open
+/// what it binds — the panel's screens, their writes, a screen's row edited
+/// or deleted wherever `tezgah::api` has the function for it, and the reads
+/// past what the panel has a screen for yet — and `../README.md`'s route
+/// table carries the full list. Requires that same bearer token: see
+/// `admin::router`'s doc comment for why an unset token means no admin
+/// surface at all rather than an open
 /// one.
 pub fn router(state: AppState) -> (Router, Bound) {
     let mut bound = Vec::new();

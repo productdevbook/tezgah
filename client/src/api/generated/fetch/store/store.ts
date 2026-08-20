@@ -15,7 +15,9 @@ import type {
   GetAdminSalesChannels200,
   IssuedKeyView,
   RegionView,
-  SalesChannelView
+  SalesChannelView,
+  UpdateRegion,
+  UpdateSalesChannel
 } from '../models';
 
 import { apiMutator } from '../../../mutator';
@@ -803,7 +805,7 @@ export const getAdminRegionsById = async (id: string, options?: Parameters<typeo
 
 
 export type patchAdminRegionsByIdResponse200 = {
-  data: void
+  data: RegionView
   status: 200
 }
 
@@ -842,14 +844,15 @@ export const getPatchAdminRegionsByIdUrl = (id: string,) => {
 /**
  * @summary Change a region's name, currency or tax inclusiveness
  */
-export const patchAdminRegionsById = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<patchAdminRegionsByIdResponse> => {
+export const patchAdminRegionsById = async (id: string,
+    updateRegion: UpdateRegion, options?: Parameters<typeof apiMutator>[1]): Promise<patchAdminRegionsByIdResponse> => {
 
   return apiMutator<patchAdminRegionsByIdResponse>(getPatchAdminRegionsByIdUrl(id),
   {
     ...options,
-    method: 'PATCH'
-
-
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateRegion)
   }
 );}
 
@@ -1221,7 +1224,7 @@ export const getAdminSalesChannelsById = async (id: string, options?: Parameters
 
 
 export type patchAdminSalesChannelsByIdResponse200 = {
-  data: void
+  data: SalesChannelView
   status: 200
 }
 
@@ -1260,14 +1263,15 @@ export const getPatchAdminSalesChannelsByIdUrl = (id: string,) => {
 /**
  * @summary Edit a sales channel
  */
-export const patchAdminSalesChannelsById = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<patchAdminSalesChannelsByIdResponse> => {
+export const patchAdminSalesChannelsById = async (id: string,
+    updateSalesChannel: UpdateSalesChannel, options?: Parameters<typeof apiMutator>[1]): Promise<patchAdminSalesChannelsByIdResponse> => {
 
   return apiMutator<patchAdminSalesChannelsByIdResponse>(getPatchAdminSalesChannelsByIdUrl(id),
   {
     ...options,
-    method: 'PATCH'
-
-
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateSalesChannel)
   }
 );}
 

@@ -197,6 +197,16 @@ static BODIES: &[Body] = &[
         request: None,
         response: Some(schema_of::<admin_catalogue::ProductView>),
     },
+    Body {
+        operation_id: "patchAdminProductsById",
+        request: Some(schema_of::<admin_catalogue::UpdateProduct>),
+        response: Some(schema_of::<admin_catalogue::ProductView>),
+    },
+    Body {
+        operation_id: "deleteAdminProductsById",
+        request: None,
+        response: None,
+    },
     // ------------------------------------------------------------- order
     Body {
         operation_id: "getAdminOrders",
@@ -219,6 +229,11 @@ static BODIES: &[Body] = &[
         request: None,
         response: Some(schema_of::<admin_catalogue::InventoryItemView>),
     },
+    Body {
+        operation_id: "deleteAdminInventoryItemsById",
+        request: None,
+        response: None,
+    },
     // ---------------------------------------------------------- customer
     Body {
         operation_id: "getAdminCustomers",
@@ -230,6 +245,16 @@ static BODIES: &[Body] = &[
         request: None,
         response: Some(schema_of::<admin_rest::CustomerView>),
     },
+    Body {
+        operation_id: "patchAdminCustomersById",
+        request: Some(schema_of::<admin_rest::UpdateCustomer>),
+        response: Some(schema_of::<admin_rest::CustomerView>),
+    },
+    Body {
+        operation_id: "deleteAdminCustomersById",
+        request: None,
+        response: None,
+    },
     // --------------------------------------------------------- promotion
     Body {
         operation_id: "getAdminPromotions",
@@ -240,6 +265,16 @@ static BODIES: &[Body] = &[
         operation_id: "getAdminPromotionsById",
         request: None,
         response: Some(schema_of::<admin_rest::PromotionView>),
+    },
+    Body {
+        operation_id: "patchAdminPromotionsById",
+        request: Some(schema_of::<admin_rest::UpdatePromotion>),
+        response: Some(schema_of::<admin_rest::PromotionView>),
+    },
+    Body {
+        operation_id: "deleteAdminPromotionsById",
+        request: None,
+        response: None,
     },
     // ------------------------------------------------------- subscription
     Body {
@@ -264,6 +299,11 @@ static BODIES: &[Body] = &[
         response: Some(schema_of::<admin_rest::RegionView>),
     },
     Body {
+        operation_id: "patchAdminRegionsById",
+        request: Some(schema_of::<admin_rest::UpdateRegion>),
+        response: Some(schema_of::<admin_rest::RegionView>),
+    },
+    Body {
         operation_id: "getAdminSalesChannels",
         request: None,
         response: Some(page_of::<admin_rest::SalesChannelView>),
@@ -272,6 +312,16 @@ static BODIES: &[Body] = &[
         operation_id: "getAdminSalesChannelsById",
         request: None,
         response: Some(schema_of::<admin_rest::SalesChannelView>),
+    },
+    Body {
+        operation_id: "patchAdminSalesChannelsById",
+        request: Some(schema_of::<admin_rest::UpdateSalesChannel>),
+        response: Some(schema_of::<admin_rest::SalesChannelView>),
+    },
+    Body {
+        operation_id: "deleteAdminSalesChannelsById",
+        request: None,
+        response: None,
     },
     // ==================================================================== order
     // --------------------------------------------------------------------- orders
@@ -794,6 +844,16 @@ static BODIES: &[Body] = &[
         operation_id: "postAdminStockLocations",
         request: Some(schema_of::<admin_catalogue::CreateStockLocation>),
         response: Some(schema_of::<admin_catalogue::StockLocationView>),
+    },
+    Body {
+        operation_id: "patchAdminStockLocationsById",
+        request: Some(schema_of::<admin_catalogue::RenameStockLocation>),
+        response: Some(schema_of::<admin_catalogue::StockLocationView>),
+    },
+    Body {
+        operation_id: "deleteAdminStockLocationsById",
+        request: None,
+        response: None,
     },
     Body {
         operation_id: "postAdminProducts",
@@ -1455,13 +1515,18 @@ mod tests {
         // Every Decimal BODIES reaches on the request side accepts both,
         // because that is what serde-with-str actually parses: payout's own
         // commission rate, `MoneyIn.amount` behind every order-domain write
-        // that takes an amount, the invoice's own total, and
-        // `AddPrice.amount` behind `POST /admin/prices`.
+        // that takes an amount, the invoice's own total, `AddPrice.amount`
+        // behind `POST /admin/prices`, and `UpdateProduct`'s four dimensions
+        // behind `PATCH /admin/products/{id}`.
         for pointer in [
             "/components/schemas/SetCommissionRule/properties/value",
             "/components/schemas/MoneyIn/properties/amount",
             "/components/schemas/RecordInvoice/properties/total",
             "/components/schemas/AddPrice/properties/amount",
+            "/components/schemas/UpdateProduct/properties/weight",
+            "/components/schemas/UpdateProduct/properties/length",
+            "/components/schemas/UpdateProduct/properties/height",
+            "/components/schemas/UpdateProduct/properties/width",
         ] {
             let value = document
                 .pointer(pointer)

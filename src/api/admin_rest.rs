@@ -104,7 +104,7 @@ pub struct CreateCustomer {
     pub metadata: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UpdateCustomer {
     pub email: Option<String>,
@@ -605,7 +605,7 @@ pub async fn get_promotion(
     ))
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UpdatePromotion {
     pub code: Option<String>,
@@ -1314,7 +1314,7 @@ pub async fn get_region(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: RegionId) -> Result<
     Ok(RegionView::from(store::region(tx, ctx, id).await?))
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UpdateRegion {
     pub name: Option<String>,
@@ -1429,7 +1429,7 @@ pub struct CreateSalesChannel {
     pub is_disabled: bool,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UpdateSalesChannel {
     pub name: Option<String>,
