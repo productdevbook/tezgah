@@ -893,6 +893,11 @@ static BODIES: &[Body] = &[
         response: Some(schema_of::<admin_rest::IssuedKeyView>),
     },
     Body {
+        operation_id: "getAdminStockLocations",
+        request: None,
+        response: Some(page_of::<admin_catalogue::StockLocationView>),
+    },
+    Body {
         operation_id: "postAdminStockLocations",
         request: Some(schema_of::<admin_catalogue::CreateStockLocation>),
         response: Some(schema_of::<admin_catalogue::StockLocationView>),
