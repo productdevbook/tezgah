@@ -2719,7 +2719,7 @@ pub async fn fulfil_reservation(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ReservationI
 // Many rows at once
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ImportRow {
     pub handle: String,
@@ -2751,7 +2751,7 @@ impl From<ImportRow> for batch::ProductRow {
 
 /// The rows themselves, never a URL to fetch them from: where the file lives is
 /// the host's business, and tezgah does not read one.
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ImportProductsBody {
     pub rows: Vec<ImportRow>,
@@ -2768,7 +2768,7 @@ impl From<ImportProductsBody> for batch::ImportProducts {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct RejectionView {
     pub row: usize,
     pub reason: String,
@@ -2783,7 +2783,7 @@ impl From<batch::Rejection> for RejectionView {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ImportResultView {
     pub created: usize,
     pub updated: usize,
@@ -2806,7 +2806,7 @@ impl From<batch::ImportResult> for ImportResultView {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct BatchResultView {
     pub applied: usize,
     pub rejected: Vec<RejectionView>,
@@ -2902,7 +2902,7 @@ pub async fn export_products(
     Ok(map_page(page))
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PriceChangeRow {
     pub id: PriceId,
@@ -2910,7 +2910,7 @@ pub struct PriceChangeRow {
     pub currency_code: String,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UpdatePricesBody {
     pub prices: Vec<PriceChangeRow>,
@@ -2933,7 +2933,7 @@ pub async fn batch_prices(
     ))
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct StockLevelRowBody {
     pub inventory_item_id: InventoryItemId,
@@ -2942,7 +2942,7 @@ pub struct StockLevelRowBody {
     pub incoming_quantity: Option<i32>,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SetStockLevelsBody {
     pub levels: Vec<StockLevelRowBody>,

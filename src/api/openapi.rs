@@ -938,9 +938,32 @@ static BODIES: &[Body] = &[
         response: Some(schema_of::<admin_catalogue::InventoryItemView>),
     },
     Body {
+        operation_id: "getAdminInventoryItemsByIdLocationLevels",
+        request: None,
+        response: Some(page_of::<admin_catalogue::InventoryLevelView>),
+    },
+    Body {
         operation_id: "postAdminInventoryItemsByIdLocationLevels",
         request: Some(schema_of::<admin_catalogue::SetStock>),
         response: Some(schema_of::<admin_catalogue::InventoryLevelView>),
+    },
+    // The three that take rows together. Left undocumented, each was a shape
+    // a client transcribed from the Rust by hand and then had no way to
+    // notice moving.
+    Body {
+        operation_id: "postAdminProductsBatch",
+        request: Some(schema_of::<admin_catalogue::ImportProductsBody>),
+        response: Some(schema_of::<admin_catalogue::ImportResultView>),
+    },
+    Body {
+        operation_id: "postAdminPricesBatch",
+        request: Some(schema_of::<admin_catalogue::UpdatePricesBody>),
+        response: Some(schema_of::<admin_catalogue::BatchResultView>),
+    },
+    Body {
+        operation_id: "postAdminInventoryItemsBatch",
+        request: Some(schema_of::<admin_catalogue::SetStockLevelsBody>),
+        response: Some(schema_of::<admin_catalogue::BatchResultView>),
     },
     // ----------------------------------------------------- order_basket
     Body {
@@ -1502,7 +1525,7 @@ mod tests {
 
         assert!(
             schemas.contains_key("Page"),
-            "no shared Page schema, though BODIES uses page_of three times"
+            "no shared Page schema, though BODIES reaches for page_of"
         );
         let copies = schemas
             .keys()
@@ -1574,8 +1597,9 @@ mod tests {
         // because that is what serde-with-str actually parses: payout's own
         // commission rate, `MoneyIn.amount` behind every order-domain write
         // that takes an amount, the invoice's own total, `AddPrice.amount`
-        // behind `POST /admin/prices`, and `UpdateProduct`'s four dimensions
-        // behind `PATCH /admin/products/{id}`.
+        // behind `POST /admin/prices`, `UpdateProduct`'s four dimensions
+        // behind `PATCH /admin/products/{id}`, and the two the batch routes
+        // reach — a price change's amount and an imported row's.
         for pointer in [
             "/components/schemas/SetCommissionRule/properties/value",
             "/components/schemas/MoneyIn/properties/amount",
@@ -1585,6 +1609,8 @@ mod tests {
             "/components/schemas/UpdateProduct/properties/length",
             "/components/schemas/UpdateProduct/properties/height",
             "/components/schemas/UpdateProduct/properties/width",
+            "/components/schemas/PriceChangeRow/properties/amount",
+            "/components/schemas/ImportRow/properties/price_amount",
         ] {
             let value = document
                 .pointer(pointer)
