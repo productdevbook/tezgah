@@ -261,6 +261,21 @@ export const PostAdminProductVariantsByIdOptionsResponse = zod.unknown()
 /**
  * @summary List products, drafts and archives included
  */
+export const getAdminProductsQueryLimitMin = 0;
+
+
+
+export const GetAdminProductsQueryParams = zod.object({
+  "after": zod.string().nullish(),
+  "category": zod.union([zod.uuid().describe('Identifies one category.'),zod.null()]).optional(),
+  "collection": zod.union([zod.uuid().describe('Identifies one collection.'),zod.null()]).optional(),
+  "limit": zod.int().min(getAdminProductsQueryLimitMin).nullish(),
+  "product_type": zod.union([zod.uuid().describe('Identifies one type.'),zod.null()]).optional(),
+  "q": zod.string().nullish(),
+  "status": zod.union([zod.enum(['draft', 'proposed', 'published', 'archived', 'rejected']).describe('Where a product is in its life. `draft` is invisible, `published` is for\nsale, `archived` is kept for the orders that already name it. `proposed`\nand `rejected` are a marketplace\'s review of a seller\'s submission —\ninvisible the same as `draft`, but reached only through\n[`submit_for_review`], [`approve_product`] and [`reject_product`], not\nthrough a plain edit.'),zod.null()]).optional(),
+  "tag": zod.union([zod.uuid().describe('Identifies one tag.'),zod.null()]).optional()
+})
+
 export const getAdminProductsResponseTwoItemsItemHeightRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
 export const getAdminProductsResponseTwoItemsItemLengthRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
 export const getAdminProductsResponseTwoItemsItemWeightRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
@@ -873,6 +888,21 @@ export const GetStoreProductVariantsByIdResponse = zod.unknown()
 /**
  * @summary List published products, optionally in a locale
  */
+export const getStoreProductsQueryLimitMin = 0;
+
+
+
+export const GetStoreProductsQueryParams = zod.object({
+  "after": zod.string().nullish(),
+  "category_id": zod.union([zod.uuid().describe('Identifies one category.'),zod.null()]).optional(),
+  "collection_id": zod.union([zod.uuid().describe('Identifies one collection.'),zod.null()]).optional(),
+  "limit": zod.int().min(getStoreProductsQueryLimitMin).nullish(),
+  "locale": zod.string().nullish(),
+  "q": zod.string().nullish(),
+  "tag_id": zod.union([zod.uuid().describe('Identifies one tag.'),zod.null()]).optional(),
+  "type_id": zod.union([zod.uuid().describe('Identifies one type.'),zod.null()]).optional()
+})
+
 export const GetStoreProductsResponse = zod.unknown()
 
 /**

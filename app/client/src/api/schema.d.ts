@@ -6971,6 +6971,31 @@ export interface components {
         LinkPriceSet: {
             price_set_id: components["schemas"]["PriceSetId"];
         };
+        ListOrders: {
+            after?: string | null;
+            customer_id?: components["schemas"]["CustomerId"] | null;
+            /** Format: uint32 */
+            limit?: number | null;
+        };
+        ListProducts: {
+            after?: string | null;
+            category?: components["schemas"]["CategoryId"] | null;
+            collection?: components["schemas"]["CollectionId"] | null;
+            /** Format: uint32 */
+            limit?: number | null;
+            product_type?: components["schemas"]["ProductTypeId"] | null;
+            /**
+             * @description What a back office typed into its search box, matched against a
+             *     product's title, handle and subtitle. Blank is not a search.
+             */
+            q?: string | null;
+            /**
+             * @description Left out means every status, drafts and archives included. That is the
+             *     difference between this surface and the storefront's.
+             */
+            status?: components["schemas"]["ProductStatus"] | null;
+            tag?: components["schemas"]["ProductTagId"] | null;
+        };
         LocalisedReturnReasonView: {
             description: string | null;
             is_fallback: boolean;
@@ -7303,6 +7328,11 @@ export interface components {
          * @enum {string}
          */
         ProductStatus: "draft" | "proposed" | "published" | "archived" | "rejected";
+        /**
+         * Format: uuid
+         * @description Identifies one tag.
+         */
+        ProductTagId: string;
         /**
          * Format: uuid
          * @description Identifies one type.
@@ -7753,6 +7783,32 @@ export interface components {
             unit_price: components["schemas"]["StoreMoneyView"];
             variant_id: components["schemas"]["VariantId"] | null;
             variant_title: string | null;
+        };
+        /**
+         * @description Renamed for the document: `admin_catalogue` has a `ListProducts` too, and
+         *     two schemas cannot share a name in `components/schemas` — the same escape
+         *     the three order views already take.
+         */
+        StoreListProducts: {
+            after?: string | null;
+            category_id?: components["schemas"]["CategoryId"] | null;
+            collection_id?: components["schemas"]["CollectionId"] | null;
+            /** Format: uint32 */
+            limit?: number | null;
+            /**
+             * @description The shopper's language; a product with no translation for it answers
+             *     with its own columns rather than refusing.
+             */
+            locale?: string | null;
+            /**
+             * @description What a shopper typed. Matched against the product's own title, handle
+             *     and subtitle — its columns, not the translation overlaid on the way
+             *     out, so a search in one language does not find a product listed in
+             *     another. Naming that here rather than leaving it to be discovered.
+             */
+            q?: string | null;
+            tag_id?: components["schemas"]["ProductTagId"] | null;
+            type_id?: components["schemas"]["ProductTypeId"] | null;
         };
         /**
          * @description An amount as it leaves the building: the number and the code it is in,
@@ -14007,7 +14063,11 @@ export interface operations {
     };
     getAdminOrders: {
         parameters: {
-            query?: never;
+            query?: {
+                after?: string | null;
+                customer_id?: components["schemas"]["CustomerId"] | null;
+                limit?: number | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -18586,7 +18646,16 @@ export interface operations {
     };
     getAdminProducts: {
         parameters: {
-            query?: never;
+            query?: {
+                after?: string | null;
+                category?: components["schemas"]["CategoryId"] | null;
+                collection?: components["schemas"]["CollectionId"] | null;
+                limit?: number | null;
+                product_type?: components["schemas"]["ProductTypeId"] | null;
+                q?: string | null;
+                status?: components["schemas"]["ProductStatus"] | null;
+                tag?: components["schemas"]["ProductTagId"] | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -27863,7 +27932,16 @@ export interface operations {
     };
     getStoreProducts: {
         parameters: {
-            query?: never;
+            query?: {
+                after?: string | null;
+                category_id?: components["schemas"]["CategoryId"] | null;
+                collection_id?: components["schemas"]["CollectionId"] | null;
+                limit?: number | null;
+                locale?: string | null;
+                q?: string | null;
+                tag_id?: components["schemas"]["ProductTagId"] | null;
+                type_id?: components["schemas"]["ProductTypeId"] | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;

@@ -9,6 +9,8 @@ import type {
   CreateProduct,
   CreateVariant,
   GetAdminProducts200,
+  GetAdminProductsParams,
+  GetStoreProductsParams,
   ProductView,
   UpdateProduct,
   VariantView
@@ -1663,20 +1665,27 @@ export type getAdminProductsResponseError = (getAdminProductsResponse400 | getAd
 
 export type getAdminProductsResponse = (getAdminProductsResponseSuccess | getAdminProductsResponseError)
 
-export const getGetAdminProductsUrl = () => {
+export const getGetAdminProductsUrl = (params?: GetAdminProductsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/admin/products`
+  return stringifiedParams.length > 0 ? `/admin/products?${stringifiedParams}` : `/admin/products`
 }
 
 /**
  * @summary List products, drafts and archives included
  */
-export const getAdminProducts = async ( options?: Parameters<typeof apiMutator>[1]): Promise<getAdminProductsResponse> => {
+export const getAdminProducts = async (params?: GetAdminProductsParams, options?: Parameters<typeof apiMutator>[1]): Promise<getAdminProductsResponse> => {
 
-  return apiMutator<getAdminProductsResponse>(getGetAdminProductsUrl(),
+  return apiMutator<getAdminProductsResponse>(getGetAdminProductsUrl(params),
   {
     ...options,
     method: 'GET'
@@ -4069,20 +4078,27 @@ export type getStoreProductsResponseError = (getStoreProductsResponse400 | getSt
 
 export type getStoreProductsResponse = (getStoreProductsResponseSuccess | getStoreProductsResponseError)
 
-export const getGetStoreProductsUrl = () => {
+export const getGetStoreProductsUrl = (params?: GetStoreProductsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/store/products`
+  return stringifiedParams.length > 0 ? `/store/products?${stringifiedParams}` : `/store/products`
 }
 
 /**
  * @summary List published products, optionally in a locale
  */
-export const getStoreProducts = async ( options?: Parameters<typeof apiMutator>[1]): Promise<getStoreProductsResponse> => {
+export const getStoreProducts = async (params?: GetStoreProductsParams, options?: Parameters<typeof apiMutator>[1]): Promise<getStoreProductsResponse> => {
 
-  return apiMutator<getStoreProductsResponse>(getGetStoreProductsUrl(),
+  return apiMutator<getStoreProductsResponse>(getGetStoreProductsUrl(params),
   {
     ...options,
     method: 'GET'
