@@ -1,8 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { RouterProvider } from "@tanstack/react-router"
+import { useState } from "react"
 
 import { ApiError } from "@/api/client"
+import { held } from "@/lib/token"
 import { router } from "@/router"
+import { Connect } from "@/screens/connect"
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -20,6 +23,12 @@ const queryClient = new QueryClient({
 })
 
 export function App() {
+  const [token, setToken] = useState(held)
+
+  // Asked for before anything is drawn rather than after a screen has already
+  // said "refused" — the panel knows it holds nothing without a round trip.
+  if (!token) return <Connect onConnected={() => setToken(held)} />
+
   return (
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
