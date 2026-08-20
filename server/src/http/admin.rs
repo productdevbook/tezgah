@@ -63,12 +63,12 @@ use axum::{Json, Router};
 use subtle::ConstantTimeEq;
 use tezgah::api::{
     admin_catalogue, admin_order, admin_rest, order_basket, payout, store as store_api,
-    subscription,
+    subscription, tax_identity,
 };
 use tezgah::id::{
     CustomerId, FulfillmentId, FulfillmentSetId, InventoryItemId, OrderBasketId, OrderId,
     ProductId, PromotionId, RegionId, SalesChannelId, ShippingOptionId, ShippingProfileId,
-    SubscriptionId, VariantId, WorkflowRunId,
+    SubscriptionId, TaxRateId, TaxRegionId, VariantId, WorkflowRunId,
 };
 use tezgah::ports::{Actor, Ctx, Host};
 use uuid::Uuid;
@@ -133,6 +133,14 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         ("GET", "/admin/shipping-profiles"),
         ("GET", "/admin/shipping-profiles/{id}"),
         ("GET", "/admin/shipping-option-types"),
+        ("GET", "/admin/tax-regions"),
+        ("GET", "/admin/tax-regions/{id}"),
+        ("GET", "/admin/tax-rates"),
+        ("GET", "/admin/tax-rates/{id}"),
+        ("GET", "/admin/tax-rates/{id}/rules"),
+        ("GET", "/admin/tax-registrations"),
+        ("GET", "/admin/customers/{id}/tax-ids"),
+        ("GET", "/admin/customers/{id}/tax-exemptions"),
     ];
 
     let router = Router::new()
@@ -232,6 +240,17 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         .route(
             "/admin/shipping-option-types",
             get(list_shipping_option_types),
+        )
+        .route("/admin/tax-regions", get(list_tax_regions))
+        .route("/admin/tax-regions/{id}", get(get_tax_region))
+        .route("/admin/tax-rates", get(list_tax_rates))
+        .route("/admin/tax-rates/{id}", get(get_tax_rate))
+        .route("/admin/tax-rates/{id}/rules", get(list_tax_rate_rules))
+        .route("/admin/tax-registrations", get(list_tax_registrations))
+        .route("/admin/customers/{id}/tax-ids", get(list_customer_tax_ids))
+        .route(
+            "/admin/customers/{id}/tax-exemptions",
+            get(list_customer_tax_exemptions),
         );
 
     (router, bound)
@@ -915,4 +934,91 @@ async fn list_shipping_option_types(
     let page = admin_order::list_shipping_option_types(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(page))
+}
+
+async fn list_tax_regions(
+    State(state): State<AppState>,
+    Query(query): Query<admin_rest::List>,
+) -> Result<Json<tezgah::page::Page<admin_rest::TaxRegionView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = admin_rest::list_tax_regions(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn get_tax_region(
+    State(state): State<AppState>,
+    Path(id): Path<TaxRegionId>,
+) -> Result<Json<admin_rest::TaxRegionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let region = admin_rest::get_tax_region(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(region))
+}
+
+async fn list_tax_rates(
+    State(state): State<AppState>,
+    Query(query): Query<admin_rest::ListTaxRates>,
+) -> Result<Json<tezgah::page::Page<admin_rest::TaxRateView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = admin_rest::list_tax_rates(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn get_tax_rate(
+    State(state): State<AppState>,
+    Path(id): Path<TaxRateId>,
+) -> Result<Json<admin_rest::TaxRateView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let rate = admin_rest::get_tax_rate(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(rate))
+}
+
+async fn list_tax_rate_rules(
+    State(state): State<AppState>,
+    Path(id): Path<TaxRateId>,
+) -> Result<Json<Vec<admin_rest::TaxRateRuleView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let rules = admin_rest::list_tax_rate_rules(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(rules))
+}
+
+async fn list_tax_registrations(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<tax_identity::RegistrationView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let registrations = tax_identity::list_registrations(&mut tx, &ctx).await?;
+    tx.commit().await?;
+    Ok(Json(registrations))
+}
+
+async fn list_customer_tax_ids(
+    State(state): State<AppState>,
+    Path(id): Path<CustomerId>,
+) -> Result<Json<Vec<tax_identity::TaxIdView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let ids = tax_identity::list_tax_ids(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(ids))
+}
+
+async fn list_customer_tax_exemptions(
+    State(state): State<AppState>,
+    Path(id): Path<CustomerId>,
+) -> Result<Json<Vec<tax_identity::ExemptionView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let exemptions = tax_identity::list_exemptions(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(exemptions))
 }

@@ -26,7 +26,7 @@ use crate::page::Page;
 
 use super::{
     Method, Route, Surface, admin_catalogue, admin_order, admin_rest, agreement, order_basket,
-    payout, routes, store, subscription,
+    payout, routes, store, subscription, tax_identity,
 };
 
 /// A storefront's key, which pins it to its sales channels.
@@ -942,6 +942,47 @@ static BODIES: &[Body] = &[
         operation_id: "getStoreShippingOptions",
         request: None,
         response: Some(schema_of::<Vec<store::ShippingOptionView>>),
+    },
+    // ------------------------------------------------------------------ tax
+    Body {
+        operation_id: "getAdminTaxRegions",
+        request: None,
+        response: Some(page_of::<admin_rest::TaxRegionView>),
+    },
+    Body {
+        operation_id: "getAdminTaxRegionsById",
+        request: None,
+        response: Some(schema_of::<admin_rest::TaxRegionView>),
+    },
+    Body {
+        operation_id: "getAdminTaxRates",
+        request: None,
+        response: Some(page_of::<admin_rest::TaxRateView>),
+    },
+    Body {
+        operation_id: "getAdminTaxRatesById",
+        request: None,
+        response: Some(schema_of::<admin_rest::TaxRateView>),
+    },
+    Body {
+        operation_id: "getAdminTaxRatesByIdRules",
+        request: None,
+        response: Some(schema_of::<Vec<admin_rest::TaxRateRuleView>>),
+    },
+    Body {
+        operation_id: "getAdminTaxRegistrations",
+        request: None,
+        response: Some(schema_of::<Vec<tax_identity::RegistrationView>>),
+    },
+    Body {
+        operation_id: "getAdminCustomersByIdTaxIds",
+        request: None,
+        response: Some(schema_of::<Vec<tax_identity::TaxIdView>>),
+    },
+    Body {
+        operation_id: "getAdminCustomersByIdTaxExemptions",
+        request: None,
+        response: Some(schema_of::<Vec<tax_identity::ExemptionView>>),
     },
 ];
 

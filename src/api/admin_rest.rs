@@ -933,7 +933,7 @@ pub async fn list_campaign_budget_usage(
 
 // ---------------------------------------------------------------------- tax
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct TaxRegionView {
     pub id: TaxRegionId,
     pub country_code: String,
@@ -956,7 +956,7 @@ impl From<tax::TaxRegion> for TaxRegionView {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct TaxRateView {
     pub id: TaxRateId,
     pub tax_region_id: TaxRegionId,
@@ -983,7 +983,7 @@ impl From<tax::TaxRate> for TaxRateView {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct TaxRateRuleView {
     pub id: Uuid,
     pub tax_rate_id: TaxRateId,

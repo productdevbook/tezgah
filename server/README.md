@@ -169,7 +169,7 @@ receives the `Action` on every call, so a second token (or a role
 by hand, and says exactly how many out loud at startup:
 
 ```
-bound 63 of 483 declared routes
+bound 71 of 483 declared routes
   GET    /store/products
   GET    /store/products/{handle}
   POST   /store/carts
@@ -233,6 +233,14 @@ bound 63 of 483 declared routes
   GET    /admin/shipping-profiles/{id}
   GET    /admin/shipping-option-types
   GET    /store/shipping-options
+  GET    /admin/tax-regions
+  GET    /admin/tax-regions/{id}
+  GET    /admin/tax-rates
+  GET    /admin/tax-rates/{id}
+  GET    /admin/tax-rates/{id}/rules
+  GET    /admin/tax-registrations
+  GET    /admin/customers/{id}/tax-ids
+  GET    /admin/customers/{id}/tax-exemptions
   plus GET /health, which is this binary's own and not one of the 483
 ```
 
@@ -296,6 +304,15 @@ not already offer:
   `GET /store/shipping-options` (`store::list_shipping_options`), which
   prices delivery for a cart rather than reading a back office's
   configuration.
+- **tax** — tax regions and rates, list and single read on both, and the
+  rules on one rate (`admin_rest::list_tax_regions`, `get_tax_region`,
+  `list_tax_rates`, `get_tax_rate`, `list_tax_rate_rules`), plus where the
+  shop is registered and what it files under, a customer's tax numbers and
+  their exemption certificates, from `src/api/tax_identity.rs`
+  (`list_registrations`, `list_tax_ids`, `list_exemptions`). None of the
+  three in `tax_identity` has a single-row read by id in the crate — a
+  registration, a tax number and a certificate are read as their owner's
+  whole list, never one at a time.
 
 Everything else `tezgah::api` offers stays unbound; wiring in more of the
 483 is a matter of adding a handler in `src/http/admin.rs` or
