@@ -64,16 +64,16 @@ them is the whole difference between the shapes:
 
 | Port | An application embedding it | `app/` — one shop, self-hosted |
 |---|---|---|
-| `Authorizer` | its own role engine | grants everything; accounts and sessions stand in front |
-| `AuditSink` | its own audit log | a JSON line on stdout |
-| `EventSink` | its own bus or outbox | a JSON line on stdout |
-| `Jobs` | its own queue and workers | `server_job`, claimed by a worker that dispatches nothing |
+| `Authorizer` | its own role engine | three roles at the door; a signed-in shopper reaches only their own rows |
+| `AuditSink` | its own audit log | a row, in the caller's transaction |
+| `EventSink` | its own bus or outbox | an outbox row nothing delivers yet |
+| `Jobs` | its own queue and workers | `server_job`, claimed and dispatched, with a backoff and a dead letter |
 | `Clock` | its own | `Utc::now()` |
 
 The right-hand column is the honest shape of the self-hosted product today,
-and the next section is the rest of it. Only the first row has a person behind
-it; the other four are still a JSON line on stdout, a table nothing dispatches
-from, and the system clock.
+and the next section is the rest of it. The one word doing the most work
+there is "yet": an event is written down where a change wrote it, and sending
+it anywhere is what this host still cannot do.
 
 ## Where this arrangement is not finished
 
