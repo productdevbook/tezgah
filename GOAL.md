@@ -370,7 +370,7 @@ In `app/`:
       chooses — and a mailer exists, which an operator invitation uses. What
       is left is a shopper's order confirmation and a password reset somebody
       can ask for themselves
-- [ ] the rest of the route table: 116 of 486 bound by hand, 228 drawn by the
+- [ ] the rest of the route table: 130 of 486 bound by hand, 228 drawn by the
       panel. Counted from the other side: of the 77 `/admin/…/{id}/…`
       sub-routes, 70 were drawn by no screen and ten of those were already
       bound — the panel had simply never asked. Those ten are drawn now, and

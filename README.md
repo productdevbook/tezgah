@@ -180,7 +180,7 @@ already run.
 [`app/server/`](app/server) is one worked answer, and the one the published image runs
 — the same handlers behind axum, reading `PORT` and `DATABASE_URL` from its
 environment, migrating at startup, serving the shopping flow and a read-only
-admin surface behind a bearer token. It binds **116 of the 486** routes the
+admin surface behind a bearer token. It binds **130 of the 486** routes the
 table declares, says so in its startup log, and its own README lists every one.
 It is a workspace member rather than a dependency, so embedding tezgah pulls in
 none of it — and `examples/shop` stays the smallest way to see the library
