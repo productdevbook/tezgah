@@ -92,8 +92,15 @@ pub fn router(state: AppState) -> (Router, Bound) {
 
     if let Some(token) = state.admin_token.clone() {
         let (admin_router, admin_bound) = admin::router();
+        // `route_layer`, not `layer`: `layer` also wraps a router's own
+        // fallback, and `Router::merge` picks the *other* router's fallback
+        // when both are still the untouched default — so a `.layer`'d
+        // fallback here would become the merged app's fallback for every
+        // unmatched path, not just this router's own. `route_layer` only
+        // wraps matched routes, so a path nothing binds still reaches the
+        // ordinary 404 rather than this middleware.
         let admin_router =
-            admin_router.layer(middleware::from_fn_with_state(token, admin::require_token));
+            admin_router.route_layer(middleware::from_fn_with_state(token, admin::require_token));
         app = app.merge(admin_router);
         bound.extend(admin_bound);
     }

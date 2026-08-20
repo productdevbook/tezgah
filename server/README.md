@@ -15,6 +15,10 @@ checkout → order as plain library calls. Read that file to see what embedding
 tezgah looks like at its smallest. Read this one to see it made into
 something a container starts.
 
+`src/lib.rs` exists only so `tests/` can build the router and run `seed::run`
+in-process — nothing outside this crate depends on it, and `main.rs` is still
+the only thing that decides how this binary runs.
+
 ## Running it
 
 ```sh
