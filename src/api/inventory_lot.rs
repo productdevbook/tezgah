@@ -297,6 +297,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/inventory-items/{id}/tracking",
         action: Action::Write,
         domain: "inventory",
+        query: None,
         summary: "Say how an item is counted and which lots leave first",
     },
     Route {
@@ -305,6 +306,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/inventory-items/{id}/lots",
         action: Action::Write,
         domain: "inventory",
+        query: None,
         summary: "Receive a lot",
     },
     Route {
@@ -313,6 +315,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/inventory-items/{id}/lots",
         action: Action::View,
         domain: "inventory",
+        query: Some(super::query_schema::<super::Paged>),
         summary: "List an item's lots",
     },
     Route {
@@ -321,6 +324,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/inventory-lots/expiring",
         action: Action::View,
         domain: "inventory",
+        query: Some(super::query_schema::<super::Paged>),
         summary: "List what is about to go out of date",
     },
     Route {
@@ -329,6 +333,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/inventory-lots/{id}",
         action: Action::View,
         domain: "inventory",
+        query: None,
         summary: "Fetch one lot",
     },
     Route {
@@ -337,6 +342,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/inventory-lots/{id}",
         action: Action::Write,
         domain: "inventory",
+        query: None,
         summary: "Correct what is left in a lot",
     },
     Route {
@@ -345,6 +351,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/inventory-lots/{id}/orders",
         action: Action::View,
         domain: "inventory",
+        query: None,
         summary: "Answer a recall: which orders this lot went out on",
     },
     Route {
@@ -353,6 +360,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/inventory-lots/{id}/reservations",
         action: Action::Write,
         domain: "inventory",
+        query: None,
         summary: "Reserve a named lot, overriding FEFO/FIFO",
     },
 ];

@@ -149,6 +149,32 @@ pub struct Route {
     pub domain: &'static str,
     /// One line, used as the OpenAPI summary.
     pub summary: &'static str,
+    /// What this route's query string is, when it has one.
+    ///
+    /// Declared here rather than in a table beside the generator, because a
+    /// table keyed by operation id drifts: a path renamed leaves an entry
+    /// matching nothing, silently, and the document goes back to saying a
+    /// list takes no parameters. A route that gains a filter gains it in the
+    /// same literal.
+    ///
+    /// `None` is the honest answer for most of them — a write, or a fetch by
+    /// id, takes no query string at all, and `parameters: []` is true rather
+    /// than missing.
+    pub query: Option<QuerySchema>,
+}
+
+/// How a query string's shape is produced, once the generator exists.
+///
+/// A function pointer rather than a type parameter: `Route` is `Copy` and
+/// lives in `static` arrays, and neither survives a generic.
+pub type QuerySchema = fn(&mut schemars::SchemaGenerator) -> serde_json::Value;
+
+/// What a route names to describe its query string. Registers the type in
+/// `components/schemas` and hands back the reference to it.
+pub fn query_schema<T: schemars::JsonSchema>(
+    generator: &mut schemars::SchemaGenerator,
+) -> serde_json::Value {
+    generator.subschema_for::<T>().into()
 }
 
 /// Every endpoint tezgah serves.

@@ -25,8 +25,8 @@ use serde_json::{Map, Value, json};
 use crate::page::Page;
 
 use super::{
-    Method, Paged, Route, Surface, admin_catalogue, admin_order, admin_rest, agreement, credit,
-    digital, order_basket, payout, routes, store, subscription, tax_identity,
+    Method, QuerySchema, Route, Surface, admin_catalogue, admin_order, admin_rest, agreement,
+    credit, digital, order_basket, payout, routes, store, subscription, tax_identity,
 };
 
 /// A storefront's key, which pins it to its sales channels.
@@ -129,130 +129,10 @@ fn page_of<T: JsonSchema>(generator: &mut SchemaGenerator) -> Value {
 
 type SchemaFn = fn(&mut SchemaGenerator) -> Value;
 
-/// One operation's query string, keyed by the [`operation_id`] it belongs to.
+/// One parameter per field of the type the route declared its query string
+/// as.
 ///
-/// The document said `"parameters": []` for every route until now — including
-/// `GET /admin/products`, whose handler has taken eight of them for as long as
-/// it has existed. So every filter the crate already supports was invisible to
-/// the document, to whatever a generated client offers, and to anybody reading
-/// the API rather than the Rust.
-struct QueryString {
-    operation_id: &'static str,
-    of: SchemaFn,
-}
-
-/// A start, not the set. Twenty-two lists — four that filter on something of
-/// their own, and eighteen whose whole query string is `after` and `limit` —
-/// against 484 operations. The rest still answer with their path parameters
-/// alone, and `tests/openapi.rs` counts what is here so the number cannot
-/// quietly stop growing.
-///
-/// It is a table rather than a field on `Route` because a route carries no
-/// handler and so cannot name the type its handler deserialises. Moving it
-/// onto `Route` is the change that would stop this drifting, and it is 347
-/// struct literals and a macro — worth doing, not done here.
-const QUERIES: &[QueryString] = &[
-    QueryString {
-        operation_id: "getAdminProducts",
-        of: schema_of::<admin_catalogue::ListProducts>,
-    },
-    QueryString {
-        operation_id: "getStoreProducts",
-        of: schema_of::<store::ListProducts>,
-    },
-    QueryString {
-        operation_id: "getAdminOrders",
-        of: schema_of::<admin_order::ListOrders>,
-    },
-    QueryString {
-        operation_id: "getAdminCustomers",
-        of: schema_of::<admin_rest::ListCustomers>,
-    },
-    QueryString {
-        operation_id: "getAdminTaxRates",
-        of: schema_of::<admin_rest::ListTaxRates>,
-    },
-    QueryString {
-        operation_id: "getAdminWorkflowsExecutions",
-        of: schema_of::<admin_rest::ListWorkflowRuns>,
-    },
-    // The lists whose whole query string is the two parameters every paged
-    // list takes. They share one schema because they share one shape — see
-    // `Paged`, which exists to be described and not to be deserialised into.
-    QueryString {
-        operation_id: "getAdminInventoryItems",
-        of: schema_of::<Paged>,
-    },
-    QueryString {
-        operation_id: "getAdminPromotions",
-        of: schema_of::<Paged>,
-    },
-    QueryString {
-        operation_id: "getAdminSubscriptions",
-        of: schema_of::<Paged>,
-    },
-    QueryString {
-        operation_id: "getAdminGiftCards",
-        of: schema_of::<Paged>,
-    },
-    QueryString {
-        operation_id: "getAdminRegions",
-        of: schema_of::<Paged>,
-    },
-    QueryString {
-        operation_id: "getAdminSalesChannels",
-        of: schema_of::<Paged>,
-    },
-    QueryString {
-        operation_id: "getAdminPublishableApiKeys",
-        of: schema_of::<Paged>,
-    },
-    QueryString {
-        operation_id: "getAdminTaxRegions",
-        of: schema_of::<Paged>,
-    },
-    QueryString {
-        operation_id: "getAdminCarts",
-        of: schema_of::<Paged>,
-    },
-    QueryString {
-        operation_id: "getAdminCampaigns",
-        of: schema_of::<Paged>,
-    },
-    QueryString {
-        operation_id: "getAdminCollections",
-        of: schema_of::<Paged>,
-    },
-    QueryString {
-        operation_id: "getAdminCategories",
-        of: schema_of::<Paged>,
-    },
-    QueryString {
-        operation_id: "getAdminShippingOptions",
-        of: schema_of::<Paged>,
-    },
-    QueryString {
-        operation_id: "getAdminShippingProfiles",
-        of: schema_of::<Paged>,
-    },
-    QueryString {
-        operation_id: "getAdminPriceLists",
-        of: schema_of::<Paged>,
-    },
-    QueryString {
-        operation_id: "getAdminPayments",
-        of: schema_of::<Paged>,
-    },
-    QueryString {
-        operation_id: "getAdminWorkflowsExecutionsDeadLetters",
-        of: schema_of::<Paged>,
-    },
-];
-
-/// One parameter per field of the struct the handler deserialises its query
-/// string into.
-///
-/// `of` registers the struct — and anything it names, like a status enum — in
+/// `of` registers that type — and anything it names, like a status enum — in
 /// `components/schemas` and hands back the `$ref` that points at it; the
 /// properties are then read back out of the generator. A field's own schema is
 /// carried across as it stands, so a `$ref` inside one already points where
@@ -263,7 +143,7 @@ const QUERIES: &[QueryString] = &[
 /// the handler's `serde` derive is what answers that and the derive is not
 /// readable from here. A caller reading this document learns which parameters
 /// exist and what each means, which is what it said nothing about before.
-fn query_parameters(of: SchemaFn, generator: &mut SchemaGenerator) -> Vec<Value> {
+fn query_parameters(of: QuerySchema, generator: &mut SchemaGenerator) -> Vec<Value> {
     let reference = of(generator);
     let Some(name) = reference
         .get("$ref")
@@ -1398,10 +1278,10 @@ fn operation(
         })
         .collect();
 
-    // The query string is described by the same generator the request bodies
-    // use: what a handler deserialises is what a caller sends.
-    if let Some(entry) = QUERIES.iter().find(|entry| entry.operation_id == id) {
-        parameters.extend(query_parameters(entry.of, request_gen));
+    // Declared by the route itself, and described by the same generator the
+    // request bodies use: what a handler deserialises is what a caller sends.
+    if let Some(of) = route.query {
+        parameters.extend(query_parameters(of, request_gen));
     }
 
     let mut responses = json!({

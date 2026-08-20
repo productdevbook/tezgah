@@ -142,11 +142,14 @@ fn no_schema_name_was_disambiguated_by_a_number() {
 /// Rust.
 ///
 /// This counts the routes that describe their query string, and the count may
-/// only go up. It is a floor rather than an equality so that wiring the next
-/// list does not fail this test; it is here at all so that what is wired
-/// cannot quietly become none. The floor is under the real number on purpose
-/// — an operation id that stops matching a route silently drops its entry,
-/// and a floor a few below the truth still catches that.
+/// only go up. A floor rather than an equality, so that a route gaining a
+/// filter does not fail this test.
+///
+/// What it is watching for has changed shape. It used to guard a table keyed
+/// by operation id, where a renamed path silently dropped its entry; the
+/// declaration is on the route now, so a renamed path takes its query with
+/// it. What is left to catch is somebody adding a paged list and forgetting
+/// to say it pages — which lands here as a number that stopped going up.
 #[test]
 fn the_lists_that_filter_say_what_they_filter_on() {
     let document: serde_json::Value =
@@ -169,9 +172,9 @@ fn the_lists_that_filter_say_what_they_filter_on() {
     }
 
     assert!(
-        described >= 20,
-        "only {described} operations describe a query parameter; \
-         `QUERIES` in src/api/openapi.rs is what grows this"
+        described >= 90,
+        "only {described} operations describe a query parameter; a route says \
+         so itself now, in its own literal, with `query:`"
     );
 
     let products = &document["paths"]["/admin/products"]["get"]["parameters"];

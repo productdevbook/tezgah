@@ -3996,6 +3996,24 @@ macro_rules! route {
             path: $path,
             action: Action::$action,
             domain: $domain,
+            query: None,
+            summary: $summary,
+        }
+    };
+}
+
+/// The same, for a route that pages. Its own macro rather than a sixth
+/// argument on `route!`, so that a list which forgets to say it pages reads
+/// as a list that does not — which is what a reviewer can see.
+macro_rules! paged {
+    ($path:literal, $domain:literal, $summary:literal) => {
+        Route {
+            surface: Surface::Admin,
+            method: Method::Get,
+            path: $path,
+            action: Action::View,
+            domain: $domain,
+            query: Some(super::query_schema::<super::Paged>),
             summary: $summary,
         }
     };
@@ -4003,7 +4021,15 @@ macro_rules! route {
 
 pub(super) static ROUTES: &[Route] = &[
     // Orders
-    route!(Get, "/admin/orders", View, "order", "List orders"),
+    Route {
+        surface: Surface::Admin,
+        method: Method::Get,
+        path: "/admin/orders",
+        action: Action::View,
+        domain: "order",
+        query: Some(super::query_schema::<ListOrders>),
+        summary: "List orders",
+    },
     route!(Post, "/admin/orders", Write, "order", "Create an order"),
     route!(Get, "/admin/orders/{id}", View, "order", "Fetch one order"),
     route!(
@@ -4048,24 +4074,18 @@ pub(super) static ROUTES: &[Route] = &[
         "order",
         "Correct the order's e-mail address"
     ),
-    route!(
-        Get,
+    paged!(
         "/admin/orders/{id}/line-items",
-        View,
         "order",
         "List an order's lines"
     ),
-    route!(
-        Get,
+    paged!(
         "/admin/orders/{id}/items",
-        View,
         "order",
         "List an order's quantities at one version"
     ),
-    route!(
-        Get,
+    paged!(
         "/admin/orders/{id}/shipping-methods",
-        View,
         "order",
         "List an order's shipping methods"
     ),
@@ -4090,10 +4110,8 @@ pub(super) static ROUTES: &[Route] = &[
         "order",
         "What has been authorised, captured and refunded"
     ),
-    route!(
-        Get,
+    paged!(
         "/admin/orders/{id}/transactions",
-        View,
         "order",
         "List an order's money movements"
     ),
@@ -4111,24 +4129,18 @@ pub(super) static ROUTES: &[Route] = &[
         "order",
         "Put a payment collection under a placed order"
     ),
-    route!(
-        Get,
+    paged!(
         "/admin/orders/{id}/changes",
-        View,
         "order",
         "List the changes made to an order"
     ),
-    route!(
-        Get,
+    paged!(
         "/admin/orders/{id}/returns",
-        View,
         "order",
         "List one order's returns"
     ),
-    route!(
-        Get,
+    paged!(
         "/admin/orders/{id}/fulfillments",
-        View,
         "fulfilment",
         "List one order's parcels"
     ),
@@ -4154,13 +4166,7 @@ pub(super) static ROUTES: &[Route] = &[
         "Which shipping options a return may ship back on"
     ),
     // Draft orders
-    route!(
-        Get,
-        "/admin/draft-orders",
-        View,
-        "order",
-        "List draft orders"
-    ),
+    paged!("/admin/draft-orders", "order", "List draft orders"),
     route!(
         Post,
         "/admin/draft-orders",
@@ -4246,10 +4252,8 @@ pub(super) static ROUTES: &[Route] = &[
         "Carry a draft's edit into its next version"
     ),
     // Order edits
-    route!(
-        Get,
+    paged!(
         "/admin/orders/{id}/order-edits",
-        View,
         "order",
         "List the edits made to an order"
     ),
@@ -4318,7 +4322,7 @@ pub(super) static ROUTES: &[Route] = &[
         "Fetch one change and its actions"
     ),
     // Returns
-    route!(Get, "/admin/returns", View, "order", "List returns"),
+    paged!("/admin/returns", "order", "List returns"),
     route!(Post, "/admin/returns", Write, "order", "Request a return"),
     route!(
         Get,
@@ -4405,7 +4409,7 @@ pub(super) static ROUTES: &[Route] = &[
         "Settle the return's open change"
     ),
     // Exchanges
-    route!(Get, "/admin/exchanges", View, "order", "List exchanges"),
+    paged!("/admin/exchanges", "order", "List exchanges"),
     route!(
         Post,
         "/admin/exchanges",
@@ -4484,7 +4488,7 @@ pub(super) static ROUTES: &[Route] = &[
         "Settle the exchange's open change"
     ),
     // Claims
-    route!(Get, "/admin/claims", View, "order", "List claims"),
+    paged!("/admin/claims", "order", "List claims"),
     route!(Post, "/admin/claims", Write, "order", "Raise a claim"),
     route!(Get, "/admin/claims/{id}", View, "order", "Fetch one claim"),
     route!(
@@ -4572,7 +4576,7 @@ pub(super) static ROUTES: &[Route] = &[
         "Settle the claim's open change"
     ),
     // Payments
-    route!(Get, "/admin/payments", View, "payment", "List payments"),
+    paged!("/admin/payments", "payment", "List payments"),
     route!(
         Get,
         "/admin/payments/{id}",
@@ -4644,10 +4648,8 @@ pub(super) static ROUTES: &[Route] = &[
         "payment",
         "Fetch one payment collection"
     ),
-    route!(
-        Get,
+    paged!(
         "/admin/payment-collections/{id}/payment-sessions",
-        View,
         "payment",
         "List a collection's sessions"
     ),
@@ -4659,13 +4661,7 @@ pub(super) static ROUTES: &[Route] = &[
         "Open a session with a provider"
     ),
     // Reasons
-    route!(
-        Get,
-        "/admin/refund-reasons",
-        View,
-        "payment",
-        "List refund reasons"
-    ),
+    paged!("/admin/refund-reasons", "payment", "List refund reasons"),
     route!(
         Post,
         "/admin/refund-reasons",
@@ -4673,13 +4669,7 @@ pub(super) static ROUTES: &[Route] = &[
         "payment",
         "Add a refund reason"
     ),
-    route!(
-        Get,
-        "/admin/return-reasons",
-        View,
-        "order",
-        "List return reasons"
-    ),
+    paged!("/admin/return-reasons", "order", "List return reasons"),
     route!(
         Post,
         "/admin/return-reasons",
@@ -4687,10 +4677,8 @@ pub(super) static ROUTES: &[Route] = &[
         "order",
         "Add a return reason"
     ),
-    route!(
-        Get,
+    paged!(
         "/admin/return-reasons/{id}/translations",
-        View,
         "order",
         "List a return reason's translations"
     ),
@@ -4752,10 +4740,8 @@ pub(super) static ROUTES: &[Route] = &[
         "Cancel a parcel and put its stock back"
     ),
     // Fulfilment configuration
-    route!(
-        Get,
+    paged!(
         "/admin/fulfillment-sets",
-        View,
         "fulfilment",
         "List fulfilment sets"
     ),
@@ -4773,10 +4759,8 @@ pub(super) static ROUTES: &[Route] = &[
         "fulfilment",
         "Remove a fulfilment set"
     ),
-    route!(
-        Get,
+    paged!(
         "/admin/fulfillment-sets/{id}/service-zones",
-        View,
         "fulfilment",
         "List a set's service zones"
     ),
@@ -4815,10 +4799,8 @@ pub(super) static ROUTES: &[Route] = &[
         "fulfilment",
         "Resume offering a dropped carrier"
     ),
-    route!(
-        Get,
+    paged!(
         "/admin/shipping-options",
-        View,
         "fulfilment",
         "List shipping options"
     ),
@@ -4850,10 +4832,8 @@ pub(super) static ROUTES: &[Route] = &[
         "fulfilment",
         "Add a rule to a shipping option"
     ),
-    route!(
-        Get,
+    paged!(
         "/admin/shipping-options/{id}/translations",
-        View,
         "fulfilment",
         "List a shipping option's translations"
     ),
@@ -4878,10 +4858,8 @@ pub(super) static ROUTES: &[Route] = &[
         "fulfilment",
         "Drop a shipping option's translation for one locale"
     ),
-    route!(
-        Get,
+    paged!(
         "/admin/shipping-profiles",
-        View,
         "fulfilment",
         "List shipping profiles"
     ),
@@ -4906,10 +4884,8 @@ pub(super) static ROUTES: &[Route] = &[
         "fulfilment",
         "Change a shipping profile"
     ),
-    route!(
-        Get,
+    paged!(
         "/admin/shipping-option-types",
-        View,
         "fulfilment",
         "List shipping option types"
     ),

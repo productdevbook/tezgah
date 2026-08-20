@@ -2720,6 +2720,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/products",
         action: Action::View,
         domain: "catalogue",
+        query: Some(super::query_schema::<ListProducts>),
         summary: "List published products, optionally in a locale",
     },
     Route {
@@ -2728,6 +2729,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/products/{handle}",
         action: Action::View,
         domain: "catalogue",
+        query: None,
         summary: "Fetch one published product by its handle, optionally in a locale",
     },
     Route {
@@ -2736,6 +2738,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/product-variants",
         action: Action::View,
         domain: "catalogue",
+        query: Some(super::query_schema::<super::Paged>),
         summary: "List the variants of one published product",
     },
     Route {
@@ -2744,6 +2747,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/product-variants/{id}",
         action: Action::View,
         domain: "catalogue",
+        query: None,
         summary: "Fetch one variant of a published product",
     },
     Route {
@@ -2752,6 +2756,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/product-options",
         action: Action::View,
         domain: "catalogue",
+        query: Some(super::query_schema::<super::Paged>),
         summary: "List the options of one published product",
     },
     Route {
@@ -2760,6 +2765,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/product-options/{id}",
         action: Action::View,
         domain: "catalogue",
+        query: None,
         summary: "Fetch one option and its values",
     },
     Route {
@@ -2768,6 +2774,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/product-tags",
         action: Action::View,
         domain: "catalogue",
+        query: Some(super::query_schema::<super::Paged>),
         summary: "List product tags",
     },
     Route {
@@ -2776,6 +2783,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/product-tags/{id}",
         action: Action::View,
         domain: "catalogue",
+        query: None,
         summary: "Fetch one product tag",
     },
     Route {
@@ -2784,6 +2792,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/product-types",
         action: Action::View,
         domain: "catalogue",
+        query: Some(super::query_schema::<super::Paged>),
         summary: "List product types",
     },
     Route {
@@ -2792,6 +2801,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/product-types/{id}",
         action: Action::View,
         domain: "catalogue",
+        query: None,
         summary: "Fetch one product type",
     },
     Route {
@@ -2800,6 +2810,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/product-categories",
         action: Action::View,
         domain: "catalogue",
+        query: Some(super::query_schema::<super::Paged>),
         summary: "List the categories a shopper may browse, optionally in a locale",
     },
     Route {
@@ -2808,6 +2819,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/product-categories/{id}",
         action: Action::View,
         domain: "catalogue",
+        query: None,
         summary: "Fetch one browsable category, optionally in a locale",
     },
     Route {
@@ -2816,6 +2828,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/collections",
         action: Action::View,
         domain: "catalogue",
+        query: Some(super::query_schema::<super::Paged>),
         summary: "List product collections",
     },
     Route {
@@ -2824,6 +2837,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/collections/{id}",
         action: Action::View,
         domain: "catalogue",
+        query: None,
         summary: "Fetch one product collection",
     },
     Route {
@@ -2832,6 +2846,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/regions",
         action: Action::View,
         domain: "store",
+        query: Some(super::query_schema::<super::Paged>),
         summary: "List the regions the shop sells into",
     },
     Route {
@@ -2840,6 +2855,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/regions/{id}",
         action: Action::View,
         domain: "store",
+        query: None,
         summary: "Fetch one region",
     },
     Route {
@@ -2848,6 +2864,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/currencies",
         action: Action::View,
         domain: "store",
+        query: Some(super::query_schema::<super::Paged>),
         summary: "List the currencies the shop trades in",
     },
     Route {
@@ -2856,6 +2873,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/currencies/{code}",
         action: Action::View,
         domain: "store",
+        query: None,
         summary: "Fetch one currency and its exponent",
     },
     Route {
@@ -2864,6 +2882,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/locales",
         action: Action::View,
         domain: "store",
+        query: Some(super::query_schema::<super::Paged>),
         summary: "List the languages the shop is served in",
     },
     Route {
@@ -2872,6 +2891,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/carts",
         action: Action::Write,
         domain: "cart",
+        query: None,
         summary: "Start a cart",
     },
     Route {
@@ -2880,6 +2900,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/carts/{id}",
         action: Action::View,
         domain: "cart",
+        query: None,
         summary: "Fetch one's own cart",
     },
     Route {
@@ -2888,6 +2909,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/carts/{id}",
         action: Action::Write,
         domain: "cart",
+        query: None,
         summary: "Set a cart's e-mail address or addresses",
     },
     Route {
@@ -2896,6 +2918,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/carts/{id}/complete",
         action: Action::Write,
         domain: "cart",
+        query: None,
         summary: "Place the cart as an order",
     },
     Route {
@@ -2904,6 +2927,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/carts/{id}/customer",
         action: Action::Write,
         domain: "cart",
+        query: None,
         summary: "Hand a guest cart to the customer who signed in",
     },
     Route {
@@ -2912,6 +2936,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/carts/{id}/line-items",
         action: Action::View,
         domain: "cart",
+        query: Some(super::query_schema::<super::Paged>),
         summary: "List what is in the cart",
     },
     Route {
@@ -2920,6 +2945,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/carts/{id}/line-items",
         action: Action::Write,
         domain: "cart",
+        query: None,
         summary: "Put a variant in the cart at the shop's price",
     },
     Route {
@@ -2928,6 +2954,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/carts/{id}/bundle-items",
         action: Action::Write,
         domain: "cart",
+        query: None,
         summary: "Put a bundle in the cart, priced and allocated across its components",
     },
     Route {
@@ -2936,6 +2963,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/carts/{id}/line-items/{line_id}",
         action: Action::Write,
         domain: "cart",
+        query: None,
         summary: "Change how many of a line are wanted",
     },
     Route {
@@ -2944,6 +2972,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/carts/{id}/line-items/{line_id}",
         action: Action::Delete,
         domain: "cart",
+        query: None,
         summary: "Take a line out of the cart",
     },
     Route {
@@ -2952,6 +2981,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/carts/{id}/promotions",
         action: Action::Write,
         domain: "promotion",
+        query: None,
         summary: "Apply what the cart now qualifies for",
     },
     Route {
@@ -2960,6 +2990,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/carts/{id}/shipping-methods",
         action: Action::Write,
         domain: "cart",
+        query: None,
         summary: "Choose how the cart is delivered",
     },
     Route {
@@ -2968,6 +2999,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/carts/{id}/taxes",
         action: Action::Write,
         domain: "tax",
+        query: None,
         summary: "Quote the tax the cart would carry to an address",
     },
     Route {
@@ -2976,6 +3008,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/carts/{id}/tax-evidence",
         action: Action::Write,
         domain: "tax",
+        query: None,
         summary: "Price the cart again with what the host knows about where the buyer is",
     },
     Route {
@@ -2984,6 +3017,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/shipping-options",
         action: Action::View,
         domain: "fulfilment",
+        query: Some(super::query_schema::<super::Paged>),
         summary: "List what can deliver this cart to an address, optionally in a locale",
     },
     Route {
@@ -2992,6 +3026,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/shipping-options/{id}/calculate",
         action: Action::Write,
         domain: "fulfilment",
+        query: None,
         summary: "Price one shipping option for a cart",
     },
     Route {
@@ -3000,6 +3035,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/customers",
         action: Action::Write,
         domain: "customer",
+        query: None,
         summary: "Register",
     },
     Route {
@@ -3008,6 +3044,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/customers/me",
         action: Action::View,
         domain: "customer",
+        query: None,
         summary: "Fetch one's own account",
     },
     Route {
@@ -3016,6 +3053,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/customers/me",
         action: Action::Write,
         domain: "customer",
+        query: None,
         summary: "Change one's own account",
     },
     Route {
@@ -3024,6 +3062,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/customers/me/addresses",
         action: Action::View,
         domain: "customer",
+        query: Some(super::query_schema::<super::Paged>),
         summary: "List one's own addresses",
     },
     Route {
@@ -3032,6 +3071,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/customers/me/addresses",
         action: Action::Write,
         domain: "customer",
+        query: None,
         summary: "Add an address of one's own",
     },
     Route {
@@ -3040,6 +3080,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/customers/me/addresses/{address_id}",
         action: Action::Write,
         domain: "customer",
+        query: None,
         summary: "Change an address of one's own",
     },
     Route {
@@ -3048,6 +3089,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/customers/me/addresses/{address_id}",
         action: Action::Delete,
         domain: "customer",
+        query: None,
         summary: "Remove an address of one's own",
     },
     Route {
@@ -3056,6 +3098,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/customers/me/account-holders",
         action: Action::Write,
         domain: "payment",
+        query: None,
         summary: "Save a card reference tokenised with a provider directly",
     },
     Route {
@@ -3064,6 +3107,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/customers/me/account-holders/{id}",
         action: Action::Delete,
         domain: "payment",
+        query: None,
         summary: "Remove a card reference of one's own",
     },
     Route {
@@ -3072,6 +3116,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/orders",
         action: Action::View,
         domain: "order",
+        query: Some(super::query_schema::<super::Paged>),
         summary: "List one's own orders",
     },
     Route {
@@ -3080,6 +3125,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/orders/{id}",
         action: Action::View,
         domain: "order",
+        query: None,
         summary: "Fetch one of one's own orders",
     },
     Route {
@@ -3088,6 +3134,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/orders/{id}/transfer/request",
         action: Action::Write,
         domain: "order",
+        query: None,
         summary: "Offer one of one's own orders to somebody else",
     },
     Route {
@@ -3096,6 +3143,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/orders/{id}/transfer/accept",
         action: Action::Write,
         domain: "order",
+        query: None,
         summary: "Take over an order one was offered",
     },
     Route {
@@ -3104,6 +3152,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/orders/{id}/transfer/decline",
         action: Action::Write,
         domain: "order",
+        query: None,
         summary: "Refuse an order one was offered",
     },
     Route {
@@ -3112,6 +3161,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/orders/{id}/transfer/cancel",
         action: Action::Write,
         domain: "order",
+        query: None,
         summary: "Withdraw an offer of one's own order",
     },
     Route {
@@ -3120,6 +3170,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/returns",
         action: Action::Write,
         domain: "order",
+        query: None,
         summary: "Ask to send something back",
     },
     Route {
@@ -3128,6 +3179,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/return-reasons",
         action: Action::View,
         domain: "order",
+        query: Some(super::query_schema::<super::Paged>),
         summary: "List the reasons a return may be given, optionally in a locale",
     },
     Route {
@@ -3136,6 +3188,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/return-reasons/{id}",
         action: Action::View,
         domain: "order",
+        query: None,
         summary: "Fetch one return reason, optionally in a locale",
     },
     Route {
@@ -3144,6 +3197,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/payment-collections",
         action: Action::Write,
         domain: "payment",
+        query: None,
         summary: "Open a payment collection for what a cart owes",
     },
     Route {
@@ -3152,6 +3206,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/payment-collections/{id}/payment-sessions",
         action: Action::Write,
         domain: "payment",
+        query: None,
         summary: "Start a session with one payment provider",
     },
     Route {
@@ -3160,6 +3215,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/payment-providers",
         action: Action::View,
         domain: "payment",
+        query: Some(super::query_schema::<super::Paged>),
         summary: "List the providers a shopper may pay with",
     },
 ];

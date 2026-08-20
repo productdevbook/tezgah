@@ -184,6 +184,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/order-baskets",
         action: Action::Write,
         domain: "order_basket",
+        query: None,
         summary: "Open a basket a checkout across seller scopes joins under",
     },
     Route {
@@ -192,6 +193,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/order-baskets/{id}",
         action: Action::View,
         domain: "order_basket",
+        query: None,
         summary: "Read one basket",
     },
     Route {
@@ -200,6 +202,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/order-baskets/{id}/payment-collection",
         action: Action::Write,
         domain: "order_basket",
+        query: None,
         summary: "Say which collection paid for a basket",
     },
     Route {
@@ -208,6 +211,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/order-baskets/{id}/orders",
         action: Action::View,
         domain: "order_basket",
+        query: None,
         summary: "This scope's own orders under a basket",
     },
     Route {
@@ -216,6 +220,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/order-baskets/{id}/carts",
         action: Action::View,
         domain: "order_basket",
+        query: None,
         summary: "This scope's own carts under a basket, the next leg to place",
     },
     Route {
@@ -224,6 +229,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/carts",
         action: Action::View,
         domain: "cart",
+        query: Some(super::query_schema::<super::Paged>),
         summary: "List carts, abandoned ones included",
     },
 ];
