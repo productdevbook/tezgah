@@ -11,6 +11,7 @@ import type {
   GetAdminCollectionsParams,
   GetAdminProducts200,
   GetAdminProductsByIdVariantsParams,
+  GetAdminProductsExportParams,
   GetAdminProductsParams,
   GetStoreProductsParams,
   ProductView,
@@ -1837,20 +1838,27 @@ export type getAdminProductsExportResponseError = (getAdminProductsExportRespons
 
 export type getAdminProductsExportResponse = (getAdminProductsExportResponseSuccess | getAdminProductsExportResponseError)
 
-export const getGetAdminProductsExportUrl = () => {
+export const getGetAdminProductsExportUrl = (params?: GetAdminProductsExportParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/admin/products/export`
+  return stringifiedParams.length > 0 ? `/admin/products/export?${stringifiedParams}` : `/admin/products/export`
 }
 
 /**
  * @summary A page of variants, flat enough to write as CSV
  */
-export const getAdminProductsExport = async ( options?: Parameters<typeof apiMutator>[1]): Promise<getAdminProductsExportResponse> => {
+export const getAdminProductsExport = async (params?: GetAdminProductsExportParams, options?: Parameters<typeof apiMutator>[1]): Promise<getAdminProductsExportResponse> => {
 
-  return apiMutator<getAdminProductsExportResponse>(getGetAdminProductsExportUrl(),
+  return apiMutator<getAdminProductsExportResponse>(getGetAdminProductsExportUrl(params),
   {
     ...options,
     method: 'GET'
