@@ -61,7 +61,10 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use subtle::ConstantTimeEq;
-use tezgah::api::{admin_catalogue, admin_order, admin_rest, order_basket, payout, subscription};
+use tezgah::api::{
+    admin_catalogue, admin_order, admin_rest, order_basket, payout, store as store_api,
+    subscription,
+};
 use tezgah::id::{
     CustomerId, InventoryItemId, OrderBasketId, OrderId, ProductId, PromotionId, RegionId,
     SalesChannelId, SubscriptionId, VariantId, WorkflowRunId,
@@ -606,7 +609,7 @@ async fn basket_carts(
     State(state): State<AppState>,
     Path(id): Path<OrderBasketId>,
     Query(query): Query<order_basket::ListBasketOrders>,
-) -> Result<Json<tezgah::page::Page<super::store::CartView>>, ApiError> {
+) -> Result<Json<tezgah::page::Page<store_api::CartView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
     let ctx = ctx_for(&state);
     let page = order_basket::basket_carts(&mut tx, &ctx, id, query).await?;
