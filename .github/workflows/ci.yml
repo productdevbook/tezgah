@@ -79,14 +79,19 @@ jobs:
       # The panel's types are transcribed from src/api/*.rs by hand because the
       # generated document carries no schemas. Regenerating what it does carry
       # catches a path this panel calls and the crate no longer serves.
-      - name: The paths this panel may call
+      # Everything the document generates, not one file of it. The check used
+      # to run openapi-typescript alone; orval arrived beside it and produced
+      # code nothing re-checked, so a stale generated client could sit in the
+      # tree looking fine. `bun run generate` is the one command that owns all
+      # of it, and this runs exactly that.
+      - name: What the document generates
         run: |
-          bunx openapi-typescript ../tests/snapshots/openapi.json -o src/api/schema.d.ts
-          if git diff --quiet -- src/api/schema.d.ts; then
+          bun run generate
+          if git diff --quiet -- src; then
             exit 0
           fi
-          echo "::error::src/api/schema.d.ts is stale — regenerate it from tests/snapshots/openapi.json and commit the result." >&2
-          git diff --stat -- src/api/schema.d.ts
+          echo "::error::generated client is stale — run 'bun run generate' in client/ and commit the result." >&2
+          git diff --stat -- src
           exit 1
       # Both are committed, not produced by `build`, because `tsc -b` needs
       # them before Vite ever runs a plugin. Regenerating and diffing is what

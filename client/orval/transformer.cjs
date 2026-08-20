@@ -11,6 +11,15 @@
 // `{ not: {} }` (still "nothing"). Both are semantically identical JSON
 // Schema — this changes nothing about what a caller may send or receive.
 //
+// A second thing orval gets wrong, and the same treatment: a schema whose
+// `type` is a list — money on a request is `["string", "number"]`, because
+// rust_decimal deserialises from either — with a `default` beside it. Orval
+// emits a zod union and gives *both* branches the same default constant, so
+// the numeric branch ends up as `z.number().default("0")` and does not
+// typecheck. Dropping the default from orval's copy costs nothing: the server
+// applies it regardless of what a generated client says, and the document
+// itself keeps it.
+//
 // This runs only on the copy orval parses in memory (`input.override.transformer`);
 // `tests/snapshots/openapi.json` itself is never touched.
 
@@ -44,6 +53,11 @@ function fix(node) {
   if (node === null || typeof node !== "object") return node
 
   const out = {}
+  // A union of types cannot carry one default that fits every branch.
+  if (Array.isArray(node.type) && node.type.length > 1 && "default" in node) {
+    const { default: _dropped, ...rest } = node
+    node = rest
+  }
   for (const [key, value] of Object.entries(node)) {
     if (SCHEMA_KEY.has(key)) {
       out[key] = fixBareBoolean(value)

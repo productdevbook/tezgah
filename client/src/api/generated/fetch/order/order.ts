@@ -6,14 +6,77 @@
  * OpenAPI spec version: 0.0.0
  */
 import type {
+  AcceptAgreement,
+  AddItemAction,
+  AddShippingAction,
+  AddressIn,
+  AgreementVersionView,
+  AttachPaymentCollection,
+  ChangeActionView,
+  ChangeDetailView,
+  ChangeView,
+  ClaimItemView,
+  ClaimTransfer,
+  ClaimView,
+  ConvertDraft,
+  CreateOrder,
+  DeclineChange,
+  ExchangeView,
+  GetAdminAgreements200,
+  GetAdminClaims200,
+  GetAdminDraftOrders200,
+  GetAdminExchanges200,
   GetAdminOrders200,
-  OrderView
+  GetAdminOrdersByIdChanges200,
+  GetAdminOrdersByIdOrderEdits200,
+  GetAdminOrdersByIdReturns200,
+  GetAdminReturnReasons200,
+  GetAdminReturns200,
+  GetStoreOrders200,
+  GetStoreReturnReasons200,
+  InvoiceView,
+  LedgerView,
+  LineItemView,
+  LineQuantity,
+  LocalisedReturnReasonView,
+  NewReason,
+  OpenEdit,
+  OrderAgreementView,
+  OrderItemView,
+  OrderView,
+  PublishAgreement,
+  PutReturnReasonTranslation,
+  ReasonView,
+  ReceiveReturn,
+  RecordInvoice,
+  RecordTransaction,
+  RequestClaim,
+  RequestExchange,
+  RequestReturn,
+  RequestTransfer,
+  RequestedTransferView,
+  ReturnItemView,
+  ReturnReasonTranslationView,
+  ReturnReasonView,
+  ReturnView,
+  SetInvoiceStatus,
+  ShippingMethodView,
+  StoreOrderView,
+  StoreRequestReturn,
+  StoreReturnView,
+  SummaryView,
+  TotalsView,
+  TransactionView,
+  TransferView,
+  UpdateEmail,
+  WithdrawalNoticeView,
+  WithdrawalView
 } from '../models';
 
 import { apiMutator } from '../../../mutator';
 
 export type getAdminAgreementsResponse200 = {
-  data: void
+  data: GetAdminAgreements200
   status: 200
 }
 
@@ -65,7 +128,7 @@ export const getAdminAgreements = async ( options?: Parameters<typeof apiMutator
 
 
 export type postAdminAgreementsResponse200 = {
-  data: void
+  data: AgreementVersionView
   status: 200
 }
 
@@ -104,20 +167,20 @@ export const getPostAdminAgreementsUrl = () => {
 /**
  * @summary Publish a version of a document
  */
-export const postAdminAgreements = async ( options?: Parameters<typeof apiMutator>[1]): Promise<postAdminAgreementsResponse> => {
+export const postAdminAgreements = async (publishAgreement: PublishAgreement, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminAgreementsResponse> => {
 
   return apiMutator<postAdminAgreementsResponse>(getPostAdminAgreementsUrl(),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(publishAgreement)
   }
 );}
 
 
 export type getAdminAgreementsByIdResponse200 = {
-  data: void
+  data: AgreementVersionView
   status: 200
 }
 
@@ -169,7 +232,7 @@ export const getAdminAgreementsById = async (id: string, options?: Parameters<ty
 
 
 export type getAdminClaimsResponse200 = {
-  data: void
+  data: GetAdminClaims200
   status: 200
 }
 
@@ -221,7 +284,7 @@ export const getAdminClaims = async ( options?: Parameters<typeof apiMutator>[1]
 
 
 export type postAdminClaimsResponse200 = {
-  data: void
+  data: ClaimView
   status: 200
 }
 
@@ -260,20 +323,20 @@ export const getPostAdminClaimsUrl = () => {
 /**
  * @summary Raise a claim
  */
-export const postAdminClaims = async ( options?: Parameters<typeof apiMutator>[1]): Promise<postAdminClaimsResponse> => {
+export const postAdminClaims = async (requestClaim: RequestClaim, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminClaimsResponse> => {
 
   return apiMutator<postAdminClaimsResponse>(getPostAdminClaimsUrl(),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(requestClaim)
   }
 );}
 
 
 export type getAdminClaimsByIdResponse200 = {
-  data: void
+  data: ClaimView
   status: 200
 }
 
@@ -325,7 +388,7 @@ export const getAdminClaimsById = async (id: string, options?: Parameters<typeof
 
 
 export type postAdminClaimsByIdCancelResponse200 = {
-  data: void
+  data: ClaimView
   status: 200
 }
 
@@ -377,7 +440,7 @@ export const postAdminClaimsByIdCancel = async (id: string, options?: Parameters
 
 
 export type postAdminClaimsByIdClaimItemsResponse200 = {
-  data: void
+  data: ChangeActionView
   status: 200
 }
 
@@ -416,14 +479,15 @@ export const getPostAdminClaimsByIdClaimItemsUrl = (id: string,) => {
 /**
  * @summary Write off what went wrong where it stands
  */
-export const postAdminClaimsByIdClaimItems = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminClaimsByIdClaimItemsResponse> => {
+export const postAdminClaimsByIdClaimItems = async (id: string,
+    lineQuantity: LineQuantity, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminClaimsByIdClaimItemsResponse> => {
 
   return apiMutator<postAdminClaimsByIdClaimItemsResponse>(getPostAdminClaimsByIdClaimItemsUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(lineQuantity)
   }
 );}
 
@@ -483,7 +547,7 @@ export const deleteAdminClaimsByIdClaimItemsByActionId = async (id: string,
 
 
 export type postAdminClaimsByIdInboundItemsResponse200 = {
-  data: void
+  data: ChangeActionView
   status: 200
 }
 
@@ -522,14 +586,15 @@ export const getPostAdminClaimsByIdInboundItemsUrl = (id: string,) => {
 /**
  * @summary Ask for the faulty goods back
  */
-export const postAdminClaimsByIdInboundItems = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminClaimsByIdInboundItemsResponse> => {
+export const postAdminClaimsByIdInboundItems = async (id: string,
+    lineQuantity: LineQuantity, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminClaimsByIdInboundItemsResponse> => {
 
   return apiMutator<postAdminClaimsByIdInboundItemsResponse>(getPostAdminClaimsByIdInboundItemsUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(lineQuantity)
   }
 );}
 
@@ -589,7 +654,7 @@ export const deleteAdminClaimsByIdInboundItemsByActionId = async (id: string,
 
 
 export type postAdminClaimsByIdInboundShippingMethodResponse200 = {
-  data: void
+  data: ChangeActionView
   status: 200
 }
 
@@ -628,20 +693,21 @@ export const getPostAdminClaimsByIdInboundShippingMethodUrl = (id: string,) => {
 /**
  * @summary Charge the carriage on what comes back
  */
-export const postAdminClaimsByIdInboundShippingMethod = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminClaimsByIdInboundShippingMethodResponse> => {
+export const postAdminClaimsByIdInboundShippingMethod = async (id: string,
+    addShippingAction: AddShippingAction, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminClaimsByIdInboundShippingMethodResponse> => {
 
   return apiMutator<postAdminClaimsByIdInboundShippingMethodResponse>(getPostAdminClaimsByIdInboundShippingMethodUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(addShippingAction)
   }
 );}
 
 
 export type getAdminClaimsByIdItemsResponse200 = {
-  data: void
+  data: ChangeDetailView
   status: 200
 }
 
@@ -693,7 +759,7 @@ export const getAdminClaimsByIdItems = async (id: string, options?: Parameters<t
 
 
 export type getAdminClaimsByIdLinesResponse200 = {
-  data: void
+  data: ClaimItemView[]
   status: 200
 }
 
@@ -745,7 +811,7 @@ export const getAdminClaimsByIdLines = async (id: string, options?: Parameters<t
 
 
 export type postAdminClaimsByIdOutboundItemsResponse200 = {
-  data: void
+  data: ChangeActionView
   status: 200
 }
 
@@ -784,14 +850,15 @@ export const getPostAdminClaimsByIdOutboundItemsUrl = (id: string,) => {
 /**
  * @summary Add a replacement
  */
-export const postAdminClaimsByIdOutboundItems = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminClaimsByIdOutboundItemsResponse> => {
+export const postAdminClaimsByIdOutboundItems = async (id: string,
+    lineQuantity: LineQuantity, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminClaimsByIdOutboundItemsResponse> => {
 
   return apiMutator<postAdminClaimsByIdOutboundItemsResponse>(getPostAdminClaimsByIdOutboundItemsUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(lineQuantity)
   }
 );}
 
@@ -851,7 +918,7 @@ export const deleteAdminClaimsByIdOutboundItemsByActionId = async (id: string,
 
 
 export type postAdminClaimsByIdOutboundShippingMethodResponse200 = {
-  data: void
+  data: ChangeActionView
   status: 200
 }
 
@@ -890,20 +957,21 @@ export const getPostAdminClaimsByIdOutboundShippingMethodUrl = (id: string,) => 
 /**
  * @summary Charge the carriage on a replacement
  */
-export const postAdminClaimsByIdOutboundShippingMethod = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminClaimsByIdOutboundShippingMethodResponse> => {
+export const postAdminClaimsByIdOutboundShippingMethod = async (id: string,
+    addShippingAction: AddShippingAction, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminClaimsByIdOutboundShippingMethodResponse> => {
 
   return apiMutator<postAdminClaimsByIdOutboundShippingMethodResponse>(getPostAdminClaimsByIdOutboundShippingMethodUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(addShippingAction)
   }
 );}
 
 
 export type postAdminClaimsByIdRequestResponse200 = {
-  data: void
+  data: ClaimView
   status: 200
 }
 
@@ -955,7 +1023,7 @@ export const postAdminClaimsByIdRequest = async (id: string, options?: Parameter
 
 
 export type getAdminDraftOrdersResponse200 = {
-  data: void
+  data: GetAdminDraftOrders200
   status: 200
 }
 
@@ -1007,7 +1075,7 @@ export const getAdminDraftOrders = async ( options?: Parameters<typeof apiMutato
 
 
 export type postAdminDraftOrdersResponse200 = {
-  data: void
+  data: OrderView
   status: 200
 }
 
@@ -1046,20 +1114,20 @@ export const getPostAdminDraftOrdersUrl = () => {
 /**
  * @summary Draw up a draft order
  */
-export const postAdminDraftOrders = async ( options?: Parameters<typeof apiMutator>[1]): Promise<postAdminDraftOrdersResponse> => {
+export const postAdminDraftOrders = async (createOrder: CreateOrder, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminDraftOrdersResponse> => {
 
   return apiMutator<postAdminDraftOrdersResponse>(getPostAdminDraftOrdersUrl(),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createOrder)
   }
 );}
 
 
 export type deleteAdminDraftOrdersByIdResponse200 = {
-  data: void
+  data: OrderView
   status: 200
 }
 
@@ -1111,7 +1179,7 @@ export const deleteAdminDraftOrdersById = async (id: string, options?: Parameter
 
 
 export type getAdminDraftOrdersByIdResponse200 = {
-  data: void
+  data: OrderView
   status: 200
 }
 
@@ -1163,7 +1231,7 @@ export const getAdminDraftOrdersById = async (id: string, options?: Parameters<t
 
 
 export type postAdminDraftOrdersByIdConvertToOrderResponse200 = {
-  data: void
+  data: OrderView
   status: 200
 }
 
@@ -1202,20 +1270,21 @@ export const getPostAdminDraftOrdersByIdConvertToOrderUrl = (id: string,) => {
 /**
  * @summary Send a draft out to be paid
  */
-export const postAdminDraftOrdersByIdConvertToOrder = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminDraftOrdersByIdConvertToOrderResponse> => {
+export const postAdminDraftOrdersByIdConvertToOrder = async (id: string,
+    convertDraft: ConvertDraft, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminDraftOrdersByIdConvertToOrderResponse> => {
 
   return apiMutator<postAdminDraftOrdersByIdConvertToOrderResponse>(getPostAdminDraftOrdersByIdConvertToOrderUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(convertDraft)
   }
 );}
 
 
 export type deleteAdminDraftOrdersByIdEditResponse200 = {
-  data: void
+  data: ChangeView
   status: 200
 }
 
@@ -1254,20 +1323,21 @@ export const getDeleteAdminDraftOrdersByIdEditUrl = (id: string,) => {
 /**
  * @summary Decline the edit open on a draft
  */
-export const deleteAdminDraftOrdersByIdEdit = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<deleteAdminDraftOrdersByIdEditResponse> => {
+export const deleteAdminDraftOrdersByIdEdit = async (id: string,
+    declineChange: DeclineChange, options?: Parameters<typeof apiMutator>[1]): Promise<deleteAdminDraftOrdersByIdEditResponse> => {
 
   return apiMutator<deleteAdminDraftOrdersByIdEditResponse>(getDeleteAdminDraftOrdersByIdEditUrl(id),
   {
     ...options,
-    method: 'DELETE'
-
-
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(declineChange)
   }
 );}
 
 
 export type getAdminDraftOrdersByIdEditResponse200 = {
-  data: void
+  data: ChangeDetailView
   status: 200
 }
 
@@ -1319,7 +1389,7 @@ export const getAdminDraftOrdersByIdEdit = async (id: string, options?: Paramete
 
 
 export type postAdminDraftOrdersByIdEditResponse200 = {
-  data: void
+  data: ChangeView
   status: 200
 }
 
@@ -1358,20 +1428,21 @@ export const getPostAdminDraftOrdersByIdEditUrl = (id: string,) => {
 /**
  * @summary Open an edit on a draft
  */
-export const postAdminDraftOrdersByIdEdit = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminDraftOrdersByIdEditResponse> => {
+export const postAdminDraftOrdersByIdEdit = async (id: string,
+    openEdit: OpenEdit, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminDraftOrdersByIdEditResponse> => {
 
   return apiMutator<postAdminDraftOrdersByIdEditResponse>(getPostAdminDraftOrdersByIdEditUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(openEdit)
   }
 );}
 
 
 export type postAdminDraftOrdersByIdEditConfirmResponse200 = {
-  data: void
+  data: OrderView
   status: 200
 }
 
@@ -1423,7 +1494,7 @@ export const postAdminDraftOrdersByIdEditConfirm = async (id: string, options?: 
 
 
 export type postAdminDraftOrdersByIdEditItemsResponse200 = {
-  data: void
+  data: ChangeActionView
   status: 200
 }
 
@@ -1462,14 +1533,15 @@ export const getPostAdminDraftOrdersByIdEditItemsUrl = (id: string,) => {
 /**
  * @summary Add, change or remove a line on a draft's edit
  */
-export const postAdminDraftOrdersByIdEditItems = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminDraftOrdersByIdEditItemsResponse> => {
+export const postAdminDraftOrdersByIdEditItems = async (id: string,
+    addItemAction: AddItemAction, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminDraftOrdersByIdEditItemsResponse> => {
 
   return apiMutator<postAdminDraftOrdersByIdEditItemsResponse>(getPostAdminDraftOrdersByIdEditItemsUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(addItemAction)
   }
 );}
 
@@ -1529,7 +1601,7 @@ export const deleteAdminDraftOrdersByIdEditItemsByActionId = async (id: string,
 
 
 export type postAdminDraftOrdersByIdEditShippingMethodsResponse200 = {
-  data: void
+  data: ChangeActionView
   status: 200
 }
 
@@ -1568,14 +1640,15 @@ export const getPostAdminDraftOrdersByIdEditShippingMethodsUrl = (id: string,) =
 /**
  * @summary Add shipping to a draft's edit
  */
-export const postAdminDraftOrdersByIdEditShippingMethods = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminDraftOrdersByIdEditShippingMethodsResponse> => {
+export const postAdminDraftOrdersByIdEditShippingMethods = async (id: string,
+    addShippingAction: AddShippingAction, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminDraftOrdersByIdEditShippingMethodsResponse> => {
 
   return apiMutator<postAdminDraftOrdersByIdEditShippingMethodsResponse>(getPostAdminDraftOrdersByIdEditShippingMethodsUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(addShippingAction)
   }
 );}
 
@@ -1635,7 +1708,7 @@ export const deleteAdminDraftOrdersByIdEditShippingMethodsByActionId = async (id
 
 
 export type getAdminExchangesResponse200 = {
-  data: void
+  data: GetAdminExchanges200
   status: 200
 }
 
@@ -1687,7 +1760,7 @@ export const getAdminExchanges = async ( options?: Parameters<typeof apiMutator>
 
 
 export type postAdminExchangesResponse200 = {
-  data: void
+  data: ExchangeView
   status: 200
 }
 
@@ -1726,20 +1799,20 @@ export const getPostAdminExchangesUrl = () => {
 /**
  * @summary Request an exchange
  */
-export const postAdminExchanges = async ( options?: Parameters<typeof apiMutator>[1]): Promise<postAdminExchangesResponse> => {
+export const postAdminExchanges = async (requestExchange: RequestExchange, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminExchangesResponse> => {
 
   return apiMutator<postAdminExchangesResponse>(getPostAdminExchangesUrl(),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(requestExchange)
   }
 );}
 
 
 export type getAdminExchangesByIdResponse200 = {
-  data: void
+  data: ExchangeView
   status: 200
 }
 
@@ -1791,7 +1864,7 @@ export const getAdminExchangesById = async (id: string, options?: Parameters<typ
 
 
 export type postAdminExchangesByIdCancelResponse200 = {
-  data: void
+  data: ExchangeView
   status: 200
 }
 
@@ -1843,7 +1916,7 @@ export const postAdminExchangesByIdCancel = async (id: string, options?: Paramet
 
 
 export type postAdminExchangesByIdInboundItemsResponse200 = {
-  data: void
+  data: ChangeActionView
   status: 200
 }
 
@@ -1882,14 +1955,15 @@ export const getPostAdminExchangesByIdInboundItemsUrl = (id: string,) => {
 /**
  * @summary Add something coming back
  */
-export const postAdminExchangesByIdInboundItems = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminExchangesByIdInboundItemsResponse> => {
+export const postAdminExchangesByIdInboundItems = async (id: string,
+    lineQuantity: LineQuantity, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminExchangesByIdInboundItemsResponse> => {
 
   return apiMutator<postAdminExchangesByIdInboundItemsResponse>(getPostAdminExchangesByIdInboundItemsUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(lineQuantity)
   }
 );}
 
@@ -1949,7 +2023,7 @@ export const deleteAdminExchangesByIdInboundItemsByActionId = async (id: string,
 
 
 export type postAdminExchangesByIdInboundShippingMethodResponse200 = {
-  data: void
+  data: ChangeActionView
   status: 200
 }
 
@@ -1988,20 +2062,21 @@ export const getPostAdminExchangesByIdInboundShippingMethodUrl = (id: string,) =
 /**
  * @summary Charge the carriage on what comes back
  */
-export const postAdminExchangesByIdInboundShippingMethod = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminExchangesByIdInboundShippingMethodResponse> => {
+export const postAdminExchangesByIdInboundShippingMethod = async (id: string,
+    addShippingAction: AddShippingAction, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminExchangesByIdInboundShippingMethodResponse> => {
 
   return apiMutator<postAdminExchangesByIdInboundShippingMethodResponse>(getPostAdminExchangesByIdInboundShippingMethodUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(addShippingAction)
   }
 );}
 
 
 export type getAdminExchangesByIdItemsResponse200 = {
-  data: void
+  data: ChangeDetailView
   status: 200
 }
 
@@ -2053,7 +2128,7 @@ export const getAdminExchangesByIdItems = async (id: string, options?: Parameter
 
 
 export type postAdminExchangesByIdOutboundItemsResponse200 = {
-  data: void
+  data: ChangeActionView
   status: 200
 }
 
@@ -2092,14 +2167,15 @@ export const getPostAdminExchangesByIdOutboundItemsUrl = (id: string,) => {
 /**
  * @summary Add something going out instead
  */
-export const postAdminExchangesByIdOutboundItems = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminExchangesByIdOutboundItemsResponse> => {
+export const postAdminExchangesByIdOutboundItems = async (id: string,
+    lineQuantity: LineQuantity, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminExchangesByIdOutboundItemsResponse> => {
 
   return apiMutator<postAdminExchangesByIdOutboundItemsResponse>(getPostAdminExchangesByIdOutboundItemsUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(lineQuantity)
   }
 );}
 
@@ -2159,7 +2235,7 @@ export const deleteAdminExchangesByIdOutboundItemsByActionId = async (id: string
 
 
 export type postAdminExchangesByIdOutboundShippingMethodResponse200 = {
-  data: void
+  data: ChangeActionView
   status: 200
 }
 
@@ -2198,20 +2274,21 @@ export const getPostAdminExchangesByIdOutboundShippingMethodUrl = (id: string,) 
 /**
  * @summary Charge the carriage on what goes out
  */
-export const postAdminExchangesByIdOutboundShippingMethod = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminExchangesByIdOutboundShippingMethodResponse> => {
+export const postAdminExchangesByIdOutboundShippingMethod = async (id: string,
+    addShippingAction: AddShippingAction, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminExchangesByIdOutboundShippingMethodResponse> => {
 
   return apiMutator<postAdminExchangesByIdOutboundShippingMethodResponse>(getPostAdminExchangesByIdOutboundShippingMethodUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(addShippingAction)
   }
 );}
 
 
 export type postAdminExchangesByIdRequestResponse200 = {
-  data: void
+  data: ExchangeView
   status: 200
 }
 
@@ -2263,7 +2340,7 @@ export const postAdminExchangesByIdRequest = async (id: string, options?: Parame
 
 
 export type patchAdminInvoicesByIdResponse200 = {
-  data: void
+  data: InvoiceView
   status: 200
 }
 
@@ -2302,20 +2379,21 @@ export const getPatchAdminInvoicesByIdUrl = (id: string,) => {
 /**
  * @summary Write down what the authority answered
  */
-export const patchAdminInvoicesById = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<patchAdminInvoicesByIdResponse> => {
+export const patchAdminInvoicesById = async (id: string,
+    setInvoiceStatus: SetInvoiceStatus, options?: Parameters<typeof apiMutator>[1]): Promise<patchAdminInvoicesByIdResponse> => {
 
   return apiMutator<patchAdminInvoicesByIdResponse>(getPatchAdminInvoicesByIdUrl(id),
   {
     ...options,
-    method: 'PATCH'
-
-
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(setInvoiceStatus)
   }
 );}
 
 
 export type getAdminOrderChangesByIdResponse200 = {
-  data: void
+  data: ChangeDetailView
   status: 200
 }
 
@@ -2367,7 +2445,7 @@ export const getAdminOrderChangesById = async (id: string, options?: Parameters<
 
 
 export type deleteAdminOrderEditsByIdResponse200 = {
-  data: void
+  data: ChangeView
   status: 200
 }
 
@@ -2406,20 +2484,21 @@ export const getDeleteAdminOrderEditsByIdUrl = (id: string,) => {
 /**
  * @summary Decline an edit
  */
-export const deleteAdminOrderEditsById = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<deleteAdminOrderEditsByIdResponse> => {
+export const deleteAdminOrderEditsById = async (id: string,
+    declineChange: DeclineChange, options?: Parameters<typeof apiMutator>[1]): Promise<deleteAdminOrderEditsByIdResponse> => {
 
   return apiMutator<deleteAdminOrderEditsByIdResponse>(getDeleteAdminOrderEditsByIdUrl(id),
   {
     ...options,
-    method: 'DELETE'
-
-
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(declineChange)
   }
 );}
 
 
 export type getAdminOrderEditsByIdResponse200 = {
-  data: void
+  data: ChangeDetailView
   status: 200
 }
 
@@ -2471,7 +2550,7 @@ export const getAdminOrderEditsById = async (id: string, options?: Parameters<ty
 
 
 export type postAdminOrderEditsByIdConfirmResponse200 = {
-  data: void
+  data: OrderView
   status: 200
 }
 
@@ -2523,7 +2602,7 @@ export const postAdminOrderEditsByIdConfirm = async (id: string, options?: Param
 
 
 export type postAdminOrderEditsByIdItemsResponse200 = {
-  data: void
+  data: ChangeActionView
   status: 200
 }
 
@@ -2562,14 +2641,15 @@ export const getPostAdminOrderEditsByIdItemsUrl = (id: string,) => {
 /**
  * @summary Add, change or remove a line on an edit
  */
-export const postAdminOrderEditsByIdItems = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminOrderEditsByIdItemsResponse> => {
+export const postAdminOrderEditsByIdItems = async (id: string,
+    addItemAction: AddItemAction, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminOrderEditsByIdItemsResponse> => {
 
   return apiMutator<postAdminOrderEditsByIdItemsResponse>(getPostAdminOrderEditsByIdItemsUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(addItemAction)
   }
 );}
 
@@ -2629,7 +2709,7 @@ export const deleteAdminOrderEditsByIdItemsByActionId = async (id: string,
 
 
 export type postAdminOrderEditsByIdShippingMethodResponse200 = {
-  data: void
+  data: ChangeActionView
   status: 200
 }
 
@@ -2668,14 +2748,15 @@ export const getPostAdminOrderEditsByIdShippingMethodUrl = (id: string,) => {
 /**
  * @summary Add shipping to an edit
  */
-export const postAdminOrderEditsByIdShippingMethod = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminOrderEditsByIdShippingMethodResponse> => {
+export const postAdminOrderEditsByIdShippingMethod = async (id: string,
+    addShippingAction: AddShippingAction, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminOrderEditsByIdShippingMethodResponse> => {
 
   return apiMutator<postAdminOrderEditsByIdShippingMethodResponse>(getPostAdminOrderEditsByIdShippingMethodUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(addShippingAction)
   }
 );}
 
@@ -2787,7 +2868,7 @@ export const getAdminOrders = async ( options?: Parameters<typeof apiMutator>[1]
 
 
 export type postAdminOrdersResponse200 = {
-  data: void
+  data: OrderView
   status: 200
 }
 
@@ -2826,14 +2907,14 @@ export const getPostAdminOrdersUrl = () => {
 /**
  * @summary Create an order
  */
-export const postAdminOrders = async ( options?: Parameters<typeof apiMutator>[1]): Promise<postAdminOrdersResponse> => {
+export const postAdminOrders = async (createOrder: CreateOrder, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminOrdersResponse> => {
 
   return apiMutator<postAdminOrdersResponse>(getPostAdminOrdersUrl(),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createOrder)
   }
 );}
 
@@ -2891,7 +2972,7 @@ export const getAdminOrdersById = async (id: string, options?: Parameters<typeof
 
 
 export type getAdminOrdersByIdAgreementsResponse200 = {
-  data: void
+  data: OrderAgreementView[]
   status: 200
 }
 
@@ -2943,7 +3024,7 @@ export const getAdminOrdersByIdAgreements = async (id: string, options?: Paramet
 
 
 export type getAdminOrdersByIdAgreementsByKindResponse200 = {
-  data: void
+  data: AgreementVersionView
   status: 200
 }
 
@@ -2997,7 +3078,7 @@ export const getAdminOrdersByIdAgreementsByKind = async (id: string,
 
 
 export type postAdminOrdersByIdArchiveResponse200 = {
-  data: void
+  data: OrderView
   status: 200
 }
 
@@ -3049,7 +3130,7 @@ export const postAdminOrdersByIdArchive = async (id: string, options?: Parameter
 
 
 export type patchAdminOrdersByIdBillingAddressResponse200 = {
-  data: void
+  data: OrderView
   status: 200
 }
 
@@ -3088,20 +3169,21 @@ export const getPatchAdminOrdersByIdBillingAddressUrl = (id: string,) => {
 /**
  * @summary Correct the order's billing address
  */
-export const patchAdminOrdersByIdBillingAddress = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<patchAdminOrdersByIdBillingAddressResponse> => {
+export const patchAdminOrdersByIdBillingAddress = async (id: string,
+    addressIn: AddressIn, options?: Parameters<typeof apiMutator>[1]): Promise<patchAdminOrdersByIdBillingAddressResponse> => {
 
   return apiMutator<patchAdminOrdersByIdBillingAddressResponse>(getPatchAdminOrdersByIdBillingAddressUrl(id),
   {
     ...options,
-    method: 'PATCH'
-
-
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(addressIn)
   }
 );}
 
 
 export type postAdminOrdersByIdCancelResponse200 = {
-  data: void
+  data: OrderView
   status: 200
 }
 
@@ -3153,7 +3235,7 @@ export const postAdminOrdersByIdCancel = async (id: string, options?: Parameters
 
 
 export type getAdminOrdersByIdChangesResponse200 = {
-  data: void
+  data: GetAdminOrdersByIdChanges200
   status: 200
 }
 
@@ -3205,7 +3287,7 @@ export const getAdminOrdersByIdChanges = async (id: string, options?: Parameters
 
 
 export type postAdminOrdersByIdCompleteResponse200 = {
-  data: void
+  data: OrderView
   status: 200
 }
 
@@ -3257,7 +3339,7 @@ export const postAdminOrdersByIdComplete = async (id: string, options?: Paramete
 
 
 export type patchAdminOrdersByIdEmailResponse200 = {
-  data: void
+  data: OrderView
   status: 200
 }
 
@@ -3296,20 +3378,21 @@ export const getPatchAdminOrdersByIdEmailUrl = (id: string,) => {
 /**
  * @summary Correct the order's e-mail address
  */
-export const patchAdminOrdersByIdEmail = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<patchAdminOrdersByIdEmailResponse> => {
+export const patchAdminOrdersByIdEmail = async (id: string,
+    updateEmail: UpdateEmail, options?: Parameters<typeof apiMutator>[1]): Promise<patchAdminOrdersByIdEmailResponse> => {
 
   return apiMutator<patchAdminOrdersByIdEmailResponse>(getPatchAdminOrdersByIdEmailUrl(id),
   {
     ...options,
-    method: 'PATCH'
-
-
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateEmail)
   }
 );}
 
 
 export type getAdminOrdersByIdInvoicesResponse200 = {
-  data: void
+  data: InvoiceView[]
   status: 200
 }
 
@@ -3361,7 +3444,7 @@ export const getAdminOrdersByIdInvoices = async (id: string, options?: Parameter
 
 
 export type postAdminOrdersByIdInvoicesResponse200 = {
-  data: void
+  data: InvoiceView
   status: 200
 }
 
@@ -3400,20 +3483,21 @@ export const getPostAdminOrdersByIdInvoicesUrl = (id: string,) => {
 /**
  * @summary Record that an invoice was issued
  */
-export const postAdminOrdersByIdInvoices = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminOrdersByIdInvoicesResponse> => {
+export const postAdminOrdersByIdInvoices = async (id: string,
+    recordInvoice: RecordInvoice, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminOrdersByIdInvoicesResponse> => {
 
   return apiMutator<postAdminOrdersByIdInvoicesResponse>(getPostAdminOrdersByIdInvoicesUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(recordInvoice)
   }
 );}
 
 
 export type postAdminOrdersByIdInvoicesByInvoiceIdCreditNoteResponse200 = {
-  data: void
+  data: InvoiceView
   status: 200
 }
 
@@ -3454,20 +3538,21 @@ export const getPostAdminOrdersByIdInvoicesByInvoiceIdCreditNoteUrl = (id: strin
  * @summary Record the document that reverses an invoice
  */
 export const postAdminOrdersByIdInvoicesByInvoiceIdCreditNote = async (id: string,
-    invoiceId: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminOrdersByIdInvoicesByInvoiceIdCreditNoteResponse> => {
+    invoiceId: string,
+    recordInvoice: RecordInvoice, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminOrdersByIdInvoicesByInvoiceIdCreditNoteResponse> => {
 
   return apiMutator<postAdminOrdersByIdInvoicesByInvoiceIdCreditNoteResponse>(getPostAdminOrdersByIdInvoicesByInvoiceIdCreditNoteUrl(id,invoiceId),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(recordInvoice)
   }
 );}
 
 
 export type getAdminOrdersByIdItemsResponse200 = {
-  data: void
+  data: OrderItemView[]
   status: 200
 }
 
@@ -3519,7 +3604,7 @@ export const getAdminOrdersByIdItems = async (id: string, options?: Parameters<t
 
 
 export type getAdminOrdersByIdLedgerResponse200 = {
-  data: void
+  data: LedgerView
   status: 200
 }
 
@@ -3571,7 +3656,7 @@ export const getAdminOrdersByIdLedger = async (id: string, options?: Parameters<
 
 
 export type getAdminOrdersByIdLineItemsResponse200 = {
-  data: void
+  data: LineItemView[]
   status: 200
 }
 
@@ -3623,7 +3708,7 @@ export const getAdminOrdersByIdLineItems = async (id: string, options?: Paramete
 
 
 export type getAdminOrdersByIdOrderEditsResponse200 = {
-  data: void
+  data: GetAdminOrdersByIdOrderEdits200
   status: 200
 }
 
@@ -3675,7 +3760,7 @@ export const getAdminOrdersByIdOrderEdits = async (id: string, options?: Paramet
 
 
 export type postAdminOrdersByIdOrderEditsResponse200 = {
-  data: void
+  data: ChangeView
   status: 200
 }
 
@@ -3714,20 +3799,21 @@ export const getPostAdminOrdersByIdOrderEditsUrl = (id: string,) => {
 /**
  * @summary Open an edit on an order
  */
-export const postAdminOrdersByIdOrderEdits = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminOrdersByIdOrderEditsResponse> => {
+export const postAdminOrdersByIdOrderEdits = async (id: string,
+    openEdit: OpenEdit, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminOrdersByIdOrderEditsResponse> => {
 
   return apiMutator<postAdminOrdersByIdOrderEditsResponse>(getPostAdminOrdersByIdOrderEditsUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(openEdit)
   }
 );}
 
 
 export type postAdminOrdersByIdPaymentCollectionResponse200 = {
-  data: void
+  data: OrderView
   status: 200
 }
 
@@ -3766,20 +3852,21 @@ export const getPostAdminOrdersByIdPaymentCollectionUrl = (id: string,) => {
 /**
  * @summary Put a payment collection under a placed order
  */
-export const postAdminOrdersByIdPaymentCollection = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminOrdersByIdPaymentCollectionResponse> => {
+export const postAdminOrdersByIdPaymentCollection = async (id: string,
+    attachPaymentCollection: AttachPaymentCollection, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminOrdersByIdPaymentCollectionResponse> => {
 
   return apiMutator<postAdminOrdersByIdPaymentCollectionResponse>(getPostAdminOrdersByIdPaymentCollectionUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(attachPaymentCollection)
   }
 );}
 
 
 export type getAdminOrdersByIdReturnsResponse200 = {
-  data: void
+  data: GetAdminOrdersByIdReturns200
   status: 200
 }
 
@@ -3831,7 +3918,7 @@ export const getAdminOrdersByIdReturns = async (id: string, options?: Parameters
 
 
 export type patchAdminOrdersByIdShippingAddressResponse200 = {
-  data: void
+  data: OrderView
   status: 200
 }
 
@@ -3870,20 +3957,21 @@ export const getPatchAdminOrdersByIdShippingAddressUrl = (id: string,) => {
 /**
  * @summary Correct the address a parcel is going to
  */
-export const patchAdminOrdersByIdShippingAddress = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<patchAdminOrdersByIdShippingAddressResponse> => {
+export const patchAdminOrdersByIdShippingAddress = async (id: string,
+    addressIn: AddressIn, options?: Parameters<typeof apiMutator>[1]): Promise<patchAdminOrdersByIdShippingAddressResponse> => {
 
   return apiMutator<patchAdminOrdersByIdShippingAddressResponse>(getPatchAdminOrdersByIdShippingAddressUrl(id),
   {
     ...options,
-    method: 'PATCH'
-
-
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(addressIn)
   }
 );}
 
 
 export type getAdminOrdersByIdShippingMethodsResponse200 = {
-  data: void
+  data: ShippingMethodView[]
   status: 200
 }
 
@@ -3935,7 +4023,7 @@ export const getAdminOrdersByIdShippingMethods = async (id: string, options?: Pa
 
 
 export type getAdminOrdersByIdSummaryResponse200 = {
-  data: void
+  data: SummaryView
   status: 200
 }
 
@@ -3987,7 +4075,7 @@ export const getAdminOrdersByIdSummary = async (id: string, options?: Parameters
 
 
 export type getAdminOrdersByIdTotalsResponse200 = {
-  data: void
+  data: TotalsView
   status: 200
 }
 
@@ -4039,7 +4127,7 @@ export const getAdminOrdersByIdTotals = async (id: string, options?: Parameters<
 
 
 export type getAdminOrdersByIdTransactionsResponse200 = {
-  data: void
+  data: TransactionView[]
   status: 200
 }
 
@@ -4091,7 +4179,7 @@ export const getAdminOrdersByIdTransactions = async (id: string, options?: Param
 
 
 export type postAdminOrdersByIdTransactionsResponse200 = {
-  data: void
+  data: TransactionView
   status: 200
 }
 
@@ -4130,20 +4218,21 @@ export const getPostAdminOrdersByIdTransactionsUrl = (id: string,) => {
 /**
  * @summary Record money that moved outside tezgah
  */
-export const postAdminOrdersByIdTransactions = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminOrdersByIdTransactionsResponse> => {
+export const postAdminOrdersByIdTransactions = async (id: string,
+    recordTransaction: RecordTransaction, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminOrdersByIdTransactionsResponse> => {
 
   return apiMutator<postAdminOrdersByIdTransactionsResponse>(getPostAdminOrdersByIdTransactionsUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(recordTransaction)
   }
 );}
 
 
 export type getAdminOrdersByIdWithdrawalResponse200 = {
-  data: void
+  data: WithdrawalView[]
   status: 200
 }
 
@@ -4195,7 +4284,7 @@ export const getAdminOrdersByIdWithdrawal = async (id: string, options?: Paramet
 
 
 export type getAdminReturnReasonsResponse200 = {
-  data: void
+  data: GetAdminReturnReasons200
   status: 200
 }
 
@@ -4247,7 +4336,7 @@ export const getAdminReturnReasons = async ( options?: Parameters<typeof apiMuta
 
 
 export type postAdminReturnReasonsResponse200 = {
-  data: void
+  data: ReasonView
   status: 200
 }
 
@@ -4286,20 +4375,20 @@ export const getPostAdminReturnReasonsUrl = () => {
 /**
  * @summary Add a return reason
  */
-export const postAdminReturnReasons = async ( options?: Parameters<typeof apiMutator>[1]): Promise<postAdminReturnReasonsResponse> => {
+export const postAdminReturnReasons = async (newReason: NewReason, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminReturnReasonsResponse> => {
 
   return apiMutator<postAdminReturnReasonsResponse>(getPostAdminReturnReasonsUrl(),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(newReason)
   }
 );}
 
 
 export type getAdminReturnReasonsByIdTranslationsResponse200 = {
-  data: void
+  data: ReturnReasonTranslationView[]
   status: 200
 }
 
@@ -4351,7 +4440,7 @@ export const getAdminReturnReasonsByIdTranslations = async (id: string, options?
 
 
 export type postAdminReturnReasonsByIdTranslationsResponse200 = {
-  data: void
+  data: ReturnReasonTranslationView
   status: 200
 }
 
@@ -4390,14 +4479,15 @@ export const getPostAdminReturnReasonsByIdTranslationsUrl = (id: string,) => {
 /**
  * @summary Write a return reason's translation into one locale
  */
-export const postAdminReturnReasonsByIdTranslations = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminReturnReasonsByIdTranslationsResponse> => {
+export const postAdminReturnReasonsByIdTranslations = async (id: string,
+    putReturnReasonTranslation: PutReturnReasonTranslation, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminReturnReasonsByIdTranslationsResponse> => {
 
   return apiMutator<postAdminReturnReasonsByIdTranslationsResponse>(getPostAdminReturnReasonsByIdTranslationsUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(putReturnReasonTranslation)
   }
 );}
 
@@ -4457,7 +4547,7 @@ export const deleteAdminReturnReasonsByIdTranslationsByLocale = async (id: strin
 
 
 export type getAdminReturnReasonsByIdTranslationsByLocaleResponse200 = {
-  data: void
+  data: LocalisedReturnReasonView
   status: 200
 }
 
@@ -4511,7 +4601,7 @@ export const getAdminReturnReasonsByIdTranslationsByLocale = async (id: string,
 
 
 export type getAdminReturnsResponse200 = {
-  data: void
+  data: GetAdminReturns200
   status: 200
 }
 
@@ -4563,7 +4653,7 @@ export const getAdminReturns = async ( options?: Parameters<typeof apiMutator>[1
 
 
 export type postAdminReturnsResponse200 = {
-  data: void
+  data: ReturnView
   status: 200
 }
 
@@ -4602,20 +4692,20 @@ export const getPostAdminReturnsUrl = () => {
 /**
  * @summary Request a return
  */
-export const postAdminReturns = async ( options?: Parameters<typeof apiMutator>[1]): Promise<postAdminReturnsResponse> => {
+export const postAdminReturns = async (requestReturn: RequestReturn, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminReturnsResponse> => {
 
   return apiMutator<postAdminReturnsResponse>(getPostAdminReturnsUrl(),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(requestReturn)
   }
 );}
 
 
 export type getAdminReturnsByIdResponse200 = {
-  data: void
+  data: ReturnView
   status: 200
 }
 
@@ -4667,7 +4757,7 @@ export const getAdminReturnsById = async (id: string, options?: Parameters<typeo
 
 
 export type postAdminReturnsByIdCancelResponse200 = {
-  data: void
+  data: ReturnView
   status: 200
 }
 
@@ -4719,7 +4809,7 @@ export const postAdminReturnsByIdCancel = async (id: string, options?: Parameter
 
 
 export type postAdminReturnsByIdDismissItemsResponse200 = {
-  data: void
+  data: ReturnView
   status: 200
 }
 
@@ -4758,20 +4848,21 @@ export const getPostAdminReturnsByIdDismissItemsUrl = (id: string,) => {
 /**
  * @summary Received and not taken; no stock moves
  */
-export const postAdminReturnsByIdDismissItems = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminReturnsByIdDismissItemsResponse> => {
+export const postAdminReturnsByIdDismissItems = async (id: string,
+    receiveReturn: ReceiveReturn, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminReturnsByIdDismissItemsResponse> => {
 
   return apiMutator<postAdminReturnsByIdDismissItemsResponse>(getPostAdminReturnsByIdDismissItemsUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(receiveReturn)
   }
 );}
 
 
 export type getAdminReturnsByIdItemsResponse200 = {
-  data: void
+  data: ReturnItemView[]
   status: 200
 }
 
@@ -4823,7 +4914,7 @@ export const getAdminReturnsByIdItems = async (id: string, options?: Parameters<
 
 
 export type postAdminReturnsByIdReceiveResponse200 = {
-  data: void
+  data: ReturnView
   status: 200
 }
 
@@ -4862,20 +4953,21 @@ export const getPostAdminReturnsByIdReceiveUrl = (id: string,) => {
 /**
  * @summary The parcel arrived; put what is sellable back
  */
-export const postAdminReturnsByIdReceive = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminReturnsByIdReceiveResponse> => {
+export const postAdminReturnsByIdReceive = async (id: string,
+    receiveReturn: ReceiveReturn, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminReturnsByIdReceiveResponse> => {
 
   return apiMutator<postAdminReturnsByIdReceiveResponse>(getPostAdminReturnsByIdReceiveUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(receiveReturn)
   }
 );}
 
 
 export type postAdminReturnsByIdReceiveItemsResponse200 = {
-  data: void
+  data: ChangeActionView
   status: 200
 }
 
@@ -4914,14 +5006,15 @@ export const getPostAdminReturnsByIdReceiveItemsUrl = (id: string,) => {
 /**
  * @summary Record a line as received
  */
-export const postAdminReturnsByIdReceiveItems = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminReturnsByIdReceiveItemsResponse> => {
+export const postAdminReturnsByIdReceiveItems = async (id: string,
+    lineQuantity: LineQuantity, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminReturnsByIdReceiveItemsResponse> => {
 
   return apiMutator<postAdminReturnsByIdReceiveItemsResponse>(getPostAdminReturnsByIdReceiveItemsUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(lineQuantity)
   }
 );}
 
@@ -4981,7 +5074,7 @@ export const deleteAdminReturnsByIdReceiveItemsByActionId = async (id: string,
 
 
 export type postAdminReturnsByIdRequestResponse200 = {
-  data: void
+  data: ReturnView
   status: 200
 }
 
@@ -5033,7 +5126,7 @@ export const postAdminReturnsByIdRequest = async (id: string, options?: Paramete
 
 
 export type postAdminReturnsByIdRequestItemsResponse200 = {
-  data: void
+  data: ChangeActionView
   status: 200
 }
 
@@ -5072,14 +5165,15 @@ export const getPostAdminReturnsByIdRequestItemsUrl = (id: string,) => {
 /**
  * @summary Add a line to the return's open change
  */
-export const postAdminReturnsByIdRequestItems = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminReturnsByIdRequestItemsResponse> => {
+export const postAdminReturnsByIdRequestItems = async (id: string,
+    lineQuantity: LineQuantity, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminReturnsByIdRequestItemsResponse> => {
 
   return apiMutator<postAdminReturnsByIdRequestItemsResponse>(getPostAdminReturnsByIdRequestItemsUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(lineQuantity)
   }
 );}
 
@@ -5139,7 +5233,7 @@ export const deleteAdminReturnsByIdRequestItemsByActionId = async (id: string,
 
 
 export type postAdminReturnsByIdShippingMethodResponse200 = {
-  data: void
+  data: ChangeActionView
   status: 200
 }
 
@@ -5178,14 +5272,15 @@ export const getPostAdminReturnsByIdShippingMethodUrl = (id: string,) => {
 /**
  * @summary Charge the return's carriage
  */
-export const postAdminReturnsByIdShippingMethod = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminReturnsByIdShippingMethodResponse> => {
+export const postAdminReturnsByIdShippingMethod = async (id: string,
+    addShippingAction: AddShippingAction, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminReturnsByIdShippingMethodResponse> => {
 
   return apiMutator<postAdminReturnsByIdShippingMethodResponse>(getPostAdminReturnsByIdShippingMethodUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(addShippingAction)
   }
 );}
 
@@ -5245,7 +5340,7 @@ export const deleteAdminReturnsByIdShippingMethodByActionId = async (id: string,
 
 
 export type postAdminReturnsByIdWithdrawalResponse200 = {
-  data: void
+  data: WithdrawalNoticeView
   status: 200
 }
 
@@ -5297,7 +5392,7 @@ export const postAdminReturnsByIdWithdrawal = async (id: string, options?: Param
 
 
 export type getStoreOrdersResponse200 = {
-  data: void
+  data: GetStoreOrders200
   status: 200
 }
 
@@ -5349,7 +5444,7 @@ export const getStoreOrders = async ( options?: Parameters<typeof apiMutator>[1]
 
 
 export type getStoreOrdersByIdResponse200 = {
-  data: void
+  data: StoreOrderView
   status: 200
 }
 
@@ -5401,7 +5496,7 @@ export const getStoreOrdersById = async (id: string, options?: Parameters<typeof
 
 
 export type postStoreOrdersByIdAgreementsResponse200 = {
-  data: void
+  data: OrderAgreementView
   status: 200
 }
 
@@ -5440,20 +5535,21 @@ export const getPostStoreOrdersByIdAgreementsUrl = (id: string,) => {
 /**
  * @summary Accept a document against my order
  */
-export const postStoreOrdersByIdAgreements = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postStoreOrdersByIdAgreementsResponse> => {
+export const postStoreOrdersByIdAgreements = async (id: string,
+    acceptAgreement: AcceptAgreement, options?: Parameters<typeof apiMutator>[1]): Promise<postStoreOrdersByIdAgreementsResponse> => {
 
   return apiMutator<postStoreOrdersByIdAgreementsResponse>(getPostStoreOrdersByIdAgreementsUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(acceptAgreement)
   }
 );}
 
 
 export type getStoreOrdersByIdAgreementsByKindResponse200 = {
-  data: void
+  data: AgreementVersionView
   status: 200
 }
 
@@ -5507,7 +5603,7 @@ export const getStoreOrdersByIdAgreementsByKind = async (id: string,
 
 
 export type postStoreOrdersByIdTransferAcceptResponse200 = {
-  data: void
+  data: StoreOrderView
   status: 200
 }
 
@@ -5546,20 +5642,21 @@ export const getPostStoreOrdersByIdTransferAcceptUrl = (id: string,) => {
 /**
  * @summary Take over an order one was offered
  */
-export const postStoreOrdersByIdTransferAccept = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postStoreOrdersByIdTransferAcceptResponse> => {
+export const postStoreOrdersByIdTransferAccept = async (id: string,
+    claimTransfer: ClaimTransfer, options?: Parameters<typeof apiMutator>[1]): Promise<postStoreOrdersByIdTransferAcceptResponse> => {
 
   return apiMutator<postStoreOrdersByIdTransferAcceptResponse>(getPostStoreOrdersByIdTransferAcceptUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(claimTransfer)
   }
 );}
 
 
 export type postStoreOrdersByIdTransferCancelResponse200 = {
-  data: void
+  data: TransferView
   status: 200
 }
 
@@ -5611,7 +5708,7 @@ export const postStoreOrdersByIdTransferCancel = async (id: string, options?: Pa
 
 
 export type postStoreOrdersByIdTransferDeclineResponse200 = {
-  data: void
+  data: TransferView
   status: 200
 }
 
@@ -5650,20 +5747,21 @@ export const getPostStoreOrdersByIdTransferDeclineUrl = (id: string,) => {
 /**
  * @summary Refuse an order one was offered
  */
-export const postStoreOrdersByIdTransferDecline = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postStoreOrdersByIdTransferDeclineResponse> => {
+export const postStoreOrdersByIdTransferDecline = async (id: string,
+    claimTransfer: ClaimTransfer, options?: Parameters<typeof apiMutator>[1]): Promise<postStoreOrdersByIdTransferDeclineResponse> => {
 
   return apiMutator<postStoreOrdersByIdTransferDeclineResponse>(getPostStoreOrdersByIdTransferDeclineUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(claimTransfer)
   }
 );}
 
 
 export type postStoreOrdersByIdTransferRequestResponse200 = {
-  data: void
+  data: RequestedTransferView
   status: 200
 }
 
@@ -5702,20 +5800,21 @@ export const getPostStoreOrdersByIdTransferRequestUrl = (id: string,) => {
 /**
  * @summary Offer one of one's own orders to somebody else
  */
-export const postStoreOrdersByIdTransferRequest = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postStoreOrdersByIdTransferRequestResponse> => {
+export const postStoreOrdersByIdTransferRequest = async (id: string,
+    requestTransfer: RequestTransfer, options?: Parameters<typeof apiMutator>[1]): Promise<postStoreOrdersByIdTransferRequestResponse> => {
 
   return apiMutator<postStoreOrdersByIdTransferRequestResponse>(getPostStoreOrdersByIdTransferRequestUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(requestTransfer)
   }
 );}
 
 
 export type getStoreReturnReasonsResponse200 = {
-  data: void
+  data: GetStoreReturnReasons200
   status: 200
 }
 
@@ -5767,7 +5866,7 @@ export const getStoreReturnReasons = async ( options?: Parameters<typeof apiMuta
 
 
 export type getStoreReturnReasonsByIdResponse200 = {
-  data: void
+  data: ReturnReasonView
   status: 200
 }
 
@@ -5819,7 +5918,7 @@ export const getStoreReturnReasonsById = async (id: string, options?: Parameters
 
 
 export type postStoreReturnsResponse200 = {
-  data: void
+  data: StoreReturnView
   status: 200
 }
 
@@ -5858,14 +5957,14 @@ export const getPostStoreReturnsUrl = () => {
 /**
  * @summary Ask to send something back
  */
-export const postStoreReturns = async ( options?: Parameters<typeof apiMutator>[1]): Promise<postStoreReturnsResponse> => {
+export const postStoreReturns = async (storeRequestReturn: StoreRequestReturn, options?: Parameters<typeof apiMutator>[1]): Promise<postStoreReturnsResponse> => {
 
   return apiMutator<postStoreReturnsResponse>(getPostStoreReturnsUrl(),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(storeRequestReturn)
   }
 );}
 

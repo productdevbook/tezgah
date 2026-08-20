@@ -1252,7 +1252,7 @@ impl From<store::SalesChannel> for SalesChannelView {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct CurrencyView {
     pub code: String,
     pub symbol: String,
@@ -1275,7 +1275,7 @@ fn default_true() -> bool {
     true
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateRegion {
     pub name: String,
@@ -1420,7 +1420,7 @@ pub async fn remove_region_country(
     store::remove_region_country(tx, ctx, &country_code).await
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateSalesChannel {
     pub name: String,
@@ -1499,7 +1499,7 @@ pub async fn delete_sales_channel(
 
 // -------------------------------------------------------- publishable keys
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct PublishableKeyView {
     pub id: PublishableKeyId,
     pub title: String,
@@ -1522,14 +1522,14 @@ impl From<store::PublishableKey> for PublishableKeyView {
 
 /// The only response the token appears in. It is not stored and cannot be
 /// fetched again.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct IssuedKeyView {
     #[serde(flatten)]
     pub key: PublishableKeyView,
     pub token: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreatePublishableKey {
     pub title: String,
@@ -1630,7 +1630,7 @@ pub async fn get_currency(tx: &mut Tx<'_>, ctx: &Ctx<'_>, code: &str) -> Result<
     ))
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateCurrency {
     pub code: String,

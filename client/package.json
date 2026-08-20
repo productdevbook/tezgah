@@ -11,7 +11,7 @@
     "typecheck": "bun run patch && tsc -b",
     "preview": "vite preview",
     "patch": "node patches/apply.mjs",
-    "generate": "orval && node scripts/generate-routes.mjs"
+    "generate": "orval && openapi-typescript ../tests/snapshots/openapi.json -o src/api/schema.d.ts && node scripts/generate-routes.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

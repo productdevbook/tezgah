@@ -27,7 +27,19 @@ export const GetAdminInventoryItemsResponse = zod.object({
 /**
  * @summary Create an inventory item
  */
-export const PostAdminInventoryItemsResponse = zod.unknown()
+export const PostAdminInventoryItemsBody = zod.object({
+  "requires_shipping": zod.boolean(),
+  "sku": zod.string().nullish(),
+  "title": zod.string().nullish()
+})
+
+export const PostAdminInventoryItemsResponse = zod.object({
+  "created_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one inventory item.'),
+  "requires_shipping": zod.boolean(),
+  "sku": zod.string().nullable(),
+  "title": zod.string().nullable()
+})
 
 /**
  * @summary Set the counted stock of many items at many locations
@@ -74,7 +86,22 @@ export const PostAdminInventoryItemsByIdLocationLevelsParams = zod.object({
   "id": zod.string()
 })
 
-export const PostAdminInventoryItemsByIdLocationLevelsResponse = zod.unknown()
+export const PostAdminInventoryItemsByIdLocationLevelsBody = zod.object({
+  "incoming_quantity": zod.int(),
+  "location_id": zod.uuid().describe('Identifies one stock location.'),
+  "stocked_quantity": zod.int()
+})
+
+export const PostAdminInventoryItemsByIdLocationLevelsResponse = zod.object({
+  "available_quantity": zod.int(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one inventory level.'),
+  "incoming_quantity": zod.int(),
+  "inventory_item_id": zod.uuid().describe('Identifies one inventory item.'),
+  "location_id": zod.uuid().describe('Identifies one stock location.'),
+  "reserved_quantity": zod.int(),
+  "stocked_quantity": zod.int()
+})
 
 /**
  * @summary The stock of one item at one location
@@ -255,7 +282,26 @@ export const GetAdminStockLocationsResponse = zod.unknown()
 /**
  * @summary Create a stock location
  */
-export const PostAdminStockLocationsResponse = zod.unknown()
+export const PostAdminStockLocationsBody = zod.object({
+  "address": zod.union([zod.object({
+  "address_1": zod.string(),
+  "address_2": zod.string().nullish(),
+  "city": zod.string().nullish(),
+  "company": zod.string().nullish(),
+  "country_code": zod.string(),
+  "phone": zod.string().nullish(),
+  "postal_code": zod.string().nullish(),
+  "province": zod.string().nullish()
+}).describe('Where a location is. The country is what makes it the origin of a supply,\nso it is required and the rest of the address is not.'),zod.null()]).optional(),
+  "name": zod.string()
+})
+
+export const PostAdminStockLocationsResponse = zod.object({
+  "address_id": zod.uuid().nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one stock location.'),
+  "name": zod.string()
+})
 
 /**
  * @summary Delete a stock location

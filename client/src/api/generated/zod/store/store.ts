@@ -16,7 +16,31 @@ export const GetAdminCurrenciesResponse = zod.unknown()
 /**
  * @summary Enable a currency for the shop
  */
-export const PostAdminCurrenciesResponse = zod.unknown()
+export const postAdminCurrenciesBodyExponentMin = -32768;
+export const postAdminCurrenciesBodyExponentMax = 32767;
+
+
+
+export const PostAdminCurrenciesBody = zod.object({
+  "code": zod.string(),
+  "exponent": zod.int().min(postAdminCurrenciesBodyExponentMin).max(postAdminCurrenciesBodyExponentMax),
+  "name": zod.string(),
+  "numeric_code": zod.string().nullish(),
+  "symbol": zod.string(),
+  "symbol_native": zod.string()
+})
+
+export const postAdminCurrenciesResponseExponentMin = -32768;
+export const postAdminCurrenciesResponseExponentMax = 32767;
+
+
+
+export const PostAdminCurrenciesResponse = zod.object({
+  "code": zod.string(),
+  "exponent": zod.int().min(postAdminCurrenciesResponseExponentMin).max(postAdminCurrenciesResponseExponentMax),
+  "name": zod.string(),
+  "symbol": zod.string()
+})
 
 /**
  * @summary Fetch one currency and its exponent
@@ -45,7 +69,18 @@ export const GetAdminPublishableApiKeysResponse = zod.unknown()
 /**
  * @summary Issue a storefront key, whose token is returned once
  */
-export const PostAdminPublishableApiKeysResponse = zod.unknown()
+export const PostAdminPublishableApiKeysBody = zod.object({
+  "title": zod.string()
+})
+
+export const PostAdminPublishableApiKeysResponse = zod.object({
+  "created_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one publishable key.'),
+  "last_used_at": zod.iso.datetime({"offset":true}).nullable(),
+  "revoked_at": zod.iso.datetime({"offset":true}).nullable(),
+  "title": zod.string(),
+  "token": zod.string()
+}).describe('The only response the token appears in. It is not stored and cannot be\nfetched again.')
 
 /**
  * @summary Fetch one storefront key
@@ -114,7 +149,27 @@ export const GetAdminRegionsResponse = zod.object({
 /**
  * @summary Create a region
  */
-export const PostAdminRegionsResponse = zod.unknown()
+export const postAdminRegionsBodyHasAutomaticTaxesDefault = true;
+export const postAdminRegionsBodyIsTaxInclusiveDefault = false;
+export const postAdminRegionsBodyPaymentProvidersDefault = [];
+
+export const PostAdminRegionsBody = zod.object({
+  "currency_code": zod.string(),
+  "has_automatic_taxes": zod.boolean().default(postAdminRegionsBodyHasAutomaticTaxesDefault),
+  "is_tax_inclusive": zod.boolean().default(postAdminRegionsBodyIsTaxInclusiveDefault),
+  "name": zod.string(),
+  "payment_providers": zod.array(zod.string()).default(postAdminRegionsBodyPaymentProvidersDefault)
+})
+
+export const PostAdminRegionsResponse = zod.object({
+  "created_at": zod.iso.datetime({"offset":true}),
+  "currency_code": zod.string(),
+  "has_automatic_taxes": zod.boolean(),
+  "id": zod.uuid().describe('Identifies one region.'),
+  "is_tax_inclusive": zod.boolean(),
+  "name": zod.string(),
+  "payment_providers": zod.array(zod.string())
+})
 
 /**
  * @summary Fetch one region
@@ -189,7 +244,21 @@ export const GetAdminSalesChannelsResponse = zod.object({
 /**
  * @summary Create a sales channel
  */
-export const PostAdminSalesChannelsResponse = zod.unknown()
+export const postAdminSalesChannelsBodyIsDisabledDefault = false;
+
+export const PostAdminSalesChannelsBody = zod.object({
+  "description": zod.string().nullish(),
+  "is_disabled": zod.boolean().default(postAdminSalesChannelsBodyIsDisabledDefault),
+  "name": zod.string()
+})
+
+export const PostAdminSalesChannelsResponse = zod.object({
+  "created_at": zod.iso.datetime({"offset":true}),
+  "description": zod.string().nullable(),
+  "id": zod.uuid().describe('Identifies one sales channel.'),
+  "is_disabled": zod.boolean(),
+  "name": zod.string()
+})
 
 /**
  * @summary Delete a sales channel

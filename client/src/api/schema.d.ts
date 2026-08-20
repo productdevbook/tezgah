@@ -6271,6 +6271,19 @@ export interface components {
             quantity: number;
             unit_price?: components["schemas"]["MoneyIn"] | null;
         };
+        AddPrice: {
+            amount: string | number;
+            /** @description ISO 4217, checked here rather than at the database. */
+            currency_code: string;
+            /** Format: int32 */
+            max_quantity?: number | null;
+            /** Format: int32 */
+            min_quantity?: number | null;
+            price_list_id?: components["schemas"]["PriceListId"] | null;
+            price_set_id: components["schemas"]["PriceSetId"];
+            rules?: components["schemas"]["PriceRuleInput"][];
+            title?: string | null;
+        };
         AddShippingAction: {
             amount: components["schemas"]["MoneyIn"];
             internal_note?: string | null;
@@ -6434,6 +6447,20 @@ export interface components {
         ConvertDraft: {
             payment_collection_id: components["schemas"]["PaymentCollectionId"];
         };
+        CreateCurrency: {
+            code: string;
+            /** Format: int16 */
+            exponent: number;
+            name: string;
+            numeric_code?: string | null;
+            symbol: string;
+            symbol_native: string;
+        };
+        CreateInventoryItem: {
+            requires_shipping: boolean;
+            sku?: string | null;
+            title?: string | null;
+        };
         CreateOrder: {
             currency: string;
             customer_id?: components["schemas"]["CustomerId"] | null;
@@ -6451,6 +6478,86 @@ export interface components {
             reference: string;
             /** Format: uuid */
             reference_id: string;
+        };
+        CreateProduct: {
+            description?: string | null;
+            external_id?: string | null;
+            handle: string;
+            height?: string | number | null;
+            hs_code?: string | null;
+            is_discountable?: boolean | null;
+            length?: string | number | null;
+            material?: string | null;
+            metadata?: unknown;
+            origin_country?: string | null;
+            product_collection_id?: components["schemas"]["CollectionId"] | null;
+            product_type_id?: components["schemas"]["ProductTypeId"] | null;
+            status?: components["schemas"]["ProductStatus"] | null;
+            subtitle?: string | null;
+            thumbnail_url?: string | null;
+            title: string;
+            weight?: string | number | null;
+            width?: string | number | null;
+        };
+        CreatePublishableKey: {
+            title: string;
+        };
+        CreateRegion: {
+            currency_code: string;
+            /** @default true */
+            has_automatic_taxes: boolean;
+            /** @default false */
+            is_tax_inclusive: boolean;
+            name: string;
+            /** @default [] */
+            payment_providers: string[];
+        };
+        CreateSalesChannel: {
+            description?: string | null;
+            /** @default false */
+            is_disabled: boolean;
+            name: string;
+        };
+        CreateStockLocation: {
+            address?: components["schemas"]["StockLocationAddressIn"] | null;
+            name: string;
+        };
+        CreateVariant: {
+            allows_backorder?: boolean | null;
+            barcode?: string | null;
+            ean?: string | null;
+            height?: string | number | null;
+            hs_code?: string | null;
+            /** @description Whether selling this sells money rather than goods. */
+            is_giftcard?: boolean | null;
+            length?: string | number | null;
+            manages_inventory?: boolean | null;
+            material?: string | null;
+            metadata?: unknown;
+            mid_code?: string | null;
+            origin_country?: string | null;
+            /** Format: int32 */
+            rank?: number | null;
+            /**
+             * @description Whether a line selling this needs a shipping address. Defaults to
+             *     `true`: not tracking a variant's stock is not the same fact as it
+             *     being a digital good.
+             */
+            requires_shipping?: boolean | null;
+            sku?: string | null;
+            title: string;
+            upc?: string | null;
+            weight?: string | number | null;
+            width?: string | number | null;
+            /** @description Why buying this is outside the right of withdrawal. */
+            withdrawal_exclusion?: string | null;
+        };
+        CurrencyView: {
+            code: string;
+            /** Format: int16 */
+            exponent: number;
+            name: string;
+            symbol: string;
         };
         /**
          * Format: uuid
@@ -6514,6 +6621,26 @@ export interface components {
             sku: string | null;
             title: string | null;
         };
+        /**
+         * Format: uuid
+         * @description Identifies one inventory level.
+         */
+        InventoryLevelId: string;
+        InventoryLevelView: {
+            /** Format: int32 */
+            available_quantity: number;
+            /** Format: date-time */
+            created_at: string;
+            id: components["schemas"]["InventoryLevelId"];
+            /** Format: int32 */
+            incoming_quantity: number;
+            inventory_item_id: components["schemas"]["InventoryItemId"];
+            location_id: components["schemas"]["StockLocationId"];
+            /** Format: int32 */
+            reserved_quantity: number;
+            /** Format: int32 */
+            stocked_quantity: number;
+        };
         InvoiceView: {
             /** Format: date-time */
             created_at: string;
@@ -6532,6 +6659,21 @@ export interface components {
             replaces_invoice_id: components["schemas"]["OrderInvoiceId"] | null;
             status: string;
             total_amount: string;
+        };
+        /**
+         * @description The only response the token appears in. It is not stored and cannot be
+         *     fetched again.
+         */
+        IssuedKeyView: {
+            /** Format: date-time */
+            created_at: string;
+            id: components["schemas"]["PublishableKeyId"];
+            /** Format: date-time */
+            last_used_at: string | null;
+            /** Format: date-time */
+            revoked_at: string | null;
+            title: string;
+            token: string;
         };
         /**
          * @description What a caller may ask a change to do to a line.
@@ -6566,6 +6708,9 @@ export interface components {
             order_line_item_id: components["schemas"]["LineItemId"];
             /** Format: int32 */
             quantity: number;
+        };
+        LinkPriceSet: {
+            price_set_id: components["schemas"]["PriceSetId"];
         };
         LocalisedReturnReasonView: {
             description: string | null;
@@ -6775,6 +6920,49 @@ export interface components {
         };
         /**
          * Format: uuid
+         * @description Identifies one price.
+         */
+        PriceId: string;
+        /**
+         * Format: uuid
+         * @description Identifies one price list.
+         */
+        PriceListId: string;
+        PriceRuleInput: {
+            attribute: string;
+            operator: string;
+            /** Format: int32 */
+            priority?: number | null;
+            value: string;
+        };
+        /**
+         * Format: uuid
+         * @description Identifies one price set.
+         */
+        PriceSetId: string;
+        PriceSetView: {
+            /** Format: date-time */
+            created_at: string;
+            id: components["schemas"]["PriceSetId"];
+        };
+        PriceView: {
+            amount: string;
+            /** Format: date-time */
+            created_at: string;
+            currency_code: string;
+            id: components["schemas"]["PriceId"];
+            /** Format: int32 */
+            max_quantity: number | null;
+            /** Format: int32 */
+            min_quantity: number | null;
+            price_list_id: components["schemas"]["PriceListId"] | null;
+            price_set_id: components["schemas"]["PriceSetId"];
+            /** Format: int32 */
+            rules_count: number;
+            title: string | null;
+        };
+        /**
+         * Format: uuid
          * @description Identifies one product.
          */
         ProductId: string;
@@ -6853,6 +7041,11 @@ export interface components {
             locale: string;
             metadata?: unknown;
         };
+        /**
+         * Format: uuid
+         * @description Identifies one publishable key.
+         */
+        PublishableKeyId: string;
         PutReturnReasonTranslation: {
             description?: string | null;
             label: string;
@@ -7050,6 +7243,13 @@ export interface components {
         SetInvoiceStatus: {
             status: string;
         };
+        SetStock: {
+            /** Format: int32 */
+            incoming_quantity: number;
+            location_id: components["schemas"]["StockLocationId"];
+            /** Format: int32 */
+            stocked_quantity: number;
+        };
         ShippingMethodView: {
             amount: components["schemas"]["MoneyView"];
             /** Format: uuid */
@@ -7065,10 +7265,32 @@ export interface components {
          */
         ShippingOptionId: string;
         /**
+         * @description Where a location is. The country is what makes it the origin of a supply,
+         *     so it is required and the rest of the address is not.
+         */
+        StockLocationAddressIn: {
+            address_1: string;
+            address_2?: string | null;
+            city?: string | null;
+            company?: string | null;
+            country_code: string;
+            phone?: string | null;
+            postal_code?: string | null;
+            province?: string | null;
+        };
+        /**
          * Format: uuid
          * @description Identifies one stock location.
          */
         StockLocationId: string;
+        StockLocationView: {
+            /** Format: uuid */
+            address_id: string | null;
+            /** Format: date-time */
+            created_at: string;
+            id: components["schemas"]["StockLocationId"];
+            name: string;
+        };
         StoreOrderView: {
             /** Format: date-time */
             created_at: string;
@@ -7163,6 +7385,35 @@ export interface components {
          * @description Identifies one variant.
          */
         VariantId: string;
+        VariantView: {
+            allows_backorder: boolean;
+            barcode: string | null;
+            /** Format: date-time */
+            created_at: string;
+            ean: string | null;
+            height: string | null;
+            hs_code: string | null;
+            id: components["schemas"]["VariantId"];
+            is_giftcard: boolean;
+            length: string | null;
+            manages_inventory: boolean;
+            material: string | null;
+            metadata: unknown;
+            mid_code: string | null;
+            origin_country: string | null;
+            product_id: components["schemas"]["ProductId"];
+            /** Format: int32 */
+            rank: number;
+            requires_shipping: boolean;
+            sku: string | null;
+            title: string;
+            upc: string | null;
+            /** Format: date-time */
+            updated_at: string;
+            weight: string | null;
+            width: string | null;
+            withdrawal_exclusion: string | null;
+        };
         WithdrawalNoticeView: {
             /** Format: date-time */
             notified_at: string | null;
@@ -8685,14 +8936,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCurrency"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["CurrencyView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -11587,14 +11844,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateInventoryItem"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["InventoryItemView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -11792,14 +12055,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetStock"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["InventoryLevelView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -15694,7 +15963,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PriceSetView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -15808,14 +16079,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddPrice"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PriceView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -17481,7 +17758,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkPriceSet"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
@@ -17563,14 +17844,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateProduct"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ProductView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -18836,14 +19123,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateVariant"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["VariantView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -19371,14 +19664,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePublishableKey"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["IssuedKeyView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -19737,14 +20036,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateRegion"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["RegionView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -21115,14 +21420,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSalesChannel"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["SalesChannelView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -22206,14 +22517,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateStockLocation"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["StockLocationView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {

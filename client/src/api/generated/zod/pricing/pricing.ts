@@ -58,7 +58,10 @@ export const PostAdminPricePreferencesResponse = zod.unknown()
 /**
  * @summary Create a price set
  */
-export const PostAdminPriceSetsResponse = zod.unknown()
+export const PostAdminPriceSetsResponse = zod.object({
+  "created_at": zod.iso.datetime({"offset":true}),
+  "id": zod.uuid().describe('Identifies one price set.')
+})
 
 /**
  * @summary Fetch one price set
@@ -81,7 +84,40 @@ export const GetAdminPriceSetsByIdPricesResponse = zod.unknown()
 /**
  * @summary Add a price
  */
-export const PostAdminPricesResponse = zod.unknown()
+export const postAdminPricesBodyAmountRegExpOne = new RegExp('^-?\\d+(\\.\\d+)?([eE]\\d+)?$');
+
+
+export const PostAdminPricesBody = zod.object({
+  "amount": zod.union([zod.string().regex(postAdminPricesBodyAmountRegExpOne),zod.number()]),
+  "currency_code": zod.string().describe('ISO 4217, checked here rather than at the database.'),
+  "max_quantity": zod.int().nullish(),
+  "min_quantity": zod.int().nullish(),
+  "price_list_id": zod.union([zod.uuid().describe('Identifies one price list.'),zod.null()]).optional(),
+  "price_set_id": zod.uuid().describe('Identifies one price set.'),
+  "rules": zod.array(zod.object({
+  "attribute": zod.string(),
+  "operator": zod.string(),
+  "priority": zod.int().nullish(),
+  "value": zod.string()
+})).optional(),
+  "title": zod.string().nullish()
+})
+
+export const postAdminPricesResponseAmountRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
+
+
+export const PostAdminPricesResponse = zod.object({
+  "amount": zod.string().regex(postAdminPricesResponseAmountRegExp),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "currency_code": zod.string(),
+  "id": zod.uuid().describe('Identifies one price.'),
+  "max_quantity": zod.int().nullable(),
+  "min_quantity": zod.int().nullable(),
+  "price_list_id": zod.union([zod.uuid().describe('Identifies one price list.'),zod.null()]),
+  "price_set_id": zod.uuid().describe('Identifies one price set.'),
+  "rules_count": zod.int(),
+  "title": zod.string().nullable()
+})
 
 /**
  * @summary Move many prices at once, one currency to a call
@@ -185,6 +221,10 @@ export const GetAdminProductVariantsByIdBundlePriceResponse = zod.unknown()
  */
 export const PostAdminProductVariantsByIdPriceSetParams = zod.object({
   "id": zod.string()
+})
+
+export const PostAdminProductVariantsByIdPriceSetBody = zod.object({
+  "price_set_id": zod.uuid().describe('Identifies one price set.')
 })
 
 export const PostAdminProductVariantsByIdPriceSetResponse = zod.unknown()

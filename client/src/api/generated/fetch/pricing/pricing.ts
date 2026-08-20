@@ -5,6 +5,13 @@
  * A commerce engine for Rust: products, carts, orders, payments, inventory, and a workflow runner that unwinds what it started.
  * OpenAPI spec version: 0.0.0
  */
+import type {
+  AddPrice,
+  LinkPriceSet,
+  PriceSetView,
+  PriceView
+} from '../models';
+
 import { apiMutator } from '../../../mutator';
 
 export type getAdminPriceListsResponse200 = {
@@ -372,7 +379,7 @@ export const postAdminPricePreferences = async ( options?: Parameters<typeof api
 
 
 export type postAdminPriceSetsResponse200 = {
-  data: void
+  data: PriceSetView
   status: 200
 }
 
@@ -528,7 +535,7 @@ export const getAdminPriceSetsByIdPrices = async (id: string, options?: Paramete
 
 
 export type postAdminPricesResponse200 = {
-  data: void
+  data: PriceView
   status: 200
 }
 
@@ -567,14 +574,14 @@ export const getPostAdminPricesUrl = () => {
 /**
  * @summary Add a price
  */
-export const postAdminPrices = async ( options?: Parameters<typeof apiMutator>[1]): Promise<postAdminPricesResponse> => {
+export const postAdminPrices = async (addPrice: AddPrice, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminPricesResponse> => {
 
   return apiMutator<postAdminPricesResponse>(getPostAdminPricesUrl(),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(addPrice)
   }
 );}
 
@@ -1195,14 +1202,15 @@ export const getPostAdminProductVariantsByIdPriceSetUrl = (id: string,) => {
 /**
  * @summary Point a variant at a price set
  */
-export const postAdminProductVariantsByIdPriceSet = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminProductVariantsByIdPriceSetResponse> => {
+export const postAdminProductVariantsByIdPriceSet = async (id: string,
+    linkPriceSet: LinkPriceSet, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminProductVariantsByIdPriceSetResponse> => {
 
   return apiMutator<postAdminProductVariantsByIdPriceSetResponse>(getPostAdminProductVariantsByIdPriceSetUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(linkPriceSet)
   }
 );}
 
