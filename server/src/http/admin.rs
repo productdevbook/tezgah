@@ -1,14 +1,18 @@
 //! The admin surface: one list endpoint per screen the panel in `client/`
 //! draws — products, orders, inventory items, customers, promotions,
 //! subscriptions, and the two the store screen's tabs read, regions and
-//! sales channels — plus the currencies list the overview screen reads. That
-//! is the nine reads. Alongside them, the writes a fresh install needs to
-//! reach its first order and cannot make any other way: enabling a currency,
-//! opening a region, a sales channel and a stock location, minting a
-//! publishable key, and creating a product, its variants, a price and a
-//! stocked inventory level — #214. Everything else `tezgah::api` offers
-//! stays unbound; nothing here was chosen for this binary beyond what those
-//! two needs cover.
+//! sales channels — plus the currencies list the overview screen reads, and
+//! the two lists the panel needs and did not have: publishable API keys and
+//! stock locations. Alongside every list, the one-row read behind it: a
+//! click on a row in any of those seven screens has somewhere to go —
+//! `GET /admin/{products,orders,inventory-items,customers,promotions,
+//! regions,sales-channels,subscriptions}/{id}`. Alongside them, the writes a
+//! fresh install needs to reach its first order and cannot make any other
+//! way: enabling a currency, opening a region, a sales channel and a stock
+//! location, minting a publishable key, and creating a product, its
+//! variants, a price and a stocked inventory level — #214. Everything else
+//! `tezgah::api` offers stays unbound; nothing here was chosen for this
+//! binary beyond what those needs cover.
 //!
 //! # Why a bearer token, and why it is the whole of this
 //!
@@ -51,7 +55,10 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use subtle::ConstantTimeEq;
 use tezgah::api::{admin_catalogue, admin_order, admin_rest, subscription};
-use tezgah::id::{InventoryItemId, ProductId, VariantId};
+use tezgah::id::{
+    CustomerId, InventoryItemId, OrderId, ProductId, PromotionId, RegionId, SalesChannelId,
+    SubscriptionId, VariantId,
+};
 use tezgah::ports::{Actor, Ctx, Host};
 use uuid::Uuid;
 
@@ -60,14 +67,24 @@ use super::{ApiError, AppState, begin};
 pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
     let bound = vec![
         ("GET", "/admin/products"),
+        ("GET", "/admin/products/{id}"),
         ("GET", "/admin/orders"),
+        ("GET", "/admin/orders/{id}"),
         ("GET", "/admin/inventory-items"),
+        ("GET", "/admin/inventory-items/{id}"),
         ("GET", "/admin/customers"),
+        ("GET", "/admin/customers/{id}"),
         ("GET", "/admin/promotions"),
+        ("GET", "/admin/promotions/{id}"),
         ("GET", "/admin/subscriptions"),
+        ("GET", "/admin/subscriptions/{id}"),
         ("GET", "/admin/regions"),
+        ("GET", "/admin/regions/{id}"),
         ("GET", "/admin/sales-channels"),
+        ("GET", "/admin/sales-channels/{id}"),
         ("GET", "/admin/currencies"),
+        ("GET", "/admin/publishable-api-keys"),
+        ("GET", "/admin/stock-locations"),
         ("POST", "/admin/currencies"),
         ("POST", "/admin/regions"),
         ("POST", "/admin/sales-channels"),
@@ -84,25 +101,39 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
 
     let router = Router::new()
         .route("/admin/products", get(list_products).post(create_product))
+        .route("/admin/products/{id}", get(get_product))
         .route("/admin/orders", get(list_orders))
+        .route("/admin/orders/{id}", get(get_order))
         .route(
             "/admin/inventory-items",
             get(list_inventory_items).post(create_inventory_item),
         )
+        .route("/admin/inventory-items/{id}", get(get_inventory_item))
         .route("/admin/customers", get(list_customers))
+        .route("/admin/customers/{id}", get(get_customer))
         .route("/admin/promotions", get(list_promotions))
+        .route("/admin/promotions/{id}", get(get_promotion))
         .route("/admin/subscriptions", get(list_subscriptions))
+        .route("/admin/subscriptions/{id}", get(get_subscription))
         .route("/admin/regions", get(list_regions).post(create_region))
+        .route("/admin/regions/{id}", get(get_region))
         .route(
             "/admin/sales-channels",
             get(list_sales_channels).post(create_sales_channel),
         )
+        .route("/admin/sales-channels/{id}", get(get_sales_channel))
         .route(
             "/admin/currencies",
             get(list_currencies).post(create_currency),
         )
-        .route("/admin/publishable-api-keys", post(create_publishable_key))
-        .route("/admin/stock-locations", post(create_stock_location))
+        .route(
+            "/admin/publishable-api-keys",
+            get(list_publishable_keys).post(create_publishable_key),
+        )
+        .route(
+            "/admin/stock-locations",
+            get(list_stock_locations).post(create_stock_location),
+        )
         .route("/admin/products/{id}/variants", post(create_variant))
         .route("/admin/price-sets", post(create_price_set))
         .route(
@@ -182,6 +213,17 @@ async fn list_products(
     Ok(Json(page))
 }
 
+async fn get_product(
+    State(state): State<AppState>,
+    Path(id): Path<ProductId>,
+) -> Result<Json<admin_catalogue::ProductView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let product = admin_catalogue::get_product(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(product))
+}
+
 async fn list_orders(
     State(state): State<AppState>,
     Query(query): Query<admin_order::ListOrders>,
@@ -191,6 +233,17 @@ async fn list_orders(
     let page = admin_order::list_orders(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(page))
+}
+
+async fn get_order(
+    State(state): State<AppState>,
+    Path(id): Path<OrderId>,
+) -> Result<Json<admin_order::OrderView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let order = admin_order::get_order(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(order))
 }
 
 async fn list_inventory_items(
@@ -204,6 +257,17 @@ async fn list_inventory_items(
     Ok(Json(page))
 }
 
+async fn get_inventory_item(
+    State(state): State<AppState>,
+    Path(id): Path<InventoryItemId>,
+) -> Result<Json<admin_catalogue::InventoryItemView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let item = admin_catalogue::get_inventory_item(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(item))
+}
+
 async fn list_customers(
     State(state): State<AppState>,
     Query(query): Query<admin_rest::List>,
@@ -213,6 +277,17 @@ async fn list_customers(
     let page = admin_rest::list_customers(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(page))
+}
+
+async fn get_customer(
+    State(state): State<AppState>,
+    Path(id): Path<CustomerId>,
+) -> Result<Json<admin_rest::CustomerView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let customer = admin_rest::get_customer(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(customer))
 }
 
 async fn list_promotions(
@@ -226,6 +301,17 @@ async fn list_promotions(
     Ok(Json(page))
 }
 
+async fn get_promotion(
+    State(state): State<AppState>,
+    Path(id): Path<PromotionId>,
+) -> Result<Json<admin_rest::PromotionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let promotion = admin_rest::get_promotion(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(promotion))
+}
+
 async fn list_subscriptions(
     State(state): State<AppState>,
     Query(query): Query<subscription::List>,
@@ -235,6 +321,17 @@ async fn list_subscriptions(
     let page = subscription::list_subscriptions(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(page))
+}
+
+async fn get_subscription(
+    State(state): State<AppState>,
+    Path(id): Path<SubscriptionId>,
+) -> Result<Json<subscription::ContractView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let contract = subscription::get_subscription(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(contract))
 }
 
 async fn list_regions(
@@ -248,6 +345,17 @@ async fn list_regions(
     Ok(Json(page))
 }
 
+async fn get_region(
+    State(state): State<AppState>,
+    Path(id): Path<RegionId>,
+) -> Result<Json<admin_rest::RegionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let region = admin_rest::get_region(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(region))
+}
+
 async fn list_sales_channels(
     State(state): State<AppState>,
     Query(query): Query<admin_rest::List>,
@@ -257,6 +365,17 @@ async fn list_sales_channels(
     let page = admin_rest::list_sales_channels(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(page))
+}
+
+async fn get_sales_channel(
+    State(state): State<AppState>,
+    Path(id): Path<SalesChannelId>,
+) -> Result<Json<admin_rest::SalesChannelView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let channel = admin_rest::get_sales_channel(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(channel))
 }
 
 async fn list_currencies(
@@ -302,6 +421,17 @@ async fn create_sales_channel(
     Ok(Json(channel))
 }
 
+async fn list_publishable_keys(
+    State(state): State<AppState>,
+    Query(query): Query<admin_rest::List>,
+) -> Result<Json<tezgah::page::Page<admin_rest::PublishableKeyView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = admin_rest::list_publishable_keys(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
 async fn create_publishable_key(
     State(state): State<AppState>,
     Json(body): Json<admin_rest::CreatePublishableKey>,
@@ -311,6 +441,17 @@ async fn create_publishable_key(
     let key = admin_rest::create_publishable_key(&mut tx, &ctx, body).await?;
     tx.commit().await?;
     Ok(Json(key))
+}
+
+async fn list_stock_locations(
+    State(state): State<AppState>,
+    Query(query): Query<admin_catalogue::ListQuery>,
+) -> Result<Json<tezgah::page::Page<admin_catalogue::StockLocationView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = admin_catalogue::list_stock_locations(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
 }
 
 async fn create_stock_location(

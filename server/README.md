@@ -169,7 +169,7 @@ receives the `Action` on every call, so a second token (or a role
 by hand, and says exactly how many out loud at startup:
 
 ```
-bound 27 of 483 declared routes
+bound 37 of 483 declared routes
   GET    /store/products
   GET    /store/products/{handle}
   POST   /store/carts
@@ -177,14 +177,24 @@ bound 27 of 483 declared routes
   POST   /store/carts/{id}/line-items
   POST   /store/carts/{id}/complete
   GET    /admin/products
+  GET    /admin/products/{id}
   GET    /admin/orders
+  GET    /admin/orders/{id}
   GET    /admin/inventory-items
+  GET    /admin/inventory-items/{id}
   GET    /admin/customers
+  GET    /admin/customers/{id}
   GET    /admin/promotions
+  GET    /admin/promotions/{id}
   GET    /admin/subscriptions
+  GET    /admin/subscriptions/{id}
   GET    /admin/regions
+  GET    /admin/regions/{id}
   GET    /admin/sales-channels
+  GET    /admin/sales-channels/{id}
   GET    /admin/currencies
+  GET    /admin/publishable-api-keys
+  GET    /admin/stock-locations
   POST   /admin/currencies
   POST   /admin/regions
   POST   /admin/sales-channels
@@ -209,21 +219,41 @@ is always the true count for that run, never a number copied from here.
 calls: browse the catalogue with a publishable key
 (`x-publishable-key` header), open a cart, add a line, check out.
 
-**Admin — one list per screen, plus what fills a shop.** [`client/`](../client)
-is the admin panel this repository ships, and it draws seven screens:
-products, orders, inventory, customers, promotions, subscriptions, and store
-(which reads two lists of its own, regions and sales channels, plus the
-currencies list its overview reads). Nine of the twenty-one admin routes are
-exactly those list endpoints, one per screen and nothing past that. The other
-twelve are #214's list: enabling a currency, opening a region, a sales
-channel and a stock location, minting a publishable key, and creating a
-product, its variants, a price set, a price and a stocked inventory level —
-the smallest set that gets a fresh install to something a storefront can
-check out from. `tezgah-server seed` (above) does the first five of those in
-one command; the rest — a real catalogue — go in through these routes, by
-hand or by whatever the panel or a script does with them. Everything else
-`tezgah::api` offers stays unbound; wiring in more of the 483 is a matter of
-adding a handler in `src/http/admin.rs`, not a limitation of the approach.
+**Admin — one list per screen, the single read behind each row, plus what
+fills a shop.** [`client/`](../client) is the admin panel this repository
+ships, and it draws seven screens: products, orders, inventory, customers,
+promotions, subscriptions, and store (which reads two lists of its own,
+regions and sales channels, plus the currencies list its overview reads).
+Eleven of the thirty-one admin routes are list endpoints — the original nine,
+plus `GET /admin/publishable-api-keys` and `GET /admin/stock-locations`,
+which the panel needed and this binary did not yet bind: without the first,
+an operator who loses a publishable key can only mint another, never see
+whether one already exists. Eight more are the single-row read behind a
+click on one of those lists' rows — `GET /admin/{products,orders,
+inventory-items,customers,promotions,regions,sales-channels,subscriptions}/
+{id}` — so a screen's detail view has somewhere to fetch from instead of
+nowhere. The other twelve are #214's list: enabling a currency, opening a
+region, a sales channel and a stock location, minting a publishable key, and
+creating a product, its variants, a price set, a price and a stocked
+inventory level — the smallest set that gets a fresh install to something a
+storefront can check out from. `tezgah-server seed` (above) does the first
+five of those in one command; the rest — a real catalogue — go in through
+these routes, by hand or by whatever the panel or a script does with them.
+Everything else `tezgah::api` offers stays unbound; wiring in more of the 483
+is a matter of adding a handler in `src/http/admin.rs`, not a limitation of
+the approach.
+
+Every one of the eight single-row reads asks `ctx.permit(..)` before it looks
+for the row, not after: `tests/api_permissions.rs` calls each of
+`admin_catalogue::get_product`, `admin_order::get_order`,
+`admin_catalogue::get_inventory_item`, `admin_rest::get_customer`,
+`admin_rest::get_promotion`, `admin_rest::get_region`,
+`admin_rest::get_sales_channel` and `subscription::get_subscription` with a
+random id and a host that refuses everything, and asserts `denied` rather
+than `not_found` — none of the eight is in that test's `TOLERATED` list, so
+none of them is the leak `CLAUDE.md` describes, where a missing row answers
+`not_found` without asking and an existing-but-not-yours row asks and answers
+`denied`, together telling a caller which ids exist.
 
 ## Docker
 
