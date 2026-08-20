@@ -1,3 +1,5 @@
+import { useMutation } from "@tanstack/react-query"
+import { useState } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Add01Icon } from "@hugeicons/core-free-icons"
 import { Link } from "@tanstack/react-router"
@@ -21,6 +23,17 @@ import {
 import { usePagedList } from "@/lib/paged"
 import { PageHeading } from "@/components/page-heading"
 import { SearchBox } from "@/components/search-box"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { deleteProducts } from "@/features/batch/api"
 
 /** Four of the five mean "not for sale", for four different reasons. */
 const HIDDEN: ProductStatus[] = ["draft", "proposed", "rejected", "archived"]
@@ -148,6 +161,18 @@ export function Products({
       <DataTable
         paged={paged}
         columns={columns}
+        select={{
+          id: (row) => row.id,
+          actions: (chosen, clear) => (
+            <BulkDelete
+              chosen={chosen}
+              onDone={() => {
+                clear()
+                void paged.result.refetch()
+              }}
+            />
+          ),
+        }}
         rowLink={(row) => (
           <Link
             to="/products/$id"
@@ -165,5 +190,76 @@ export function Products({
         }}
       />
     </div>
+  )
+}
+
+/**
+ * What a selection is for. `POST /admin/products/batch` takes rows to write
+ * and ids to delete; this is that call with no rows.
+ *
+ * Asked before it happens and counted in the question, because a bulk delete
+ * is the one action on this screen that cannot be undone by doing it again.
+ */
+function BulkDelete({
+  chosen,
+  onDone,
+}: {
+  chosen: string[]
+  onDone: () => void
+}) {
+  const [open, setOpen] = useState(false)
+
+  const mutation = useMutation({
+    mutationFn: () => deleteProducts(chosen),
+    onSuccess: () => {
+      setOpen(false)
+      onDone()
+    },
+  })
+
+  return (
+    <>
+      <span className="text-sm text-muted-foreground">
+        {chosen.length} chosen
+      </span>
+      <Button
+        size="sm"
+        variant="destructive"
+        onClick={() => setOpen(true)}
+        disabled={mutation.isPending}
+      >
+        Delete
+      </Button>
+      <AlertDialog open={open} onOpenChange={setOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete {chosen.length} product{chosen.length === 1 ? "" : "s"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This cannot be undone. A product an order already names is kept —
+              the crate refuses that one and says so, and the rest still go.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {mutation.isError ? (
+            <p className="text-sm text-destructive">
+              {mutation.error instanceof Error
+                ? mutation.error.message
+                : "Refused."}
+            </p>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => mutation.mutate()}
+              disabled={mutation.isPending}
+            >
+              {mutation.isPending ? "Deleting…" : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }

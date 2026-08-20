@@ -236,9 +236,9 @@ and splitting six across three drawers is ceremony.
 
 **Bulk is a round trip.** A page of variants out as CSV, edited, and back in
 — the export's columns and the import's are the same, which is what makes it
-one. Multi-select on a list and an edit grid in the browser are still absent;
-the round trip is what a shop changing four hundred prices reaches for
-anyway.
+one. Multi-select and a bulk delete are on the products
+list; an edit grid in the browser is still absent, and the round trip is what
+a shop changing four hundred prices reaches for anyway.
 
 **Mountable in what it says, not in how it routes.** No screen reaches for a
 global any more: where the API is, what token to send, what to do when it is
