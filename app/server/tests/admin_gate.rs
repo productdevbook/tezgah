@@ -1,4 +1,4 @@
-//! `require_token` must gate only the admin routes it is actually layered
+//! `require_operator` must gate only the admin routes it is actually layered
 //! onto — not every path nothing else matched. Before this test existed,
 //! `/nope` and `/store/regions` (a path this binary never binds) answered
 //! 401 with the admin bearer-token message, because `http::router` used
@@ -9,7 +9,9 @@
 //! No database is touched: a request that clears the middleware and reaches
 //! a handler is not exercised here, and a request that does not is rejected
 //! or 404s before any handler runs. `PgPool::connect_lazy` never dials, so
-//! this needs nothing running to pass.
+//! this needs nothing running to pass — which is also why the wrong-token
+//! case sends something that is not shaped like a session token. A token that
+//! is would be looked up, and a lookup needs a database.
 
 use std::sync::Arc;
 
@@ -35,6 +37,7 @@ fn router() -> Router {
         checkout: None,
         scope: Scope(Uuid::nil()),
         admin_token: Some(Arc::from(ADMIN_TOKEN)),
+        has_operators: false,
     };
     let (router, _bound) = http::router(state);
     router
@@ -101,7 +104,7 @@ async fn bound_admin_path_401s_without_a_token() {
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     assert!(
         body.contains("admin token"),
-        "a genuinely bound admin route must still ask for the token: {body:?}"
+        "a genuinely bound admin route must still say how to get in: {body:?}"
     );
 }
 

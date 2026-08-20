@@ -18,7 +18,7 @@ use tezgah::checkout::Checkout;
 use tezgah::payment::PaymentProvider;
 use tezgah::ports::Scope;
 use tezgah_server::config::Config;
-use tezgah_server::{host, http, provider, seed};
+use tezgah_server::{host, http, identity, provider, schedule, seed};
 use tokio::net::TcpListener;
 use uuid::Uuid;
 
@@ -81,8 +81,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     host::create_jobs_table(&pool).await?;
     host::spawn_worker(pool.clone());
+    identity::create_tables(&pool).await?;
 
     let scope = bootstrap_scope(&pool).await?;
+    schedule::spawn(pool.clone(), scope);
     let host = Arc::new(host::ServerHost);
 
     let checkout = match (config.stock_location_id, config.demo_bank_enabled) {
@@ -109,8 +111,25 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let admin_token: Option<Arc<str>> = config.admin_token.as_deref().map(Arc::from);
-    if admin_token.is_none() {
-        println!("admin surface not bound: ADMIN_TOKEN is not set");
+    let operators = identity::count(&pool).await?;
+    let has_operators = operators > 0;
+
+    // Said out loud rather than left to a 404. Which of the two is missing
+    // decides what a fresh install does next: with a token and no accounts,
+    // the first thing to do is make one; with accounts and no token, there is
+    // nothing to keep in an environment variable any more.
+    match (admin_token.is_some(), has_operators) {
+        (false, false) => println!(
+            "admin surface not bound: no ADMIN_TOKEN and no operator accounts — set one to get in"
+        ),
+        (true, false) => println!(
+            "admin surface bound to ADMIN_TOKEN only — no operator accounts yet; \
+             POST /admin/operators with it to make the first"
+        ),
+        (true, true) => println!(
+            "admin surface bound: {operators} operator account(s), and ADMIN_TOKEN still accepted"
+        ),
+        (false, true) => println!("admin surface bound: {operators} operator account(s)"),
     }
 
     let state = http::AppState {
@@ -119,6 +138,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         checkout,
         scope,
         admin_token,
+        has_operators,
     };
 
     let (router, bound) = http::router(state);
