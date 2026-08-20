@@ -173,16 +173,23 @@ find. Startup says which of the two it found.
 | `POST /auth/password` | no | changes the caller's own, ending every other session they hold |
 | `GET /admin/operators` | no | the accounts, and which are disabled |
 | `POST /admin/operators` | no | makes one — owner only |
+| `POST /admin/operators/{id}/password` | no | sets somebody else's — owner only, and ends every session they hold |
 | `PATCH /admin/operators/{id}` | no | changes a role, disables or re-enables one — owner only, never itself, never the last owner |
 
 None of these is one of tezgah's 483 — the crate declares no route for
 something it does not do — so the startup tally does not count them, the same
 way it does not count `GET /health`.
 
-**No invitation and no password reset.** Both need a letter and this binary
-has no mailer; a reset link it cannot send would be worse than one it never
-offered. An account is made with a password by somebody already inside, and
-`ADMIN_TOKEN` is the way back in.
+**No invitation, and the reset is a person rather than a link.** Both would
+need a letter and this binary has no mailer; a link it cannot send would be
+worse than one it never offered. So an account is made with a password by
+somebody already inside, and an operator who forgets theirs has an owner set
+a new one — told to them the same way the first one was. Every session that
+operator holds ends with it, including the one they may be sitting in: an
+account whose password was reset by somebody else is an account that may have
+been taken.
+
+`ADMIN_TOKEN` is still the way back in when there is no owner left to ask.
 
 **Three roles, checked at the door.**
 

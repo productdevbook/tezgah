@@ -101,6 +101,7 @@ pub fn gated_router() -> Router<AppState> {
         .route("/auth/password", post(set_own_password))
         .route("/admin/operators", get(list).post(create))
         .route("/admin/operators/{id}", patch(update))
+        .route("/admin/operators/{id}/password", post(reset_password))
 }
 
 async fn sign_in(
@@ -182,6 +183,27 @@ async fn create(
         identity::create_operator(&state.pool, &body.email, &body.name, &body.password, role)
             .await?;
     Ok(Json(made.into()))
+}
+
+/// An owner setting somebody else's password.
+///
+/// This is what a shop does when an operator forgets theirs, and it is why
+/// there is no reset e-mail: an owner sets a new one and tells them the way
+/// they told them the first one. A link this server cannot send would be
+/// worse than one it never offered.
+///
+/// Every session that operator holds ends with it — including, deliberately,
+/// the one they may be sitting in. An account whose password was reset by
+/// somebody else is an account that may have been taken.
+async fn reset_password(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<NewPassword>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    only_an_owner(&caller)?;
+    identity::change_password(&state.pool, id, &body.password, None).await?;
+    Ok(Json(serde_json::json!({ "changed": true })))
 }
 
 /// `ADMIN_TOKEN` counts as an owner, and has to: it is how the first account

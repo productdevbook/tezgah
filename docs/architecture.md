@@ -132,10 +132,12 @@ and `ADMIN_TOKEN` stays beside them as what it always was — the way to make
 the first account and the way back in when the last password is lost.
 `Actor::Staff` now carries a real id for a signed-in operator, so an audit row
 can say who changed a price; for an `ADMIN_TOKEN` request it carries the nil
-uuid, visibly, because a shared secret is not a person. What is still missing
-is everything that needs a mailer: an invitation, a password reset, a
-notification that an account was made. There is no mailer, and a reset link a
-server cannot send is worse than one it never offered.
+uuid, visibly, because a shared secret is not a person. What needs a letter is
+still missing and is now smaller than it was: there is no invitation and no
+notification, and the password reset is a person rather than a link — an
+owner sets a new one and tells them the way they told them the first. Every
+session that operator holds ends with it. A reset link a server cannot send
+is worse than one it never offered, and this server has no mailer.
 
 **Authorization at the door, not at the row.** An operator has one of three
 roles, and the gate checks it against the `Action` the route table already

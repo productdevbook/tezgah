@@ -347,9 +347,10 @@ In the library:
 
 In `app/`:
 
-- [ ] invitations and a password reset — accounts, sessions and revocation
-      exist; everything that needs a letter does not, because nothing here
-      can send one
+- [ ] anything that needs a letter — an invitation, a notification, a reset
+      link. Accounts, sessions, revocation and an owner-set password reset all
+      exist without one; a link this server cannot send would be worse than
+      one it never offered
 - [ ] per-row authorization — three roles are checked at the door against the
       `Action` the route table declares, which answers "may this person refund
       anything"; "may this person refund this order" is an `Authorizer`, and

@@ -90,3 +90,22 @@ export async function whoAmI(
   )
   return parseResponse(whoami, data, status)
 }
+
+/**
+ * An owner setting somebody else's password, which is what a shop does when
+ * an operator forgets theirs — there is no reset e-mail because this server
+ * has no mailer, and a link it cannot send would be worse than none.
+ *
+ * Every session that operator holds ends with it, including the one they may
+ * be sitting in.
+ */
+export async function resetPassword(
+  id: string,
+  password: string
+): Promise<void> {
+  await apiMutator(`/admin/operators/${encodeURIComponent(id)}/password`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ password }),
+  })
+}

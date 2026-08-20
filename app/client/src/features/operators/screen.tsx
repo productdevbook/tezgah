@@ -22,11 +22,22 @@ import { dateTime } from "@/lib/detail"
 import {
   listOperators,
   patchOperator,
+  resetPassword,
   ROLE_MEANS,
   whoAmI,
   type Operator,
   type Role,
 } from "@/features/operators/api"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { Field, FieldLabel } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
 import {
   Select,
   SelectContent,
@@ -122,7 +133,10 @@ export function Operators() {
                       {dateTime(row.created_at)}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Toggle row={row} isSelf={me.data?.id === row.id} />
+                      <div className="flex items-center justify-end gap-2">
+                        <ResetPassword row={row} />
+                        <Toggle row={row} isSelf={me.data?.id === row.id} />
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -221,5 +235,73 @@ function Toggle({ row, isSelf }: { row: Operator; isSelf: boolean }) {
         {disabled ? "Enable" : "Disable"}
       </Button>
     </div>
+  )
+}
+
+/**
+ * The new password is typed here and told to them out of band. Nothing on
+ * this screen can send it, and the form says so rather than implying a letter
+ * is on its way.
+ */
+function ResetPassword({ row }: { row: Operator }) {
+  const [password, setPassword] = useState("")
+  const [open, setOpen] = useState(false)
+
+  const mutation = useMutation({
+    mutationFn: (next: string) => resetPassword(row.id, next),
+    onSuccess: () => {
+      setPassword("")
+      setOpen(false)
+    },
+  })
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger render={<Button size="sm" variant="outline" />}>
+        Reset password
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Set a new password for {row.name}</DialogTitle>
+          <DialogDescription>
+            Tell them out of band — nothing here can send it. Every session they
+            hold ends, including the one they may be sitting in.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          className="space-y-3"
+          onSubmit={(event) => {
+            event.preventDefault()
+            if (password.length < 12) return
+            mutation.mutate(password)
+          }}
+        >
+          <Field>
+            <FieldLabel htmlFor={`password-${row.id}`}>New password</FieldLabel>
+            <Input
+              id={`password-${row.id}`}
+              type="password"
+              autoComplete="new-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+          </Field>
+          {mutation.isError ? (
+            <p className="text-sm text-destructive">
+              {mutation.error instanceof Error
+                ? mutation.error.message
+                : "Refused."}
+            </p>
+          ) : null}
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={mutation.isPending || password.length < 12}
+          >
+            {mutation.isPending ? "Setting…" : "Set it"}
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
