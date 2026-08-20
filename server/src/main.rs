@@ -13,6 +13,7 @@ mod config;
 mod host;
 mod http;
 mod provider;
+mod seed;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -29,10 +30,45 @@ use config::Config;
 
 #[tokio::main]
 async fn main() {
-    if let Err(err) = run().await {
+    let mut args = std::env::args().skip(1);
+    let outcome = match args.next().as_deref() {
+        Some("seed") => run_seed().await,
+        Some(other) => {
+            eprintln!("tezgah-server: unknown subcommand {other:?} — the only one is \"seed\"");
+            std::process::exit(2);
+        }
+        None => run().await,
+    };
+    if let Err(err) = outcome {
         eprintln!("tezgah-server: {err}");
         std::process::exit(1);
     }
+}
+
+/// `tezgah-server seed` — run once, against the same `DATABASE_URL` the
+/// server itself uses, to make a fresh install's shop worth pointing a
+/// storefront at. `seed::run`'s own doc comment covers why running it twice
+/// is safe.
+async fn run_seed() -> Result<(), Box<dyn std::error::Error>> {
+    let config = Config::from_env()?;
+
+    let pool = PgPoolOptions::new()
+        .max_connections(4)
+        .connect(&config.database_url)
+        .await?;
+
+    if config.skip_migrations {
+        println!("TEZGAH_SKIP_MIGRATIONS=1 — skipping tezgah::MIGRATIONS");
+    } else {
+        tezgah::MIGRATIONS.run(&pool).await?;
+    }
+
+    let scope = bootstrap_scope(&pool).await?;
+    let host = host::ServerHost;
+
+    seed::run(&pool, scope, &host, config.currency_exponent).await?;
+
+    Ok(())
 }
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {

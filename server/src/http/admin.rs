@@ -1,11 +1,14 @@
 //! The admin surface: one list endpoint per screen the panel in `client/`
 //! draws — products, orders, inventory items, customers, promotions,
 //! subscriptions, and the two the store screen's tabs read, regions and
-//! sales channels — plus the currencies list the overview screen reads.
-//! Nine routes out of 483 declared; every write, every fetch-by-id and
-//! everything the other domains in `tezgah::api` offer stays unbound. What
-//! is here is what the shipped panel needs to render its seven screens and
-//! nothing beyond that was chosen for this binary specifically.
+//! sales channels — plus the currencies list the overview screen reads. That
+//! is the nine reads. Alongside them, the writes a fresh install needs to
+//! reach its first order and cannot make any other way: enabling a currency,
+//! opening a region, a sales channel and a stock location, minting a
+//! publishable key, and creating a product, its variants, a price and a
+//! stocked inventory level — #214. Everything else `tezgah::api` offers
+//! stays unbound; nothing here was chosen for this binary beyond what those
+//! two needs cover.
 //!
 //! # Why a bearer token, and why it is the whole of this
 //!
@@ -21,17 +24,34 @@
 //! not exist to be reached rather than existing and refusing everyone. A
 //! deployment that wants real operators with real identities replaces this
 //! middleware; nothing downstream of it needs to change to allow that.
+//!
+//! # One token still gates both reads and writes
+//!
+//! `ADMIN_TOKEN` draws no line between them: whatever bearer clears
+//! `require_token` reaches `ctx_for` as the same `Actor::Staff`, and
+//! `ServerHost::authorize` grants every `tezgah::ports::Action` to it,
+//! `View` and `Write` and `Delete` alike. Before this change that was
+//! true of nine read routes; now it is true of a token that can also mint a
+//! publishable key or create a product. `tezgah::ports::Authorizer::authorize`
+//! already receives the `Action` on every call — that is the seam a split
+//! would use: a second token (or a role carried on the request, set by
+//! `require_token`) read here and turned into which `Action`s a `ServerHost`
+//! grants, denying `Write`/`Delete`/`Settle`/`Moderate` for a request that
+//! authenticated with a read-only credential. Left as one token for now,
+//! matching what this binary shipped with; #214 raises the question rather
+//! than answering it.
 
 use std::sync::Arc;
 
-use axum::extract::{Query, Request, State};
+use axum::extract::{Path, Query, Request, State};
 use axum::http::{StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use subtle::ConstantTimeEq;
 use tezgah::api::{admin_catalogue, admin_order, admin_rest, subscription};
+use tezgah::id::{InventoryItemId, ProductId, VariantId};
 use tezgah::ports::{Actor, Ctx, Host};
 use uuid::Uuid;
 
@@ -48,18 +68,52 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         ("GET", "/admin/regions"),
         ("GET", "/admin/sales-channels"),
         ("GET", "/admin/currencies"),
+        ("POST", "/admin/currencies"),
+        ("POST", "/admin/regions"),
+        ("POST", "/admin/sales-channels"),
+        ("POST", "/admin/publishable-api-keys"),
+        ("POST", "/admin/stock-locations"),
+        ("POST", "/admin/products"),
+        ("POST", "/admin/products/{id}/variants"),
+        ("POST", "/admin/price-sets"),
+        ("POST", "/admin/product-variants/{id}/price-set"),
+        ("POST", "/admin/prices"),
+        ("POST", "/admin/inventory-items"),
+        ("POST", "/admin/inventory-items/{id}/location-levels"),
     ];
 
     let router = Router::new()
-        .route("/admin/products", get(list_products))
+        .route("/admin/products", get(list_products).post(create_product))
         .route("/admin/orders", get(list_orders))
-        .route("/admin/inventory-items", get(list_inventory_items))
+        .route(
+            "/admin/inventory-items",
+            get(list_inventory_items).post(create_inventory_item),
+        )
         .route("/admin/customers", get(list_customers))
         .route("/admin/promotions", get(list_promotions))
         .route("/admin/subscriptions", get(list_subscriptions))
-        .route("/admin/regions", get(list_regions))
-        .route("/admin/sales-channels", get(list_sales_channels))
-        .route("/admin/currencies", get(list_currencies));
+        .route("/admin/regions", get(list_regions).post(create_region))
+        .route(
+            "/admin/sales-channels",
+            get(list_sales_channels).post(create_sales_channel),
+        )
+        .route(
+            "/admin/currencies",
+            get(list_currencies).post(create_currency),
+        )
+        .route("/admin/publishable-api-keys", post(create_publishable_key))
+        .route("/admin/stock-locations", post(create_stock_location))
+        .route("/admin/products/{id}/variants", post(create_variant))
+        .route("/admin/price-sets", post(create_price_set))
+        .route(
+            "/admin/product-variants/{id}/price-set",
+            post(link_variant_price_set),
+        )
+        .route("/admin/prices", post(add_price))
+        .route(
+            "/admin/inventory-items/{id}/location-levels",
+            post(set_stock),
+        );
 
     (router, bound)
 }
@@ -213,4 +267,138 @@ async fn list_currencies(
     let currencies = admin_rest::list_currencies(&mut tx, &ctx).await?;
     tx.commit().await?;
     Ok(Json(currencies))
+}
+
+async fn create_currency(
+    State(state): State<AppState>,
+    Json(body): Json<admin_rest::CreateCurrency>,
+) -> Result<Json<admin_rest::CurrencyView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let currency = admin_rest::create_currency(&mut tx, &ctx, body).await?;
+    tx.commit().await?;
+    Ok(Json(currency))
+}
+
+async fn create_region(
+    State(state): State<AppState>,
+    Json(body): Json<admin_rest::CreateRegion>,
+) -> Result<Json<admin_rest::RegionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let region = admin_rest::create_region(&mut tx, &ctx, body).await?;
+    tx.commit().await?;
+    Ok(Json(region))
+}
+
+async fn create_sales_channel(
+    State(state): State<AppState>,
+    Json(body): Json<admin_rest::CreateSalesChannel>,
+) -> Result<Json<admin_rest::SalesChannelView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let channel = admin_rest::create_sales_channel(&mut tx, &ctx, body).await?;
+    tx.commit().await?;
+    Ok(Json(channel))
+}
+
+async fn create_publishable_key(
+    State(state): State<AppState>,
+    Json(body): Json<admin_rest::CreatePublishableKey>,
+) -> Result<Json<admin_rest::IssuedKeyView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let key = admin_rest::create_publishable_key(&mut tx, &ctx, body).await?;
+    tx.commit().await?;
+    Ok(Json(key))
+}
+
+async fn create_stock_location(
+    State(state): State<AppState>,
+    Json(body): Json<admin_catalogue::CreateStockLocation>,
+) -> Result<Json<admin_catalogue::StockLocationView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let location = admin_catalogue::create_stock_location(&mut tx, &ctx, body).await?;
+    tx.commit().await?;
+    Ok(Json(location))
+}
+
+async fn create_product(
+    State(state): State<AppState>,
+    Json(body): Json<admin_catalogue::CreateProduct>,
+) -> Result<Json<admin_catalogue::ProductView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let product = admin_catalogue::create_product(&mut tx, &ctx, body).await?;
+    tx.commit().await?;
+    Ok(Json(product))
+}
+
+async fn create_variant(
+    State(state): State<AppState>,
+    Path(id): Path<ProductId>,
+    Json(body): Json<admin_catalogue::CreateVariant>,
+) -> Result<Json<admin_catalogue::VariantView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let variant = admin_catalogue::create_variant(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(variant))
+}
+
+async fn create_price_set(
+    State(state): State<AppState>,
+) -> Result<Json<admin_catalogue::PriceSetView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let set = admin_catalogue::create_price_set(&mut tx, &ctx).await?;
+    tx.commit().await?;
+    Ok(Json(set))
+}
+
+async fn link_variant_price_set(
+    State(state): State<AppState>,
+    Path(id): Path<VariantId>,
+    Json(body): Json<admin_catalogue::LinkPriceSet>,
+) -> Result<StatusCode, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    admin_catalogue::link_variant_price_set(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn add_price(
+    State(state): State<AppState>,
+    Json(body): Json<admin_catalogue::AddPrice>,
+) -> Result<Json<admin_catalogue::PriceView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let price = admin_catalogue::add_price(&mut tx, &ctx, body).await?;
+    tx.commit().await?;
+    Ok(Json(price))
+}
+
+async fn create_inventory_item(
+    State(state): State<AppState>,
+    Json(body): Json<admin_catalogue::CreateInventoryItem>,
+) -> Result<Json<admin_catalogue::InventoryItemView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let item = admin_catalogue::create_inventory_item(&mut tx, &ctx, body).await?;
+    tx.commit().await?;
+    Ok(Json(item))
+}
+
+async fn set_stock(
+    State(state): State<AppState>,
+    Path(id): Path<InventoryItemId>,
+    Json(body): Json<admin_catalogue::SetStock>,
+) -> Result<Json<admin_catalogue::InventoryLevelView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let level = admin_catalogue::set_stock(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(level))
 }
