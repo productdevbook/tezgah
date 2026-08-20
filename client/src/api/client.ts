@@ -83,3 +83,39 @@ export async function post<S extends z.ZodTypeAny>(
   })
   return parseResponse(options.schema, data, status)
 }
+
+export async function patch<S extends z.ZodTypeAny>(
+  path: ApiPath,
+  options: {
+    schema: S
+    body: unknown
+    params?: Record<string, string>
+    signal?: AbortSignal
+  }
+): Promise<z.infer<S>> {
+  const url = fill(path, options.params ?? {})
+  const { data, status } = await apiMutator<{ data: unknown; status: number }>(url, {
+    method: "PATCH",
+    signal: options.signal,
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(options.body),
+  })
+  return parseResponse(options.schema, data, status)
+}
+
+/**
+ * Every bound `DELETE` answers with an undocumented body (`zod.unknown()` in
+ * the generated zod, when it has one at all) — there is nothing here for
+ * `drift.ts` to check a screen against, so this resolves once `apiMutator`
+ * has confirmed the status was 2xx rather than parsing a response.
+ */
+export async function del(
+  path: ApiPath,
+  options: { params?: Record<string, string>; signal?: AbortSignal }
+): Promise<void> {
+  const url = fill(path, options.params ?? {})
+  await apiMutator<{ data: unknown; status: number }>(url, {
+    method: "DELETE",
+    signal: options.signal,
+  })
+}

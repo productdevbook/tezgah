@@ -1,4 +1,5 @@
 import { inventoryItem } from "@/api/schemas"
+import { DeleteAction } from "@/components/delete-action"
 import { DetailField, FieldGrid, Empty } from "@/components/detail-fields"
 import { DetailHeader } from "@/components/detail-header"
 import { QueryState } from "@/components/query-state"
@@ -30,6 +31,17 @@ export function InventoryItemDetail({ id }: { id: string }) {
               <Badge variant={item.requires_shipping ? "default" : "outline"}>
                 {item.requires_shipping ? "shipped" : "digital"}
               </Badge>
+              {/* No PATCH for an inventory item past creation — the only
+                  write past this is the stock a location holds of it,
+                  already bound at POST .../{id}/location-levels — so this
+                  screen offers delete without an edit to go with it. */}
+              <DeleteAction
+                path="/admin/inventory-items/{id}"
+                params={{ id: item.id }}
+                invalidateKey={["inventory-items"]}
+                kind="inventory item"
+                name={item.title ?? item.sku ?? "this item"}
+              />
             </DetailHeader>
             <Card>
               <CardContent>
