@@ -66,14 +66,13 @@ them is the whole difference between the shapes:
 |---|---|---|
 | `Authorizer` | its own role engine | three roles at the door; a signed-in shopper reaches only their own rows |
 | `AuditSink` | its own audit log | a row, in the caller's transaction |
-| `EventSink` | its own bus or outbox | an outbox row nothing delivers yet |
+| `EventSink` | its own bus or outbox | an outbox row, posted to one URL and signed |
 | `Jobs` | its own queue and workers | `server_job`, claimed and dispatched, with a backoff and a dead letter |
 | `Clock` | its own | `Utc::now()` |
 
 The right-hand column is the honest shape of the self-hosted product today,
-and the next section is the rest of it. The one word doing the most work
-there is "yet": an event is written down where a change wrote it, and sending
-it anywhere is what this host still cannot do.
+and the next section is the rest of it. All five are answered now; what that
+section measures is how much each answer covers.
 
 ## Where this arrangement is not finished
 
@@ -185,11 +184,27 @@ hours after its newest tag, so what is missing is a release rather than the
 work — productdevbook/kasapay#225. Asked for there rather than worked around
 here, and the job records the reason and waits.
 
-**Events go to stdout.** No outbox, no subscriber, no delivery, no retry. A
-shop that wants `order.paid` to reach its own systems, or to become an e-mail,
-has nowhere to say so. A file store and a mailer are the same absence seen
-from a different side: a product image can only be a URL somebody else hosts,
-and nothing in the product can send a receipt.
+**Events are written down and sent.** `EventSink` writes an outbox row and
+`AuditSink` an audit row, both in the transaction of the change they belong
+to — so a row is a thing that happened, and a change that rolled back left
+none. Both were a line on stdout, which meant an event that mattered was gone
+unless somebody was tailing the log. A worker then posts each undelivered row
+to one URL, signed `sha256=<hmac>` over the exact bytes, retrying with the
+same doubling backoff the job worker uses and leaving a spent row dead with
+its reason on it.
+
+One destination, deliberately. A shop that needs events in five places puts
+something that fans out behind the one URL; what the product owes is that the
+event leaves the building, once per event, with something the receiver can
+check. Delivery is at-least-once and says so: a crash between the receiver's
+answer and the row's update sends it again, and the event's id is in the body
+to deduplicate on — the same contract `payment::record_webhook` implements on
+the way in.
+
+**There is still no mailer and no file store.** So an invitation, a
+notification and a password-reset link cannot exist, and a product image can
+only be a URL somebody else hosts. A shop can reach mail through the webhook
+today; that it has to is the gap.
 
 **113 of 483 declared routes are bound.** The panel draws 228. The difference
 is not a mistake — each binding is written by hand, deliberately — but it does

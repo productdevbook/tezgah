@@ -18,7 +18,7 @@ use tezgah::checkout::Checkout;
 use tezgah::payment::PaymentProvider;
 use tezgah::ports::Scope;
 use tezgah_server::config::Config;
-use tezgah_server::{host, http, identity, provider, schedule, seed};
+use tezgah_server::{deliver, host, http, identity, provider, schedule, seed};
 use tokio::net::TcpListener;
 use uuid::Uuid;
 
@@ -124,6 +124,24 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             scope,
         }),
     );
+
+    match (&config.event_webhook, &config.event_secret) {
+        (Some(url), Some(secret)) => {
+            // The address, never the secret. This line ends up in a log.
+            println!("events delivered to {url}");
+            deliver::spawn(
+                pool.clone(),
+                deliver::Destination {
+                    url: Arc::from(url.as_str()),
+                    secret: Arc::from(secret.as_str()),
+                },
+            );
+        }
+        _ => println!(
+            "events not delivered: TEZGAH_EVENT_WEBHOOK is unset — they are written to \
+             server_event and readable at /admin/records/events"
+        ),
+    }
 
     let admin_token: Option<Arc<str>> = config.admin_token.as_deref().map(Arc::from);
     let operators = identity::count(&pool).await?;
