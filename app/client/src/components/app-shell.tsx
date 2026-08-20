@@ -22,6 +22,7 @@ import { CommandPalette } from "@/components/command-palette"
 import { SectionLink } from "@/components/section-link"
 import { useCommandPalette } from "@/lib/command-palette"
 import { COVERAGE, GROUPS, SERVER_SECTIONS, type Section } from "@/lib/nav"
+import { mayOpen, useWhoAmI } from "@/lib/session"
 import { panelRuntime } from "@/panel/runtime"
 
 /// The host's own screens are not in `routes()` and not in `GROUPS`, so they
@@ -95,6 +96,7 @@ function isActiveSection(
 export function AppShell() {
   const matchRoute = useMatchRoute()
   const palette = useCommandPalette()
+  const me = useWhoAmI()
 
   return (
     <SidebarProvider>
@@ -145,7 +147,9 @@ export function AppShell() {
             <SidebarGroupLabel>This server</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {SERVER_SECTIONS.map((section) => (
+                {SERVER_SECTIONS.filter((section) =>
+                  mayOpen(section.slug, me.data)
+                ).map((section) => (
                   <SidebarMenuItem key={section.slug}>
                     <SidebarMenuButton
                       isActive={isActiveServerSection(matchRoute, section.slug)}
@@ -162,9 +166,18 @@ export function AppShell() {
         </SidebarContent>
 
         <SidebarFooter>
-          <div className="px-2 py-1 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
-            {COVERAGE.covered} of {COVERAGE.operations} admin operations have a
-            screen
+          <div className="grid gap-1 px-2 py-1 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
+            <span className="truncate">
+              {me.data === null
+                ? "Admin token — not a person"
+                : me.data
+                  ? `${me.data.name} · ${me.data.role}`
+                  : ""}
+            </span>
+            <span>
+              {COVERAGE.covered} of {COVERAGE.operations} admin operations have
+              a screen
+            </span>
           </div>
         </SidebarFooter>
         <SidebarRail />

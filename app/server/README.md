@@ -172,8 +172,8 @@ find. Startup says which of the two it found.
 | `GET /auth/me` | no | who the caller is; `null` for `ADMIN_TOKEN` |
 | `POST /auth/password` | no | changes the caller's own, ending every other session they hold |
 | `GET /admin/operators` | no | the accounts, and which are disabled |
-| `GET /admin/records/audit` | no | who did what to which row, newest first |
-| `GET /admin/records/events` | no | the outbox, newest first |
+| `GET /admin/records/audit` | no | who did what to which row, newest first — owner only |
+| `GET /admin/records/events` | no | the outbox, newest first — owner only |
 | `POST /admin/operators` | no | makes one — owner only |
 | `POST /admin/operators/{id}/password` | no | sets somebody else's — owner only, and ends every session they hold |
 | `PATCH /admin/operators/{id}` | no | changes a role, disables or re-enables one — owner only, never itself, never the last owner |

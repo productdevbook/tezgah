@@ -360,7 +360,8 @@ type EventTuple = (
     Option<chrono::DateTime<chrono::Utc>>,
 );
 
-/// What was written down, newest first.
+/// What was written down, newest first. An owner's, because it is the record
+/// of what their staff did and reading it is oversight rather than work.
 ///
 /// Not one of tezgah's routes — the crate asks a host to keep an audit trail
 /// and does not say how it is read back. Newest first and a fixed ceiling
@@ -369,8 +370,11 @@ type EventTuple = (
 /// screen.
 async fn audit(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Query(query): Query<Recent>,
 ) -> Result<Json<Vec<AuditRow>>, ApiError> {
+    only_an_owner(&caller)?;
+
     let rows: Vec<AuditTuple> = sqlx::query_as(
         "select id, actor_kind, actor_id, action, entity, entity_id, summary, created_at
          from server_audit
@@ -402,12 +406,18 @@ async fn audit(
     ))
 }
 
-/// The outbox, newest first. `delivered_at` is null on every row, because
-/// nothing here sends them anywhere — see `host::ServerHost`'s `emit`.
+/// The outbox, newest first, and an owner's for the same reason the audit
+/// trail is: a payload carries whatever the change carried.
+///
+/// `delivered_at` is null on every row, because nothing here sends them
+/// anywhere — see `host::ServerHost`'s `emit`.
 async fn events(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Query(query): Query<Recent>,
 ) -> Result<Json<Vec<EventRow>>, ApiError> {
+    only_an_owner(&caller)?;
+
     let rows: Vec<EventTuple> = sqlx::query_as(
         "select id, name, entity_id, payload, created_at, delivered_at
          from server_event
