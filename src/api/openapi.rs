@@ -25,8 +25,8 @@ use serde_json::{Map, Value, json};
 use crate::page::Page;
 
 use super::{
-    Method, Route, Surface, admin_catalogue, admin_order, admin_rest, agreement, credit, digital,
-    order_basket, payout, routes, store, subscription, tax_identity,
+    Method, Paged, Route, Surface, admin_catalogue, admin_order, admin_rest, agreement, credit,
+    digital, order_basket, payout, routes, store, subscription, tax_identity,
 };
 
 /// A storefront's key, which pins it to its sales channels.
@@ -141,9 +141,16 @@ struct QueryString {
     of: SchemaFn,
 }
 
-/// A start, not the set. Four lists an operator actually filters; the rest
-/// still answer with the path parameters alone, and `tests/openapi.rs` counts
-/// what is here so the number cannot quietly stop growing.
+/// A start, not the set. Twenty-two lists — four that filter on something of
+/// their own, and eighteen whose whole query string is `after` and `limit` —
+/// against 484 operations. The rest still answer with their path parameters
+/// alone, and `tests/openapi.rs` counts what is here so the number cannot
+/// quietly stop growing.
+///
+/// It is a table rather than a field on `Route` because a route carries no
+/// handler and so cannot name the type its handler deserialises. Moving it
+/// onto `Route` is the change that would stop this drifting, and it is 347
+/// struct literals and a macro — worth doing, not done here.
 const QUERIES: &[QueryString] = &[
     QueryString {
         operation_id: "getAdminProducts",
@@ -160,6 +167,85 @@ const QUERIES: &[QueryString] = &[
     QueryString {
         operation_id: "getAdminCustomers",
         of: schema_of::<admin_rest::ListCustomers>,
+    },
+    QueryString {
+        operation_id: "getAdminTaxRates",
+        of: schema_of::<admin_rest::ListTaxRates>,
+    },
+    QueryString {
+        operation_id: "getAdminWorkflowsExecutions",
+        of: schema_of::<admin_rest::ListWorkflowRuns>,
+    },
+    // The lists whose whole query string is the two parameters every paged
+    // list takes. They share one schema because they share one shape — see
+    // `Paged`, which exists to be described and not to be deserialised into.
+    QueryString {
+        operation_id: "getAdminInventoryItems",
+        of: schema_of::<Paged>,
+    },
+    QueryString {
+        operation_id: "getAdminPromotions",
+        of: schema_of::<Paged>,
+    },
+    QueryString {
+        operation_id: "getAdminSubscriptions",
+        of: schema_of::<Paged>,
+    },
+    QueryString {
+        operation_id: "getAdminGiftCards",
+        of: schema_of::<Paged>,
+    },
+    QueryString {
+        operation_id: "getAdminRegions",
+        of: schema_of::<Paged>,
+    },
+    QueryString {
+        operation_id: "getAdminSalesChannels",
+        of: schema_of::<Paged>,
+    },
+    QueryString {
+        operation_id: "getAdminPublishableApiKeys",
+        of: schema_of::<Paged>,
+    },
+    QueryString {
+        operation_id: "getAdminTaxRegions",
+        of: schema_of::<Paged>,
+    },
+    QueryString {
+        operation_id: "getAdminCarts",
+        of: schema_of::<Paged>,
+    },
+    QueryString {
+        operation_id: "getAdminCampaigns",
+        of: schema_of::<Paged>,
+    },
+    QueryString {
+        operation_id: "getAdminCollections",
+        of: schema_of::<Paged>,
+    },
+    QueryString {
+        operation_id: "getAdminCategories",
+        of: schema_of::<Paged>,
+    },
+    QueryString {
+        operation_id: "getAdminShippingOptions",
+        of: schema_of::<Paged>,
+    },
+    QueryString {
+        operation_id: "getAdminShippingProfiles",
+        of: schema_of::<Paged>,
+    },
+    QueryString {
+        operation_id: "getAdminPriceLists",
+        of: schema_of::<Paged>,
+    },
+    QueryString {
+        operation_id: "getAdminPayments",
+        of: schema_of::<Paged>,
+    },
+    QueryString {
+        operation_id: "getAdminWorkflowsExecutionsDeadLetters",
+        of: schema_of::<Paged>,
     },
 ];
 

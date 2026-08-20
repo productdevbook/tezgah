@@ -143,8 +143,10 @@ fn no_schema_name_was_disambiguated_by_a_number() {
 ///
 /// This counts the routes that describe their query string, and the count may
 /// only go up. It is a floor rather than an equality so that wiring the next
-/// list does not fail this test; it is here at all so that the four cannot
-/// quietly become none.
+/// list does not fail this test; it is here at all so that what is wired
+/// cannot quietly become none. The floor is under the real number on purpose
+/// — an operation id that stops matching a route silently drops its entry,
+/// and a floor a few below the truth still catches that.
 #[test]
 fn the_lists_that_filter_say_what_they_filter_on() {
     let document: serde_json::Value =
@@ -167,7 +169,7 @@ fn the_lists_that_filter_say_what_they_filter_on() {
     }
 
     assert!(
-        described >= 4,
+        described >= 20,
         "only {described} operations describe a query parameter; \
          `QUERIES` in src/api/openapi.rs is what grows this"
     );

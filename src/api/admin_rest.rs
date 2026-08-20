@@ -1059,7 +1059,7 @@ pub struct CreateTaxRate {
     pub is_combinable: bool,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ListTaxRates {
     pub after: Option<String>,
@@ -1938,7 +1938,7 @@ impl From<workflow::DeadLetter> for WorkflowDeadLetterView {
     }
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ListWorkflowRuns {
     pub after: Option<String>,

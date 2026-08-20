@@ -83,6 +83,28 @@ pub(crate) async fn own_order(
     Ok(found)
 }
 
+/// The two parameters every paged list takes, described once.
+///
+/// Five modules have a query struct of their own that is exactly these two
+/// fields — `admin_rest::List`, `credit::List`, `digital::List`,
+/// `subscription::List`, `admin_catalogue::ListQuery` — because each
+/// deserialises in its own file and turns them into a [`crate::page::Paging`]
+/// its own way. That is five copies of one shape, and five copies in
+/// `components/schemas` would say the shapes were merely alike rather than
+/// the same.
+///
+/// So this exists only to be described. Nothing deserialises into it: it
+/// carries `JsonSchema` and not `Deserialize`, which is what keeps it from
+/// quietly becoming a sixth way to read a query string.
+#[derive(Debug, Clone, Copy, Default, schemars::JsonSchema)]
+pub struct Paged {
+    /// The cursor the previous page ended on. Absent means the first page.
+    pub after: Option<String>,
+    /// Clamped rather than refused — `page::MAX_LIMIT` is the ceiling, and a
+    /// caller asking for more gets it rather than an error.
+    pub limit: Option<u32>,
+}
+
 /// Which surface a route belongs to. The same resource is usually reachable on
 /// both and answers differently: a shopper sees a published product, an
 /// operator sees the draft beside it.
