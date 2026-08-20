@@ -167,8 +167,12 @@ The tests that check a rule against every table — `tests/schema.rs`,
 `tests/isolation.rs` — read the catalogue rather than a list somebody keeps up
 to date, so a table added tomorrow is covered the day it is added.
 
-Against a real Postgres. Never SQLite: the same query returns different things
-under each, and the difference shows up in production rather than in CI.
+Against a real Postgres, version 18. Never SQLite: the same query returns
+different things under each, and the difference shows up in production rather
+than in CI. 18 is also the floor the README states, and for the same reason it
+is stated rather than assumed — nothing in `migrations/` needs a feature newer
+than 15, but 18 is the only version anything runs against, and a version nobody
+tests is a version nobody supports.
 
 Concurrency claims are tested concurrently — two connections, at the same time.
 A test that simulates a race by doing one thing after another proves nothing.

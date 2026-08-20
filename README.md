@@ -8,7 +8,7 @@
   <a href="https://github.com/productdevbook/tezgah/actions/workflows/ci.yml"><img src="https://github.com/productdevbook/tezgah/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-blue.svg" alt="MIT"></a>
   <img src="https://img.shields.io/badge/rust-1.88%2B-orange.svg" alt="Rust 1.88+">
-  <img src="https://img.shields.io/badge/postgres-15%2B-336791.svg" alt="Postgres 15+">
+  <img src="https://img.shields.io/badge/postgres-18%2B-336791.svg" alt="Postgres 18+">
 </p>
 
 Catalogue, pricing, stock, carts, checkout, orders, payments, fulfilment,
@@ -74,7 +74,14 @@ than asserted here.
 
 ## Embedding it
 
-Postgres 15 or later, and a `sqlx` pool.
+Postgres 18 or later, and a `sqlx` pool.
+
+Nothing in the schema needs 18 — no feature newer than 15 is used anywhere in
+`migrations/`. 18 is the floor because it is the only version anything is tested
+against: CI runs the suite on `postgres:18`, `docker-compose.yml` ships 18, and
+that is the whole of the evidence. A version nobody tests is a version nobody
+supports, and this codebase has been bitten before by a query that passed on one
+engine and failed on another.
 
 ```toml
 [dependencies]
