@@ -3,6 +3,7 @@
 //! with a request in-process, without a live process or a database.
 
 pub mod config;
+pub mod deliver;
 pub mod host;
 pub mod http;
 pub mod identity;
@@ -29,6 +30,7 @@ use sqlx::PgPool;
 pub async fn prepare(pool: &PgPool) -> tezgah::Result<()> {
     host::create_jobs_table(pool).await?;
     host::create_record_tables(pool).await?;
+    deliver::prepare(pool).await?;
     identity::create_tables(pool).await?;
     shopper::create_tables(pool).await?;
     Ok(())

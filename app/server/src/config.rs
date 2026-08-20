@@ -47,6 +47,16 @@ pub struct Config {
     /// unbound with no `stock_location_id`. `main.rs` is where the two
     /// combine.
     pub demo_bank_enabled: bool,
+    /// Where an outbox row is sent. `None` leaves the deliverer unstarted and
+    /// every event unsent — which is what this binary did before there was a
+    /// deliverer at all, and is still the honest default: an event posted to
+    /// nowhere in particular is worse than one left in a table somebody can
+    /// read.
+    pub event_webhook: Option<String>,
+    /// Signs the body so the receiver can tell it came from this shop.
+    /// Required whenever `event_webhook` is set: an unsigned webhook is an
+    /// endpoint anybody who guesses the URL can post to.
+    pub event_secret: Option<String>,
 }
 
 #[derive(Debug)]
@@ -126,6 +136,37 @@ impl Config {
             .map(|value| value == DEMO_BANK_CONFIRMATION)
             .unwrap_or(false);
 
+        let event_webhook = match std::env::var("TEZGAH_EVENT_WEBHOOK") {
+            Ok(url) if url.trim().is_empty() => {
+                return Err(err(
+                    "TEZGAH_EVENT_WEBHOOK is set but empty — unset it to leave events undelivered",
+                ));
+            }
+            Ok(url) if !url.starts_with("https://") && !url.starts_with("http://") => {
+                return Err(err(format!(
+                    "TEZGAH_EVENT_WEBHOOK is set to {url:?}, which is not an http(s) url"
+                )));
+            }
+            Ok(url) => Some(url),
+            Err(_) => None,
+        };
+
+        let event_secret = match std::env::var("TEZGAH_EVENT_SECRET") {
+            Ok(secret) if secret.trim().is_empty() => None,
+            Ok(secret) => Some(secret),
+            Err(_) => None,
+        };
+
+        // Refused rather than defaulted to unsigned. A receiver cannot tell a
+        // real event from anybody who guessed the address, and finding that
+        // out later means every event already sent was unverifiable.
+        if event_webhook.is_some() && event_secret.is_none() {
+            return Err(err(
+                "TEZGAH_EVENT_WEBHOOK is set without TEZGAH_EVENT_SECRET — \
+                 an unsigned webhook is an endpoint anybody can post to",
+            ));
+        }
+
         Ok(Config {
             database_url,
             port,
@@ -134,6 +175,8 @@ impl Config {
             stock_location_id,
             currency_exponent,
             demo_bank_enabled,
+            event_webhook,
+            event_secret,
         })
     }
 }

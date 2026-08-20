@@ -43,6 +43,8 @@ naming what is wrong, rather than on the first request that needed a pool.
 | `TEZGAH_STOCK_LOCATION_ID` | no | unset | the one warehouse checkout reserves and ships from — see below |
 | `TEZGAH_DEMO_BANK` | no | unset | set to exactly `i-understand-this-takes-no-money` to run checkout against the demo payment provider — see below |
 | `TEZGAH_CURRENCY_EXPONENT` | no | `2` | this shop's one currency's decimal places, for the payment provider wrapper |
+| `TEZGAH_EVENT_WEBHOOK` | no | unset | where an outbox row is posted; unset leaves every event written and unsent — see "Events leave the building" |
+| `TEZGAH_EVENT_SECRET` | with the above | unset | signs the body. Startup fails if a webhook is set without one |
 
 Configuration comes from the environment and nowhere else: no config file
 format, because a container is not handed one separately from the
@@ -272,6 +274,47 @@ field and drop it" kasapay's own documentation refuses, so `src/provider.rs`
 implements neither and says so where somebody would look for it. Until there
 is a release a dunning retry records exactly that as its reason — still an
 improvement on being marked done by a worker that did nothing.
+
+## Events leave the building
+
+`ports::EventSink` writes a row in `server_event`, inside the transaction of
+the change that caused it. That is what makes an event a thing that happened
+rather than a thing somebody hoped happened — a rollback takes the row with
+it. Delivering it is this binary's, and `src/deliver.rs` is that.
+
+Set `TEZGAH_EVENT_WEBHOOK` and `TEZGAH_EVENT_SECRET` and a worker posts every
+undelivered row:
+
+    POST <your url>
+    content-type: application/json
+    tezgah-signature: sha256=<hmac of the exact body>
+
+    {"id": "…", "name": "order.paid", "entity_id": "…", "payload": {…}}
+
+Verify the signature over the **raw bytes**, not over what you parsed — a body
+re-serialised by your framework is the classic way a valid signature stops
+matching. The secret is required: startup fails if a webhook is set without
+one, because an unsigned webhook is an endpoint anybody who guesses the URL
+can post to.
+
+**At least once, never exactly once.** The row is marked delivered after you
+answer, so a crash in between sends it again. `id` is in the body and does not
+change between attempts — deduplicate on it, the same way tezgah's own
+`payment::record_webhook` deduplicates a provider's redelivery on the way in.
+
+Anything other than a 2xx is a failure: the row keeps the reason, waits a
+doubling backoff from a minute, and after five attempts is left dead with that
+reason still on it. `/admin/records/events` shows all of it.
+
+One destination on purpose. A shop that needs events in five places puts
+something that fans out behind the one URL. Left unset, every event is still
+written down and readable — which is what this binary did before there was a
+deliverer, and is the honest default: an event posted nowhere in particular is
+worse than one left in a table somebody can read.
+
+There is no mailer here, so an invitation, a notification and a reset link
+still cannot be sent. A shop can hang mail off this webhook; that it has to is
+a gap, and `docs/architecture.md` counts it as one.
 
 ## Route table
 

@@ -21,7 +21,12 @@ argon2 = "0.5"
 async-trait = "0.1"
 axum = "0.8"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+hmac = "0.12"
 kasapay-core = "0.0.5"
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "rustls-tls",
+] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
