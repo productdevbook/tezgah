@@ -789,7 +789,7 @@ pub async fn get_product(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ProductId) -> Resul
 }
 
 /// A field left out is left alone; `null` on a nullable link clears it.
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UpdateProduct {
     pub handle: Option<String>,

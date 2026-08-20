@@ -197,6 +197,16 @@ static BODIES: &[Body] = &[
         request: None,
         response: Some(schema_of::<admin_catalogue::ProductView>),
     },
+    Body {
+        operation_id: "patchAdminProductsById",
+        request: Some(schema_of::<admin_catalogue::UpdateProduct>),
+        response: Some(schema_of::<admin_catalogue::ProductView>),
+    },
+    Body {
+        operation_id: "deleteAdminProductsById",
+        request: None,
+        response: None,
+    },
     // ------------------------------------------------------------- order
     Body {
         operation_id: "getAdminOrders",
@@ -1161,13 +1171,18 @@ mod tests {
         // Every Decimal BODIES reaches on the request side accepts both,
         // because that is what serde-with-str actually parses: payout's own
         // commission rate, `MoneyIn.amount` behind every order-domain write
-        // that takes an amount, the invoice's own total, and
-        // `AddPrice.amount` behind `POST /admin/prices`.
+        // that takes an amount, the invoice's own total, `AddPrice.amount`
+        // behind `POST /admin/prices`, and `UpdateProduct`'s four dimensions
+        // behind `PATCH /admin/products/{id}`.
         for pointer in [
             "/components/schemas/SetCommissionRule/properties/value",
             "/components/schemas/MoneyIn/properties/amount",
             "/components/schemas/RecordInvoice/properties/total",
             "/components/schemas/AddPrice/properties/amount",
+            "/components/schemas/UpdateProduct/properties/weight",
+            "/components/schemas/UpdateProduct/properties/length",
+            "/components/schemas/UpdateProduct/properties/height",
+            "/components/schemas/UpdateProduct/properties/width",
         ] {
             let value = document
                 .pointer(pointer)

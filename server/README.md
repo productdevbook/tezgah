@@ -169,7 +169,7 @@ receives the `Action` on every call, so a second token (or a role
 by hand, and says exactly how many out loud at startup:
 
 ```
-bound 48 of 483 declared routes
+bound 50 of 483 declared routes
   GET    /store/products
   GET    /store/products/{handle}
   POST   /store/carts
@@ -178,6 +178,8 @@ bound 48 of 483 declared routes
   POST   /store/carts/{id}/complete
   GET    /admin/products
   GET    /admin/products/{id}
+  PATCH  /admin/products/{id}
+  DELETE /admin/products/{id}
   GET    /admin/orders
   GET    /admin/orders/{id}
   GET    /admin/inventory-items
@@ -250,6 +252,16 @@ inventory level — the smallest set that gets a fresh install to something a
 storefront can check out from. `tezgah-server seed` (above) does the first
 five of those in one command; the rest — a real catalogue — go in through
 these routes, by hand or by whatever the panel or a script does with them.
+
+**Editing and deleting a row.** None of the seven screens could change or
+remove what they list, past the twelve creating writes above — `tezgah::api`
+has an update and a delete for some domains and not others, and this binary
+binds only where it does. Products is the first: `PATCH /admin/products/{id}`
+changes a product's fields (`admin_catalogue::update_product`, `Action::Write`)
+and `DELETE /admin/products/{id}` deletes one (`admin_catalogue::delete_product`,
+`Action::Delete` — soft: the handle is freed for reuse, the row stays for
+whatever already points at it). Neither's domain function is new; only
+binding it to a route is.
 
 **Past the panel: reads with no screen yet.** An order basket's own record
 and the two scope-local lists under it (`order_basket::get_basket`,

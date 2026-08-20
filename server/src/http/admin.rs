@@ -18,8 +18,14 @@
 //! `/admin/orders/{id}/payout-lines`, `/admin/payouts` and
 //! `/admin/payout-balance/{currency_code}` — none of the three has a screen
 //! in `client/` yet, so nothing calls them but this binary's own startup
-//! count. Everything else `tezgah::api` offers stays unbound; nothing here
-//! was chosen for this binary beyond what those needs cover.
+//! count. Past all of that, editing and deleting a row a screen already
+//! lists: `PATCH /admin/products/{id}` and `DELETE /admin/products/{id}`,
+//! the first of the seven screens' rows this binary can change or remove
+//! rather than only create and read — `tezgah::api` has both for products;
+//! whether it has them for the other six is a question this module answers
+//! one domain at a time, not assumed from this one. Everything else
+//! `tezgah::api` offers stays unbound; nothing here was chosen for this
+//! binary beyond what those needs cover.
 //!
 //! # Why a bearer token, and why it is the whole of this
 //!
@@ -78,6 +84,8 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
     let bound = vec![
         ("GET", "/admin/products"),
         ("GET", "/admin/products/{id}"),
+        ("PATCH", "/admin/products/{id}"),
+        ("DELETE", "/admin/products/{id}"),
         ("GET", "/admin/orders"),
         ("GET", "/admin/orders/{id}"),
         ("GET", "/admin/inventory-items"),
@@ -122,7 +130,12 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
 
     let router = Router::new()
         .route("/admin/products", get(list_products).post(create_product))
-        .route("/admin/products/{id}", get(get_product))
+        .route(
+            "/admin/products/{id}",
+            get(get_product)
+                .patch(update_product)
+                .delete(delete_product),
+        )
         .route("/admin/orders", get(list_orders))
         .route("/admin/orders/{id}", get(get_order))
         .route(
@@ -260,6 +273,29 @@ async fn get_product(
     let product = admin_catalogue::get_product(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(product))
+}
+
+async fn update_product(
+    State(state): State<AppState>,
+    Path(id): Path<ProductId>,
+    Json(body): Json<admin_catalogue::UpdateProduct>,
+) -> Result<Json<admin_catalogue::ProductView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let product = admin_catalogue::update_product(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(product))
+}
+
+async fn delete_product(
+    State(state): State<AppState>,
+    Path(id): Path<ProductId>,
+) -> Result<StatusCode, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    admin_catalogue::delete_product(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn list_orders(
