@@ -78,6 +78,10 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         ("GET", "/admin/inventory-items"),
         ("GET", "/admin/inventory-items/{id}"),
         ("DELETE", "/admin/inventory-items/{id}"),
+        ("GET", "/admin/products/export"),
+        ("POST", "/admin/products/batch"),
+        ("POST", "/admin/prices/batch"),
+        ("POST", "/admin/inventory-items/batch"),
         ("GET", "/admin/customers"),
         ("GET", "/admin/customers/{id}"),
         ("PATCH", "/admin/customers/{id}"),
@@ -190,6 +194,10 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
             "/admin/inventory-items/{id}",
             get(get_inventory_item).delete(delete_inventory_item),
         )
+        .route("/admin/products/export", get(export_products))
+        .route("/admin/products/batch", post(batch_products))
+        .route("/admin/prices/batch", post(batch_prices))
+        .route("/admin/inventory-items/batch", post(batch_stock_levels))
         .route("/admin/customers", get(list_customers))
         .route(
             "/admin/customers/{id}",
@@ -954,6 +962,59 @@ async fn delete_stock_location(
     admin_catalogue::delete_stock_location(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// A page of variants flat enough to write as CSV, and the same shape back.
+///
+/// The export and the import name the same columns on purpose: a shop's way
+/// of changing four hundred prices is to take the page out, edit it, and put
+/// it back. That only works if what comes out goes in.
+async fn export_products(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Query(query): Query<admin_catalogue::ExportQuery>,
+) -> Result<Json<tezgah::page::Page<admin_catalogue::ProductExportView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let page = admin_catalogue::export_products(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn batch_products(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Json(body): Json<admin_catalogue::ImportProductsBody>,
+) -> Result<Json<admin_catalogue::ImportResultView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let result = admin_catalogue::batch_products(&mut tx, &ctx, body).await?;
+    tx.commit().await?;
+    Ok(Json(result))
+}
+
+async fn batch_prices(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Json(body): Json<admin_catalogue::UpdatePricesBody>,
+) -> Result<Json<admin_catalogue::BatchResultView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let result = admin_catalogue::batch_prices(&mut tx, &ctx, body).await?;
+    tx.commit().await?;
+    Ok(Json(result))
+}
+
+async fn batch_stock_levels(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Json(body): Json<admin_catalogue::SetStockLevelsBody>,
+) -> Result<Json<admin_catalogue::BatchResultView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let result = admin_catalogue::batch_stock_levels(&mut tx, &ctx, body).await?;
+    tx.commit().await?;
+    Ok(Json(result))
 }
 
 async fn create_product(

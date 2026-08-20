@@ -43,6 +43,8 @@ export function useSectionNavigate() {
         return void navigate({ to: "/carts" })
       case "operators":
         return void navigate({ to: "/operators" })
+      case "batch":
+        return void navigate({ to: "/batch" })
       default:
         return void navigate({ to: "/$section", params: { section: slug } })
     }

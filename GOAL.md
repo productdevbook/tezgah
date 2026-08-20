@@ -370,8 +370,9 @@ In the panel:
       `useState` and a map of field errors each
 - [ ] the screens' own words in the dictionary — English and Turkish exist
       and the compiler keeps them in step, over the shared chrome only
-- [ ] anything bulk: multi-select, a bulk edit grid, and a screen for the
-      three `batch` endpoints that are routed and drawn by nothing
+- [ ] multi-select on a list and an edit grid in the browser — the CSV round
+      trip is drawn (`/batch`, and the server binds the four routes it needs),
+      and it is what a shop changing four hundred prices actually uses
 - [ ] the routing half of the seam — what a screen says and sends is a
       host's answer now; where it lives is still a fixed route root and a
       sidebar switched over a closed route union

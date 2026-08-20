@@ -198,9 +198,15 @@ export const COVERAGE = {
  * The host's own screens, kept apart from `GROUPS` on purpose.
  *
  * tezgah authenticates nobody and declares no route for an account, so an
- * operator is not one of the 483 operations `COVERAGE` counts. Folding it in
+ * operator is not one of the operations `COVERAGE` counts. Folding it in
  * would make the tally read as progress against a surface it is not part of.
+ *
+ * Import and export is here for a different reason: its four routes *are*
+ * tezgah's, and they are counted under `catalogue` where they belong. What
+ * is not a domain is the screen — a shop does not think of "the batch
+ * endpoints", it thinks of getting its prices out and back in.
  */
 export const SERVER_SECTIONS: { slug: string; title: string }[] = [
   { slug: "operators", title: "Operators" },
+  { slug: "batch", title: "Import and export" },
 ]

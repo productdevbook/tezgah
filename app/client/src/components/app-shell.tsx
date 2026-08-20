@@ -24,6 +24,22 @@ import { useCommandPalette } from "@/lib/command-palette"
 import { COVERAGE, GROUPS, SERVER_SECTIONS, type Section } from "@/lib/nav"
 import { panelRuntime } from "@/panel/runtime"
 
+/// The host's own screens are not in `routes()` and not in `GROUPS`, so they
+/// get their own answer to the same question.
+function isActiveServerSection(
+  matchRoute: ReturnType<typeof useMatchRoute>,
+  slug: string
+): boolean {
+  switch (slug) {
+    case "operators":
+      return Boolean(matchRoute({ to: "/operators", fuzzy: true }))
+    case "batch":
+      return Boolean(matchRoute({ to: "/batch", fuzzy: true }))
+    default:
+      return false
+  }
+}
+
 function isActiveSection(
   matchRoute: ReturnType<typeof useMatchRoute>,
   section: Section
@@ -130,9 +146,7 @@ export function AppShell() {
                 {SERVER_SECTIONS.map((section) => (
                   <SidebarMenuItem key={section.slug}>
                     <SidebarMenuButton
-                      isActive={Boolean(
-                        matchRoute({ to: "/operators", fuzzy: true })
-                      )}
+                      isActive={isActiveServerSection(matchRoute, section.slug)}
                       tooltip={section.title}
                       render={<SectionLink slug={section.slug} />}
                     >
