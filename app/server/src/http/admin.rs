@@ -53,15 +53,16 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post};
 use axum::{Extension, Json, Router};
 use tezgah::api::{
-    admin_catalogue, admin_order, admin_rest, agreement, credit, digital, order_basket, payout,
-    store as store_api, subscription, tax_identity,
+    admin_catalogue, admin_order, admin_rest, agreement, credit, digital, inventory_lot,
+    order_basket, payout, store as store_api, subscription, tax_identity,
 };
 use tezgah::id::{
     CategoryId, CustomerId, DigitalContentId, FulfillmentId, FulfillmentSetId, GiftCardId,
-    InventoryItemId, OrderBasketId, OrderId, PaymentCollectionId, PaymentId, PaymentWebhookEventId,
-    PriceId, PriceListId, PriceSetId, ProductId, ProductTagId, PromotionId, PublishableKeyId,
-    RegionId, SalesChannelId, ShippingOptionId, ShippingProfileId, StockLocationId, StoreCreditId,
-    SubscriptionId, TaxRateId, TaxRegionId, VariantId, WorkflowRunId,
+    InventoryItemId, InventoryLotId, OptionId, OrderBasketId, OrderId, PaymentCollectionId,
+    PaymentId, PaymentWebhookEventId, PriceId, PriceListId, PriceSetId, ProductId, ProductTagId,
+    PromotionId, PublishableKeyId, RegionId, SalesChannelId, ShippingOptionId, ShippingProfileId,
+    StockLocationId, StoreCreditId, SubscriptionId, TaxRateId, TaxRegionId, VariantId,
+    WorkflowRunId,
 };
 use tezgah::ports::{Action, Actor, Ctx, Host};
 
@@ -148,6 +149,22 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         ("GET", "/admin/products/{id}/channels"),
         ("POST", "/admin/products/{id}/channels"),
         ("DELETE", "/admin/products/{id}/channels/{sales_channel_id}"),
+        ("GET", "/admin/products/{id}/images"),
+        ("POST", "/admin/products/{id}/images"),
+        ("GET", "/admin/products/{id}/options"),
+        ("POST", "/admin/products/{id}/options"),
+        ("GET", "/admin/product-variants/{id}/images"),
+        ("POST", "/admin/product-variants/{id}/images"),
+        ("GET", "/admin/product-variants/{id}/options"),
+        ("POST", "/admin/product-variants/{id}/options"),
+        ("POST", "/admin/product-options/{id}/values"),
+        ("GET", "/admin/product-categories/{id}/subtree"),
+        ("POST", "/admin/product-categories/{id}/move"),
+        ("PATCH", "/admin/inventory-items/{id}/tracking"),
+        ("GET", "/admin/inventory-items/{id}/lots"),
+        ("POST", "/admin/inventory-items/{id}/lots"),
+        ("GET", "/admin/inventory-lots/{id}/orders"),
+        ("POST", "/admin/inventory-lots/{id}/reservations"),
         ("GET", "/admin/products/{id}/variants"),
         ("POST", "/admin/products/{id}/variants"),
         ("POST", "/admin/price-sets"),
@@ -356,6 +373,38 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         .route(
             "/admin/products/{id}/channels/{sales_channel_id}",
             delete(remove_product_from_channel),
+        )
+        .route(
+            "/admin/products/{id}/images",
+            get(list_images).post(add_image),
+        )
+        .route(
+            "/admin/products/{id}/options",
+            get(option_matrix).post(add_option),
+        )
+        .route(
+            "/admin/product-variants/{id}/images",
+            get(list_variant_images).post(attach_variant_image),
+        )
+        .route(
+            "/admin/product-variants/{id}/options",
+            get(variant_options).post(set_variant_options),
+        )
+        .route("/admin/product-options/{id}/values", post(add_option_value))
+        .route(
+            "/admin/product-categories/{id}/subtree",
+            get(category_subtree),
+        )
+        .route("/admin/product-categories/{id}/move", post(move_category))
+        .route("/admin/inventory-items/{id}/tracking", patch(set_tracking))
+        .route(
+            "/admin/inventory-items/{id}/lots",
+            get(list_lots).post(receive_lot),
+        )
+        .route("/admin/inventory-lots/{id}/orders", get(orders_for_lot))
+        .route(
+            "/admin/inventory-lots/{id}/reservations",
+            post(reserve_from_lot),
         )
         .route(
             "/admin/products/{id}/variants",
@@ -1211,6 +1260,218 @@ async fn create_inventory_item(
     let item = admin_catalogue::create_inventory_item(&mut tx, &ctx, body).await?;
     tx.commit().await?;
     Ok(Json(item))
+}
+
+/// What a product looks like and what makes one variant different from
+/// another, plus the lots a shop has to be able to recall. Sixteen more that
+/// were declared and bound by nothing.
+async fn list_images(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ProductId>,
+) -> Result<Json<Vec<admin_catalogue::ImageView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let rows = admin_catalogue::list_images(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+async fn add_image(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ProductId>,
+    Json(body): Json<admin_catalogue::AddImage>,
+) -> Result<Json<admin_catalogue::ImageView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_catalogue::add_image(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn option_matrix(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ProductId>,
+) -> Result<Json<Vec<admin_catalogue::OptionMatrixView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let rows = admin_catalogue::option_matrix(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+async fn add_option(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ProductId>,
+    Json(body): Json<admin_catalogue::AddOption>,
+) -> Result<Json<admin_catalogue::OptionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_catalogue::add_option(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn add_option_value(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<OptionId>,
+    Json(body): Json<admin_catalogue::AddOptionValue>,
+) -> Result<Json<admin_catalogue::OptionValueView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_catalogue::add_option_value(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn list_variant_images(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<VariantId>,
+) -> Result<Json<Vec<admin_catalogue::ImageView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let rows = admin_catalogue::list_variant_images(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+async fn attach_variant_image(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<VariantId>,
+    Json(body): Json<admin_catalogue::AttachVariantImage>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    admin_catalogue::attach_image_to_variant(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "attached": true })))
+}
+
+async fn variant_options(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<VariantId>,
+) -> Result<Json<Vec<admin_catalogue::OptionValueView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let rows = admin_catalogue::variant_options(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+async fn set_variant_options(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<VariantId>,
+    Json(body): Json<admin_catalogue::SetVariantOptions>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    admin_catalogue::set_variant_options(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "set": true })))
+}
+
+async fn category_subtree(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<CategoryId>,
+    Query(query): Query<admin_catalogue::ListQuery>,
+) -> Result<Json<tezgah::page::Page<admin_catalogue::CategoryView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let page = admin_catalogue::category_subtree(&mut tx, &ctx, id, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn move_category(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<CategoryId>,
+    Json(body): Json<admin_catalogue::MoveCategory>,
+) -> Result<Json<admin_catalogue::CategoryView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_catalogue::move_category(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+/// Lots, and the two questions a recall asks: which orders had this lot, and
+/// hold me some of it.
+async fn set_tracking(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<InventoryItemId>,
+    Json(body): Json<inventory_lot::SetTracking>,
+) -> Result<Json<inventory_lot::TrackedItemView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = inventory_lot::set_tracking(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn list_lots(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<InventoryItemId>,
+    Query(query): Query<inventory_lot::ListLots>,
+) -> Result<Json<tezgah::page::Page<inventory_lot::LotView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let page = inventory_lot::list_lots(&mut tx, &ctx, id, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn receive_lot(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<InventoryItemId>,
+    Json(body): Json<inventory_lot::ReceiveLot>,
+) -> Result<Json<inventory_lot::LotView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = inventory_lot::receive_lot(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn orders_for_lot(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<InventoryLotId>,
+    Query(query): Query<inventory_lot::ListRecall>,
+) -> Result<Json<tezgah::page::Page<inventory_lot::LotShipmentView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let page = inventory_lot::orders_for_lot(&mut tx, &ctx, id, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn reserve_from_lot(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<InventoryLotId>,
+    Json(body): Json<inventory_lot::ReserveFromLot>,
+    // `admin_catalogue`'s, not `inventory_lot`'s: reserving from a lot answers
+    // the same view a reservation anywhere else does, and the lot module
+    // imports it rather than declaring a second one.
+) -> Result<Json<admin_catalogue::ReservationView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = inventory_lot::reserve_from_lot(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
 }
 
 /// Seventeen more that were declared and bound by nothing: what an order's
