@@ -58,6 +58,14 @@ export function StoreSalesChannels({
       <DataTable
         paged={paged}
         columns={columns}
+        rowLink={(row) => (
+          <Link
+            to="/store/sales-channels/$id"
+            params={{ id: row.id }}
+            className="absolute inset-0"
+            aria-label={`Open ${row.name}`}
+          />
+        )}
         empty={{
           title: "No sales channels",
           description: "A channel decides which products a storefront can see.",

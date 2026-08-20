@@ -1,3 +1,5 @@
+import { Link } from "@tanstack/react-router"
+
 import { subscription, type Subscription } from "@/api/schemas"
 import { DataTable, type Columns } from "@/components/data-table"
 import { Badge } from "@/components/ui/badge"
@@ -74,6 +76,14 @@ export function Subscriptions({
       <DataTable
         paged={paged}
         columns={columns}
+        rowLink={(row) => (
+          <Link
+            to="/subscriptions/$id"
+            params={{ id: row.id }}
+            className="absolute inset-0"
+            aria-label={`Open subscription ${row.id}`}
+          />
+        )}
         empty={{ title: "No subscriptions", description: "Nothing recurring is sold." }}
       />
     </div>

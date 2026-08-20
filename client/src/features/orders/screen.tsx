@@ -1,3 +1,5 @@
+import { Link } from "@tanstack/react-router"
+
 import { order, type Order } from "@/api/schemas"
 import { DataTable, type Columns } from "@/components/data-table"
 import { Badge } from "@/components/ui/badge"
@@ -82,6 +84,14 @@ export function Orders({
       <DataTable
         paged={paged}
         columns={columns}
+        rowLink={(row) => (
+          <Link
+            to="/orders/$id"
+            params={{ id: row.id }}
+            className="absolute inset-0"
+            aria-label={`Open order ${row.display_id ?? row.id}`}
+          />
+        )}
         empty={{ title: "No orders", description: "Nothing has been placed yet." }}
       />
     </div>

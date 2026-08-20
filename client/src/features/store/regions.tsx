@@ -65,6 +65,14 @@ export function StoreRegions({
       <DataTable
         paged={paged}
         columns={columns}
+        rowLink={(row) => (
+          <Link
+            to="/store/regions/$id"
+            params={{ id: row.id }}
+            className="absolute inset-0"
+            aria-label={`Open ${row.name}`}
+          />
+        )}
         empty={{
           title: "No regions",
           description: "A region decides currency and how tax is shown.",

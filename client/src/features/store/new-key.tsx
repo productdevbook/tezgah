@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react"
-import { useMutation } from "@tanstack/react-query"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Copy01Icon, Tick02Icon } from "@hugeicons/core-free-icons"
 import { Link } from "@tanstack/react-router"
@@ -26,6 +26,7 @@ import { Input } from "@/components/ui/input"
  * reachable either way.
  */
 export function NewPublishableKey() {
+  const client = useQueryClient()
   const [title, setTitle] = useState("")
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [issued, setIssued] = useState<IssuedKey | null>(null)
@@ -33,7 +34,10 @@ export function NewPublishableKey() {
   const mutation = useMutation({
     mutationFn: (body: CreatePublishableKey) =>
       post("/admin/publishable-api-keys", { schema: issuedKey, body }),
-    onSuccess: (key) => setIssued(key),
+    onSuccess: (key) => {
+      void client.invalidateQueries({ queryKey: ["publishable-keys"] })
+      setIssued(key)
+    },
   })
 
   function submit(event: FormEvent) {

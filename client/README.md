@@ -128,6 +128,25 @@ first and only returns to `/store/keys` once the operator says "Done" —
 navigating away immediately would make the token unreachable a screen ever
 gets to show.
 
+### A row is a route too
+
+`/products/$id`, `/orders/$id`, `/inventory/$id`, `/customers/$id`,
+`/promotions/$id`, `/subscriptions/$id`, `/store/regions/$id` and
+`/store/sales-channels/$id` are the eight `GET .../{id}` operations bound
+alongside their lists — `src/features/<domain>/detail.tsx`, one screen each,
+reading every field the response carries rather than the subset its list
+column happened to need. Their route files take the same trailing-underscore
+escape the `new` routes do (`routes/products_.$id.tsx`,
+`routes/store_.regions.$id.tsx`), for the same reason: a list's own route is
+not a layout, and `/store`'s tabs are chrome a single record's page does not
+want. `components/data-table.tsx`'s `rowLink` is what gets a table row there:
+a real `Link`, `params={{ id: row.id }}`, stretched over the row's first cell
+with `absolute inset-0` so the whole row is clickable — never an `onClick`,
+which a middle click or "open in new tab" would do nothing with. Going back
+does not re-open page one: nothing about `rowLink` touches the list's own
+`after`, so `DetailHeader`'s "Back" is `router.history.back()`, landing on
+whatever page of the list was open when the row was clicked.
+
 ### The store's tabs are routes, not `Tabs` state
 
 `/store/currencies`, `/store/regions`, `/store/sales-channels` and

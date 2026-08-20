@@ -2,26 +2,78 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { Add01Icon } from "@hugeicons/core-free-icons"
 import { Link } from "@tanstack/react-router"
 
+import { publishableKey, type PublishableKey } from "@/api/schemas"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { DataTable, type Columns } from "@/components/data-table"
+import { usePagedList } from "@/lib/paged"
+
+const columns: Columns<PublishableKey> = [
+  { header: "Title", accessorKey: "title", meta: { className: "font-medium" } },
+  {
+    header: "State",
+    accessorKey: "revoked_at",
+    cell: ({ row }) => (
+      <Badge variant={row.original.revoked_at ? "outline" : "default"}>
+        {row.original.revoked_at ? "revoked" : "active"}
+      </Badge>
+    ),
+  },
+  {
+    header: "Last used",
+    accessorKey: "last_used_at",
+    cell: ({ row }) =>
+      row.original.last_used_at ? (
+        new Date(row.original.last_used_at).toLocaleString()
+      ) : (
+        <span className="text-muted-foreground">never</span>
+      ),
+    meta: { className: "text-muted-foreground text-xs" },
+  },
+  {
+    header: "Created",
+    accessorKey: "created_at",
+    cell: ({ row }) => new Date(row.original.created_at).toLocaleDateString(),
+    meta: { className: "text-right text-muted-foreground text-xs" },
+  },
+]
 
 /**
- * `GET /admin/publishable-api-keys` is not bound (`server/README.md`'s route
- * table), so there is nothing here to list — only to mint, at
- * `/store/keys/new`.
+ * `POST /admin/publishable-api-keys` shows the token once, at
+ * `/store/keys/new` — never stored anywhere it could be read back, so this
+ * list has no token column: `GET /admin/publishable-api-keys` doesn't answer
+ * with one either (`PublishableKeyView`, not `IssuedKeyView`).
  */
-export function StoreKeys() {
+export function StoreKeys({
+  after,
+  onAfterChange,
+}: {
+  after: string | undefined
+  onAfterChange: (after: string | undefined) => void
+}) {
+  const paged = usePagedList(
+    ["publishable-keys"],
+    "/admin/publishable-api-keys",
+    publishableKey,
+    { after, onAfterChange }
+  )
+
   return (
-    <div className="flex items-center justify-between gap-3 rounded-md border px-4 py-3">
-      <div>
-        <p className="text-sm font-medium">Mint a publishable key</p>
-        <p className="text-xs text-muted-foreground">
-          What a storefront sends as <code>x-publishable-key</code>. Shown once.
-        </p>
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <Button size="sm" nativeButton={false} render={<Link to="/store/keys/new" />}>
+          <HugeiconsIcon icon={Add01Icon} strokeWidth={2} />
+          Mint key
+        </Button>
       </div>
-      <Button size="sm" nativeButton={false} render={<Link to="/store/keys/new" />}>
-        <HugeiconsIcon icon={Add01Icon} strokeWidth={2} />
-        Mint key
-      </Button>
+      <DataTable
+        paged={paged}
+        columns={columns}
+        empty={{
+          title: "No publishable keys",
+          description: "What a storefront sends as x-publishable-key. Shown once when minted.",
+        }}
+      />
     </div>
   )
 }

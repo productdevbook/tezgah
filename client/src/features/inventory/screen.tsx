@@ -1,3 +1,5 @@
+import { Link } from "@tanstack/react-router"
+
 import { inventoryItem, type InventoryItem } from "@/api/schemas"
 import { DataTable, type Columns } from "@/components/data-table"
 import { Badge } from "@/components/ui/badge"
@@ -53,6 +55,14 @@ export function Inventory({
       <DataTable
         paged={paged}
         columns={columns}
+        rowLink={(row) => (
+          <Link
+            to="/inventory/$id"
+            params={{ id: row.id }}
+            className="absolute inset-0"
+            aria-label={`Open ${row.title ?? row.sku ?? "inventory item"}`}
+          />
+        )}
         empty={{ title: "Nothing stocked", description: "No inventory item exists yet." }}
       />
     </div>
