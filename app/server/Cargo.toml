@@ -19,7 +19,7 @@ path = "src/main.rs"
 tezgah = { path = "../.." }
 argon2 = "0.5"
 async-trait = "0.1"
-axum = "0.8"
+axum = { version = "0.8", features = ["multipart"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 hmac = "0.12"
 kasapay-core = "0.0.5"

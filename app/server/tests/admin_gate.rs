@@ -43,6 +43,7 @@ fn router() -> Router {
         webhook_secret: None,
         mailer: None,
         panel_url: None,
+        files: None,
     };
     let (router, _bound) = http::router(state);
     router

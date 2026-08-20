@@ -38,6 +38,7 @@ fn router_with(pool: PgPool, scope: Scope, secret: Option<&str>) -> Router {
         webhook_secret: secret.map(Arc::from),
         mailer: None,
         panel_url: None,
+        files: None,
     };
     let (router, _bound) = http::router(state);
     router
