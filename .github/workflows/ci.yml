@@ -80,6 +80,7 @@ jobs:
       # a record" screens was in that state from the commit that added them,
       # and nothing else here would have said so.
       - run: bun run check:outlets
+      - run: bun run check:host
       - run: bun run build
       # The panel's types are transcribed from src/api/*.rs by hand because the
       # generated document carries no schemas. Regenerating what it does carry

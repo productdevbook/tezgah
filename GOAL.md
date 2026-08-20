@@ -385,9 +385,11 @@ In the panel:
       one, for the same reason `/pricing/prices` can be one: the batch route
       takes the rows together. A list whose writes are one row at a time
       still cannot have one worth using, so the third is not free
-- [ ] the routing half of the seam — what a screen says and sends is a
-      host's answer now; where it lives is still a fixed route root and a
-      sidebar switched over a closed route union
+- [x] the routing half of the seam — a host renders `<Panel basepath=…/>`
+      and gets the whole tree under its own prefix. The router is built per
+      mount rather than at module load, and `check:host` fails the build if
+      anything outside the standalone host reads a browser global. What is
+      left there is packaging: no library build, so a host takes the source
 - [x] a test for a child route whose parent draws no outlet — all five "edit
       a record" screens were unreachable that way, silently, from the commit
       that added them. `scripts/check-outlets.mjs`, in CI

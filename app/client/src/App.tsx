@@ -1,16 +1,19 @@
-import { RouterProvider } from "@tanstack/react-router"
 import { useState } from "react"
 
 import { Connect } from "@/components/connect"
-import { PanelProvider } from "@/panel/panel-provider"
+import { Panel } from "@/panel"
 import { forget, held } from "@/lib/token"
-import { router } from "@/router"
 
 /**
- * The standalone panel: this file is the host, and everything it answers is
- * what `panel/runtime.ts` asks any host for. An application mounting these
- * screens inside its own back office writes its own version of this — its
- * address, its session, its locale — and nothing under `features/` changes.
+ * The standalone panel: this file is a host, and everything it answers is what
+ * `panel/` asks any host for — the API's address, the token, what to do when
+ * one is refused, and where the screens live in the URL.
+ *
+ * It is deliberately the only file in this bundle that reads
+ * `import.meta.env` or `localStorage`. An application mounting these screens
+ * inside its own back office writes its own version of this file and imports
+ * the same `<Panel/>`; nothing under `features/` changes, and nothing under
+ * `features/` can tell which of the two is running it.
  */
 export function App() {
   const [token, setToken] = useState(held)
@@ -20,7 +23,7 @@ export function App() {
   if (!token) return <Connect onConnected={() => setToken(held)} />
 
   return (
-    <PanelProvider
+    <Panel
       apiBase={import.meta.env.VITE_TEZGAH_API ?? "/api"}
       token={held}
       onUnauthenticated={() => {
@@ -28,9 +31,7 @@ export function App() {
         setToken(null)
       }}
       locale="en"
-    >
-      <RouterProvider router={router} />
-    </PanelProvider>
+    />
   )
 }
 

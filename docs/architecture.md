@@ -242,14 +242,25 @@ can have because their batch routes take the rows together. A list whose
 writes are one row at a time cannot have a grid worth using, and the round
 trip is what a shop changing four hundred of anything else reaches for.
 
-**Mountable in what it says, not in how it routes.** No screen reaches for a
-global any more: where the API is, what token to send, what to do when it is
-refused and which language to draw in are a host's answers, which is what
-lets an application embedding the library put these screens in its own back
-office. What is still the standalone application's own is routing — file
-routes under a fixed root, and a sidebar written as a switch over that closed
-route union. A host mounting them under a path of its own needs a basepath
-and a shell of its own, and that is the rest of the seam.
+**Mountable.** No screen reaches for a global: where the API is, what token
+to send, what to do when it is refused, which language to draw in and where
+these screens live in the URL are a host's answers. An application embedding
+the library renders one element — `<Panel basepath="/admin/shop" …/>` — and
+gets the whole route tree under that prefix, importing no screen, no route
+and no query key.
+
+Two things make that true rather than intended. The router is built per
+mount, so a basepath is a mount's answer and two panels can sit on one origin
+— it used to be a module singleton, which could only ever be at the root.
+And `scripts/check-host-answers.mjs` fails the build when anything outside
+the seven files that *are* the standalone host reads `import.meta.env`,
+`localStorage` or `document.cookie`. It caught one thing the day it was
+written: shadcn's sidebar wrote `sidebar_state` at `path=/`, which a panel
+inside an application would have written over that application's own with.
+
+What is left is packaging. There is no library build here yet, so a host
+consumes these screens as source; a published entry point is a build step and
+a version, not a seam.
 
 **A child route whose parent draws no outlet is a screen nothing can reach,
 and nothing says so.** All five of the panel's "edit a record" screens were

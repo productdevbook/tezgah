@@ -30,12 +30,14 @@ export function PanelProvider({
   token,
   onUnauthenticated,
   locale,
+  basepath,
 }: PanelProviderProps) {
   configurePanel({
     ...(apiBase !== undefined ? { apiBase } : {}),
     ...(token !== undefined ? { token } : {}),
     ...(onUnauthenticated !== undefined ? { onUnauthenticated } : {}),
     ...(locale !== undefined ? { locale } : {}),
+    ...(basepath !== undefined ? { basepath } : {}),
   })
 
   const client = useMemo(() => queryClient ?? panelQueryClient(), [queryClient])
