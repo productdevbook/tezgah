@@ -2923,6 +2923,13 @@
               }
             ]
           },
+          "count": {
+            "description": "Asks how many products match, as well as this page of them. Off unless\nasked: it is a second query over the whole match, which a back office\nsaying \"1–50 of 41,309\" wants and a list nobody is counting does not.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "limit": {
             "format": "uint32",
             "minimum": 0,
@@ -18529,6 +18536,18 @@
                 {
                   "type": "null"
                 }
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "count",
+            "required": false,
+            "schema": {
+              "description": "Asks how many products match, as well as this page of them. Off unless\nasked: it is a second query over the whole match, which a back office\nsaying \"1–50 of 41,309\" wants and a list nobody is counting does not.",
+              "type": [
+                "boolean",
+                "null"
               ]
             }
           },

@@ -403,6 +403,11 @@ impl<T> IntoIterator for Page<T> {
 /// of one envelope. This one names itself `Page` regardless of `T` and says
 /// nothing about what `items` holds — `src/api/openapi.rs` overlays the real
 /// item schema per operation with `allOf`.
+///
+/// Being hand-written, it does not learn about a new field on its own. `total`
+/// arrived on the struct and the document said nothing about it until this was
+/// changed too — the cost of the one schema, paid here rather than in 67
+/// copies.
 impl<T> schemars::JsonSchema for Page<T> {
     fn schema_name() -> std::borrow::Cow<'static, str> {
         "Page".into()
@@ -418,6 +423,10 @@ impl<T> schemars::JsonSchema for Page<T> {
             "properties": {
                 "items": { "type": "array", "items": true },
                 "next": { "type": ["string", "null"] },
+                "total": {
+                    "type": ["integer", "null"],
+                    "description": "How many rows match, when the caller asked for a count and the list can answer one. Absent or null means nobody asked — never zero, which is a real answer.",
+                },
             },
             "required": ["items"],
         })

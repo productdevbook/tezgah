@@ -41,7 +41,11 @@ const MAX_ATTACHED: i64 = 200;
 /// channels, search. A caller binds all eight whichever query it is running.
 macro_rules! product_filter {
     () => {
-        "\
+        // Opens with a newline rather than a `\` continuation: `\` strips the
+        // line break *and* the indentation after it, which glued this to the
+        // `from product p` it is concatenated onto — `product pwhere`, and
+        // Postgres said so.
+        "
          where p.scope = $1
            and p.deleted_at is null
            and ($2::text is null or p.status = $2)
