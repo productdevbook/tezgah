@@ -111,6 +111,25 @@ which of the two is missing. See
 [`docs/self-hosting.md`](../docs/self-hosting.md#taking-real-money) for what
 taking real money instead requires.
 
+## `GET /docs` and `GET /openapi.json`
+
+The API's own description, and [Scalar](https://scalar.com) reading it.
+`/openapi.json` is what `tezgah::api::openapi::document()` generates from the
+route table — the same document `tests/snapshots/openapi.json` pins, so what a
+running server describes and what CI reviews cannot drift apart.
+
+Both are open. The document says which paths exist and what permission each
+asks, and every one of those paths already refuses an unauthorised caller on
+its own; a description that needed protecting would mean the protection *was*
+the description.
+
+Neither counts against the 483: they describe them.
+
+**It is thinner than it looks.** The document declares every operation and, for
+most of them, no request or response body at all — `productdevbook/tezgah#202`
+is that gap, and Scalar renders it honestly, which is part of why it is worth
+serving.
+
 ## `GET /health`
 
 Not "the process is running" — a probe can already tell that from the socket
