@@ -195,7 +195,23 @@ export const PatchAdminRegionsByIdParams = zod.object({
   "id": zod.string()
 })
 
-export const PatchAdminRegionsByIdResponse = zod.unknown()
+export const PatchAdminRegionsByIdBody = zod.object({
+  "currency_code": zod.string().nullish(),
+  "has_automatic_taxes": zod.boolean().nullish(),
+  "is_tax_inclusive": zod.boolean().nullish(),
+  "name": zod.string().nullish(),
+  "payment_providers": zod.array(zod.string()).nullish()
+})
+
+export const PatchAdminRegionsByIdResponse = zod.object({
+  "created_at": zod.iso.datetime({"offset":true}),
+  "currency_code": zod.string(),
+  "has_automatic_taxes": zod.boolean(),
+  "id": zod.uuid().describe('Identifies one region.'),
+  "is_tax_inclusive": zod.boolean(),
+  "name": zod.string(),
+  "payment_providers": zod.array(zod.string())
+})
 
 /**
  * @summary List the countries a region serves
@@ -291,7 +307,19 @@ export const PatchAdminSalesChannelsByIdParams = zod.object({
   "id": zod.string()
 })
 
-export const PatchAdminSalesChannelsByIdResponse = zod.unknown()
+export const PatchAdminSalesChannelsByIdBody = zod.object({
+  "description": zod.string().nullish(),
+  "is_disabled": zod.boolean().nullish(),
+  "name": zod.string().nullish()
+})
+
+export const PatchAdminSalesChannelsByIdResponse = zod.object({
+  "created_at": zod.iso.datetime({"offset":true}),
+  "description": zod.string().nullable(),
+  "id": zod.uuid().describe('Identifies one sales channel.'),
+  "is_disabled": zod.boolean(),
+  "name": zod.string()
+})
 
 /**
  * @summary The shop's own settings

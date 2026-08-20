@@ -11,6 +11,7 @@ import type {
   GetAdminInventoryItems200,
   InventoryItemView,
   InventoryLevelView,
+  RenameStockLocation,
   SetStock,
   StockLocationView
 } from '../models';
@@ -1637,7 +1638,7 @@ export const getAdminStockLocationsById = async (id: string, options?: Parameter
 
 
 export type patchAdminStockLocationsByIdResponse200 = {
-  data: void
+  data: StockLocationView
   status: 200
 }
 
@@ -1676,14 +1677,15 @@ export const getPatchAdminStockLocationsByIdUrl = (id: string,) => {
 /**
  * @summary Rename a stock location
  */
-export const patchAdminStockLocationsById = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<patchAdminStockLocationsByIdResponse> => {
+export const patchAdminStockLocationsById = async (id: string,
+    renameStockLocation: RenameStockLocation, options?: Parameters<typeof apiMutator>[1]): Promise<patchAdminStockLocationsByIdResponse> => {
 
   return apiMutator<patchAdminStockLocationsByIdResponse>(getPatchAdminStockLocationsByIdUrl(id),
   {
     ...options,
-    method: 'PATCH'
-
-
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(renameStockLocation)
   }
 );}
 

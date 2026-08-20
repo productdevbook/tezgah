@@ -128,7 +128,28 @@ export const PatchAdminCustomersByIdParams = zod.object({
   "id": zod.string()
 })
 
-export const PatchAdminCustomersByIdResponse = zod.unknown()
+export const PatchAdminCustomersByIdBody = zod.object({
+  "company_name": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "first_name": zod.string().nullish(),
+  "last_name": zod.string().nullish(),
+  "metadata": zod.unknown().optional(),
+  "phone": zod.string().nullish()
+})
+
+export const PatchAdminCustomersByIdResponse = zod.object({
+  "anonymised": zod.boolean(),
+  "company_name": zod.string().nullable(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "email": zod.string().nullable(),
+  "first_name": zod.string().nullable(),
+  "has_account": zod.boolean(),
+  "id": zod.uuid().describe('Identifies one customer.'),
+  "last_name": zod.string().nullable(),
+  "metadata": zod.unknown(),
+  "phone": zod.string().nullable(),
+  "updated_at": zod.iso.datetime({"offset":true})
+})
 
 /**
  * @summary List a customer's addresses

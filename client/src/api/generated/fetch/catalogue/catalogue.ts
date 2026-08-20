@@ -10,6 +10,7 @@ import type {
   CreateVariant,
   GetAdminProducts200,
   ProductView,
+  UpdateProduct,
   VariantView
 } from '../models';
 
@@ -1998,7 +1999,7 @@ export const getAdminProductsById = async (id: string, options?: Parameters<type
 
 
 export type patchAdminProductsByIdResponse200 = {
-  data: void
+  data: ProductView
   status: 200
 }
 
@@ -2037,14 +2038,15 @@ export const getPatchAdminProductsByIdUrl = (id: string,) => {
 /**
  * @summary Change a product
  */
-export const patchAdminProductsById = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<patchAdminProductsByIdResponse> => {
+export const patchAdminProductsById = async (id: string,
+    updateProduct: UpdateProduct, options?: Parameters<typeof apiMutator>[1]): Promise<patchAdminProductsByIdResponse> => {
 
   return apiMutator<patchAdminProductsByIdResponse>(getPatchAdminProductsByIdUrl(id),
   {
     ...options,
-    method: 'PATCH'
-
-
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateProduct)
   }
 );}
 

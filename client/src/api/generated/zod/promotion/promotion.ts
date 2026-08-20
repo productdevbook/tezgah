@@ -137,7 +137,27 @@ export const PatchAdminPromotionsByIdParams = zod.object({
   "id": zod.string()
 })
 
-export const PatchAdminPromotionsByIdResponse = zod.unknown()
+export const PatchAdminPromotionsByIdBody = zod.object({
+  "code": zod.string().nullish(),
+  "customer_usage_limit": zod.int().nullish(),
+  "is_automatic": zod.boolean().nullish(),
+  "metadata": zod.unknown().optional(),
+  "usage_limit": zod.int().nullish()
+})
+
+export const PatchAdminPromotionsByIdResponse = zod.object({
+  "campaign_id": zod.union([zod.uuid().describe('Identifies one campaign.'),zod.null()]),
+  "code": zod.string(),
+  "created_at": zod.iso.datetime({"offset":true}),
+  "customer_usage_limit": zod.int().nullable(),
+  "id": zod.uuid().describe('Identifies one promotion.'),
+  "is_automatic": zod.boolean(),
+  "kind": zod.string(),
+  "metadata": zod.unknown(),
+  "status": zod.string(),
+  "usage_limit": zod.int().nullable(),
+  "used": zod.int()
+})
 
 /**
  * @summary Set how a promotion discounts
