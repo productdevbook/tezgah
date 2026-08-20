@@ -56,8 +56,14 @@ async fn reference() -> Html<&'static str> {
     <div id="app"></div>
     <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
     <script>
+      // Relative, not `/openapi.json`: this page is served under a prefix
+      // as often as not — the panel's nginx puts it at `/api/docs` — and an
+      // absolute path there asks the panel for the document instead of the
+      // server. The panel is a single-page app, so it answers that with its
+      // own index.html and a 200, and the only sign of trouble is Scalar
+      // saying the response is not an object.
       Scalar.createApiReference('#app', {
-        url: '/openapi.json',
+        url: './openapi.json',
         theme: 'default',
       })
     </script>
