@@ -13,8 +13,15 @@ WORKDIR /build
 # before a single line of tezgah's own code is copied in.
 COPY Cargo.toml Cargo.lock ./
 COPY server/Cargo.toml server/Cargo.toml
+# One stand-in per target the manifests declare — both libs and the binary.
+# This list is a hand-kept copy of the crate layout: `server/src/lib.rs`
+# arrived with the server's integration tests and this did not, and the image
+# stopped building while CI stayed green, because nothing but this file reads
+# these paths. `ci.yml` builds the image now, so the next one fails in the
+# pull request instead.
 RUN mkdir -p src server/src \
     && echo "" > src/lib.rs \
+    && echo "" > server/src/lib.rs \
     && echo "fn main() {}" > server/src/main.rs \
     && cargo build --release --package tezgah-server \
     && rm -rf src server/src
@@ -24,7 +31,7 @@ COPY migrations ./migrations
 COPY server/src ./server/src
 # The stand-ins are older than the manifests that named them; cargo will not
 # otherwise notice real source has replaced them.
-RUN touch src/lib.rs server/src/main.rs \
+RUN touch src/lib.rs server/src/lib.rs server/src/main.rs \
     && cargo build --release --package tezgah-server
 
 # distroless/cc: glibc and libgcc for a binary built against them, CA roots
