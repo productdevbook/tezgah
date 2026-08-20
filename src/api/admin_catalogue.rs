@@ -2365,7 +2365,7 @@ pub async fn get_stock_location(
     ))
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RenameStockLocation {
     pub name: String,

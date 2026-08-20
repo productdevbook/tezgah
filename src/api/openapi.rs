@@ -796,6 +796,16 @@ static BODIES: &[Body] = &[
         response: Some(schema_of::<admin_catalogue::StockLocationView>),
     },
     Body {
+        operation_id: "patchAdminStockLocationsById",
+        request: Some(schema_of::<admin_catalogue::RenameStockLocation>),
+        response: Some(schema_of::<admin_catalogue::StockLocationView>),
+    },
+    Body {
+        operation_id: "deleteAdminStockLocationsById",
+        request: None,
+        response: None,
+    },
+    Body {
         operation_id: "postAdminProducts",
         request: Some(schema_of::<admin_catalogue::CreateProduct>),
         response: Some(schema_of::<admin_catalogue::ProductView>),

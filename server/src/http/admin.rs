@@ -18,8 +18,14 @@
 //! `/admin/orders/{id}/payout-lines`, `/admin/payouts` and
 //! `/admin/payout-balance/{currency_code}` — none of the three has a screen
 //! in `client/` yet, so nothing calls them but this binary's own startup
-//! count. Everything else `tezgah::api` offers stays unbound; nothing here
-//! was chosen for this binary beyond what those needs cover.
+//! count. Past all of that, editing and deleting a row a screen already
+//! lists: `PATCH /admin/stock-locations/{id}`
+//! (`admin_catalogue::rename_stock_location`, `Action::Write` — the only
+//! field a stock location has to edit past its address is its name) and
+//! `DELETE /admin/stock-locations/{id}` (`admin_catalogue::delete_stock_location`,
+//! `Action::Delete` — refused while the location still counts any stock).
+//! Everything else `tezgah::api` offers stays unbound; nothing here was
+//! chosen for this binary beyond what those needs cover.
 //!
 //! # Why a bearer token, and why it is the whole of this
 //!
@@ -58,7 +64,7 @@ use axum::extract::{Path, Query, Request, State};
 use axum::http::{StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{get, patch, post};
 use axum::{Json, Router};
 use subtle::ConstantTimeEq;
 use tezgah::api::{
@@ -67,7 +73,7 @@ use tezgah::api::{
 };
 use tezgah::id::{
     CustomerId, InventoryItemId, OrderBasketId, OrderId, ProductId, PromotionId, RegionId,
-    SalesChannelId, SubscriptionId, VariantId, WorkflowRunId,
+    SalesChannelId, StockLocationId, SubscriptionId, VariantId, WorkflowRunId,
 };
 use tezgah::ports::{Actor, Ctx, Host};
 use uuid::Uuid;
@@ -95,6 +101,8 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         ("GET", "/admin/currencies"),
         ("GET", "/admin/publishable-api-keys"),
         ("GET", "/admin/stock-locations"),
+        ("PATCH", "/admin/stock-locations/{id}"),
+        ("DELETE", "/admin/stock-locations/{id}"),
         ("POST", "/admin/currencies"),
         ("POST", "/admin/regions"),
         ("POST", "/admin/sales-channels"),
@@ -154,6 +162,10 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         .route(
             "/admin/stock-locations",
             get(list_stock_locations).post(create_stock_location),
+        )
+        .route(
+            "/admin/stock-locations/{id}",
+            patch(update_stock_location).delete(delete_stock_location),
         )
         .route("/admin/products/{id}/variants", post(create_variant))
         .route("/admin/price-sets", post(create_price_set))
@@ -501,6 +513,29 @@ async fn create_stock_location(
     let location = admin_catalogue::create_stock_location(&mut tx, &ctx, body).await?;
     tx.commit().await?;
     Ok(Json(location))
+}
+
+async fn update_stock_location(
+    State(state): State<AppState>,
+    Path(id): Path<StockLocationId>,
+    Json(body): Json<admin_catalogue::RenameStockLocation>,
+) -> Result<Json<admin_catalogue::StockLocationView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let location = admin_catalogue::rename_stock_location(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(location))
+}
+
+async fn delete_stock_location(
+    State(state): State<AppState>,
+    Path(id): Path<StockLocationId>,
+) -> Result<StatusCode, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    admin_catalogue::delete_stock_location(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn create_product(
