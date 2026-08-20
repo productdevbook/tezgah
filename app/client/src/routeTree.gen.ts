@@ -48,8 +48,8 @@ import { Route as PricingPriceListsRouteImport } from './routes/pricing.price-li
 import { Route as PricingPricePreferencesRouteImport } from './routes/pricing.price-preferences'
 import { Route as PricingPriceSetsRouteImport } from './routes/pricing.price-sets'
 import { Route as PricingPricesRouteImport } from './routes/pricing.prices'
+import { Route as ProductsNewRouteImport } from './routes/products.new'
 import { Route as ProductsIdRouteImport } from './routes/products_.$id'
-import { Route as ProductsNewRouteImport } from './routes/products_.new'
 import { Route as PromotionsIdRouteImport } from './routes/promotions_.$id'
 import { Route as StoreIndexRouteImport } from './routes/store.index'
 import { Route as StoreCurrenciesRouteImport } from './routes/store.currencies'
@@ -279,14 +279,14 @@ const PricingPricesRoute = PricingPricesRouteImport.update({
   path: '/prices',
   getParentRoute: () => PricingRoute,
 } as any)
+const ProductsNewRoute = ProductsNewRouteImport.update({
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => ProductsRoute,
+} as any)
 const ProductsIdRoute = ProductsIdRouteImport.update({
   id: '/products_/$id',
   path: '/products/$id',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ProductsNewRoute = ProductsNewRouteImport.update({
-  id: '/products_/new',
-  path: '/products/new',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PromotionsIdRoute = PromotionsIdRouteImport.update({
@@ -456,7 +456,7 @@ export interface FileRoutesByFullPath {
   '/payments': typeof PaymentsRouteWithChildren
   '/payouts': typeof PayoutsRouteWithChildren
   '/pricing': typeof PricingRouteWithChildren
-  '/products': typeof ProductsRoute
+  '/products': typeof ProductsRouteWithChildren
   '/promotions': typeof PromotionsRoute
   '/store': typeof StoreRouteWithChildren
   '/subscriptions': typeof SubscriptionsRoute
@@ -479,8 +479,8 @@ export interface FileRoutesByFullPath {
   '/pricing/price-preferences': typeof PricingPricePreferencesRoute
   '/pricing/price-sets': typeof PricingPriceSetsRoute
   '/pricing/prices': typeof PricingPricesRoute
-  '/products/$id': typeof ProductsIdRouteWithChildren
   '/products/new': typeof ProductsNewRoute
+  '/products/$id': typeof ProductsIdRouteWithChildren
   '/promotions/$id': typeof PromotionsIdRouteWithChildren
   '/store/currencies': typeof StoreCurrenciesRoute
   '/store/keys': typeof StoreKeysRoute
@@ -525,7 +525,7 @@ export interface FileRoutesByTo {
   '/customers': typeof CustomersRoute
   '/inventory': typeof InventoryRoute
   '/orders': typeof OrdersRoute
-  '/products': typeof ProductsRoute
+  '/products': typeof ProductsRouteWithChildren
   '/promotions': typeof PromotionsRoute
   '/subscriptions': typeof SubscriptionsRoute
   '/baskets/$id': typeof BasketsIdRoute
@@ -545,8 +545,8 @@ export interface FileRoutesByTo {
   '/pricing/price-preferences': typeof PricingPricePreferencesRoute
   '/pricing/price-sets': typeof PricingPriceSetsRoute
   '/pricing/prices': typeof PricingPricesRoute
-  '/products/$id': typeof ProductsIdRouteWithChildren
   '/products/new': typeof ProductsNewRoute
+  '/products/$id': typeof ProductsIdRouteWithChildren
   '/promotions/$id': typeof PromotionsIdRouteWithChildren
   '/store/currencies': typeof StoreCurrenciesRoute
   '/store/keys': typeof StoreKeysRoute
@@ -596,7 +596,7 @@ export interface FileRoutesById {
   '/payments': typeof PaymentsRouteWithChildren
   '/payouts': typeof PayoutsRouteWithChildren
   '/pricing': typeof PricingRouteWithChildren
-  '/products': typeof ProductsRoute
+  '/products': typeof ProductsRouteWithChildren
   '/promotions': typeof PromotionsRoute
   '/store': typeof StoreRouteWithChildren
   '/subscriptions': typeof SubscriptionsRoute
@@ -619,8 +619,8 @@ export interface FileRoutesById {
   '/pricing/price-preferences': typeof PricingPricePreferencesRoute
   '/pricing/price-sets': typeof PricingPriceSetsRoute
   '/pricing/prices': typeof PricingPricesRoute
+  '/products/new': typeof ProductsNewRoute
   '/products_/$id': typeof ProductsIdRouteWithChildren
-  '/products_/new': typeof ProductsNewRoute
   '/promotions_/$id': typeof PromotionsIdRouteWithChildren
   '/store/currencies': typeof StoreCurrenciesRoute
   '/store/keys': typeof StoreKeysRoute
@@ -694,8 +694,8 @@ export interface FileRouteTypes {
     | '/pricing/price-preferences'
     | '/pricing/price-sets'
     | '/pricing/prices'
-    | '/products/$id'
     | '/products/new'
+    | '/products/$id'
     | '/promotions/$id'
     | '/store/currencies'
     | '/store/keys'
@@ -760,8 +760,8 @@ export interface FileRouteTypes {
     | '/pricing/price-preferences'
     | '/pricing/price-sets'
     | '/pricing/prices'
-    | '/products/$id'
     | '/products/new'
+    | '/products/$id'
     | '/promotions/$id'
     | '/store/currencies'
     | '/store/keys'
@@ -833,8 +833,8 @@ export interface FileRouteTypes {
     | '/pricing/price-preferences'
     | '/pricing/price-sets'
     | '/pricing/prices'
+    | '/products/new'
     | '/products_/$id'
-    | '/products_/new'
     | '/promotions_/$id'
     | '/store/currencies'
     | '/store/keys'
@@ -884,7 +884,7 @@ export interface RootRouteChildren {
   PaymentsRoute: typeof PaymentsRouteWithChildren
   PayoutsRoute: typeof PayoutsRouteWithChildren
   PricingRoute: typeof PricingRouteWithChildren
-  ProductsRoute: typeof ProductsRoute
+  ProductsRoute: typeof ProductsRouteWithChildren
   PromotionsRoute: typeof PromotionsRoute
   StoreRoute: typeof StoreRouteWithChildren
   SubscriptionsRoute: typeof SubscriptionsRoute
@@ -897,7 +897,6 @@ export interface RootRouteChildren {
   OrdersIdRoute: typeof OrdersIdRoute
   PaymentsIdRoute: typeof PaymentsIdRoute
   ProductsIdRoute: typeof ProductsIdRouteWithChildren
-  ProductsNewRoute: typeof ProductsNewRoute
   PromotionsIdRoute: typeof PromotionsIdRouteWithChildren
   SubscriptionsIdRoute: typeof SubscriptionsIdRoute
   WorkflowsIdRoute: typeof WorkflowsIdRoute
@@ -1189,18 +1188,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PricingPricesRouteImport
       parentRoute: typeof PricingRoute
     }
+    '/products/new': {
+      id: '/products/new'
+      path: '/new'
+      fullPath: '/products/new'
+      preLoaderRoute: typeof ProductsNewRouteImport
+      parentRoute: typeof ProductsRoute
+    }
     '/products_/$id': {
       id: '/products_/$id'
       path: '/products/$id'
       fullPath: '/products/$id'
       preLoaderRoute: typeof ProductsIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/products_/new': {
-      id: '/products_/new'
-      path: '/products/new'
-      fullPath: '/products/new'
-      preLoaderRoute: typeof ProductsNewRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/promotions_/$id': {
@@ -1484,6 +1483,18 @@ const PricingRouteChildren: PricingRouteChildren = {
 const PricingRouteWithChildren =
   PricingRoute._addFileChildren(PricingRouteChildren)
 
+interface ProductsRouteChildren {
+  ProductsNewRoute: typeof ProductsNewRoute
+}
+
+const ProductsRouteChildren: ProductsRouteChildren = {
+  ProductsNewRoute: ProductsNewRoute,
+}
+
+const ProductsRouteWithChildren = ProductsRoute._addFileChildren(
+  ProductsRouteChildren,
+)
+
 interface StoreRouteChildren {
   StoreCurrenciesRoute: typeof StoreCurrenciesRoute
   StoreKeysRoute: typeof StoreKeysRoute
@@ -1604,7 +1615,7 @@ const rootRouteChildren: RootRouteChildren = {
   PaymentsRoute: PaymentsRouteWithChildren,
   PayoutsRoute: PayoutsRouteWithChildren,
   PricingRoute: PricingRouteWithChildren,
-  ProductsRoute: ProductsRoute,
+  ProductsRoute: ProductsRouteWithChildren,
   PromotionsRoute: PromotionsRoute,
   StoreRoute: StoreRouteWithChildren,
   SubscriptionsRoute: SubscriptionsRoute,
@@ -1617,7 +1628,6 @@ const rootRouteChildren: RootRouteChildren = {
   OrdersIdRoute: OrdersIdRoute,
   PaymentsIdRoute: PaymentsIdRoute,
   ProductsIdRoute: ProductsIdRouteWithChildren,
-  ProductsNewRoute: ProductsNewRoute,
   PromotionsIdRoute: PromotionsIdRouteWithChildren,
   SubscriptionsIdRoute: SubscriptionsIdRoute,
   WorkflowsIdRoute: WorkflowsIdRoute,

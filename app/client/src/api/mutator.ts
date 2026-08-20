@@ -1,11 +1,5 @@
-import { held } from "@/lib/token"
 import { ApiError, kindOf, said } from "@/api/errors"
-
-/**
- * Where the admin API is served. tezgah is a library and ships no server, so
- * this points at whatever host mounted `api::routes()`.
- */
-const BASE = import.meta.env.VITE_TEZGAH_API ?? "/api"
+import { panelRuntime } from "@/panel/runtime"
 
 /**
  * The one place an admin request actually leaves the browser.
@@ -24,9 +18,18 @@ const BASE = import.meta.env.VITE_TEZGAH_API ?? "/api"
  * What this returns is deliberately unchecked — `data` is whatever the body
  * parsed to, not validated against anything. A 2xx that is the wrong shape is
  * `drift.ts`'s problem, one layer up, where a schema is available to say so.
+ *
+ * Where the request goes and what it carries are `panel/runtime.ts`'s answers
+ * rather than this module's: a generated fetch function is not a component,
+ * so a context cannot reach here, and a host mounting these screens inside
+ * its own back office has its own address and its own token.
  */
-export async function apiMutator<T>(url: string, options?: RequestInit): Promise<T> {
-  const token = held()
+export async function apiMutator<T>(
+  url: string,
+  options?: RequestInit
+): Promise<T> {
+  const { apiBase: BASE, token: heldToken, onUnauthenticated } = panelRuntime()
+  const token = heldToken()
   const headers = new Headers(options?.headers)
   headers.set("accept", "application/json")
   if (token) headers.set("authorization", `Bearer ${token}`)
@@ -39,11 +42,15 @@ export async function apiMutator<T>(url: string, options?: RequestInit): Promise
   }
 
   if (!response.ok) {
-    throw new ApiError(kindOf(response.status, token !== null), response.status, ...(await said(response)))
+    const kind = kindOf(response.status, token !== null)
+    if (kind === "unauthenticated") onUnauthenticated()
+    throw new ApiError(kind, response.status, ...(await said(response)))
   }
 
   const data =
-    response.status === 204 ? undefined : await response.json().catch(() => undefined)
+    response.status === 204
+      ? undefined
+      : await response.json().catch(() => undefined)
 
   return { data, status: response.status, headers: response.headers } as T
 }

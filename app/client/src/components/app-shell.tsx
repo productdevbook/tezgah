@@ -19,7 +19,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { COVERAGE, GROUPS, type Section } from "@/lib/nav"
-import { forget } from "@/lib/token"
+import { panelRuntime } from "@/panel/runtime"
 
 /**
  * Every built section has its own top-level route (their slug is that
@@ -42,31 +42,51 @@ function SectionLink({
   switch (slug) {
     case "products":
       return (
-        <SidebarMenuButton isActive={active} tooltip={title} render={<Link to="/products" />}>
+        <SidebarMenuButton
+          isActive={active}
+          tooltip={title}
+          render={<Link to="/products" />}
+        >
           {children}
         </SidebarMenuButton>
       )
     case "orders":
       return (
-        <SidebarMenuButton isActive={active} tooltip={title} render={<Link to="/orders" />}>
+        <SidebarMenuButton
+          isActive={active}
+          tooltip={title}
+          render={<Link to="/orders" />}
+        >
           {children}
         </SidebarMenuButton>
       )
     case "inventory":
       return (
-        <SidebarMenuButton isActive={active} tooltip={title} render={<Link to="/inventory" />}>
+        <SidebarMenuButton
+          isActive={active}
+          tooltip={title}
+          render={<Link to="/inventory" />}
+        >
           {children}
         </SidebarMenuButton>
       )
     case "customers":
       return (
-        <SidebarMenuButton isActive={active} tooltip={title} render={<Link to="/customers" />}>
+        <SidebarMenuButton
+          isActive={active}
+          tooltip={title}
+          render={<Link to="/customers" />}
+        >
           {children}
         </SidebarMenuButton>
       )
     case "promotions":
       return (
-        <SidebarMenuButton isActive={active} tooltip={title} render={<Link to="/promotions" />}>
+        <SidebarMenuButton
+          isActive={active}
+          tooltip={title}
+          render={<Link to="/promotions" />}
+        >
           {children}
         </SidebarMenuButton>
       )
@@ -82,61 +102,101 @@ function SectionLink({
       )
     case "store":
       return (
-        <SidebarMenuButton isActive={active} tooltip={title} render={<Link to="/store" />}>
+        <SidebarMenuButton
+          isActive={active}
+          tooltip={title}
+          render={<Link to="/store" />}
+        >
           {children}
         </SidebarMenuButton>
       )
     case "payouts":
       return (
-        <SidebarMenuButton isActive={active} tooltip={title} render={<Link to="/payouts" />}>
+        <SidebarMenuButton
+          isActive={active}
+          tooltip={title}
+          render={<Link to="/payouts" />}
+        >
           {children}
         </SidebarMenuButton>
       )
     case "workflows":
       return (
-        <SidebarMenuButton isActive={active} tooltip={title} render={<Link to="/workflows" />}>
+        <SidebarMenuButton
+          isActive={active}
+          tooltip={title}
+          render={<Link to="/workflows" />}
+        >
           {children}
         </SidebarMenuButton>
       )
     case "baskets":
       return (
-        <SidebarMenuButton isActive={active} tooltip={title} render={<Link to="/baskets" />}>
+        <SidebarMenuButton
+          isActive={active}
+          tooltip={title}
+          render={<Link to="/baskets" />}
+        >
           {children}
         </SidebarMenuButton>
       )
     case "fulfilment":
       return (
-        <SidebarMenuButton isActive={active} tooltip={title} render={<Link to="/fulfilment" />}>
+        <SidebarMenuButton
+          isActive={active}
+          tooltip={title}
+          render={<Link to="/fulfilment" />}
+        >
           {children}
         </SidebarMenuButton>
       )
     case "tax":
       return (
-        <SidebarMenuButton isActive={active} tooltip={title} render={<Link to="/tax" />}>
+        <SidebarMenuButton
+          isActive={active}
+          tooltip={title}
+          render={<Link to="/tax" />}
+        >
           {children}
         </SidebarMenuButton>
       )
     case "pricing":
       return (
-        <SidebarMenuButton isActive={active} tooltip={title} render={<Link to="/pricing" />}>
+        <SidebarMenuButton
+          isActive={active}
+          tooltip={title}
+          render={<Link to="/pricing" />}
+        >
           {children}
         </SidebarMenuButton>
       )
     case "payments":
       return (
-        <SidebarMenuButton isActive={active} tooltip={title} render={<Link to="/payments" />}>
+        <SidebarMenuButton
+          isActive={active}
+          tooltip={title}
+          render={<Link to="/payments" />}
+        >
           {children}
         </SidebarMenuButton>
       )
     case "credit":
       return (
-        <SidebarMenuButton isActive={active} tooltip={title} render={<Link to="/credit" />}>
+        <SidebarMenuButton
+          isActive={active}
+          tooltip={title}
+          render={<Link to="/credit" />}
+        >
           {children}
         </SidebarMenuButton>
       )
     case "carts":
       return (
-        <SidebarMenuButton isActive={active} tooltip={title} render={<Link to="/carts" />}>
+        <SidebarMenuButton
+          isActive={active}
+          tooltip={title}
+          render={<Link to="/carts" />}
+        >
           {children}
         </SidebarMenuButton>
       )
@@ -192,7 +252,11 @@ function isActiveSection(
       return Boolean(matchRoute({ to: "/carts", fuzzy: true }))
     default:
       return Boolean(
-        matchRoute({ to: "/$section", params: { section: section.slug }, fuzzy: true })
+        matchRoute({
+          to: "/$section",
+          params: { section: section.slug },
+          fuzzy: true,
+        })
       )
   }
 }
@@ -205,12 +269,12 @@ export function AppShell() {
       <Sidebar collapsible="icon">
         <SidebarHeader>
           <div className="flex items-center gap-2 px-2 py-1.5">
-            <div className="bg-primary text-primary-foreground flex size-7 shrink-0 items-center justify-center rounded-md text-xs font-semibold">
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary text-xs font-semibold text-primary-foreground">
               tz
             </div>
             <div className="grid min-w-0 leading-tight group-data-[collapsible=icon]:hidden">
               <span className="truncate text-sm font-medium">tezgah</span>
-              <span className="text-muted-foreground truncate text-xs">
+              <span className="truncate text-xs text-muted-foreground">
                 admin
               </span>
             </div>
@@ -234,7 +298,7 @@ export function AppShell() {
                         >
                           <span className="truncate">{section.title}</span>
                           {!section.built ? (
-                            <span className="text-muted-foreground ml-auto text-[10px] group-data-[collapsible=icon]:hidden">
+                            <span className="ml-auto text-[10px] text-muted-foreground group-data-[collapsible=icon]:hidden">
                               soon
                             </span>
                           ) : null}
@@ -248,7 +312,7 @@ export function AppShell() {
         </SidebarContent>
 
         <SidebarFooter>
-          <div className="text-muted-foreground px-2 py-1 text-xs group-data-[collapsible=icon]:hidden">
+          <div className="px-2 py-1 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
             {COVERAGE.covered} of {COVERAGE.operations} admin operations have a
             screen
           </div>
@@ -267,10 +331,7 @@ export function AppShell() {
             variant="ghost"
             size="sm"
             className="ml-auto text-xs"
-            onClick={() => {
-              forget()
-              location.reload()
-            }}
+            onClick={() => panelRuntime().onUnauthenticated()}
           >
             Disconnect
           </Button>

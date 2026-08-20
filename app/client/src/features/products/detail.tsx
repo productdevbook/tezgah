@@ -11,14 +11,16 @@ import {
   type CreateDigitalContent,
   type DigitalContent,
 } from "@/api/schemas"
+import { ActionMenu } from "@/components/action-menu"
 import { DeleteAction } from "@/components/delete-action"
-import { DetailField, FieldGrid, Metadata, Empty } from "@/components/detail-fields"
+import { Metadata, Empty } from "@/components/detail-fields"
 import { DetailHeader } from "@/components/detail-header"
+import { Section, SectionRow, SectionRows } from "@/components/section"
+import { TwoColumnPage } from "@/components/two-column"
 import { FormError } from "@/components/form-error"
 import { QueryState } from "@/components/query-state"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
 import { Field, FieldError, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
@@ -32,6 +34,12 @@ import {
 } from "@/components/ui/table"
 import { dateTime, useDetail } from "@/lib/detail"
 
+/**
+ * A product's page: a stack of sections rather than one card of twenty
+ * fields, each owning one part of the record and carrying what can be done
+ * to it. `<Outlet />` in the route above this draws `/products/$id/edit` as a
+ * drawer over the top, so editing does not take the page away.
+ */
 export function ProductDetail({
   id,
   variantId,
@@ -44,100 +52,163 @@ export function ProductDetail({
   const result = useDetail(["products"], "/admin/products/{id}", product, id)
 
   return (
-    <div className="max-w-3xl space-y-4">
-      <QueryState
-        query={result}
-        empty={{ title: "No product", description: "Nothing to show." }}
-      >
-        {(item) => (
-          <>
-            <DetailHeader back="products" title={item.title} subtitle={item.handle}>
-              <Badge variant={item.status === "published" ? "default" : "outline"}>
-                {item.status}
-              </Badge>
-              <Button
-                variant="outline"
-                size="sm"
-                nativeButton={false}
-                render={<Link to="/products/$id/edit" params={{ id: item.id }} />}
-              >
-                Edit
-              </Button>
-              <DeleteAction
-                path="/admin/products/{id}"
-                params={{ id: item.id }}
-                invalidateKey={["products"]}
-                kind="product"
-                name={item.title}
-              />
-            </DetailHeader>
-            <Card>
-              <CardContent>
-                <FieldGrid>
-                  <DetailField label="ID">
-                    <span className="font-mono text-xs">{item.id}</span>
-                  </DetailField>
-                  <DetailField label="Handle">{item.handle}</DetailField>
-                  <DetailField label="Status">{item.status}</DetailField>
-                  <DetailField label="Rejected reason">
-                    {item.rejected_reason ?? <Empty />}
-                  </DetailField>
-                  <DetailField label="Subtitle">{item.subtitle ?? <Empty />}</DetailField>
-                  <DetailField label="Discountable">
-                    {item.is_discountable ? "yes" : "no"}
-                  </DetailField>
-                  <DetailField label="Product type">
-                    {item.product_type_id ?? <Empty />}
-                  </DetailField>
-                  <DetailField label="Collection">
-                    {item.product_collection_id ?? <Empty />}
-                  </DetailField>
-                  <DetailField label="Thumbnail">
-                    {item.thumbnail_url ?? <Empty />}
-                  </DetailField>
-                  <DetailField label="External ID">
-                    {item.external_id ?? <Empty />}
-                  </DetailField>
-                  <DetailField label="Weight">{item.weight ?? <Empty />}</DetailField>
-                  <DetailField label="Length">{item.length ?? <Empty />}</DetailField>
-                  <DetailField label="Height">{item.height ?? <Empty />}</DetailField>
-                  <DetailField label="Width">{item.width ?? <Empty />}</DetailField>
-                  <DetailField label="Material">{item.material ?? <Empty />}</DetailField>
-                  <DetailField label="HS code">{item.hs_code ?? <Empty />}</DetailField>
-                  <DetailField label="Origin country">
-                    {item.origin_country ?? <Empty />}
-                  </DetailField>
-                  <DetailField label="Created">{dateTime(item.created_at)}</DetailField>
-                  <DetailField label="Updated">{dateTime(item.updated_at)}</DetailField>
-                  <DetailField label="Description" full>
-                    {item.description ?? <Empty />}
-                  </DetailField>
-                  <DetailField label="Metadata" full>
-                    <Metadata value={item.metadata} />
-                  </DetailField>
-                </FieldGrid>
-              </CardContent>
-            </Card>
+    <QueryState
+      query={result}
+      empty={{ title: "No product", description: "Nothing to show." }}
+    >
+      {(item) => (
+        <div className="flex flex-col gap-4">
+          <DetailHeader
+            back="products"
+            title={item.title}
+            subtitle={item.handle}
+          >
+            <Badge
+              variant={item.status === "published" ? "default" : "outline"}
+            >
+              {item.status}
+            </Badge>
+            <Button
+              variant="outline"
+              size="sm"
+              nativeButton={false}
+              render={<Link to="/products/$id/edit" params={{ id: item.id }} />}
+            >
+              Edit
+            </Button>
+            <DeleteAction
+              path="/admin/products/{id}"
+              params={{ id: item.id }}
+              invalidateKey={["products"]}
+              kind="product"
+              name={item.title}
+            />
+          </DetailHeader>
 
-            <Card>
-              <CardContent className="space-y-3">
-                <div className="space-y-1">
-                  <h2 className="text-sm font-medium">Digital content</h2>
-                  <p className="text-muted-foreground text-xs">
-                    A file belongs to one variant, and no route lists a product&rsquo;s
-                    variants — paste the variant&rsquo;s id to see or add what it carries.
-                  </p>
-                </div>
-                <DigitalContentByVariant
-                  variantId={variantId}
-                  onVariantIdChange={onVariantIdChange}
-                />
-              </CardContent>
-            </Card>
-          </>
-        )}
-      </QueryState>
-    </div>
+          <TwoColumnPage
+            main={
+              <>
+                <Section
+                  title="General"
+                  actions={
+                    <ActionMenu
+                      groups={[
+                        [
+                          {
+                            label: "Edit",
+                            render: (
+                              <Link
+                                to="/products/$id/edit"
+                                params={{ id: item.id }}
+                              />
+                            ),
+                          },
+                        ],
+                      ]}
+                    />
+                  }
+                >
+                  <SectionRows>
+                    <SectionRow label="Title" value={item.title} />
+                    <SectionRow label="Subtitle" value={item.subtitle} />
+                    <SectionRow
+                      label="Handle"
+                      value={
+                        <span className="font-mono text-xs">{item.handle}</span>
+                      }
+                    />
+                    <SectionRow label="Description" value={item.description} />
+                    <SectionRow
+                      label="Discountable"
+                      value={item.is_discountable ? "Yes" : "No"}
+                    />
+                    <SectionRow
+                      label="Rejected reason"
+                      value={item.rejected_reason}
+                    />
+                  </SectionRows>
+                </Section>
+
+                <Section
+                  title="Digital content"
+                  description="A file belongs to one variant, and no route lists a product's variants — paste the variant's id to see or add what it carries."
+                >
+                  <div className="px-6 py-4">
+                    <DigitalContentByVariant
+                      variantId={variantId}
+                      onVariantIdChange={onVariantIdChange}
+                    />
+                  </div>
+                </Section>
+              </>
+            }
+            side={
+              <>
+                <Section title="Organisation">
+                  <SectionRows>
+                    <SectionRow
+                      label="Product type"
+                      value={item.product_type_id}
+                    />
+                    <SectionRow
+                      label="Collection"
+                      value={item.product_collection_id}
+                    />
+                    <SectionRow label="External ID" value={item.external_id} />
+                  </SectionRows>
+                </Section>
+
+                <Section title="Media">
+                  <SectionRows>
+                    <SectionRow label="Thumbnail" value={item.thumbnail_url} />
+                  </SectionRows>
+                </Section>
+
+                <Section title="Shipping">
+                  <SectionRows>
+                    <SectionRow label="Weight" value={item.weight} />
+                    <SectionRow label="Length" value={item.length} />
+                    <SectionRow label="Height" value={item.height} />
+                    <SectionRow label="Width" value={item.width} />
+                    <SectionRow label="Material" value={item.material} />
+                    <SectionRow label="HS code" value={item.hs_code} />
+                    <SectionRow
+                      label="Origin country"
+                      value={item.origin_country}
+                    />
+                  </SectionRows>
+                </Section>
+
+                <Section title="Metadata">
+                  <div className="px-6 py-4">
+                    <Metadata value={item.metadata} />
+                  </div>
+                </Section>
+
+                <Section title="Details">
+                  <SectionRows>
+                    <SectionRow
+                      label="ID"
+                      value={
+                        <span className="font-mono text-xs">{item.id}</span>
+                      }
+                    />
+                    <SectionRow
+                      label="Created"
+                      value={dateTime(item.created_at)}
+                    />
+                    <SectionRow
+                      label="Updated"
+                      value={dateTime(item.updated_at)}
+                    />
+                  </SectionRows>
+                </Section>
+              </>
+            }
+          />
+        </div>
+      )}
+    </QueryState>
   )
 }
 
@@ -173,7 +244,7 @@ function DigitalContentByVariant({
       {variantId ? (
         <DigitalContentList variantId={variantId} />
       ) : (
-        <p className="text-muted-foreground text-sm">Nothing looked up yet.</p>
+        <p className="text-sm text-muted-foreground">Nothing looked up yet.</p>
       )}
     </div>
   )
@@ -227,12 +298,18 @@ function DigitalContentList({ variantId }: { variantId: string }) {
                     </TableCell>
                     <TableCell>{content.max_downloads ?? <Empty />}</TableCell>
                     <TableCell>
-                      {content.valid_days ? `${content.valid_days}d` : <Empty />}
+                      {content.valid_days ? (
+                        `${content.valid_days}d`
+                      ) : (
+                        <Empty />
+                      )}
                     </TableCell>
                     <TableCell>
-                      {content.auto_grant ? <Badge variant="outline">auto</Badge> : null}
+                      {content.auto_grant ? (
+                        <Badge variant="outline">auto</Badge>
+                      ) : null}
                     </TableCell>
-                    <TableCell className="text-muted-foreground text-right text-xs">
+                    <TableCell className="text-right text-xs text-muted-foreground">
                       {dateTime(content.created_at)}
                     </TableCell>
                     <TableCell>
@@ -343,7 +420,9 @@ function NewDigitalContent({
             id="content-max-downloads"
             inputMode="numeric"
             value={form.max_downloads}
-            onChange={(e) => setForm({ ...form, max_downloads: e.target.value })}
+            onChange={(e) =>
+              setForm({ ...form, max_downloads: e.target.value })
+            }
             placeholder="unlimited"
             aria-invalid={!!fieldErrors.max_downloads}
           />
@@ -376,9 +455,13 @@ function NewDigitalContent({
           <Switch
             id="content-auto-grant"
             checked={form.auto_grant}
-            onCheckedChange={(checked) => setForm({ ...form, auto_grant: checked })}
+            onCheckedChange={(checked) =>
+              setForm({ ...form, auto_grant: checked })
+            }
           />
-          <FieldLabel htmlFor="content-auto-grant">Grant automatically on purchase</FieldLabel>
+          <FieldLabel htmlFor="content-auto-grant">
+            Grant automatically on purchase
+          </FieldLabel>
         </Field>
       </div>
       <Button type="submit" disabled={mutation.isPending}>

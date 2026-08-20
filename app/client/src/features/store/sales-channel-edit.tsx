@@ -10,7 +10,7 @@ import {
   type UpdateSalesChannel,
 } from "@/api/schemas"
 import { FormError } from "@/components/form-error"
-import { PageHeading } from "@/components/page-heading"
+import { RouteDrawer } from "@/components/modals/route-drawer"
 import { QueryState } from "@/components/query-state"
 import { Button } from "@/components/ui/button"
 import { Field, FieldError, FieldLabel } from "@/components/ui/field"
@@ -29,14 +29,17 @@ export function EditSalesChannel({ id }: { id: string }) {
   )
 
   return (
-    <div className="max-w-xl space-y-4">
+    <RouteDrawer>
+      <RouteDrawer.Header title="Edit sales channel" />
+      <RouteDrawer.Body>
       <QueryState
         query={result}
         empty={{ title: "No sales channel", description: "Nothing to show." }}
       >
         {(item) => <SalesChannelForm item={item} />}
       </QueryState>
-    </div>
+    </RouteDrawer.Body>
+    </RouteDrawer>
   )
 }
 
@@ -83,7 +86,6 @@ function SalesChannelForm({ item }: { item: SalesChannel }) {
 
   return (
     <>
-      <PageHeading title={`Edit ${item.name}`} />
       <form className="space-y-4" onSubmit={submit}>
         {mutation.isError ? <FormError error={mutation.error} /> : null}
         <Field data-invalid={!!fieldErrors.name}>

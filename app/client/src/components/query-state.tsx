@@ -1,7 +1,7 @@
 import type { UseQueryResult } from "@tanstack/react-query"
 
 import { ApiError } from "@/api/client"
-import { forget } from "@/lib/token"
+import { panelRuntime } from "@/panel/runtime"
 import { Button } from "@/components/ui/button"
 import {
   Empty,
@@ -101,7 +101,7 @@ function Failure({ error, onRetry }: { error: unknown; onRetry: () => void }) {
       <EmptyContent>
         <div className="flex flex-col items-center gap-2">
           {api?.kind === "drifted" ? (
-            <code className="bg-muted max-w-lg rounded px-2 py-1 text-left text-xs break-words">
+            <code className="max-w-lg rounded bg-muted px-2 py-1 text-left text-xs break-words">
               {api.message}
             </code>
           ) : null}
@@ -109,10 +109,7 @@ function Failure({ error, onRetry }: { error: unknown; onRetry: () => void }) {
             {api?.kind === "unauthenticated" || api?.kind === "denied" ? (
               <Button
                 size="sm"
-                onClick={() => {
-                  forget()
-                  location.reload()
-                }}
+                onClick={() => panelRuntime().onUnauthenticated()}
               >
                 Connect
               </Button>
@@ -121,7 +118,7 @@ function Failure({ error, onRetry }: { error: unknown; onRetry: () => void }) {
               Try again
             </Button>
             {api?.code ? (
-              <code className="text-muted-foreground text-xs">{api.code}</code>
+              <code className="text-xs text-muted-foreground">{api.code}</code>
             ) : null}
           </div>
         </div>

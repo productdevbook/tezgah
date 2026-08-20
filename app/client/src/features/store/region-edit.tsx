@@ -5,7 +5,7 @@ import { Link, useNavigate } from "@tanstack/react-router"
 import { patch } from "@/api/client"
 import { region, updateRegion, type Region, type UpdateRegion } from "@/api/schemas"
 import { FormError } from "@/components/form-error"
-import { PageHeading } from "@/components/page-heading"
+import { RouteDrawer } from "@/components/modals/route-drawer"
 import { QueryState } from "@/components/query-state"
 import { Button } from "@/components/ui/button"
 import { Field, FieldError, FieldLabel } from "@/components/ui/field"
@@ -25,11 +25,14 @@ export function EditRegion({ id }: { id: string }) {
   const result = useDetail(["regions"], "/admin/regions/{id}", region, id)
 
   return (
-    <div className="max-w-xl space-y-4">
+    <RouteDrawer>
+      <RouteDrawer.Header title="Edit region" />
+      <RouteDrawer.Body>
       <QueryState query={result} empty={{ title: "No region", description: "Nothing to show." }}>
         {(item) => <RegionForm item={item} />}
       </QueryState>
-    </div>
+    </RouteDrawer.Body>
+    </RouteDrawer>
   )
 }
 
@@ -69,7 +72,6 @@ function RegionForm({ item }: { item: Region }) {
 
   return (
     <>
-      <PageHeading title={`Edit ${item.name}`} />
       <form className="space-y-4" onSubmit={submit}>
         {mutation.isError ? <FormError error={mutation.error} /> : null}
         <Field data-invalid={!!fieldErrors.name}>
