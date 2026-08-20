@@ -92,6 +92,13 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         ("DELETE", "/admin/promotions/{id}"),
         ("GET", "/admin/subscriptions"),
         ("GET", "/admin/subscriptions/{id}"),
+        ("GET", "/admin/subscriptions/{id}/events"),
+        ("POST", "/admin/subscriptions/{id}/cancel"),
+        ("POST", "/admin/subscriptions/{id}/pause"),
+        ("POST", "/admin/subscriptions/{id}/resume"),
+        ("POST", "/admin/subscriptions/{id}/skip"),
+        ("POST", "/admin/subscriptions/{id}/swap"),
+        ("POST", "/admin/subscriptions/{id}/deliver"),
         ("GET", "/admin/regions"),
         ("GET", "/admin/regions/{id}"),
         ("PATCH", "/admin/regions/{id}"),
@@ -232,6 +239,22 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         )
         .route("/admin/subscriptions", get(list_subscriptions))
         .route("/admin/subscriptions/{id}", get(get_subscription))
+        .route("/admin/subscriptions/{id}/events", get(subscription_events))
+        .route(
+            "/admin/subscriptions/{id}/cancel",
+            post(cancel_subscription),
+        )
+        .route("/admin/subscriptions/{id}/pause", post(pause_subscription))
+        .route(
+            "/admin/subscriptions/{id}/resume",
+            post(resume_subscription),
+        )
+        .route("/admin/subscriptions/{id}/skip", post(skip_subscription))
+        .route("/admin/subscriptions/{id}/swap", post(swap_subscription))
+        .route(
+            "/admin/subscriptions/{id}/deliver",
+            post(deliver_subscription),
+        )
         .route("/admin/regions", get(list_regions).post(create_region))
         .route("/admin/regions/{id}", get(get_region).patch(update_region))
         .route(
@@ -1140,6 +1163,108 @@ async fn create_inventory_item(
     let item = admin_catalogue::create_inventory_item(&mut tx, &ctx, body).await?;
     tx.commit().await?;
     Ok(Json(item))
+}
+
+/// What a shop does to a contract after it exists.
+///
+/// Seven routes, all declared since subscriptions were written and bound by
+/// nothing — so this panel could list a subscription and offer no way to stop
+/// it, which is the one thing a shop is asked to do about one.
+///
+/// Two of the nine stay unbound, and not by choice. `renew` and `card` take a
+/// `subscription::Renewals`, which takes a `RecurringProvider`, and this
+/// binary has none: charging a card a shopper left on file means naming which
+/// card, and kasapay 0.0.5 has no field for one — `src/provider.rs` carries
+/// that in full, and it is the same reason `host::Dispatcher` renews nothing.
+/// Binding them would mean building a `Renewals` out of a provider that
+/// cannot do the one thing it is for.
+async fn subscription_events(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<SubscriptionId>,
+    Query(query): Query<subscription::List>,
+) -> Result<Json<tezgah::page::Page<subscription::EventView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let page = subscription::list_events(&mut tx, &ctx, id, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn cancel_subscription(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<SubscriptionId>,
+    Json(body): Json<subscription::Cancel>,
+) -> Result<Json<subscription::SubscriptionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = subscription::cancel_subscription(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn pause_subscription(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<SubscriptionId>,
+    Json(body): Json<subscription::Pause>,
+) -> Result<Json<subscription::SubscriptionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = subscription::pause_subscription(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn resume_subscription(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<SubscriptionId>,
+) -> Result<Json<subscription::SubscriptionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = subscription::resume_subscription(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn skip_subscription(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<SubscriptionId>,
+) -> Result<Json<subscription::SubscriptionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = subscription::skip_subscription(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn swap_subscription(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<SubscriptionId>,
+    Json(body): Json<subscription::Swap>,
+) -> Result<Json<subscription::SubscriptionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = subscription::swap_subscription(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn deliver_subscription(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<SubscriptionId>,
+    Json(body): Json<subscription::Deliver>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let order = subscription::deliver_subscription(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "order_id": order })))
 }
 
 /// The five that move a product's status.

@@ -1,4 +1,5 @@
 import { subscriptionContract } from "@/api/schemas"
+import { SubscriptionActions } from "@/features/subscriptions/actions"
 import { Empty, Mono } from "@/components/detail-fields"
 import { DetailPage } from "@/components/detail-page"
 import {
@@ -41,6 +42,7 @@ export function SubscriptionDetail({ id }: { id: string }) {
           {item.cancel_at_period_end ? (
             <Badge variant="outline">ends this period</Badge>
           ) : null}
+          <SubscriptionActions item={item} />
         </>
       )}
       main={(item) => (
