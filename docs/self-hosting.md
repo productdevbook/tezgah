@@ -25,7 +25,7 @@ docker compose exec tezgah-server tezgah-server seed
 That last line is what makes the shop worth opening the panel for — a fresh
 install starts with no currency, no region, no sales channel and no
 publishable key, and `seed` writes the smallest set of those a storefront can
-check out from. `server/README.md`'s "Seeding a shop" section says what it
+check out from. `app/server/README.md`'s "Seeding a shop" section says what it
 prints and why running it twice is safe.
 
 `postgres` has to answer its own healthcheck before `tezgah-server` starts,
@@ -82,7 +82,7 @@ gunzip -c tezgah-2024-01-01.sql.gz | \
 ## Taking real money
 
 The published `tezgah-server` image ships exactly one payment provider:
-`DemoBank`, in `server/src/provider.rs`. It authorises every charge it is
+`DemoBank`, in `app/server/src/provider.rs`. It authorises every charge it is
 asked for and remembers nothing — it exists so checkout has something to run
 against, not so checkout has something to take money with. Setting
 `TEZGAH_STOCK_LOCATION_ID` alone does not turn it on: `TEZGAH_DEMO_BANK` also
@@ -102,7 +102,7 @@ to write, not tezgah's, and this repository carries no adapter for a real
 bank or gateway. Taking real payments means building `tezgah-server` (or your
 own binary over the `tezgah` library) against a real `kasapay_core::Provider`
 — an adapter crate from the kasapay project — and passing that to
-`KasapayProvider::new` in `server/src/main.rs` in place of `DemoBank`. The
+`KasapayProvider::new` in `app/server/src/main.rs` in place of `DemoBank`. The
 published image cannot do this for you; it is a starting point for a binary
 you build, not a drop-in payment gateway.
 

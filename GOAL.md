@@ -27,9 +27,14 @@ already solved by whatever embeds this, so it is asked for through
 | file and image storage | a URL on the record | a host already has media |
 | caching | — | a library that caches behind your back is a bug |
 | analytics dashboards | the API | reporting over Postgres is the host's |
-| the admin screens | the API | the crate ships no UI; [`client/`](client) is a panel over it, built and released apart |
+| the admin screens | the API | the crate ships no UI; [`app/client/`](app/client) is a panel over it, built and released apart |
 
 ## Where this is
+
+The commerce engine is the part that is far along; the host half around it is
+not, and stage 16 below is that list. `docs/architecture.md` is where each of
+those gaps is measured and assigned to a layer — the library, the binary in
+`app/server`, or the panel in `app/client`.
 
 Tests green. Both API surfaces are served, generated into a snapshotted OpenAPI
 document, and every domain in stages 2 to 13 is module, schema and test
@@ -56,7 +61,7 @@ that runs — axum over the route table, all five ports implemented including a
 job worker that actually runs what it enqueues, and a `PaymentProvider` built
 over `dyn kasapay_core::Provider`, which is the first thing outside that
 module's own tests to lean on the mapping. It binds 6 of the 483 operations,
-enough to walk browse → cart → checkout → order, and says so. [`client/`](client)
+enough to walk browse → cart → checkout → order, and says so. [`app/client/`](app/client)
 is an admin panel over the same surface, with screens for products, orders and
 inventory — 228 of the 483 operations behind a screen, and every section that
 has none saying how many it is not drawing. Neither is in the crate: depending
@@ -216,12 +221,12 @@ writes an order, and the provider is not in your database.
       on a whole domain, request and response bodies both; 22 operations
       carry a schema now — payout's 6 plus, response side only, the list and
       single-fetch operation for every view type
-      [`client/src/api/views.ts`](client/src/api/views.ts) hand-transcribes
+      [`app/client/src/api/views.ts`](app/client/src/api/views.ts) hand-transcribes
       across the seven domains it actually reads (catalogue, order,
       inventory, customer, promotion, subscription, store). `views.ts` is not
       deleted yet — that is the next step once its schemas are checked
       against what `schemars` now generates for the same types — and the
-      create/edit routes in those seven domains, which `client/` does not
+      create/edit routes in those seven domains, which `app/client/` does not
       call yet, still answer `200` with no body schema, the same as the rest
       of the table. productdevbook/tezgah#202.
 - [x] every route declares its permission, and a matrix test proves it —
@@ -310,6 +315,59 @@ writes an order, and the provider is not in your database.
       `tests/no_unbounded_list.rs` reads `src/` and fails when a public
       function hands back a `Vec` that is neither paged nor capped by a named
       constant; its `TOLERATED` list is empty.
+
+### 16. The host half
+
+Stages 2 to 15 are the commerce engine, and the sweep against an established
+platform's commerce surface is done. What is not done is the layer around it:
+the things that are nobody's problem while tezgah is only a library, and
+become this repository's problem because `app/` ships a shop somebody else
+runs. [`docs/architecture.md`](docs/architecture.md) carries each of these
+with the measurement behind it and the layer that owns the fix; this is the
+list.
+
+In the library:
+
+- [ ] a list that can be filtered, searched and sorted — `Paging` carries a
+      cursor and a limit, there is one filter type in the whole crate, every
+      paged query ends `order by created_at`, and no `ilike`, `to_tsvector`
+      or `pg_trgm` appears anywhere in `src/` or `migrations/`
+- [ ] a count beside a page, so a back office can say "1–50 of 41,309"
+- [ ] a route a payment provider's callback can reach —
+      `payment::record_webhook` is written and tested and no path in
+      `src/api/` declares it, so an asynchronously confirmed payment has
+      nowhere to be confirmed to
+- [ ] the 89 routes that answer `not_found` where they mean `denied`, because
+      the owner is only known once the row is loaded (#151, #152)
+
+In `app/`:
+
+- [ ] accounts — users, sessions, invitations, revocation. One shared
+      `ADMIN_TOKEN` today, so `Actor::Staff { id }` has never been produced
+      and no audit row can say who changed a price
+- [ ] a schedule — `cart::expire` and `inventory::expire_reservations` are
+      called by tests and nothing else, so on the shipped image a cart is
+      never swept and the stock it reserved is never released
+- [ ] a job worker that dispatches — it claims, prints and marks processed;
+      the one job kind the crate enqueues is a dunning retry, which is
+      therefore retried never
+- [ ] somewhere for an event to go, a file to live and a letter to be sent —
+      all three are stdout or a URL somebody else hosts
+- [ ] the rest of the route table: 111 of 483 bound by hand, 228 drawn by the
+      panel
+- [ ] tracing, metrics, a request log, readiness apart from liveness, a CORS
+      policy, a rate limit
+
+In the panel:
+
+- [ ] filtering, searching and sorting, once the library offers them
+- [ ] a form library — the zod schemas are generated and nothing resolves
+      them against fields, so validation and dirty state are per screen
+- [ ] translation — not a locale file in the tree
+- [ ] anything bulk: multi-select, a bulk edit grid, and a screen for the
+      three `batch` endpoints that are routed and drawn by nothing
+- [ ] a mountable feature layer — the panel assumes it is the whole
+      application, so an embedder wanting these screens rewrites all 67
 
 ## Deliberately not built
 

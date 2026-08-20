@@ -2,15 +2,61 @@
 
 tezgah's admin panel. React 19, Vite, TanStack Router and Query, shadcn.
 
+Half of `app/` — see [`../README.md`](../README.md) for what the other half is
+and why the two ship together. The library one directory further up knows
+nothing about this one, and this one may not decide anything the library
+should have decided: a total added up here, a state transition checked here, a
+list sorted here because the API will not, are each a second answer to a
+question Postgres already answers.
+
+## What this panel is not, yet
+
+The screens are real and the plumbing is honest, and it is a long way from
+what an established platform's dashboard offers. That is measurable rather
+than a feeling: 16,451 lines of TSX across 67 screens against 128,585 lines
+and 34 locales, and the shortfall lines up with five specific absences.
+
+**Nothing filters, searches or sorts** — because the API offers none of it.
+`Paging` carries a cursor and a limit, there is one filter type in the whole
+crate, and every paged query ends `order by created_at`. A sortable header
+here would be claiming something about the pages that are not on screen. This
+one cannot be fixed in the panel.
+
+**Forms are hand-rolled.** No `react-hook-form`, no resolver wiring the zod
+schemas that are already generated to the fields that already exist — so
+validation, dirty state, field errors and unsaved-change guards are written
+per screen or not at all. The schemas are the expensive half and they are
+done.
+
+**There is no translation.** Not a locale file in the tree. Cheapest to fix
+at 67 screens; it does not get cheaper.
+
+**Nothing is bulk.** No multi-select, no edit grid, and no screen at all for
+the three `batch` endpoints — products, prices and stock — that are routed
+and drawn by nobody.
+
+**It is not mountable.** Every screen assumes this is the whole application:
+its own router root, its own token screen, its own API base. An application
+embedding tezgah and wanting these screens inside its own back office would
+rewrite all 67. Taking the API client, the locale, the link component and the
+route base from a provider is what changes that, and 67 is the cheap moment
+to do it.
+
+[`../../docs/architecture.md`](../../docs/architecture.md) carries all of this
+beside the library and server gaps, with which layer owns each.
+
 ## What it talks to
 
-Nothing, yet. tezgah is a library and serves no HTTP itself — something has to
-mount `api::routes()` first, which is what the repository's issue #199 is
-about. Point the panel at whatever does:
+[`../server`](../server) — the binary beside it, which mounts 111 of the 483
+operations `api::routes()` declares. The crate itself serves no HTTP, so any
+other host that mounts the same table will do; point the panel at whichever
+one is running:
 
     VITE_TEZGAH_API=http://localhost:8080/api bun run dev
 
-With nothing there, every screen says so rather than drawing an empty table.
+With nothing there, every screen says so rather than drawing an empty table —
+and the same is true of a screen whose route that host has not bound, which
+is most of the 228 this panel draws.
 
 ## Types
 
@@ -31,7 +77,7 @@ that exist, so a typo cannot become a request nobody answers — the one thing
 useful about the other 461 operations Orval also sees but cannot give a body
 to.
 
-    bunx openapi-typescript ../tests/snapshots/openapi.json -o src/api/schema.d.ts
+    bunx openapi-typescript ../../tests/snapshots/openapi.json -o src/api/schema.d.ts
     bun run generate   # orval, then the route tree — see below
 
 CI regenerates all three and fails on a diff.

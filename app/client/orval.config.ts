@@ -11,7 +11,7 @@ import transformer from "./orval/transformer.cjs"
  * against the Rust struct, same as before.
  */
 const input = {
-  target: "../tests/snapshots/openapi.json",
+  target: "../../tests/snapshots/openapi.json",
   override: { transformer },
 } as const
 

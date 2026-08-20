@@ -41,10 +41,25 @@ It is a library first. It owns tables in *your* Postgres and runs in *your*
 transaction, so an order and whatever else that request wrote commit together or
 not at all. No second database to restore, no sidecar to keep alive, no HTTP hop
 between your handler and your stock. The server above is a thin host over
-exactly the same crate — [`server/`](server) is about as much code as it takes,
+exactly the same crate — [`app/server/`](app/server) is about as much code as it takes,
 and yours can be too.
 
 **Status: early.** Nothing is stable and the API will move under you.
+
+## How it is laid out
+
+    src/            the library — domains, the route table, the workflow runner
+    migrations/     the tables it owns, in your database
+    app/server/     one binary over it: axum, and the five ports answered
+    app/client/     the admin panel over that binary
+    examples/shop/  the same library with no framework around it at all
+
+`src/` does not know `app/` exists, and that is the point: everything the
+self-hosted shop needs from a host is asked for through a port, so an
+application embedding this answers the same questions with what it already
+owns. [`docs/architecture.md`](docs/architecture.md) is the long version —
+which layer owns what, and, measured rather than asserted, where the
+arrangement is not finished yet.
 
 ## What it does
 
@@ -162,10 +177,10 @@ Handlers are plain functions taking a pool or a transaction and a `Ctx`. The
 crate itself pulls in no framework: bring axum, or actix, or whatever you
 already run.
 
-[`server/`](server) is one worked answer, and the one the published image runs
+[`app/server/`](app/server) is one worked answer, and the one the published image runs
 — the same handlers behind axum, reading `PORT` and `DATABASE_URL` from its
 environment, migrating at startup, serving the shopping flow and a read-only
-admin surface behind a bearer token. It binds **15 of the 483** routes the
+admin surface behind a bearer token. It binds **111 of the 483** routes the
 table declares, says so in its startup log, and its own README lists every one.
 It is a workspace member rather than a dependency, so embedding tezgah pulls in
 none of it — and `examples/shop` stays the smallest way to see the library
@@ -243,7 +258,7 @@ in two currencies prices in both.
 Translating the interface a shopper reads, formatting a number for their
 locale, and reporting over what already sits in Postgres — those belong to
 whatever a host is built in, for the same reason the crate draws no screens
-itself. [`client/`](client) is an admin panel over the API, in this repository
+itself. [`app/client/`](app/client) is an admin panel over the API, in this repository
 but not in the crate: depending on tezgah pulls in no React. A product's own
 content is different: `catalogue` carries a title, a description
 and a handle per locale, because that text is the shop's data rather than the

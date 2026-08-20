@@ -111,7 +111,7 @@ fn the_snapshot_is_valid_json_and_says_which_openapi_it_is() {
 /// the wrong shape and says nothing.
 ///
 /// It happened: `admin_order::OrderView` and `store::OrderView` collided, the
-/// storefront's narrower type took the plain name, and `client/`'s compile-time
+/// storefront's narrower type took the plain name, and `app/client/`'s compile-time
 /// binding to `OrderView` started describing the wrong one. `#[schemars(rename
 /// = "Store…")]` on the three storefront types fixed it — in the document,
 /// without renaming anything in Rust.

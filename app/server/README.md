@@ -8,7 +8,7 @@ is that container, in the same way `mavi-operator` is the hosting half over
 `mavi`: a library plus the smallest honest thing that turns it into a service.
 
 It is not the only way to run tezgah, and it does not try to be the complete
-one. `../examples/shop` is the other end of the same idea, kept deliberately
+one. `../../examples/shop` is the other end of the same idea, kept deliberately
 small: no router, no listener, five `tezgah::api::store` functions called
 directly from a `main` that seeds one shop and walks catalogue → cart →
 checkout → order as plain library calls. Read that file to see what embedding
@@ -289,7 +289,7 @@ That is the count with `ADMIN_TOKEN`, `TEZGAH_STOCK_LOCATION_ID` and
 above are not bound and the startup count drops accordingly — the log line
 is always the true count for that run, never a number copied from here.
 
-**Store — the shopping flow.** The same walk `examples/shop` makes as plain
+**Store — the shopping flow.** The same walk `../../examples/shop` makes as plain
 calls: browse the catalogue with a publishable key
 (`x-publishable-key` header), open a cart, add a line, check out.
 
@@ -462,7 +462,7 @@ none of them is the leak `CLAUDE.md` describes, where a missing row answers
 ## Docker
 
 ```sh
-docker build -f server/Dockerfile -t tezgah-server .
+docker build -f app/server/Dockerfile -t tezgah-server .
 docker run --rm -p 8080:8080 \
     -e DATABASE_URL=postgres://postgres:postgres@host.docker.internal:5432/tezgah \
     -e ADMIN_TOKEN=... \

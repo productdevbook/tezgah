@@ -5,13 +5,13 @@
 //!
 //! # This is not a server
 //!
-//! [`server/`](../../server) is that: a real binary, reading `PORT` and
+//! [`app/server/`](../../app/server) is that: a real binary, reading `PORT` and
 //! `DATABASE_URL` from its environment, serving HTTP for as long as it runs.
 //! This file calls `tezgah::api::store` functions directly, the same
-//! functions `server/src/http/store.rs`'s handlers call, minus the framework
+//! functions `app/server/src/http/store.rs`'s handlers call, minus the framework
 //! that would turn them into routes — there is no listener here and nothing
 //! to `curl`. Read this file to see what embedding tezgah looks like at its
-//! smallest; read `server/` to see it made into something you would deploy.
+//! smallest; read `app/server/` to see it made into something you would deploy.
 //! `axum` is not a dependency of this crate at all for exactly that reason:
 //! nobody consuming tezgah as a library is handed an HTTP framework they did
 //! not ask for, and this example does not need one to make its point.

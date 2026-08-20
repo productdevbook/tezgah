@@ -31,10 +31,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: server, platform: linux/amd64, runner: ubuntu-latest,    context: ".",      file: server/Dockerfile }
-          - { name: server, platform: linux/arm64, runner: ubuntu-24.04-arm, context: ".",      file: server/Dockerfile }
-          - { name: panel,  platform: linux/amd64, runner: ubuntu-latest,    context: "client", file: client/Dockerfile }
-          - { name: panel,  platform: linux/arm64, runner: ubuntu-24.04-arm, context: "client", file: client/Dockerfile }
+          - { name: server, platform: linux/amd64, runner: ubuntu-latest,    context: ".",          file: app/server/Dockerfile }
+          - { name: server, platform: linux/arm64, runner: ubuntu-24.04-arm, context: ".",          file: app/server/Dockerfile }
+          - { name: panel,  platform: linux/amd64, runner: ubuntu-latest,    context: "app/client", file: app/client/Dockerfile }
+          - { name: panel,  platform: linux/arm64, runner: ubuntu-24.04-arm, context: "app/client", file: app/client/Dockerfile }
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     steps:
