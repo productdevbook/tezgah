@@ -18,200 +18,11 @@ import {
   SidebarRail,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
+import { CommandPalette } from "@/components/command-palette"
+import { SectionLink } from "@/components/section-link"
+import { useCommandPalette } from "@/lib/command-palette"
 import { COVERAGE, GROUPS, type Section } from "@/lib/nav"
 import { panelRuntime } from "@/panel/runtime"
-
-/**
- * Every built section has its own top-level route (their slug is that
- * route's path, by construction); everything else falls through to the
- * single `/$section` catch-all. One switch, rather than typing `Link`'s `to`
- * from a runtime string, because the router's route union is closed and a
- * template string can't join it.
- */
-function SectionLink({
-  slug,
-  title,
-  active,
-  children,
-}: {
-  slug: string
-  title: string
-  active: boolean
-  children: React.ReactNode
-}) {
-  switch (slug) {
-    case "products":
-      return (
-        <SidebarMenuButton
-          isActive={active}
-          tooltip={title}
-          render={<Link to="/products" />}
-        >
-          {children}
-        </SidebarMenuButton>
-      )
-    case "orders":
-      return (
-        <SidebarMenuButton
-          isActive={active}
-          tooltip={title}
-          render={<Link to="/orders" />}
-        >
-          {children}
-        </SidebarMenuButton>
-      )
-    case "inventory":
-      return (
-        <SidebarMenuButton
-          isActive={active}
-          tooltip={title}
-          render={<Link to="/inventory" />}
-        >
-          {children}
-        </SidebarMenuButton>
-      )
-    case "customers":
-      return (
-        <SidebarMenuButton
-          isActive={active}
-          tooltip={title}
-          render={<Link to="/customers" />}
-        >
-          {children}
-        </SidebarMenuButton>
-      )
-    case "promotions":
-      return (
-        <SidebarMenuButton
-          isActive={active}
-          tooltip={title}
-          render={<Link to="/promotions" />}
-        >
-          {children}
-        </SidebarMenuButton>
-      )
-    case "subscriptions":
-      return (
-        <SidebarMenuButton
-          isActive={active}
-          tooltip={title}
-          render={<Link to="/subscriptions" />}
-        >
-          {children}
-        </SidebarMenuButton>
-      )
-    case "store":
-      return (
-        <SidebarMenuButton
-          isActive={active}
-          tooltip={title}
-          render={<Link to="/store" />}
-        >
-          {children}
-        </SidebarMenuButton>
-      )
-    case "payouts":
-      return (
-        <SidebarMenuButton
-          isActive={active}
-          tooltip={title}
-          render={<Link to="/payouts" />}
-        >
-          {children}
-        </SidebarMenuButton>
-      )
-    case "workflows":
-      return (
-        <SidebarMenuButton
-          isActive={active}
-          tooltip={title}
-          render={<Link to="/workflows" />}
-        >
-          {children}
-        </SidebarMenuButton>
-      )
-    case "baskets":
-      return (
-        <SidebarMenuButton
-          isActive={active}
-          tooltip={title}
-          render={<Link to="/baskets" />}
-        >
-          {children}
-        </SidebarMenuButton>
-      )
-    case "fulfilment":
-      return (
-        <SidebarMenuButton
-          isActive={active}
-          tooltip={title}
-          render={<Link to="/fulfilment" />}
-        >
-          {children}
-        </SidebarMenuButton>
-      )
-    case "tax":
-      return (
-        <SidebarMenuButton
-          isActive={active}
-          tooltip={title}
-          render={<Link to="/tax" />}
-        >
-          {children}
-        </SidebarMenuButton>
-      )
-    case "pricing":
-      return (
-        <SidebarMenuButton
-          isActive={active}
-          tooltip={title}
-          render={<Link to="/pricing" />}
-        >
-          {children}
-        </SidebarMenuButton>
-      )
-    case "payments":
-      return (
-        <SidebarMenuButton
-          isActive={active}
-          tooltip={title}
-          render={<Link to="/payments" />}
-        >
-          {children}
-        </SidebarMenuButton>
-      )
-    case "credit":
-      return (
-        <SidebarMenuButton
-          isActive={active}
-          tooltip={title}
-          render={<Link to="/credit" />}
-        >
-          {children}
-        </SidebarMenuButton>
-      )
-    case "carts":
-      return (
-        <SidebarMenuButton
-          isActive={active}
-          tooltip={title}
-          render={<Link to="/carts" />}
-        >
-          {children}
-        </SidebarMenuButton>
-      )
-    default:
-      return (
-        <SidebarMenuButton
-          isActive={active}
-          tooltip={title}
-          render={<Link to="/$section" params={{ section: slug }} />}
-        >
-          {children}
-        </SidebarMenuButton>
-      )
-  }
-}
 
 function isActiveSection(
   matchRoute: ReturnType<typeof useMatchRoute>,
@@ -263,6 +74,7 @@ function isActiveSection(
 
 export function AppShell() {
   const matchRoute = useMatchRoute()
+  const palette = useCommandPalette()
 
   return (
     <SidebarProvider>
@@ -291,10 +103,10 @@ export function AppShell() {
                     .filter((section) => !section.folded)
                     .map((section) => (
                       <SidebarMenuItem key={section.slug}>
-                        <SectionLink
-                          slug={section.slug}
-                          title={section.title}
-                          active={isActiveSection(matchRoute, section)}
+                        <SidebarMenuButton
+                          isActive={isActiveSection(matchRoute, section)}
+                          tooltip={section.title}
+                          render={<SectionLink slug={section.slug} />}
                         >
                           <span className="truncate">{section.title}</span>
                           {!section.built ? (
@@ -302,7 +114,7 @@ export function AppShell() {
                               soon
                             </span>
                           ) : null}
-                        </SectionLink>
+                        </SidebarMenuButton>
                       </SidebarMenuItem>
                     ))}
                 </SidebarMenu>
@@ -328,9 +140,18 @@ export function AppShell() {
             Overview
           </Link>
           <Button
+            variant="outline"
+            size="sm"
+            className="ml-auto gap-2 font-normal text-muted-foreground"
+            onClick={() => palette.setOpen(true)}
+          >
+            Go to…
+            <kbd className="rounded bg-muted px-1 text-[10px]">⌘K</kbd>
+          </Button>
+          <Button
             variant="ghost"
             size="sm"
-            className="ml-auto text-xs"
+            className="text-xs"
             onClick={() => panelRuntime().onUnauthenticated()}
           >
             Disconnect
@@ -339,6 +160,7 @@ export function AppShell() {
         <main className="flex-1 p-4 md:p-6">
           <Outlet />
         </main>
+        <CommandPalette open={palette.open} onOpenChange={palette.setOpen} />
       </SidebarInset>
     </SidebarProvider>
   )

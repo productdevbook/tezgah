@@ -3,6 +3,7 @@ import { z } from "zod"
 
 import { get } from "@/api/client"
 import { fulfilmentProvider, type FulfilmentProvider } from "@/api/schemas"
+import { TableFrame } from "@/components/data-table"
 import { QueryState } from "@/components/query-state"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -24,7 +25,10 @@ export function FulfilmentProviders() {
   const query = useQuery({
     queryKey: ["fulfilment-providers"],
     queryFn: ({ signal }) =>
-      get("/admin/fulfillment-providers", { signal, schema: z.array(fulfilmentProvider) }),
+      get("/admin/fulfillment-providers", {
+        signal,
+        schema: z.array(fulfilmentProvider),
+      }),
   })
 
   return (
@@ -36,7 +40,12 @@ export function FulfilmentProviders() {
       }}
     >
       {(providers: FulfilmentProvider[]) => (
-        <div className="rounded-md border">
+        <TableFrame
+          header={{
+            title: "Carriers",
+            description: "Nothing ships until a shop turns a provider on.",
+          }}
+        >
           <Table>
             <TableHeader>
               <TableRow>
@@ -47,9 +56,13 @@ export function FulfilmentProviders() {
             <TableBody>
               {providers.map((provider) => (
                 <TableRow key={provider.id}>
-                  <TableCell className="font-mono text-xs">{provider.code}</TableCell>
+                  <TableCell className="font-mono text-xs">
+                    {provider.code}
+                  </TableCell>
                   <TableCell className="text-right">
-                    <Badge variant={provider.is_enabled ? "default" : "outline"}>
+                    <Badge
+                      variant={provider.is_enabled ? "default" : "outline"}
+                    >
                       {provider.is_enabled ? "enabled" : "disabled"}
                     </Badge>
                   </TableCell>
@@ -57,7 +70,7 @@ export function FulfilmentProviders() {
               ))}
             </TableBody>
           </Table>
-        </div>
+        </TableFrame>
       )}
     </QueryState>
   )

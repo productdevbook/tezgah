@@ -22,12 +22,16 @@ const columns: Columns<TaxRate> = [
   {
     header: "Combinable",
     accessorKey: "is_combinable",
-    cell: ({ row }) => (row.original.is_combinable ? <Badge variant="outline">combinable</Badge> : null),
+    cell: ({ row }) =>
+      row.original.is_combinable ? (
+        <Badge variant="outline">combinable</Badge>
+      ) : null,
   },
   {
     header: "Default",
     accessorKey: "is_default",
-    cell: ({ row }) => (row.original.is_default ? <Badge>default</Badge> : null),
+    cell: ({ row }) =>
+      row.original.is_default ? <Badge>default</Badge> : null,
     meta: { className: "text-right" },
   },
 ]
@@ -39,10 +43,18 @@ export function TaxRates({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
-  const paged = usePagedList(["tax-rates"], "/admin/tax-rates", taxRate, { after, onAfterChange })
+  const paged = usePagedList(["tax-rates"], "/admin/tax-rates", taxRate, {
+    after,
+    onAfterChange,
+  })
 
   return (
     <DataTable
+      header={{
+        title: "Tax rates",
+        description:
+          "One default per region, and combinable rates that stack on top.",
+      }}
       paged={paged}
       columns={columns}
       rowLink={(row) => (
@@ -53,7 +65,10 @@ export function TaxRates({
           aria-label={`Open ${row.name}`}
         />
       )}
-      empty={{ title: "No tax rates", description: "A region charges nothing until a rate is set." }}
+      empty={{
+        title: "No tax rates",
+        description: "A region charges nothing until a rate is set.",
+      }}
     />
   )
 }

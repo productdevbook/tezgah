@@ -55,29 +55,36 @@ export function StoreRegions({
   })
 
   return (
-    <div className="space-y-3">
-      <div className="flex justify-end">
-        <Button size="sm" nativeButton={false} render={<Link to="/store/regions/new" />}>
-          <HugeiconsIcon icon={Add01Icon} strokeWidth={2} />
-          New region
-        </Button>
-      </div>
-      <DataTable
-        paged={paged}
-        columns={columns}
-        rowLink={(row) => (
-          <Link
-            to="/store/regions/$id"
-            params={{ id: row.id }}
-            className="absolute inset-0"
-            aria-label={`Open ${row.name}`}
-          />
-        )}
-        empty={{
-          title: "No regions",
-          description: "A region decides currency and how tax is shown.",
-        }}
-      />
-    </div>
+    <DataTable
+      header={{
+        title: "Regions",
+        description:
+          "A region is a set of countries sold to in one currency, with one answer about tax.",
+        actions: (
+          <Button
+            size="sm"
+            nativeButton={false}
+            render={<Link to="/store/regions/new" />}
+          >
+            <HugeiconsIcon icon={Add01Icon} strokeWidth={2} />
+            New region
+          </Button>
+        ),
+      }}
+      paged={paged}
+      columns={columns}
+      rowLink={(row) => (
+        <Link
+          to="/store/regions/$id"
+          params={{ id: row.id }}
+          className="absolute inset-0"
+          aria-label={`Open ${row.name}`}
+        />
+      )}
+      empty={{
+        title: "No regions",
+        description: "A region decides currency and how tax is shown.",
+      }}
+    />
   )
 }

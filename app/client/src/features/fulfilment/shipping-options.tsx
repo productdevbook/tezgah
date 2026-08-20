@@ -10,7 +10,9 @@ const columns: Columns<ShippingOption> = [
   {
     header: "Price type",
     accessorKey: "price_type",
-    cell: ({ row }) => <Badge variant="outline">{row.original.price_type}</Badge>,
+    cell: ({ row }) => (
+      <Badge variant="outline">{row.original.price_type}</Badge>
+    ),
   },
   {
     header: "Return",
@@ -32,13 +34,23 @@ export function ShippingOptions({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
-  const paged = usePagedList(["shipping-options"], "/admin/shipping-options", shippingOption, {
-    after,
-    onAfterChange,
-  })
+  const paged = usePagedList(
+    ["shipping-options"],
+    "/admin/shipping-options",
+    shippingOption,
+    {
+      after,
+      onAfterChange,
+    }
+  )
 
   return (
     <DataTable
+      header={{
+        title: "Shipping options",
+        description:
+          "What a shopper can choose at the till, and what each costs.",
+      }}
       paged={paged}
       columns={columns}
       rowLink={(row) => (
@@ -51,7 +63,8 @@ export function ShippingOptions({
       )}
       empty={{
         title: "No shipping options",
-        description: "A service zone offers nothing to ship with until one is added.",
+        description:
+          "A service zone offers nothing to ship with until one is added.",
       }}
     />
   )

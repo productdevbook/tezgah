@@ -4,7 +4,11 @@ import { Empty } from "@/components/detail-fields"
 import { usePagedList } from "@/lib/paged"
 
 const columns: Columns<RefundReason> = [
-  { header: "Code", accessorKey: "code", meta: { className: "font-mono text-xs" } },
+  {
+    header: "Code",
+    accessorKey: "code",
+    meta: { className: "font-mono text-xs" },
+  },
   { header: "Label", accessorKey: "label", meta: { className: "font-medium" } },
   {
     header: "Description",
@@ -22,18 +26,29 @@ export function RefundReasons({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
-  const paged = usePagedList(["refund-reasons"], "/admin/refund-reasons", refundReason, {
-    after,
-    onAfterChange,
-  })
+  const paged = usePagedList(
+    ["refund-reasons"],
+    "/admin/refund-reasons",
+    refundReason,
+    {
+      after,
+      onAfterChange,
+    }
+  )
 
   return (
     <DataTable
+      header={{
+        title: "Refund reasons",
+        description:
+          "The reasons a refund can be given against, kept so a report can count them.",
+      }}
       paged={paged}
       columns={columns}
       empty={{
         title: "No refund reasons",
-        description: "A refund can be given without one, but nothing here explains why yet.",
+        description:
+          "A refund can be given without one, but nothing here explains why yet.",
       }}
     />
   )

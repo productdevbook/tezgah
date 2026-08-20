@@ -4,7 +4,11 @@ import { Empty } from "@/components/detail-fields"
 import { usePagedList } from "@/lib/paged"
 
 const columns: Columns<ShippingOptionType> = [
-  { header: "Code", accessorKey: "code", meta: { className: "font-mono text-xs" } },
+  {
+    header: "Code",
+    accessorKey: "code",
+    meta: { className: "font-mono text-xs" },
+  },
   { header: "Label", accessorKey: "label", meta: { className: "font-medium" } },
   {
     header: "Description",
@@ -31,11 +35,17 @@ export function ShippingOptionTypes({
 
   return (
     <DataTable
+      header={{
+        title: "Option types",
+        description:
+          "The labels a shopper picks between — standard, express — shared across options.",
+      }}
       paged={paged}
       columns={columns}
       empty={{
         title: "No shipping option types",
-        description: "A type is a label a shipping option can carry, like \"express\".",
+        description:
+          'A type is a label a shipping option can carry, like "express".',
       }}
     />
   )

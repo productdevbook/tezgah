@@ -6,6 +6,7 @@ import { z } from "zod"
 
 import { get } from "@/api/client"
 import { currency, type Currency } from "@/api/schemas"
+import { TableFrame } from "@/components/data-table"
 import { QueryState } from "@/components/query-state"
 import { Button } from "@/components/ui/button"
 import {
@@ -31,26 +32,33 @@ export function StoreCurrencies() {
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
-        <Button
-          size="sm"
-          variant="outline"
-          nativeButton={false}
-          render={<Link to="/store/currencies/new" />}
-        >
-          <HugeiconsIcon icon={Add01Icon} strokeWidth={2} />
-          New currency
-        </Button>
-      </div>
       <QueryState
         query={query}
         empty={{
           title: "No currencies",
-          description: "Nothing prices or opens a cart until a shop enables one.",
+          description:
+            "Nothing prices or opens a cart until a shop enables one.",
         }}
       >
         {(currencies: Currency[]) => (
-          <div className="rounded-md border">
+          <TableFrame
+            header={{
+              title: "Currencies",
+              description:
+                "The exponent is how a currency is written, not a multiplier — nothing here is stored in minor units.",
+              actions: (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  nativeButton={false}
+                  render={<Link to="/store/currencies/new" />}
+                >
+                  <HugeiconsIcon icon={Add01Icon} strokeWidth={2} />
+                  New currency
+                </Button>
+              ),
+            }}
+          >
             <Table>
               <TableHeader>
                 <TableRow>
@@ -75,7 +83,7 @@ export function StoreCurrencies() {
                 ))}
               </TableBody>
             </Table>
-          </div>
+          </TableFrame>
         )}
       </QueryState>
     </div>

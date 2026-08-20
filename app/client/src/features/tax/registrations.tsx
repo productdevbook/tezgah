@@ -3,6 +3,7 @@ import { z } from "zod"
 
 import { get } from "@/api/client"
 import { taxRegistration, type TaxRegistration } from "@/api/schemas"
+import { TableFrame } from "@/components/data-table"
 import { QueryState } from "@/components/query-state"
 import { Empty } from "@/components/detail-fields"
 import { Badge } from "@/components/ui/badge"
@@ -25,7 +26,10 @@ export function TaxRegistrations() {
   const query = useQuery({
     queryKey: ["tax-registrations"],
     queryFn: ({ signal }) =>
-      get("/admin/tax-registrations", { signal, schema: z.array(taxRegistration) }),
+      get("/admin/tax-registrations", {
+        signal,
+        schema: z.array(taxRegistration),
+      }),
   })
 
   return (
@@ -33,11 +37,18 @@ export function TaxRegistrations() {
       query={query}
       empty={{
         title: "No registrations",
-        description: "The shop has recorded nowhere it is registered to file tax.",
+        description:
+          "The shop has recorded nowhere it is registered to file tax.",
       }}
     >
       {(registrations: TaxRegistration[]) => (
-        <div className="rounded-md border">
+        <TableFrame
+          header={{
+            title: "Registrations",
+            description:
+              "Where the shop is registered to collect, and under which number.",
+          }}
+        >
           <Table>
             <TableHeader>
               <TableRow>
@@ -64,7 +75,7 @@ export function TaxRegistrations() {
               ))}
             </TableBody>
           </Table>
-        </div>
+        </TableFrame>
       )}
     </QueryState>
   )

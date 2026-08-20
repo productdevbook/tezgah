@@ -10,8 +10,16 @@ import { usePagedList } from "@/lib/paged"
  * failed, not to one customer, so nothing narrows it further.
  */
 const columns: Columns<WorkflowDeadLetter> = [
-  { header: "Step", accessorKey: "step_name", meta: { className: "font-medium" } },
-  { header: "Failure", accessorKey: "failure", meta: { className: "max-w-md truncate" } },
+  {
+    header: "Step",
+    accessorKey: "step_name",
+    meta: { className: "font-medium" },
+  },
+  {
+    header: "Failure",
+    accessorKey: "failure",
+    meta: { className: "max-w-md truncate" },
+  },
   {
     header: "Run",
     accessorKey: "run_id",
@@ -41,6 +49,11 @@ export function DeadLetters({
 
   return (
     <DataTable
+      header={{
+        title: "Dead letters",
+        description:
+          "Runs that ran out of retries. Nothing retries these again on its own.",
+      }}
       paged={paged}
       columns={columns}
       rowLink={(row) => (
