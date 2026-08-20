@@ -21,7 +21,7 @@ import {
 import { CommandPalette } from "@/components/command-palette"
 import { SectionLink } from "@/components/section-link"
 import { useCommandPalette } from "@/lib/command-palette"
-import { COVERAGE, GROUPS, type Section } from "@/lib/nav"
+import { COVERAGE, GROUPS, SERVER_SECTIONS, type Section } from "@/lib/nav"
 import { panelRuntime } from "@/panel/runtime"
 
 function isActiveSection(
@@ -61,6 +61,8 @@ function isActiveSection(
       return Boolean(matchRoute({ to: "/credit", fuzzy: true }))
     case "carts":
       return Boolean(matchRoute({ to: "/carts", fuzzy: true }))
+    case "operators":
+      return Boolean(matchRoute({ to: "/operators", fuzzy: true }))
     default:
       return Boolean(
         matchRoute({
@@ -121,6 +123,26 @@ export function AppShell() {
               </SidebarGroupContent>
             </SidebarGroup>
           ))}
+          <SidebarGroup>
+            <SidebarGroupLabel>This server</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {SERVER_SECTIONS.map((section) => (
+                  <SidebarMenuItem key={section.slug}>
+                    <SidebarMenuButton
+                      isActive={Boolean(
+                        matchRoute({ to: "/operators", fuzzy: true })
+                      )}
+                      tooltip={section.title}
+                      render={<SectionLink slug={section.slug} />}
+                    >
+                      <span className="truncate">{section.title}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
         </SidebarContent>
 
         <SidebarFooter>

@@ -12,12 +12,7 @@ import {
 } from "@/components/ui/card"
 import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { hold } from "@/lib/token"
 
 /**
@@ -116,7 +111,7 @@ function WithPassword({ onConnected }: { onConnected: () => void }) {
           onChange={(event) => setPassword(event.target.value)}
         />
       </Field>
-      {refused ? <p className="text-destructive text-sm">{refused}</p> : null}
+      {refused ? <p className="text-sm text-destructive">{refused}</p> : null}
       <Button
         type="submit"
         className="w-full"
@@ -124,10 +119,10 @@ function WithPassword({ onConnected }: { onConnected: () => void }) {
       >
         {sending ? "Signing in…" : "Sign in"}
       </Button>
-      <p className="text-muted-foreground text-xs">
+      <p className="text-xs text-muted-foreground">
         There is no reset e-mail: this server has no mailer, and a link it
-        cannot send would be worse than one it never offered. The admin token
-        is the way back in.
+        cannot send would be worse than one it never offered. The admin token is
+        the way back in.
       </p>
     </form>
   )
@@ -161,11 +156,11 @@ function WithToken({ onConnected }: { onConnected: () => void }) {
       <Button type="submit" className="w-full" disabled={!token.trim()}>
         Connect
       </Button>
-      <p className="text-muted-foreground text-xs">
+      <p className="text-xs text-muted-foreground">
         A shared secret, not a person — nothing it changes can be attributed to
-        anybody. Use it to make an account at Operators, then sign in with
-        that. Started with neither a token nor an account and the server serves
-        no admin surface at all.
+        anybody. Use it to make an account at Operators, then sign in with that.
+        Started with neither a token nor an account and the server serves no
+        admin surface at all.
       </p>
     </form>
   )

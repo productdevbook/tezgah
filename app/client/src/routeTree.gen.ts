@@ -17,6 +17,7 @@ import { Route as CreditRouteImport } from './routes/credit'
 import { Route as CustomersRouteImport } from './routes/customers'
 import { Route as FulfilmentRouteImport } from './routes/fulfilment'
 import { Route as InventoryRouteImport } from './routes/inventory'
+import { Route as OperatorsRouteImport } from './routes/operators'
 import { Route as OrdersRouteImport } from './routes/orders'
 import { Route as PaymentsRouteImport } from './routes/payments'
 import { Route as PayoutsRouteImport } from './routes/payouts'
@@ -37,6 +38,7 @@ import { Route as FulfilmentShippingOptionTypesRouteImport } from './routes/fulf
 import { Route as FulfilmentShippingOptionsRouteImport } from './routes/fulfilment.shipping-options'
 import { Route as FulfilmentShippingProfilesRouteImport } from './routes/fulfilment.shipping-profiles'
 import { Route as InventoryIdRouteImport } from './routes/inventory_.$id'
+import { Route as OperatorsNewRouteImport } from './routes/operators.new'
 import { Route as OrdersIdRouteImport } from './routes/orders_.$id'
 import { Route as PaymentsIndexRouteImport } from './routes/payments.index'
 import { Route as PaymentsRefundReasonsRouteImport } from './routes/payments.refund-reasons'
@@ -119,6 +121,11 @@ const FulfilmentRoute = FulfilmentRouteImport.update({
 const InventoryRoute = InventoryRouteImport.update({
   id: '/inventory',
   path: '/inventory',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OperatorsRoute = OperatorsRouteImport.update({
+  id: '/operators',
+  path: '/operators',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OrdersRoute = OrdersRouteImport.update({
@@ -223,6 +230,11 @@ const InventoryIdRoute = InventoryIdRouteImport.update({
   id: '/inventory_/$id',
   path: '/inventory/$id',
   getParentRoute: () => rootRouteImport,
+} as any)
+const OperatorsNewRoute = OperatorsNewRouteImport.update({
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => OperatorsRoute,
 } as any)
 const OrdersIdRoute = OrdersIdRouteImport.update({
   id: '/orders_/$id',
@@ -452,6 +464,7 @@ export interface FileRoutesByFullPath {
   '/customers': typeof CustomersRoute
   '/fulfilment': typeof FulfilmentRouteWithChildren
   '/inventory': typeof InventoryRoute
+  '/operators': typeof OperatorsRouteWithChildren
   '/orders': typeof OrdersRoute
   '/payments': typeof PaymentsRouteWithChildren
   '/payouts': typeof PayoutsRouteWithChildren
@@ -471,6 +484,7 @@ export interface FileRoutesByFullPath {
   '/fulfilment/shipping-options': typeof FulfilmentShippingOptionsRoute
   '/fulfilment/shipping-profiles': typeof FulfilmentShippingProfilesRoute
   '/inventory/$id': typeof InventoryIdRoute
+  '/operators/new': typeof OperatorsNewRoute
   '/orders/$id': typeof OrdersIdRoute
   '/payments/refund-reasons': typeof PaymentsRefundReasonsRoute
   '/payments/$id': typeof PaymentsIdRoute
@@ -524,6 +538,7 @@ export interface FileRoutesByTo {
   '/credit': typeof CreditRoute
   '/customers': typeof CustomersRoute
   '/inventory': typeof InventoryRoute
+  '/operators': typeof OperatorsRouteWithChildren
   '/orders': typeof OrdersRoute
   '/products': typeof ProductsRouteWithChildren
   '/promotions': typeof PromotionsRoute
@@ -537,6 +552,7 @@ export interface FileRoutesByTo {
   '/fulfilment/shipping-options': typeof FulfilmentShippingOptionsRoute
   '/fulfilment/shipping-profiles': typeof FulfilmentShippingProfilesRoute
   '/inventory/$id': typeof InventoryIdRoute
+  '/operators/new': typeof OperatorsNewRoute
   '/orders/$id': typeof OrdersIdRoute
   '/payments/refund-reasons': typeof PaymentsRefundReasonsRoute
   '/payments/$id': typeof PaymentsIdRoute
@@ -592,6 +608,7 @@ export interface FileRoutesById {
   '/customers': typeof CustomersRoute
   '/fulfilment': typeof FulfilmentRouteWithChildren
   '/inventory': typeof InventoryRoute
+  '/operators': typeof OperatorsRouteWithChildren
   '/orders': typeof OrdersRoute
   '/payments': typeof PaymentsRouteWithChildren
   '/payouts': typeof PayoutsRouteWithChildren
@@ -611,6 +628,7 @@ export interface FileRoutesById {
   '/fulfilment/shipping-options': typeof FulfilmentShippingOptionsRoute
   '/fulfilment/shipping-profiles': typeof FulfilmentShippingProfilesRoute
   '/inventory_/$id': typeof InventoryIdRoute
+  '/operators/new': typeof OperatorsNewRoute
   '/orders_/$id': typeof OrdersIdRoute
   '/payments/refund-reasons': typeof PaymentsRefundReasonsRoute
   '/payments_/$id': typeof PaymentsIdRoute
@@ -667,6 +685,7 @@ export interface FileRouteTypes {
     | '/customers'
     | '/fulfilment'
     | '/inventory'
+    | '/operators'
     | '/orders'
     | '/payments'
     | '/payouts'
@@ -686,6 +705,7 @@ export interface FileRouteTypes {
     | '/fulfilment/shipping-options'
     | '/fulfilment/shipping-profiles'
     | '/inventory/$id'
+    | '/operators/new'
     | '/orders/$id'
     | '/payments/refund-reasons'
     | '/payments/$id'
@@ -739,6 +759,7 @@ export interface FileRouteTypes {
     | '/credit'
     | '/customers'
     | '/inventory'
+    | '/operators'
     | '/orders'
     | '/products'
     | '/promotions'
@@ -752,6 +773,7 @@ export interface FileRouteTypes {
     | '/fulfilment/shipping-options'
     | '/fulfilment/shipping-profiles'
     | '/inventory/$id'
+    | '/operators/new'
     | '/orders/$id'
     | '/payments/refund-reasons'
     | '/payments/$id'
@@ -806,6 +828,7 @@ export interface FileRouteTypes {
     | '/customers'
     | '/fulfilment'
     | '/inventory'
+    | '/operators'
     | '/orders'
     | '/payments'
     | '/payouts'
@@ -825,6 +848,7 @@ export interface FileRouteTypes {
     | '/fulfilment/shipping-options'
     | '/fulfilment/shipping-profiles'
     | '/inventory_/$id'
+    | '/operators/new'
     | '/orders_/$id'
     | '/payments/refund-reasons'
     | '/payments_/$id'
@@ -880,6 +904,7 @@ export interface RootRouteChildren {
   CustomersRoute: typeof CustomersRoute
   FulfilmentRoute: typeof FulfilmentRouteWithChildren
   InventoryRoute: typeof InventoryRoute
+  OperatorsRoute: typeof OperatorsRouteWithChildren
   OrdersRoute: typeof OrdersRoute
   PaymentsRoute: typeof PaymentsRouteWithChildren
   PayoutsRoute: typeof PayoutsRouteWithChildren
@@ -965,6 +990,13 @@ declare module '@tanstack/react-router' {
       path: '/inventory'
       fullPath: '/inventory'
       preLoaderRoute: typeof InventoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/operators': {
+      id: '/operators'
+      path: '/operators'
+      fullPath: '/operators'
+      preLoaderRoute: typeof OperatorsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/orders': {
@@ -1106,6 +1138,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/inventory/$id'
       preLoaderRoute: typeof InventoryIdRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/operators/new': {
+      id: '/operators/new'
+      path: '/new'
+      fullPath: '/operators/new'
+      preLoaderRoute: typeof OperatorsNewRouteImport
+      parentRoute: typeof OperatorsRoute
     }
     '/orders_/$id': {
       id: '/orders_/$id'
@@ -1433,6 +1472,18 @@ const FulfilmentRouteWithChildren = FulfilmentRoute._addFileChildren(
   FulfilmentRouteChildren,
 )
 
+interface OperatorsRouteChildren {
+  OperatorsNewRoute: typeof OperatorsNewRoute
+}
+
+const OperatorsRouteChildren: OperatorsRouteChildren = {
+  OperatorsNewRoute: OperatorsNewRoute,
+}
+
+const OperatorsRouteWithChildren = OperatorsRoute._addFileChildren(
+  OperatorsRouteChildren,
+)
+
 interface PaymentsRouteChildren {
   PaymentsRefundReasonsRoute: typeof PaymentsRefundReasonsRoute
   PaymentsIndexRoute: typeof PaymentsIndexRoute
@@ -1654,6 +1705,7 @@ const rootRouteChildren: RootRouteChildren = {
   CustomersRoute: CustomersRoute,
   FulfilmentRoute: FulfilmentRouteWithChildren,
   InventoryRoute: InventoryRoute,
+  OperatorsRoute: OperatorsRouteWithChildren,
   OrdersRoute: OrdersRoute,
   PaymentsRoute: PaymentsRouteWithChildren,
   PayoutsRoute: PayoutsRouteWithChildren,

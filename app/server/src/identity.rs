@@ -33,6 +33,14 @@ use uuid::Uuid;
 /// being used, which is exactly the case it should not survive.
 const SESSION_DAYS: i64 = 30;
 
+/// What `select` hands back for an account, before it is anything else.
+/// Named because clippy is right that five anonymous fields is not a type.
+type OperatorTuple = (Uuid, String, String, DateTime<Utc>, Option<DateTime<Utc>>);
+
+/// The same, with the password hash in place of the created-at: what sign-in
+/// needs and a listing must never carry.
+type CredentialTuple = (Uuid, String, String, String, Option<DateTime<Utc>>);
+
 /// Somebody who may reach the back office.
 #[derive(Debug, Clone)]
 pub struct Operator {
@@ -189,7 +197,7 @@ pub async fn create_operator(
 }
 
 pub async fn list_operators(pool: &PgPool) -> tezgah::Result<Vec<OperatorRow>> {
-    let rows: Vec<(Uuid, String, String, DateTime<Utc>, Option<DateTime<Utc>>)> = sqlx::query_as(
+    let rows: Vec<OperatorTuple> = sqlx::query_as(
         "select id, email, name, created_at, disabled_at
          from server_operator
          order by created_at",
@@ -282,7 +290,7 @@ pub async fn change_password(
 /// The same answer — `denied` — for an address nobody holds and a password
 /// that is wrong, so this cannot be asked which addresses exist.
 pub async fn sign_in(pool: &PgPool, email: &str, password: &str) -> tezgah::Result<IssuedSession> {
-    let found: Option<(Uuid, String, String, String, Option<DateTime<Utc>>)> = sqlx::query_as(
+    let found: Option<CredentialTuple> = sqlx::query_as(
         "select id, email, name, password_hash, disabled_at
          from server_operator
          where lower(email) = lower($1)",

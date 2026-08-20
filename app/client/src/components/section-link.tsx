@@ -45,6 +45,8 @@ export function SectionLink({
       return <Link to="/credit" {...props} />
     case "carts":
       return <Link to="/carts" {...props} />
+    case "operators":
+      return <Link to="/operators" {...props} />
     default:
       return <Link to="/$section" params={{ section: slug }} {...props} />
   }
