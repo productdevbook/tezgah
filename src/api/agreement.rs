@@ -31,7 +31,7 @@ fn paging(after: Option<&str>, limit: Option<u32>) -> Result<Paging> {
 // Views
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct AgreementVersionView {
     pub id: AgreementVersionId,
     pub kind: String,
@@ -58,7 +58,7 @@ impl From<order::AgreementVersion> for AgreementVersionView {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct OrderAgreementView {
     pub id: OrderAgreementId,
     pub order_id: OrderId,
@@ -81,7 +81,7 @@ impl From<order::OrderAgreement> for OrderAgreementView {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct InvoiceView {
     pub id: OrderInvoiceId,
     pub order_id: OrderId,
@@ -120,7 +120,7 @@ impl From<order::OrderInvoice> for InvoiceView {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct WithdrawalView {
     pub order_line_item_id: crate::id::LineItemId,
     pub eligible: bool,
@@ -145,7 +145,7 @@ impl From<order::LineWithdrawal> for WithdrawalView {
 // Agreements
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PublishAgreement {
     pub kind: String,
@@ -216,7 +216,7 @@ pub async fn get_agreement(
     ))
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AcceptAgreement {
     pub agreement_version_id: AgreementVersionId,
@@ -303,7 +303,7 @@ pub async fn withdrawal_windows(
         .collect())
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct WithdrawalNoticeView {
     pub return_id: ReturnId,
     pub order_id: OrderId,
@@ -332,7 +332,7 @@ pub async fn notify_withdrawal(
 // Invoices
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RecordInvoice {
     pub number: String,
@@ -386,7 +386,7 @@ pub async fn record_credit_note(
     ))
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SetInvoiceStatus {
     pub status: String,
