@@ -362,6 +362,7 @@ async fn a_customer_is_found_by_the_four_things_they_are_called() -> tezgah::Res
 
     let searching = |text: &str| CustomerFilter {
         search: Search::new(text),
+        ..CustomerFilter::default()
     };
 
     for wanted in ["ADA@", "ada", "lovelace", "analytical"] {
