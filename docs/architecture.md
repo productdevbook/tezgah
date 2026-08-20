@@ -150,8 +150,22 @@ may make an account. The split is the crate's own: `ports::Action` separates
 What that answers is "may this person refund anything at all". What it does
 not answer is "may this person refund *this* order" — that is what
 `ports::Authorizer` is for, and the app still answers it by granting
-everything. A shop needing per-row rules needs an authorizer, which is the
-port tezgah asks for precisely so a host can bring one.
+everything.
+
+Worth being exact about why, because "the app should implement its authorizer"
+is the obvious next step and would be dead code today. `Resource` carries the
+owner on the five kinds that have one — a cart, an order, a payment, a credit,
+a subscription — so a per-row rule needs no database, only an actor to compare
+against. This binary has no actor to compare: it produces `Actor::Staff` for
+the back office, and for the storefront it produces `Actor::Guest { cart }`
+with the cart id taken from the same path parameter it is then asked about.
+Actor and resource agree by construction, so a rule comparing them refuses
+nothing.
+
+What would make it bite is a storefront sign-in — an `Actor::Customer` whose
+id came from a session rather than from the URL. That is a feature this
+product does not have rather than a rule it forgot, and it is the thing to
+build before the authorizer, not after.
 
 **The sweeps and the queue both run.** `cart::expire` and
 `inventory::expire_reservations` are called every five minutes by

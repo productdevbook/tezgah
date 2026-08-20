@@ -351,10 +351,14 @@ In `app/`:
       link. Accounts, sessions, revocation and an owner-set password reset all
       exist without one; a link this server cannot send would be worse than
       one it never offered
-- [ ] per-row authorization — three roles are checked at the door against the
-      `Action` the route table declares, which answers "may this person refund
-      anything"; "may this person refund this order" is an `Authorizer`, and
-      the app still grants everything
+- [ ] a storefront sign-in, and then per-row authorization. Three roles are
+      checked at the door against the `Action` the route table declares, which
+      answers "may this person refund anything". "May this person refund this
+      order" is an `Authorizer`, and `Resource` already carries the owner on
+      the five kinds that have one — but the app has no actor to compare
+      against: its storefront runs as a guest whose cart id came from the same
+      path parameter it is asked about, so a rule comparing the two refuses
+      nothing. The sign-in comes first
 - [ ] somewhere for an event to go, a file to live and a letter to be sent —
       all three are stdout or a URL somebody else hosts
 - [ ] the rest of the route table: 111 of 483 bound by hand, 228 drawn by the

@@ -215,10 +215,22 @@ itself counts as an owner, and has to.
 
 **This is authorization at the door, not at the row.** It answers "may this
 person refund anything at all"; it does not answer "may this person refund
-*this* order". That second question is what `tezgah::ports::Authorizer` is
-for, and `ServerHost` still answers it by granting everything — which is the
-right shape for a library that asks a host, and the thing a shop with finer
-rules brings its own answer to. #214 is where that is argued.
+*this* order". That second question is `tezgah::ports::Authorizer`'s, and
+`ServerHost` answers it by granting everything.
+
+Writing a real authorizer here would be dead code, and it is worth saying why
+rather than leaving it as an obvious next step. `Resource` carries the owner
+on the five kinds that have one — cart, order, payment, credit, subscription
+— so a per-row rule needs no lookup, only an actor to compare against. This
+binary has none to compare: the back office is `Actor::Staff`, and the
+storefront is `Actor::Guest { cart }` with the cart id taken from the same
+path parameter the rule would be asked about. Actor and resource agree by
+construction.
+
+What would make it bite is a storefront sign-in — an `Actor::Customer` whose
+id came from a session rather than from the URL. That is a feature this
+binary does not have, and it comes before the authorizer rather than after.
+#214 is where that is argued.
 
 ## What runs without being asked
 
