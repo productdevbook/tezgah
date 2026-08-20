@@ -1,9 +1,7 @@
 import type { PropsWithChildren, ReactNode } from "react"
 
-import {
-  RouteModalProvider,
-  useRouteModal,
-} from "@/components/modals/route-modal"
+import { useRouteModal } from "@/components/modals/route-modal-context"
+import { RouteModalProvider } from "@/components/modals/route-modal"
 import {
   Sheet,
   SheetContent,

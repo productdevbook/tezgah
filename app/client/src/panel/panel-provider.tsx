@@ -1,28 +1,9 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { QueryClientProvider, type QueryClient } from "@tanstack/react-query"
 import { useMemo, type PropsWithChildren } from "react"
 
-import { ApiError } from "@/api/errors"
 import { LocaleContext, type Locale } from "@/panel/i18n"
+import { panelQueryClient } from "@/panel/query-client"
 import { configurePanel, type PanelConfig } from "@/panel/runtime"
-
-export function panelQueryClient(): QueryClient {
-  return new QueryClient({
-    defaultOptions: {
-      queries: {
-        staleTime: 30_000,
-        /**
-         * A refused request is an answer, not a hiccup — retrying it asks the
-         * host to say no four more times. Only an unreachable host is worth
-         * trying again.
-         */
-        retry: (attempt, error) =>
-          error instanceof ApiError &&
-          error.kind === "unreachable" &&
-          attempt < 2,
-      },
-    },
-  })
-}
 
 export type PanelProviderProps = PropsWithChildren<
   Partial<PanelConfig> & {

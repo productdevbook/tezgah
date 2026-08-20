@@ -6,10 +6,8 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  RouteModalProvider,
-  useRouteModal,
-} from "@/components/modals/route-modal"
+import { useRouteModal } from "@/components/modals/route-modal-context"
+import { RouteModalProvider } from "@/components/modals/route-modal"
 import { cn } from "@/lib/utils"
 
 /**

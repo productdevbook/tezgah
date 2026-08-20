@@ -6,7 +6,7 @@ import {
   type UseFormReturn,
 } from "react-hook-form"
 
-import { useRouteModal } from "@/components/modals/route-modal"
+import { useRouteModal } from "@/components/modals/route-modal-context"
 import { useT } from "@/panel/i18n"
 import {
   AlertDialog,
@@ -37,7 +37,7 @@ export function RouteModalForm<TValues extends FieldValues>({
   children,
 }: {
   form: UseFormReturn<TValues>
-  onSubmit: (values: TValues) => void | Promise<void>
+  onSubmit: SubmitHandler<TValues>
   children: ReactNode
 }) {
   const t = useT()

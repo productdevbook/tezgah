@@ -2,14 +2,15 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useNavigate } from "@tanstack/react-router"
 import { useForm } from "react-hook-form"
+import { z } from "zod"
 
 import { patch } from "@/api/client"
-import { product, type Product, type UpdateProduct } from "@/api/schemas"
+import { product, updateProduct, type Product } from "@/api/schemas"
 import { FormField } from "@/components/form/form"
 import { FormError } from "@/components/form-error"
 import { RouteDrawer } from "@/components/modals/route-drawer"
 import { RouteModalForm } from "@/components/modals/route-modal-form"
-import { useRouteModal } from "@/components/modals/route-modal"
+import { useRouteModal } from "@/components/modals/route-modal-context"
 import { QueryState } from "@/components/query-state"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -80,8 +81,14 @@ function Body({ item }: { item: Product }) {
     },
   })
 
+  // `z.input`, not `z.infer`: the generated schema gives
+  // `product_collection_id` and `product_type_id` a default of `null`, so the
+  // parsed *output* type demands both — and the Rust reads them through
+  // `double_option`, where an explicit null clears the field. Building a
+  // PATCH from the output type therefore detaches a product from its
+  // collection and type on every save.
   const mutation = useMutation({
-    mutationFn: (body: UpdateProduct) =>
+    mutationFn: (body: z.input<typeof updateProduct>) =>
       patch("/admin/products/{id}", {
         schema: product,
         params: { id: item.id },

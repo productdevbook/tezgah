@@ -14,7 +14,8 @@ question Postgres already answers.
 The screens are real and the plumbing is honest, and it is a long way from
 what an established platform's dashboard offers. That is measurable rather
 than a feeling: 16,451 lines of TSX across 67 screens against 128,585 lines
-and 34 locales, and the shortfall lines up with five specific absences.
+and 34 locales, and the shortfall lines up with a handful of specific
+absences. Some of them have moved since — what follows is where each stands.
 
 **Nothing filters, searches or sorts** — because the API offers none of it.
 `Paging` carries a cursor and a limit, there is one filter type in the whole
@@ -22,28 +23,66 @@ crate, and every paged query ends `order by created_at`. A sortable header
 here would be claiming something about the pages that are not on screen. This
 one cannot be fixed in the panel.
 
-**Forms are hand-rolled.** No `react-hook-form`, no resolver wiring the zod
-schemas that are already generated to the fields that already exist — so
-validation, dirty state, field errors and unsaved-change guards are written
-per screen or not at all. The schemas are the expensive half and they are
-done.
+**Most forms are still hand-rolled.** `features/products/` resolves its zod
+schema against its fields through `FormField`; the four remaining
+`*-edit.tsx` screens still keep a `useState`, a `safeParse` and a
+`Record<string, string>` of errors of their own. Converting each is
+mechanical now that the pattern is there.
 
-**There is no translation.** Not a locale file in the tree. Cheapest to fix
-at 67 screens; it does not get cheaper.
+**Translation is a dictionary with almost nothing in it.** `panel/i18n`
+holds English and Turkish and the compiler enforces that they match, and what
+they cover is the shared chrome — actions, errors, the unsaved-changes
+prompt. Every screen's own words are still English in the source.
 
 **Nothing is bulk.** No multi-select, no edit grid, and no screen at all for
 the three `batch` endpoints — products, prices and stock — that are routed
 and drawn by nobody.
 
-**It is not mountable.** Every screen assumes this is the whole application:
-its own router root, its own token screen, its own API base. An application
-embedding tezgah and wanting these screens inside its own back office would
-rewrite all 67. Taking the API client, the locale, the link component and the
-route base from a provider is what changes that, and 67 is the cheap moment
-to do it.
+**Mountable in the parts that talk, not yet in the parts that route.** No
+screen reaches for a global any more: the API address, the token, what to do
+on a 401 and the locale all come from `panel/runtime.ts`, which a host
+answers. What is still this application's own is routing — the screens are
+`@tanstack/react-router` file routes under a fixed root, and the sidebar in
+`components/app-shell.tsx` is a switch over that closed route union. A host
+mounting these under `/commerce` needs a basepath and a shell of its own,
+and that is the next piece of the seam rather than a rewrite of the screens.
 
 [`../../docs/architecture.md`](../../docs/architecture.md) carries all of this
 beside the library and server gaps, with which layer owns each.
+
+## What a host answers
+
+`panel/runtime.ts` is everything this bundle needs from whoever is running
+it, and nothing under `features/` reaches past it:
+
+| | |
+|---|---|
+| `apiBase` | where `/admin/...` and `/store/...` are served |
+| `token()` | the bearer token to send, read per request, or `null` for none |
+| `onUnauthenticated()` | what to do when the host answers 401 |
+| `locale` | `"en"` or `"tr"` |
+
+`PanelProvider` writes it and provides the locale to the tree.
+[`src/App.tsx`](src/App.tsx) is the standalone host's answers — the address
+from `VITE_TEZGAH_API`, the token an operator pasted, and forgetting it on a
+401 — and is about as small as that file should be. An application embedding
+these screens writes its own, out of the session and the API base it already
+has.
+
+It is a module-level object that `PanelProvider` sets rather than a React
+context, and that is deliberate: `api/mutator.ts`, the one function every
+request goes through, is called from a query function outside any tree. A
+hook cannot reach it. `configurePanel` is called during render rather than in
+an effect for the same kind of reason — an effect runs after the first
+render, and by then a screen's first query has already gone to whatever the
+previous configuration named.
+
+`panel/i18n` is a flat dictionary and a sixty-line lookup rather than
+i18next: a panel that can be mounted inside somebody else's application must
+not install a global singleton beside the one they already have. `en.ts`
+holds every key, `tr.ts` is typed `Record<keyof typeof en, string>`, so a
+string added in one language and not the other fails the build instead of
+appearing untranslated on screen.
 
 ## What it talks to
 
@@ -159,22 +198,62 @@ falls through to `src/routes/$section.tsx`, which is what `NotBuilt` used to
 be reached through — a static route always wins the match over a dynamic
 one, so a slug that gains a screen just needs a file added here.
 
-### A creation form is a route, not a dialog
+### A form is a route, drawn over the page it came from
 
-`/products/new` and the four under `/store/*/new` (currencies, regions, sales
-channels, publishable keys) are their own addresses — `src/features/<domain>/new*.tsx`,
-each thin enough to be one form, one mutation, and a save/cancel that both
-land back on the list. They are file-named with a trailing underscore before
-the segment that would otherwise nest them —
-`routes/store_.currencies.new.tsx` is `/store/currencies/new` as a sibling of
-`routes/store.tsx`, not a child rendered inside its `<Outlet />` — because a
-creation page is a full page, not a tab's content, and `@tanstack/router-generator`
-takes that convention from Remix's flat routes. `/store/keys/new` is the one
-exception to "save returns to the list": the token it mints is shown once and
-never stored anywhere it could be read back, so the page shows it in place
-first and only returns to `/store/keys` once the operator says "Done" —
-navigating away immediately would make the token unreachable a screen ever
-gets to show.
+A creation or edit form is still an address — `/products/new`,
+`/products/$id/edit` are links somebody can send, and the back button works —
+but it is drawn *over* the page it was opened from rather than replacing it.
+An operator who opens a form has not lost the page of products they were
+looking at, and cancelling puts them back on it with the cursor they had
+rather than on page one.
+
+That makes it a **child** route, not a sibling: `routes/products.new.tsx` is
+`/products/new` nested under `routes/products.tsx`, which renders the list
+and an `<Outlet />` beneath it. `components/modals/` is what draws into that
+outlet:
+
+- `RouteFocusModal` — a form that wants the screen. Creating a product, and
+  later importing a file. Near-fullscreen rather than a small dialog, because
+  a creation form with six sections in a 400-pixel box is a scroll bar with a
+  title.
+- `RouteDrawer` — a form that changes one part of a record it is standing on.
+  A drawer, so the record stays readable behind it.
+- `RouteModalProvider` — the one thing that knows how to leave. `close()` is
+  what the close button, the backdrop and escape all end at; `succeed()` is
+  the same thing after a write, and `markSaved()` is its half for a form that
+  saves and then goes somewhere the modal does not know about, like a
+  creation form landing on the record it just made.
+- `RouteModalForm` — react-hook-form plus the unsaved-changes guard. The
+  guard is on *navigation* rather than on the modal's own close, because
+  every way out of a route modal is a navigation: the close button, the
+  backdrop, escape, the browser's back button, a link inside the form.
+
+`components/form/form.tsx`'s `FormField` is the other half — a `Controller`
+over the zod schema in `api/schemas.ts`, so validation, dirty state and field
+errors come from the schema rather than from a `useState` and a hand-rolled
+`Record<string, string>` in each screen. `features/products/` is converted;
+the four remaining `*-edit.tsx` screens are drawn in a `RouteDrawer` and
+still hand-roll their form.
+
+#### The outlet is not optional, and its absence is silent
+
+`/products/$id/edit` is a child of `/products/$id`. Until #250 that page
+rendered no `<Outlet />`, so the address resolved, the product page drew, and
+the edit form was never rendered at all. Every one of the panel's five "edit
+a record" screens was in that state — products, customers, promotions, store
+regions and sales channels — from the commit that added them.
+
+Nothing catches this: the route file is right, the screen is right, and the
+router reports a match. What finds it is reading `routeTree.gen.ts` for
+routes with children and checking that each of those components draws an
+outlet.
+
+#### `/store/keys/new` is still the exception to "save returns to the list"
+
+The token it mints is shown once and stored nowhere it could be read back, so
+that screen shows it in place first and only returns to `/store/keys` once
+the operator says "Done". Navigating away immediately would make the token
+unreachable before a screen ever got to show it.
 
 ### A row is a route too
 
@@ -189,11 +268,12 @@ response carries rather than the subset its list column happened to need. A
 list whose `GET .../{id}` is not bound — `fulfilment`'s providers, sets and
 shipping option types; `tax`'s registrations; `payment`'s refund reasons;
 `carts` entirely — draws no `rowLink`, because there is nowhere for the row
-to go. Their route files take the same
-trailing-underscore escape the `new` routes do (`routes/products_.$id.tsx`,
-`routes/store_.regions.$id.tsx`), for the same reason: a list's own route is
-not a layout, and `/store`'s tabs are chrome a single record's page does not
-want. `components/data-table.tsx`'s `rowLink` is what gets a table row there:
+to go. Their route files take the
+trailing-underscore escape (`routes/products_.$id.tsx`,
+`routes/store_.regions.$id.tsx`) — a record's page is a page of its own, not
+a form drawn over the list, and `/store`'s tabs are chrome it does not want.
+Its *own* children, `/products/$id/edit` and the rest, are nested under it in
+the ordinary way, which is what the outlet above is for. `components/data-table.tsx`'s `rowLink` is what gets a table row there:
 a real `Link`, `params={{ id: row.id }}`, stretched over the row's first cell
 with `absolute inset-0` so the whole row is clickable — never an `onClick`,
 which a middle click or "open in new tab" would do nothing with. Going back

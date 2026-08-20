@@ -12,11 +12,6 @@ import { Field, FieldError, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { useDetail } from "@/lib/detail"
 
-function displayName(row: Customer): string {
-  const parts = [row.first_name, row.last_name].filter(Boolean)
-  return parts.length ? parts.join(" ") : (row.company_name ?? row.email ?? "Unnamed customer")
-}
-
 /** `/customers/$id/edit` — the same address shape as `/products/$id/edit`. */
 export function EditCustomer({ id }: { id: string }) {
   const result = useDetail(["customers"], "/admin/customers/{id}", customer, id)
