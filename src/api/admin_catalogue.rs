@@ -694,7 +694,7 @@ impl From<inventory::VariantInventoryItem> for VariantInventoryItemView {
 // Products
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ListProducts {
     pub after: Option<String>,

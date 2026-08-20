@@ -135,3 +135,56 @@ fn no_schema_name_was_disambiguated_by_a_number() {
          give one of each pair a #[schemars(rename = \"…\")] instead: {suffixed:?}"
     );
 }
+
+/// The document said `"parameters": []` for every route, including the ones
+/// whose handlers have taken filters since they were written — so every filter
+/// the crate supports was invisible to anybody reading the API rather than the
+/// Rust.
+///
+/// This counts the routes that describe their query string, and the count may
+/// only go up. It is a floor rather than an equality so that wiring a fourth
+/// list does not fail this test; it is here at all so that the three cannot
+/// quietly become none.
+#[test]
+fn the_lists_that_filter_say_what_they_filter_on() {
+    let document: serde_json::Value =
+        serde_json::from_str(&generated()).expect("the document to parse");
+
+    let paths = document["paths"]
+        .as_object()
+        .expect("the document to have paths");
+
+    let mut described = 0;
+    for methods in paths.values() {
+        for operation in methods.as_object().into_iter().flat_map(|m| m.values()) {
+            let has_query = operation["parameters"]
+                .as_array()
+                .is_some_and(|list| list.iter().any(|p| p["in"] == "query"));
+            if has_query {
+                described += 1;
+            }
+        }
+    }
+
+    assert!(
+        described >= 3,
+        "only {described} operations describe a query parameter; \
+         `QUERIES` in src/api/openapi.rs is what grows this"
+    );
+
+    let products = &document["paths"]["/admin/products"]["get"]["parameters"];
+    let names: Vec<&str> = products
+        .as_array()
+        .expect("products to carry parameters")
+        .iter()
+        .filter(|p| p["in"] == "query")
+        .filter_map(|p| p["name"].as_str())
+        .collect();
+
+    for wanted in ["after", "limit", "status", "q"] {
+        assert!(
+            names.contains(&wanted),
+            "GET /admin/products takes {wanted} and the document does not say so: {names:?}"
+        );
+    }
+}

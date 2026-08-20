@@ -1424,6 +1424,16 @@ export const DeleteAdminOrderEditsByIdShippingMethodByActionIdResponse = zod.unk
 /**
  * @summary List orders
  */
+export const getAdminOrdersQueryLimitMin = 0;
+
+
+
+export const GetAdminOrdersQueryParams = zod.object({
+  "after": zod.string().nullish(),
+  "customer_id": zod.union([zod.uuid().describe('Identifies one customer.'),zod.null()]).optional(),
+  "limit": zod.int().min(getAdminOrdersQueryLimitMin).nullish()
+})
+
 export const GetAdminOrdersResponse = zod.object({
   "items": zod.array(zod.unknown()),
   "next": zod.string().nullish()

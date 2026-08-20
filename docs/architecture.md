@@ -86,15 +86,24 @@ ships a shop somebody else runs.
 
 ### The library
 
-**A list cannot be searched, filtered or sorted.** `Paging` carries a cursor
-and a limit and nothing else; there is exactly one filter type in 62,000 lines
-(`catalogue::ProductFilter`); every paged query in the crate ends `order by
-created_at`; and `ilike`, `to_tsvector` and `pg_trgm` appear nowhere in `src/`
-or `migrations/`. So an operator with forty thousand orders cannot find one by
-e-mail, and a panel that offered a sortable column would be claiming something
-about the pages that are not on screen. This is the single largest reason the
-panel cannot be as capable as an established platform's, and it cannot be
-fixed in the panel.
+**Only one list can be searched, and nothing can be sorted.** `page::Search`
+and `ProductFilter.search` gave the catalogue a search box — title, handle and
+subtitle, `ilike`, no index. Orders and customers still have none, and both
+take their filters as positional arguments rather than a struct, so giving
+them one is a signature change across their callers. Nothing sorts at all:
+every paged query in the crate ends `order by created_at`, and a cursor names
+a row in that ordering, so a second ordering needs the cursor to carry its own
+key rather than a timestamp. That is the piece with real design in it, and it
+is not done.
+
+**The document described no query parameter at all until #254**, so every
+filter the crate already supported was invisible to it — `"parameters": []`
+on `GET /admin/products`, whose handler has taken eight of them since it was
+written. Three lists describe theirs now and the rest do not. Worth writing
+down for the way it was found rather than the size of it: adding `q` to the
+catalogue passed CI without changing a byte of the snapshot, and a snapshot
+that cannot notice a new filter is not watching the thing it was meant to
+watch.
 
 **`Page<T>` carries no count.** `items` and `next`, by design — a cursor page
 does not know how many rows are behind it. It is the right shape for paging

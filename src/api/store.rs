@@ -898,8 +898,12 @@ fn price_context(row: &cart::Cart, currency: Currency) -> pricing::PriceContext 
 // Catalogue
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Default, Deserialize)]
+/// Renamed for the document: `admin_catalogue` has a `ListProducts` too, and
+/// two schemas cannot share a name in `components/schemas` — the same escape
+/// the three order views already take.
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
+#[schemars(rename = "StoreListProducts")]
 pub struct ListProducts {
     pub after: Option<String>,
     pub limit: Option<u32>,

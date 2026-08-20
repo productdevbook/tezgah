@@ -328,10 +328,15 @@ list.
 
 In the library:
 
-- [ ] a list that can be filtered, searched and sorted — `Paging` carries a
-      cursor and a limit, there is one filter type in the whole crate, every
-      paged query ends `order by created_at`, and no `ilike`, `to_tsvector`
-      or `pg_trgm` appears anywhere in `src/` or `migrations/`
+- [ ] search on orders and customers — the catalogue has one (`page::Search`,
+      `ilike`, no index); both of the others take their filters as positional
+      arguments rather than a struct, so it is a signature change
+- [ ] sorting, on any list — every paged query ends `order by created_at`, and
+      a cursor names a row in that ordering, so a second ordering needs the
+      cursor to carry its own key rather than a timestamp
+- [ ] the query string of the other 480 operations in the document — three
+      describe theirs (#254); the rest still answer with their path
+      parameters alone
 - [ ] a count beside a page, so a back office can say "1–50 of 41,309"
 - [ ] a route a payment provider's callback can reach —
       `payment::record_webhook` is written and tested and no path in

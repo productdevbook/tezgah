@@ -1035,7 +1035,7 @@ async fn drop_action(
 // Orders
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ListOrders {
     pub after: Option<String>,

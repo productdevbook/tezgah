@@ -129,6 +129,88 @@ fn page_of<T: JsonSchema>(generator: &mut SchemaGenerator) -> Value {
 
 type SchemaFn = fn(&mut SchemaGenerator) -> Value;
 
+/// One operation's query string, keyed by the [`operation_id`] it belongs to.
+///
+/// The document said `"parameters": []` for every route until now — including
+/// `GET /admin/products`, whose handler has taken eight of them for as long as
+/// it has existed. So every filter the crate already supports was invisible to
+/// the document, to whatever a generated client offers, and to anybody reading
+/// the API rather than the Rust.
+struct QueryString {
+    operation_id: &'static str,
+    of: SchemaFn,
+}
+
+/// A start, not the set. Three lists an operator actually filters; the rest
+/// still answer with the path parameters alone, and `tests/openapi.rs` counts
+/// what is here so the number cannot quietly stop growing.
+const QUERIES: &[QueryString] = &[
+    QueryString {
+        operation_id: "getAdminProducts",
+        of: schema_of::<admin_catalogue::ListProducts>,
+    },
+    QueryString {
+        operation_id: "getStoreProducts",
+        of: schema_of::<store::ListProducts>,
+    },
+    QueryString {
+        operation_id: "getAdminOrders",
+        of: schema_of::<admin_order::ListOrders>,
+    },
+];
+
+/// One parameter per field of the struct the handler deserialises its query
+/// string into.
+///
+/// `of` registers the struct — and anything it names, like a status enum — in
+/// `components/schemas` and hands back the `$ref` that points at it; the
+/// properties are then read back out of the generator. A field's own schema is
+/// carried across as it stands, so a `$ref` inside one already points where
+/// the document keeps it.
+///
+/// What this does not do is decide how a value is spelled in a URL. An array
+/// field says `type: array` and nothing about commas or repetition, because
+/// the handler's `serde` derive is what answers that and the derive is not
+/// readable from here. A caller reading this document learns which parameters
+/// exist and what each means, which is what it said nothing about before.
+fn query_parameters(of: SchemaFn, generator: &mut SchemaGenerator) -> Vec<Value> {
+    let reference = of(generator);
+    let Some(name) = reference
+        .get("$ref")
+        .and_then(Value::as_str)
+        .and_then(|path| path.rsplit('/').next())
+        .map(str::to_owned)
+    else {
+        return Vec::new();
+    };
+
+    let Some(schema) = generator.definitions().get(&name) else {
+        return Vec::new();
+    };
+
+    let required: Vec<&str> = schema
+        .get("required")
+        .and_then(Value::as_array)
+        .map(|items| items.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+
+    let Some(properties) = schema.get("properties").and_then(Value::as_object) else {
+        return Vec::new();
+    };
+
+    properties
+        .iter()
+        .map(|(field, shape)| {
+            json!({
+                "name": field,
+                "in": "query",
+                "required": required.contains(&field.as_str()),
+                "schema": shape,
+            })
+        })
+        .collect()
+}
+
 /// One operation's body schemas, keyed by the [`operation_id`] it belongs to.
 struct Body {
     operation_id: &'static str,
@@ -1214,7 +1296,7 @@ fn operation(
     let id = operation_id(route);
     let body = BODIES.iter().find(|entry| entry.operation_id == id);
 
-    let parameters: Vec<Value> = parameters(route.path)
+    let mut parameters: Vec<Value> = parameters(route.path)
         .into_iter()
         .map(|name| {
             json!({
@@ -1225,6 +1307,12 @@ fn operation(
             })
         })
         .collect();
+
+    // The query string is described by the same generator the request bodies
+    // use: what a handler deserialises is what a caller sends.
+    if let Some(entry) = QUERIES.iter().find(|entry| entry.operation_id == id) {
+        parameters.extend(query_parameters(entry.of, request_gen));
+    }
 
     let mut responses = json!({
         "200": { "description": "The call succeeded." },

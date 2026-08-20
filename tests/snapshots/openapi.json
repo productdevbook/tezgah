@@ -2566,6 +2566,114 @@
         ],
         "type": "object"
       },
+      "ListOrders": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "customer_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CustomerId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "limit": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "ListProducts": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CategoryId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "collection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CollectionId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "limit": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "product_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProductTypeId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "q": {
+            "description": "What a back office typed into its search box, matched against a\nproduct's title, handle and subtitle. Blank is not a search.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProductStatus"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Left out means every status, drafts and archives included. That is the\ndifference between this surface and the storefront's."
+          },
+          "tag": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProductTagId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
       "LocalisedReturnReasonView": {
         "properties": {
           "description": {
@@ -3495,6 +3603,11 @@
           "archived",
           "rejected"
         ],
+        "type": "string"
+      },
+      "ProductTagId": {
+        "description": "Identifies one tag.",
+        "format": "uuid",
         "type": "string"
       },
       "ProductTypeId": {
@@ -5092,6 +5205,81 @@
           "parent_line_item_id",
           "selling_plan_id"
         ],
+        "type": "object"
+      },
+      "StoreListProducts": {
+        "additionalProperties": false,
+        "description": "Renamed for the document: `admin_catalogue` has a `ListProducts` too, and\ntwo schemas cannot share a name in `components/schemas` — the same escape\nthe three order views already take.",
+        "properties": {
+          "after": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CategoryId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "collection_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CollectionId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "limit": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "locale": {
+            "description": "The shopper's language; a product with no translation for it answers\nwith its own columns rather than refusing.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "q": {
+            "description": "What a shopper typed. Matched against the product's own title, handle\nand subtitle — its columns, not the translation overlaid on the way\nout, so a search in one language does not find a product listed in\nanother. Naming that here rather than leaving it to be discovered.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tag_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProductTagId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProductTypeId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
         "type": "object"
       },
       "StoreMoneyView": {
@@ -12372,7 +12560,47 @@
     "/admin/orders": {
       "get": {
         "operationId": "getAdminOrders",
-        "parameters": [],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "customer_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CustomerId"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -17151,7 +17379,120 @@
     "/admin/products": {
       "get": {
         "operationId": "getAdminProducts",
-        "parameters": [],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CategoryId"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "collection",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CollectionId"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "product_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProductTypeId"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "description": "What a back office typed into its search box, matched against a\nproduct's title, handle and subtitle. Blank is not a search.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProductStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Left out means every status, drafts and archives included. That is the\ndifference between this surface and the storefront's."
+            }
+          },
+          {
+            "in": "query",
+            "name": "tag",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProductTagId"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -26336,7 +26677,116 @@
     "/store/products": {
       "get": {
         "operationId": "getStoreProducts",
-        "parameters": [],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "category_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CategoryId"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "collection_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CollectionId"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "locale",
+            "required": false,
+            "schema": {
+              "description": "The shopper's language; a product with no translation for it answers\nwith its own columns rather than refusing.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "description": "What a shopper typed. Matched against the product's own title, handle\nand subtitle — its columns, not the translation overlaid on the way\nout, so a search in one language does not find a product listed in\nanother. Naming that here rather than leaving it to be discovered.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "tag_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProductTagId"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "type_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProductTypeId"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "The call succeeded."

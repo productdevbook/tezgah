@@ -30,6 +30,7 @@ import type {
   GetAdminOrdersByIdChanges200,
   GetAdminOrdersByIdOrderEdits200,
   GetAdminOrdersByIdReturns200,
+  GetAdminOrdersParams,
   GetAdminReturnReasons200,
   GetAdminReturns200,
   GetStoreOrders200,
@@ -2844,20 +2845,27 @@ export type getAdminOrdersResponseError = (getAdminOrdersResponse400 | getAdminO
 
 export type getAdminOrdersResponse = (getAdminOrdersResponseSuccess | getAdminOrdersResponseError)
 
-export const getGetAdminOrdersUrl = () => {
+export const getGetAdminOrdersUrl = (params?: GetAdminOrdersParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/admin/orders`
+  return stringifiedParams.length > 0 ? `/admin/orders?${stringifiedParams}` : `/admin/orders`
 }
 
 /**
  * @summary List orders
  */
-export const getAdminOrders = async ( options?: Parameters<typeof apiMutator>[1]): Promise<getAdminOrdersResponse> => {
+export const getAdminOrders = async (params?: GetAdminOrdersParams, options?: Parameters<typeof apiMutator>[1]): Promise<getAdminOrdersResponse> => {
 
-  return apiMutator<getAdminOrdersResponse>(getGetAdminOrdersUrl(),
+  return apiMutator<getAdminOrdersResponse>(getGetAdminOrdersUrl(params),
   {
     ...options,
     method: 'GET'
