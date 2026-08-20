@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/select"
 import { usePagedList } from "@/lib/paged"
 import { PageHeading } from "@/components/page-heading"
+import { SearchBox } from "@/components/search-box"
 
 /** Four of the five mean "not for sale", for four different reasons. */
 const HIDDEN: ProductStatus[] = ["draft", "proposed", "rejected", "archived"]
@@ -66,19 +67,28 @@ const columns: Columns<Product> = [
 export function Products({
   status,
   after,
+  q,
   onStatusChange,
   onAfterChange,
+  onQChange,
 }: {
   status: ProductStatus | "all"
   after: string | undefined
+  q: string | undefined
   onStatusChange: (status: ProductStatus | "all") => void
   onAfterChange: (after: string | undefined) => void
+  onQChange: (q: string | undefined) => void
 }) {
-  const paged = usePagedList(["products", status], "/admin/products", product, {
-    after,
-    onAfterChange,
-    query: { status: status === "all" ? undefined : status },
-  })
+  const paged = usePagedList(
+    ["products", status, q ?? ""],
+    "/admin/products",
+    product,
+    {
+      after,
+      onAfterChange,
+      query: { status: status === "all" ? undefined : status, q },
+    }
+  )
 
   return (
     <div className="space-y-4">
@@ -86,6 +96,11 @@ export function Products({
         title="Products"
         subtitle="This surface sees every status. The storefront sees published only."
       >
+        <SearchBox
+          value={q}
+          onChange={onQChange}
+          placeholder="Search title, handle, subtitle"
+        />
         <Select
           value={status}
           onValueChange={(v) => onStatusChange(v as ProductStatus | "all")}
@@ -102,7 +117,11 @@ export function Products({
             ))}
           </SelectContent>
         </Select>
-        <Button size="sm" nativeButton={false} render={<Link to="/products/new" />}>
+        <Button
+          size="sm"
+          nativeButton={false}
+          render={<Link to="/products/new" />}
+        >
           <HugeiconsIcon icon={Add01Icon} strokeWidth={2} />
           New product
         </Button>

@@ -706,6 +706,9 @@ pub struct ListProducts {
     pub product_type: Option<ProductTypeId>,
     pub category: Option<CategoryId>,
     pub tag: Option<ProductTagId>,
+    /// What a back office typed into its search box, matched against a
+    /// product's title, handle and subtitle. Blank is not a search.
+    pub q: Option<String>,
 }
 
 pub async fn list_products(
@@ -720,6 +723,7 @@ pub async fn list_products(
         category: query.category,
         tag: query.tag,
         channels: None,
+        search: query.q.as_deref().and_then(crate::page::Search::new),
     };
     let page = catalogue::products(
         tx,

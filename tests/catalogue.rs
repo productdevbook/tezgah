@@ -9,9 +9,16 @@ use tezgah::catalogue::{
     ProductFilter, ProductStatus, ProductTranslation, VariantPlan,
 };
 use tezgah::id::{CategoryId, ProductId};
-use tezgah::page::Paging;
+use tezgah::page::{Paging, Search};
 use tezgah::ports::Actor;
 use uuid::Uuid;
+
+fn searching(text: &str) -> ProductFilter {
+    ProductFilter {
+        search: Search::new(text),
+        ..ProductFilter::default()
+    }
+}
 
 fn draft(handle: &str, title: &str) -> NewProduct {
     NewProduct {
@@ -1159,4 +1166,123 @@ async fn the_database_refuses_a_status_move_the_library_never_asked_for() {
 
     tx.rollback().await.expect("to roll back");
     shop.close().await;
+}
+
+/// The search box, which is what an operator with forty thousand products
+/// reaches for instead of paging to one.
+#[tokio::test]
+async fn a_search_matches_title_handle_and_subtitle_and_nothing_else() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    catalogue::create_product(
+        &mut tx,
+        &ctx,
+        NewProduct {
+            handle: "denim-jacket".into(),
+            title: "Denim jacket".into(),
+            subtitle: Some("Faded".into()),
+            description: Some("A jacket made of corduroy".into()),
+            ..NewProduct::default()
+        },
+    )
+    .await
+    .expect("a product");
+
+    catalogue::create_product(&mut tx, &ctx, draft("kilim", "A kilim"))
+        .await
+        .expect("another product");
+
+    let by_title = catalogue::products(&mut tx, &ctx, searching("denim"), Paging::first(10))
+        .await
+        .expect("to list");
+    assert_eq!(by_title.items.len(), 1, "the title matches, case and all");
+
+    let by_handle = catalogue::products(&mut tx, &ctx, searching("DENIM-JACK"), Paging::first(10))
+        .await
+        .expect("to list");
+    assert_eq!(by_handle.items.len(), 1, "the handle matches too");
+
+    let by_subtitle = catalogue::products(&mut tx, &ctx, searching("faded"), Paging::first(10))
+        .await
+        .expect("to list");
+    assert_eq!(by_subtitle.items.len(), 1, "and the subtitle");
+
+    // Deliberately not the description: a word buried in three paragraphs is
+    // not how anybody looks for a product, and matching it buries the row
+    // they meant.
+    let by_description =
+        catalogue::products(&mut tx, &ctx, searching("corduroy"), Paging::first(10))
+            .await
+            .expect("to list");
+    assert!(
+        by_description.is_empty(),
+        "the description is not searched, and that is the decision"
+    );
+}
+
+/// What the escaping in `Search::pattern` is for, against the database rather
+/// than against the string.
+#[tokio::test]
+async fn a_wildcard_somebody_typed_is_a_character_they_typed() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    catalogue::create_product(&mut tx, &ctx, draft("kilim", "A kilim"))
+        .await
+        .expect("a product");
+    catalogue::create_product(&mut tx, &ctx, draft("half-off", "50% off"))
+        .await
+        .expect("another");
+
+    let percent = catalogue::products(
+        &mut tx,
+        &ctx,
+        ProductFilter {
+            search: Search::new("50%"),
+            ..ProductFilter::default()
+        },
+        Paging::first(10),
+    )
+    .await
+    .expect("to list");
+
+    assert_eq!(
+        percent.items.len(),
+        1,
+        "unescaped, `%` is the wildcard and this matches every product there is"
+    );
+    assert_eq!(percent.items[0].title, "50% off");
+}
+
+/// A blank box is not a filter, and a list that quietly filtered nothing while
+/// looking filtered would be worse than one that refused.
+#[tokio::test]
+async fn a_blank_search_lists_everything() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    catalogue::create_product(&mut tx, &ctx, draft("kilim", "A kilim"))
+        .await
+        .expect("a product");
+    catalogue::create_product(&mut tx, &ctx, draft("rug", "A rug"))
+        .await
+        .expect("another");
+
+    let all = catalogue::products(
+        &mut tx,
+        &ctx,
+        ProductFilter {
+            search: Search::new("   "),
+            ..ProductFilter::default()
+        },
+        Paging::first(10),
+    )
+    .await
+    .expect("to list");
+
+    assert_eq!(all.items.len(), 2);
 }

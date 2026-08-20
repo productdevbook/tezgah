@@ -7,6 +7,7 @@ import { Products } from "@/features/products/screen"
 const productsSearch = z.object({
   after: z.string().optional(),
   status: productStatus.optional(),
+  q: z.string().optional(),
 })
 
 export const Route = createFileRoute("/products")({
@@ -26,7 +27,7 @@ export const Route = createFileRoute("/products")({
  * cursor it had.
  */
 export function RouteComponent() {
-  const { status, after } = Route.useSearch()
+  const { status, after, q } = Route.useSearch()
   const navigate = Route.useNavigate()
 
   return (
@@ -34,6 +35,14 @@ export function RouteComponent() {
       <Products
         status={status ?? "all"}
         after={after}
+        q={q}
+        onQChange={(next) =>
+          // The cursor goes with it: a cursor names a row in the ordering it
+          // was issued under and means nothing under another filter.
+          void navigate({
+            search: (prev) => ({ ...prev, q: next, after: undefined }),
+          })
+        }
         onStatusChange={(next) =>
           void navigate({
             search: (prev) => ({

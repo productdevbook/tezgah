@@ -18,7 +18,7 @@ use crate::id::{
     CategoryId, CollectionId, OptionId, OptionValueId, ProductId, ProductImageId, ProductTagId,
     ProductTypeId, SalesChannelId, VariantId,
 };
-use crate::page::{Cursor, Page, Paging};
+use crate::page::{Cursor, Page, Paging, Search};
 use crate::ports::{Action, AuditEntry, Ctx, Event, Permit, Resource, Tx};
 
 /// Most options one product may be generated from, and most variants one
@@ -395,6 +395,17 @@ pub struct ProductFilter {
     /// A product linked to at least one channel is shown only where it is
     /// linked. `None` means an admin listing, unfiltered by channel.
     pub channels: Option<Vec<Uuid>>,
+    /// What somebody typed into a search box, matched against the three
+    /// things a person recognises a product by: its title, its handle and its
+    /// subtitle. Not its description — a word buried in three paragraphs is
+    /// not how anybody looks for a product, and matching it would bury the
+    /// row they meant under twenty they did not.
+    ///
+    /// `ilike` and no index. A shop with a hundred thousand products will
+    /// want a trigram index on those three columns; one is not added here
+    /// because nobody has measured this hurting yet, and an index nobody
+    /// needed is a migration everybody pays for.
+    pub search: Option<Search>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -737,9 +748,13 @@ pub async fn products(
                  where s.scope = p.scope and s.product_id = p.id
                    and s.sales_channel_id = any($7)
                ))
-           and ($8::timestamptz is null or (p.created_at, p.id) > ($8, $9))
+           and ($8::text is null
+                or p.title ilike $8
+                or p.handle ilike $8
+                or p.subtitle ilike $8)
+           and ($9::timestamptz is null or (p.created_at, p.id) > ($9, $10))
          order by p.created_at, p.id
-         limit $10"
+         limit $11"
     ))
     .bind(ctx.scope.0)
     .bind(filter.status)
@@ -748,6 +763,7 @@ pub async fn products(
     .bind(filter.category.map(CategoryId::as_uuid))
     .bind(filter.tag.map(ProductTagId::as_uuid))
     .bind(filter.channels)
+    .bind(filter.search.as_ref().map(Search::pattern))
     .bind(paging.after.map(|c| c.at))
     .bind(paging.after.map(|c| c.id))
     .bind(paging.probe())
