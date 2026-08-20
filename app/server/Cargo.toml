@@ -17,12 +17,14 @@ path = "src/main.rs"
 
 [dependencies]
 tezgah = { path = "../.." }
+argon2 = "0.5"
 async-trait = "0.1"
 axum = "0.8"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 kasapay-core = "0.0.5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
 sqlx = { version = "0.8", default-features = false, features = [
     "postgres",
     "runtime-tokio",
@@ -33,7 +35,7 @@ sqlx = { version = "0.8", default-features = false, features = [
 ] }
 subtle = { version = "2", default-features = false }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "time"] }
-uuid = { version = "1", features = ["serde", "v7"] }
+uuid = { version = "1", features = ["serde", "v4", "v7"] }
 
 [dev-dependencies]
 http-body-util = "0.1"
