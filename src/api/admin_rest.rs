@@ -1785,7 +1785,7 @@ pub async fn set_locales(tx: &mut Tx<'_>, ctx: &Ctx<'_>, body: SetLocales) -> Re
 
 // ---------------------------------------------------------- workflow runs
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct WorkflowRunView {
     pub id: WorkflowRunId,
     pub state: String,
@@ -1818,7 +1818,7 @@ pub async fn get_workflow_run(
     })
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct WorkflowRunSummaryView {
     pub id: WorkflowRunId,
     pub name: String,
@@ -1848,7 +1848,7 @@ impl From<workflow::RunSummary> for WorkflowRunSummaryView {
 /// runner needs to resume a step, and for a checkout it is the cart, the
 /// addresses and the payment context. See #123: a payload is not readable
 /// through this view, on purpose, whatever it holds.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct WorkflowStepView {
     pub id: Uuid,
     pub name: String,
@@ -1882,7 +1882,7 @@ impl From<workflow::StepSummary> for WorkflowStepView {
 /// Same rule as [`WorkflowStepView`]: `state` is the run's full compensation
 /// context and stays out. `step_name` and `failure` are what a dead letter is
 /// for a person to see.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct WorkflowDeadLetterView {
     pub id: Uuid,
     pub run_id: WorkflowRunId,

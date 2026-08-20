@@ -11,12 +11,36 @@ import * as zod from 'zod';
 /**
  * @summary Runs whose compensation failed, which nothing will retry
  */
-export const GetAdminWorkflowDeadLettersResponse = zod.unknown()
+export const GetAdminWorkflowDeadLettersResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "created_at": zod.iso.datetime({"offset":true}),
+  "failure": zod.string(),
+  "id": zod.uuid(),
+  "run_id": zod.uuid().describe('Identifies one workflow run.'),
+  "step_name": zod.string()
+}).describe('Same rule as [`WorkflowStepView`]: `state` is the run\'s full compensation\ncontext and stays out. `step_name` and `failure` are what a dead letter is\nfor a person to see.'))
+}))
 
 /**
  * @summary List workflow runs, optionally in one state
  */
-export const GetAdminWorkflowsExecutionsResponse = zod.unknown()
+export const GetAdminWorkflowsExecutionsResponse = zod.object({
+  "items": zod.array(zod.unknown()),
+  "next": zod.string().nullish()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "created_at": zod.iso.datetime({"offset":true}),
+  "failure": zod.string().nullable(),
+  "finished_at": zod.iso.datetime({"offset":true}).nullable(),
+  "id": zod.uuid().describe('Identifies one workflow run.'),
+  "name": zod.string(),
+  "state": zod.string(),
+  "transaction_key": zod.string()
+}))
+}))
 
 /**
  * @summary How a workflow run ended, and what it returned
@@ -25,7 +49,11 @@ export const GetAdminWorkflowsExecutionsByIdParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminWorkflowsExecutionsByIdResponse = zod.unknown()
+export const GetAdminWorkflowsExecutionsByIdResponse = zod.object({
+  "failure": zod.string().nullable(),
+  "id": zod.uuid().describe('Identifies one workflow run.'),
+  "state": zod.string()
+})
 
 /**
  * @summary The steps of one workflow run, and how each ended
@@ -34,5 +62,17 @@ export const GetAdminWorkflowsExecutionsByIdStepsParams = zod.object({
   "id": zod.string()
 })
 
-export const GetAdminWorkflowsExecutionsByIdStepsResponse = zod.unknown()
+export const GetAdminWorkflowsExecutionsByIdStepsResponseItem = zod.object({
+  "attempts": zod.int(),
+  "failure": zod.string().nullable(),
+  "group_ordering": zod.int(),
+  "id": zod.uuid(),
+  "lease_until": zod.iso.datetime({"offset":true}).nullable(),
+  "max_attempts": zod.int(),
+  "name": zod.string(),
+  "ordering": zod.int(),
+  "run_after": zod.iso.datetime({"offset":true}),
+  "state": zod.string()
+}).describe('What a person debugging a stuck run needs: the step, its state, how many\ntimes it was tried, and why it failed. Not `output` — that is what the\nrunner needs to resume a step, and for a checkout it is the cart, the\naddresses and the payment context. See #123: a payload is not readable\nthrough this view, on purpose, whatever it holds.')
+export const GetAdminWorkflowsExecutionsByIdStepsResponse = zod.array(GetAdminWorkflowsExecutionsByIdStepsResponseItem)
 

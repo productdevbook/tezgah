@@ -5,6 +5,12 @@
  * A commerce engine for Rust: products, carts, orders, payments, inventory, and a workflow runner that unwinds what it started.
  * OpenAPI spec version: 0.0.0
  */
+import type {
+  BasketView,
+  GetAdminOrderBasketsByIdCarts200,
+  GetAdminOrderBasketsByIdOrders200
+} from '../models';
+
 import { apiMutator } from '../../../mutator';
 
 export type postAdminOrderBasketsResponse200 = {
@@ -60,7 +66,7 @@ export const postAdminOrderBaskets = async ( options?: Parameters<typeof apiMuta
 
 
 export type getAdminOrderBasketsByIdResponse200 = {
-  data: void
+  data: BasketView
   status: 200
 }
 
@@ -112,7 +118,7 @@ export const getAdminOrderBasketsById = async (id: string, options?: Parameters<
 
 
 export type getAdminOrderBasketsByIdCartsResponse200 = {
-  data: void
+  data: GetAdminOrderBasketsByIdCarts200
   status: 200
 }
 
@@ -164,7 +170,7 @@ export const getAdminOrderBasketsByIdCarts = async (id: string, options?: Parame
 
 
 export type getAdminOrderBasketsByIdOrdersResponse200 = {
-  data: void
+  data: GetAdminOrderBasketsByIdOrders200
   status: 200
 }
 

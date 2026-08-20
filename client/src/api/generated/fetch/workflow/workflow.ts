@@ -5,10 +5,17 @@
  * A commerce engine for Rust: products, carts, orders, payments, inventory, and a workflow runner that unwinds what it started.
  * OpenAPI spec version: 0.0.0
  */
+import type {
+  GetAdminWorkflowDeadLetters200,
+  GetAdminWorkflowsExecutions200,
+  WorkflowRunView,
+  WorkflowStepView
+} from '../models';
+
 import { apiMutator } from '../../../mutator';
 
 export type getAdminWorkflowDeadLettersResponse200 = {
-  data: void
+  data: GetAdminWorkflowDeadLetters200
   status: 200
 }
 
@@ -60,7 +67,7 @@ export const getAdminWorkflowDeadLetters = async ( options?: Parameters<typeof a
 
 
 export type getAdminWorkflowsExecutionsResponse200 = {
-  data: void
+  data: GetAdminWorkflowsExecutions200
   status: 200
 }
 
@@ -112,7 +119,7 @@ export const getAdminWorkflowsExecutions = async ( options?: Parameters<typeof a
 
 
 export type getAdminWorkflowsExecutionsByIdResponse200 = {
-  data: void
+  data: WorkflowRunView
   status: 200
 }
 
@@ -164,7 +171,7 @@ export const getAdminWorkflowsExecutionsById = async (id: string, options?: Para
 
 
 export type getAdminWorkflowsExecutionsByIdStepsResponse200 = {
-  data: void
+  data: WorkflowStepView[]
   status: 200
 }
 

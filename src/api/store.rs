@@ -287,7 +287,7 @@ impl From<store::CurrencyRow> for CurrencyView {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct CartView {
     pub id: CartId,
     pub customer_id: Option<CustomerId>,

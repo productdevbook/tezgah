@@ -6328,11 +6328,36 @@ export interface components {
             amount: string;
             currency_code: string;
         };
+        BasketView: {
+            /** Format: date-time */
+            completed_at: string | null;
+            currency_code: string;
+            customer_id: components["schemas"]["CustomerId"] | null;
+            /** Format: int64 */
+            display_id: number | null;
+            email: string | null;
+            id: components["schemas"]["OrderBasketId"];
+            payment_collection_id: components["schemas"]["PaymentCollectionId"] | null;
+        };
         /**
          * Format: uuid
          * @description Identifies one campaign.
          */
         CampaignId: string;
+        /**
+         * Format: uuid
+         * @description Identifies one cart.
+         */
+        CartId: string;
+        CartView: {
+            /** Format: date-time */
+            completed_at: string | null;
+            currency_code: string;
+            customer_id: components["schemas"]["CustomerId"] | null;
+            email: string | null;
+            id: components["schemas"]["CartId"];
+            region_id: components["schemas"]["RegionId"] | null;
+        };
         /**
          * Format: uuid
          * @description Identifies one category.
@@ -7430,6 +7455,67 @@ export interface components {
             eligible: boolean;
             exclusion_reason: string | null;
             order_line_item_id: components["schemas"]["LineItemId"];
+        };
+        /**
+         * @description Same rule as [`WorkflowStepView`]: `state` is the run's full compensation
+         *     context and stays out. `step_name` and `failure` are what a dead letter is
+         *     for a person to see.
+         */
+        WorkflowDeadLetterView: {
+            /** Format: date-time */
+            created_at: string;
+            failure: string;
+            /** Format: uuid */
+            id: string;
+            run_id: components["schemas"]["WorkflowRunId"];
+            step_name: string;
+        };
+        /**
+         * Format: uuid
+         * @description Identifies one workflow run.
+         */
+        WorkflowRunId: string;
+        WorkflowRunSummaryView: {
+            /** Format: date-time */
+            created_at: string;
+            failure: string | null;
+            /** Format: date-time */
+            finished_at: string | null;
+            id: components["schemas"]["WorkflowRunId"];
+            name: string;
+            state: string;
+            transaction_key: string;
+        };
+        WorkflowRunView: {
+            failure: string | null;
+            id: components["schemas"]["WorkflowRunId"];
+            state: string;
+        };
+        /**
+         * @description What a person debugging a stuck run needs: the step, its state, how many
+         *     times it was tried, and why it failed. Not `output` — that is what the
+         *     runner needs to resume a step, and for a checkout it is the cart, the
+         *     addresses and the payment context. See #123: a payload is not readable
+         *     through this view, on purpose, whatever it holds.
+         */
+        WorkflowStepView: {
+            /** Format: int32 */
+            attempts: number;
+            failure: string | null;
+            /** Format: int32 */
+            group_ordering: number;
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            lease_until: string | null;
+            /** Format: int32 */
+            max_attempts: number;
+            name: string;
+            /** Format: int32 */
+            ordering: number;
+            /** Format: date-time */
+            run_after: string;
+            state: string;
         };
     };
     responses: never;
@@ -12765,7 +12851,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["BasketView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -12806,7 +12894,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["CartView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -12847,7 +12939,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["OrderView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -24478,7 +24574,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["WorkflowDeadLetterView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -24517,7 +24617,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["WorkflowRunSummaryView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -24558,7 +24662,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["WorkflowRunView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -24599,7 +24705,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["WorkflowStepView"][];
+                };
             };
             /** @description The request was not well formed. */
             400: {
