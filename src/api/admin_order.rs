@@ -1049,6 +1049,9 @@ pub struct ListOrders {
     /// Which column. `created` is the default; `email` is the other one.
     pub by: Option<crate::page::By>,
     pub customer_id: Option<crate::id::CustomerId>,
+    /// Asks how many orders match, as well as this page of them. Off unless
+    /// asked: it is a second query over the whole match.
+    pub count: Option<bool>,
 }
 
 impl ListOrders {
@@ -1057,6 +1060,15 @@ impl ListOrders {
             after: self.after.clone(),
             limit: self.limit,
         }
+    }
+
+    fn paging(&self) -> Result<Paging> {
+        let paging = self.listing().paging()?;
+        Ok(if self.count.unwrap_or(false) {
+            paging.counting()
+        } else {
+            paging
+        })
     }
 }
 
@@ -1077,7 +1089,7 @@ pub async fn list_orders(
             order: query.order.unwrap_or(crate::page::Order::Newest),
             by: query.by.unwrap_or_default(),
         },
-        query.listing().paging()?,
+        query.paging()?,
     )
     .await?;
 

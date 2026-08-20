@@ -17,6 +17,24 @@ use crate::page::{By, Cursor, Order, Page, Paging, Search};
 use crate::payment;
 use crate::ports::{Action, AuditEntry, Ctx, Event, Permit, Resource, Tx};
 
+/// The two predicates a customer list filters on, written once because two
+/// queries ask them: the page, and the `count(*)` behind `Paging::counting`.
+///
+/// `$1` is the scope and `$2` the search pattern, whichever query is running.
+macro_rules! customer_filter {
+    () => {
+        "
+         where scope = $1
+           and deleted_at is null
+           and ($2::text is null
+                or email ilike $2
+                or first_name ilike $2
+                or last_name ilike $2
+                or company_name ilike $2)
+"
+    };
+}
+
 const COLUMNS: &str = "id, email, first_name, last_name, phone, company_name, has_account, \
                        metadata, anonymised_at, created_at, updated_at";
 
@@ -274,18 +292,18 @@ pub async fn list(
     let after_text = paging.after.as_ref().and_then(|c| c.text_key());
 
     let rows = sqlx::query_as::<_, Customer>(&format!(
-        "select {COLUMNS} from customer
-         where scope = $1
-           and deleted_at is null
-           and ($2::text is null
-                or email ilike $2
-                or first_name ilike $2
-                or last_name ilike $2
-                or company_name ilike $2)
-           and ($3::timestamptz is null or (created_at, id) {beyond} ($3, $4))
+        concat!(
+            "select {COLUMNS} from customer",
+            customer_filter!(),
+            "           and ($3::timestamptz is null or (created_at, id) {beyond} ($3, $4))
            and ($5::text is null or ({column}::text, id) {beyond} ($5, $4))
          order by {column} {direction}, id {direction}
          limit $6"
+        ),
+        COLUMNS = COLUMNS,
+        beyond = beyond,
+        direction = direction,
+        column = column,
     ))
     .bind(ctx.scope.0)
     .bind(filter.search.as_ref().map(Search::pattern))
@@ -296,13 +314,33 @@ pub async fn list(
     .fetch_all(&mut **tx)
     .await?;
 
+    // The same two predicates, from the same macro, without the cursor and
+    // without the limit. A count assembled from a second copy of the where
+    // clause is one fact with two answers.
+    let total = if paging.counts() {
+        let (count,): (i64,) =
+            sqlx::query_as(concat!("select count(*) from customer", customer_filter!()))
+                .bind(ctx.scope.0)
+                .bind(filter.search.as_ref().map(Search::pattern))
+                .fetch_one(&mut **tx)
+                .await?;
+        Some(count)
+    } else {
+        None
+    };
+
     // A guest with no address sorts under the empty string, which is where it
     // also appears in the list — the two have to agree or the page after it
     // starts somewhere else.
-    Ok(Page::build(rows, paging, |row| match filter.by {
+    let page = Page::build(rows, paging, |row| match filter.by {
         By::Created | By::Title => Cursor::at(row.created_at, row.id.as_uuid()),
         By::Email => Cursor::text(row.email.clone().unwrap_or_default(), row.id.as_uuid()),
-    }))
+    });
+
+    Ok(match total {
+        Some(total) => page.counting(total),
+        None => page,
+    })
 }
 
 pub async fn update(

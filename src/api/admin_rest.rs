@@ -128,15 +128,24 @@ pub struct ListCustomers {
     pub order: Option<crate::page::Order>,
     /// Which column. `created` is the default; `email` is the other one.
     pub by: Option<crate::page::By>,
+    /// Asks how many customers match, as well as this page of them. Off
+    /// unless asked: it is a second query over the whole match.
+    pub count: Option<bool>,
 }
 
 impl ListCustomers {
-    fn paging(&self) -> Result<Paging> {
-        List {
+    fn listing(&self) -> Result<Paging> {
+        let paging = List {
             after: self.after.clone(),
             limit: self.limit,
         }
-        .paging()
+        .paging()?;
+
+        Ok(if self.count.unwrap_or(false) {
+            paging.counting()
+        } else {
+            paging
+        })
     }
 }
 
@@ -154,7 +163,7 @@ pub async fn list_customers(
                 order: query.order.unwrap_or(crate::page::Order::Newest),
                 by: query.by.unwrap_or_default(),
             },
-            query.paging()?,
+            query.listing()?,
         )
         .await?,
         CustomerView::from,

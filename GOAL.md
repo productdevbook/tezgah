@@ -338,10 +338,10 @@ In the library:
 - [ ] the query string of the other 480 operations in the document — three
       describe theirs (#254); the rest still answer with their path
       parameters alone
-- [ ] a count beside a page on every list. `Page<T>` carries `total` now and
-      `GET /admin/products` answers it when asked — the predicates live in one
-      macro both queries read, so the count cannot drift from the page. The
-      rest of the lists still say `null`
+- [ ] a count beside a page on every list. `Page<T>` carries `total`, and the
+      three lists that filter — products, orders, customers — answer it when
+      asked, each from a macro both its queries read so the count cannot drift
+      from the page. The rest still say `null`
 - [ ] something that *acts* on a payment provider's callback. There is a
       route now — `POST /webhooks/payments/{provider}` on its own surface,
       signed, mounted only with a secret, and a redelivery lands once — but

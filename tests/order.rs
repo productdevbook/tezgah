@@ -2609,6 +2609,46 @@ async fn an_order_is_found_by_its_email_or_its_number() -> tezgah::Result<()> {
     let nobody = order::list(&mut tx, &ctx, searching("nobody"), Paging::first(10)).await?;
     assert!(nobody.is_empty());
 
+    // The count answers the same question the page did — including the search
+    // and the drafts flag, which is why both queries read one macro.
+    assert_eq!(
+        order::list(&mut tx, &ctx, searching("ADA@"), Paging::first(10))
+            .await?
+            .total,
+        None,
+        "a list nobody counted came back counted"
+    );
+    assert_eq!(
+        order::list(
+            &mut tx,
+            &ctx,
+            searching("ADA@"),
+            Paging::first(10).counting()
+        )
+        .await?
+        .total,
+        Some(1)
+    );
+    assert_eq!(
+        order::list(
+            &mut tx,
+            &ctx,
+            OrderFilter::default(),
+            Paging::first(1).counting()
+        )
+        .await?
+        .total,
+        Some(2),
+        "the count is of every match, not of the page"
+    );
+    assert_eq!(
+        order::list(&mut tx, &ctx, drafts_only(), Paging::first(10).counting())
+            .await?
+            .total,
+        Some(0),
+        "zero is a real answer and is not null"
+    );
+
     tx.rollback().await.expect("to roll back");
     shop.close().await;
     Ok(())

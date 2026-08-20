@@ -81,7 +81,7 @@ export function Customers({
     {
       after,
       onAfterChange,
-      query: { q, by },
+      query: { q, by, count: "true" },
     }
   )
   return (
