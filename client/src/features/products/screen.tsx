@@ -111,6 +111,14 @@ export function Products({
       <DataTable
         paged={paged}
         columns={columns}
+        rowLink={(row) => (
+          <Link
+            to="/products/$id"
+            params={{ id: row.id }}
+            className="absolute inset-0"
+            aria-label={`Open ${row.title}`}
+          />
+        )}
         empty={{
           title: "No products",
           description:

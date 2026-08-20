@@ -59,6 +59,27 @@ export type Promotion = z.infer<typeof promotion>
 export const subscription = GetAdminSubscriptionsByIdResponse
 export type Subscription = z.infer<typeof subscription>
 
+/**
+ * `src/api/subscription.rs` — `ContractView`: `SubscriptionView` flattened
+ * with `lines`. `GET /admin/subscriptions/{id}` returns this, not
+ * `SubscriptionView` alone, but `src/api/openapi.rs` names the latter for
+ * that operation — a documentation bug, not a client one — so `lines` is
+ * added by hand rather than trusted to the generated schema above.
+ */
+export const subscriptionLine = z.object({
+  variant_id: z.string(),
+  title: z.string().nullable(),
+  quantity: z.number().int(),
+  unit_price: z.string(),
+  currency_code: z.string(),
+})
+export type SubscriptionLine = z.infer<typeof subscriptionLine>
+
+export const subscriptionContract = subscription.extend({
+  lines: z.array(subscriptionLine),
+})
+export type SubscriptionContract = z.infer<typeof subscriptionContract>
+
 export const region = GetAdminRegionsByIdResponse
 export type Region = z.infer<typeof region>
 
@@ -142,15 +163,22 @@ export const createPublishableKey = z.object({
 export type CreatePublishableKey = z.infer<typeof createPublishableKey>
 
 /**
- * `src/api/admin_rest.rs` — `IssuedKeyView`: `PublishableKeyView` flattened
- * with the raw `token`, sent once. Not documented — see above.
+ * `src/api/admin_rest.rs` — `PublishableKeyView`. What `GET
+ * /admin/publishable-api-keys` lists — no `token`, which only the moment a
+ * key is minted ever carries. Not documented — see above.
  */
-export const issuedKey = z.object({
+export const publishableKey = z.object({
   id: z.string(),
   title: z.string(),
   revoked_at: z.string().nullable(),
   last_used_at: z.string().nullable(),
   created_at: z.string(),
-  token: z.string(),
 })
+export type PublishableKey = z.infer<typeof publishableKey>
+
+/**
+ * `src/api/admin_rest.rs` — `IssuedKeyView`: `PublishableKeyView` flattened
+ * with the raw `token`, sent once. Not documented — see above.
+ */
+export const issuedKey = publishableKey.extend({ token: z.string() })
 export type IssuedKey = z.infer<typeof issuedKey>

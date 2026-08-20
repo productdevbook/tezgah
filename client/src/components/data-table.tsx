@@ -4,6 +4,7 @@ import {
   type ColumnDef,
   type RowData,
 } from "@tanstack/react-table"
+import type { ReactNode } from "react"
 
 import { QueryState } from "@/components/query-state"
 import { Button } from "@/components/ui/button"
@@ -31,10 +32,18 @@ export function DataTable<T extends RowData>({
   paged,
   columns,
   empty,
+  rowLink,
 }: {
   paged: PagedList<T>
   columns: Columns<T>
   empty: { title: string; description: string }
+  /**
+   * A row goes to `rowLink(row)`'s address by way of a real anchor stretched
+   * over it — `absolute inset-0` inside the row's first cell, the row itself
+   * `position: relative` — never an `onClick`, which a middle click or
+   * "open in new tab" would silently do nothing with.
+   */
+  rowLink?: (row: T) => ReactNode
 }) {
   return (
     <QueryState query={paged.result} empty={empty}>
@@ -44,7 +53,7 @@ export function DataTable<T extends RowData>({
         ) : (
           <>
             <div className="rounded-md border">
-              <Rows items={page.items} columns={columns} />
+              <Rows items={page.items} columns={columns} rowLink={rowLink} />
             </div>
             {paged.hasPrevious || page.next ? (
               <div className="flex items-center justify-end gap-2 pt-3">
@@ -76,9 +85,11 @@ export function DataTable<T extends RowData>({
 function Rows<T extends RowData>({
   items,
   columns,
+  rowLink,
 }: {
   items: T[]
   columns: Columns<T>
+  rowLink?: (row: T) => ReactNode
 }) {
   const table = useTable({ features, columns, data: items })
 
@@ -97,9 +108,10 @@ function Rows<T extends RowData>({
       </TableHeader>
       <TableBody>
         {table.getRowModel().rows.map((row) => (
-          <TableRow key={row.id}>
-            {row.getAllCells().map((cell) => (
+          <TableRow key={row.id} className={rowLink ? "relative" : undefined}>
+            {row.getAllCells().map((cell, index) => (
               <TableCell key={cell.id} className={styling(cell.column.columnDef)}>
+                {rowLink && index === 0 ? rowLink(row.original) : null}
                 <table.FlexRender cell={cell} />
               </TableCell>
             ))}

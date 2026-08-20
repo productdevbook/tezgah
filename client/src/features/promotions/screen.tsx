@@ -1,3 +1,5 @@
+import { Link } from "@tanstack/react-router"
+
 import { promotion, type Promotion } from "@/api/schemas"
 import { DataTable, type Columns } from "@/components/data-table"
 import { Badge } from "@/components/ui/badge"
@@ -59,6 +61,14 @@ export function Promotions({
       <DataTable
         paged={paged}
         columns={columns}
+        rowLink={(row) => (
+          <Link
+            to="/promotions/$id"
+            params={{ id: row.id }}
+            className="absolute inset-0"
+            aria-label={`Open ${row.code}`}
+          />
+        )}
         empty={{ title: "No promotions", description: "Nothing is on offer." }}
       />
     </div>

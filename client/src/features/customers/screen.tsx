@@ -1,3 +1,5 @@
+import { Link } from "@tanstack/react-router"
+
 import { customer, type Customer } from "@/api/schemas"
 import { DataTable, type Columns } from "@/components/data-table"
 import { Badge } from "@/components/ui/badge"
@@ -65,6 +67,14 @@ export function Customers({
       <DataTable
         paged={paged}
         columns={columns}
+        rowLink={(row) => (
+          <Link
+            to="/customers/$id"
+            params={{ id: row.id }}
+            className="absolute inset-0"
+            aria-label={`Open ${name(row) ?? "customer"}`}
+          />
+        )}
         empty={{ title: "No customers", description: "Nobody has shopped yet." }}
       />
     </div>
