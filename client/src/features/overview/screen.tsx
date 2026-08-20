@@ -92,7 +92,7 @@ export function Overview() {
               {group.title}
             </h2>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              {group.sections.map((section) => (
+              {group.sections.filter((s) => !s.folded).map((section) => (
                 <div
                   key={section.slug}
                   className="flex items-center justify-between gap-2 rounded-md border px-3 py-2"
