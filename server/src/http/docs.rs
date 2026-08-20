@@ -19,7 +19,14 @@ use axum::{
 use serde_json::Value;
 
 /// Two routes, and neither is one of tezgah's 483 — they describe them.
-pub fn router() -> Router {
+///
+/// Generic over the state it is merged into: it holds none of its own, and
+/// the document it answers with comes from the route table rather than from
+/// anything a request carries.
+pub fn router<S>() -> Router<S>
+where
+    S: Clone + Send + Sync + 'static,
+{
     Router::new()
         .route("/openapi.json", get(document))
         .route("/docs", get(reference))
