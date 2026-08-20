@@ -127,12 +127,13 @@ pub fn router(state: AppState) -> (Router, Bound) {
         // unmatched path, not just this router's own. `route_layer` only
         // wraps matched routes, so a path nothing binds still reaches the
         // ordinary 404 rather than this middleware.
-        let admin_router = admin_router
-            .merge(auth::gated_router())
-            .route_layer(middleware::from_fn_with_state(
-                gate,
-                admin::require_operator,
-            ));
+        let admin_router =
+            admin_router
+                .merge(auth::gated_router())
+                .route_layer(middleware::from_fn_with_state(
+                    gate,
+                    admin::require_operator,
+                ));
         app = app.merge(admin_router).merge(auth::open_router());
         bound.extend(admin_bound);
     }

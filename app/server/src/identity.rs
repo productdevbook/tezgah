@@ -19,9 +19,9 @@
 //! accepted, and `main.rs` says so at startup rather than leaving it to be
 //! discovered.
 
+use argon2::Argon2;
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
-use argon2::Argon2;
 use chrono::{DateTime, Duration, Utc};
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
@@ -137,11 +137,7 @@ fn password_matches(password: &str, stored: &str) -> bool {
 /// 244 bits out of the operating system's own generator, which is the only
 /// property a session token needs.
 fn mint_token() -> String {
-    format!(
-        "{}{}",
-        Uuid::new_v4().simple(),
-        Uuid::new_v4().simple()
-    )
+    format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple())
 }
 
 /// What is stored. A session table full of usable tokens is a second password
@@ -285,11 +281,7 @@ pub async fn change_password(
 
 /// The same answer — `denied` — for an address nobody holds and a password
 /// that is wrong, so this cannot be asked which addresses exist.
-pub async fn sign_in(
-    pool: &PgPool,
-    email: &str,
-    password: &str,
-) -> tezgah::Result<IssuedSession> {
+pub async fn sign_in(pool: &PgPool, email: &str, password: &str) -> tezgah::Result<IssuedSession> {
     let found: Option<(Uuid, String, String, String, Option<DateTime<Utc>>)> = sqlx::query_as(
         "select id, email, name, password_hash, disabled_at
          from server_operator
@@ -376,6 +368,5 @@ pub async fn drop_expired_sessions(pool: &PgPool) -> tezgah::Result<u64> {
 /// `ADMIN_TOKEN`, checked the way it always was — in constant time, so a
 /// byte-by-byte timing difference cannot be used to guess it.
 pub fn is_admin_token(presented: &str, expected: &str) -> bool {
-    presented.len() == expected.len()
-        && bool::from(presented.as_bytes().ct_eq(expected.as_bytes()))
+    presented.len() == expected.len() && bool::from(presented.as_bytes().ct_eq(expected.as_bytes()))
 }

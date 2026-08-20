@@ -28,6 +28,23 @@ publishable key, and `seed` writes the smallest set of those a storefront can
 check out from. `app/server/README.md`'s "Seeding a shop" section says what it
 prints and why running it twice is safe.
 
+Then make yourself an account, because `ADMIN_TOKEN` is a shared secret and
+an audit row written under it names nobody:
+
+```sh
+curl -X POST http://localhost:8081/admin/operators \
+  -H "authorization: Bearer $ADMIN_TOKEN" \
+  -H "content-type: application/json" \
+  -d '{"email": "you@example.com", "name": "You", "password": "a long one"}'
+```
+
+Sign in with that at the panel from then on. Sessions last thirty days and
+end when the account is disabled or its password changes. There is no
+invitation e-mail and no password reset: this server has no mailer, and a
+reset link it cannot send would be worse than one it never offered — which is
+why `ADMIN_TOKEN` is worth keeping somewhere safe rather than throwing away
+once accounts exist.
+
 `postgres` has to answer its own healthcheck before `tezgah-server` starts,
 and `tezgah-server` has to answer `GET /health` before `tezgah-panel` starts —
 `docker-compose.yml`'s `depends_on: condition: service_healthy` is why `up -d`
@@ -43,7 +60,7 @@ directly rather than through the panel's own `/api/` proxy.
 | `POSTGRES_USER` | postgres, and built into `DATABASE_URL` | `tezgah` | the database role Postgres creates on first start |
 | `POSTGRES_PASSWORD` | postgres, and built into `DATABASE_URL` | — required | change this before the first `up` — Postgres sets it once, from the empty volume, and ignores a later change to `.env` |
 | `POSTGRES_DB` | postgres, and built into `DATABASE_URL` | `tezgah` | the database name |
-| `ADMIN_TOKEN` | tezgah-server | — unset | the bearer token every `/admin/*` request must carry. Unset (or empty), and tezgah-server does not serve `/admin/*` at all — no admin surface answering with no token or a weak one |
+| `ADMIN_TOKEN` | tezgah-server | — unset | the shared secret that makes the first operator account, and the way back in when a password is lost. It is not a person: an audit row written under it names nobody. With neither a token nor an operator account, tezgah-server does not serve `/admin/*` at all |
 | `TEZGAH_DEMO_BANK` | tezgah-server | — unset | set to exactly `i-understand-this-takes-no-money` to run checkout against the one payment provider this binary ships — a demo that authorises every charge and takes no real money. Unset (or any other value), and `POST /store/carts/{id}/complete` is not bound at all. See [Taking real money](#taking-real-money) below |
 | `SERVER_PORT` | tezgah-server, and tezgah-panel's upstream | `8080` | the port tezgah-server listens on inside its own container |
 | `SERVER_HTTP_PORT` | Compose only | `8081` | the host port tezgah-server is published on |

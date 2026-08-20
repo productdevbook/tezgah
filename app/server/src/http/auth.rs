@@ -13,8 +13,8 @@
 //! one it never offered — `ADMIN_TOKEN` is the way back in.
 
 use axum::extract::{Path, State};
-use axum::{Extension, Json, Router};
 use axum::routing::{get, patch, post};
+use axum::{Extension, Json, Router};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -129,14 +129,18 @@ async fn set_own_password(
     Json(body): Json<NewPassword>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let Caller::Session { operator, token } = &caller else {
-        return Err(tezgah::Error::invalid(
-            "an ADMIN_TOKEN holder has no password to change",
-        )
-        .into());
+        return Err(
+            tezgah::Error::invalid("an ADMIN_TOKEN holder has no password to change").into(),
+        );
     };
 
-    identity::change_password(&state.pool, operator.id, &body.password, Some(token.as_str()))
-        .await?;
+    identity::change_password(
+        &state.pool,
+        operator.id,
+        &body.password,
+        Some(token.as_str()),
+    )
+    .await?;
     Ok(Json(serde_json::json!({ "changed": true })))
 }
 
@@ -206,6 +210,8 @@ impl Caller {
     /// than a made-up identity, and `Actor::Staff` either way because a shared
     /// secret is still the back office rather than the system.
     pub fn actor_id(&self) -> Uuid {
-        self.operator().map(|operator| operator.id).unwrap_or(Uuid::nil())
+        self.operator()
+            .map(|operator| operator.id)
+            .unwrap_or(Uuid::nil())
     }
 }

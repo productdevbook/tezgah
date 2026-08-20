@@ -64,14 +64,16 @@ them is the whole difference between the shapes:
 
 | Port | An application embedding it | `app/` — one shop, self-hosted |
 |---|---|---|
-| `Authorizer` | its own role engine | **grants everything; a bearer token stands in front** |
+| `Authorizer` | its own role engine | grants everything; accounts and sessions stand in front |
 | `AuditSink` | its own audit log | a JSON line on stdout |
 | `EventSink` | its own bus or outbox | a JSON line on stdout |
 | `Jobs` | its own queue and workers | `server_job`, claimed by a worker that dispatches nothing |
 | `Clock` | its own | `Utc::now()` |
 
-The bold entry is the honest shape of the self-hosted product today, and the
-next section is the rest of it.
+The right-hand column is the honest shape of the self-hosted product today,
+and the next section is the rest of it. Only the first row has a person behind
+it; the other four are still a JSON line on stdout, a table nothing dispatches
+from, and the system clock.
 
 ## Where this arrangement is not finished
 
@@ -115,28 +117,31 @@ Filed as #151 and #152; it is a `ports.rs`-level decision, not a patch.
 
 ### The self-hosted app
 
-**There are no accounts.** One `ADMIN_TOKEN`, shared, pasted into a browser's
-`localStorage`. No users, no sessions, no invitations, no revocation, and —
-because every request arrives as the same anonymous actor — no audit trail
-that can answer who changed a price. `Actor::Staff { id }` has been in the
-library the whole time and nothing has ever produced one. This is the gap that
-decides whether a self-hosted tezgah can be sold to a business with two
-employees, and it belongs in `app/server`, not in the crate: the library asks
-an `Authorizer` on purpose and must keep asking.
+**There are accounts, and no way to invite anybody to one.** Operators,
+argon2id passwords and sessions that expire live in `app/server/src/identity.rs`,
+and `ADMIN_TOKEN` stays beside them as what it always was — the way to make
+the first account and the way back in when the last password is lost.
+`Actor::Staff` now carries a real id for a signed-in operator, so an audit row
+can say who changed a price; for an `ADMIN_TOKEN` request it carries the nil
+uuid, visibly, because a shared secret is not a person. What is still missing
+is everything that needs a mailer: an invitation, a password reset, a
+notification that an account was made. There is no mailer, and a reset link a
+server cannot send is worse than one it never offered.
 
-**Nothing runs on a schedule, so two sweeps never run.** `cart::expire` and
-`inventory::expire_reservations` are called by tests and by nothing else —
-`tests/reachable.rs` tolerates both with the reason "a sweep a host runs on a
-schedule". `app/` is now that host and runs neither. On the shipped image,
-abandoned carts are never cleared and the stock they reserved is held for
-ever. The `Jobs` port is enqueue-only by design; recurrence is the host's, and
-the host has none.
+**Authentication, not authorization.** Whoever clears the gate reaches the
+crate as `Actor::Staff`, and the app's `Authorizer` grants every `Action` to
+it — `View` and `Write` and `Delete` alike. The seam for a split is already
+there: `authorize` receives the `Action` on every call and the request now
+carries who is asking. Nothing answers it yet.
 
-**The job worker dispatches nothing.** `host::spawn_worker` claims rows with
-`for update skip locked`, prints them and marks them processed. The crate
-enqueues exactly one job kind in 62,000 lines — a subscription's dunning
-retry — and that is the one thing the loop does not act on, so a declined
-renewal is retried never.
+**The sweeps run; the jobs still do not.** `cart::expire` and
+`inventory::expire_reservations` are called every five minutes by
+`app/server/src/schedule.rs` — before that they were called by tests and by
+nothing else, so on the shipped image an abandoned cart was never cleared and
+the stock it reserved was held for ever. What still does not run is the queue:
+the crate enqueues exactly one job kind, a subscription's dunning retry, and
+the worker claims it, prints it and marks it processed. So a declined renewal
+is retried never.
 
 **Events go to stdout.** No outbox, no subscriber, no delivery, no retry. A
 shop that wants `order.paid` to reach its own systems, or to become an e-mail,

@@ -42,12 +42,13 @@ which layer owns each, is [`docs/architecture.md`](../docs/architecture.md).
 
 ## What it is not, yet
 
-Read that document before assuming this is a finished product. In short: there
-are no user accounts — one shared bearer token stands in for every operator —
-nothing runs on a schedule, so abandoned carts are never swept and the stock
-they hold is never released, the job worker dispatches nothing, events and
-audit entries go to stdout, and 111 of the library's 483 declared routes are
-bound.
+Read that document before assuming this is a finished product. In short:
+there is authentication and no authorization — every operator can do
+everything; nothing can send a letter, so there is no invitation and no
+password reset; the job worker dispatches nothing, so a declined subscription
+renewal is retried never; events and audit entries go to stdout; a product
+image can only be a URL somebody else hosts; and 111 of the library's 483
+declared routes are bound.
 
 Each of those is written down rather than discovered, and each says which side
 of the seam it belongs to.
