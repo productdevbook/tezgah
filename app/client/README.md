@@ -35,8 +35,16 @@ CSV and takes the same columns back — which is how a shop changes four
 hundred prices, and it works because the export's columns and the import's
 are the same. Multi-select is on the products list beside it —
 `POST /admin/products/batch` takes rows to write and ids to delete, and a
-bulk delete is that call with no rows. An edit grid in the browser is still
-absent, and the round trip is what a shop uses instead.
+bulk delete is that call with no rows. The edit grid is one screen:
+`/pricing/prices` types an amount in place for every price in a set and
+writes them with one `POST /admin/prices/batch`. It can exist because that
+route takes them together — a grid saving a row at a time would be a hundred
+requests and a half-applied page if one failed.
+
+Only the amount is editable there. A currency, a quantity band and a rule are
+what make a price the price it is; changing one is making a different price,
+which is a different call. Everywhere else, the round trip is what a shop
+uses.
 
 The checkbox column is off unless a screen passes `select`, because a
 checkbox on a list with no bulk action is a control that does nothing. A

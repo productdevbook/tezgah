@@ -237,8 +237,10 @@ and splitting six across three drawers is ceremony.
 **Bulk is a round trip.** A page of variants out as CSV, edited, and back in
 — the export's columns and the import's are the same, which is what makes it
 one. Multi-select and a bulk delete are on the products
-list; an edit grid in the browser is still absent, and the round trip is what
-a shop changing four hundred prices reaches for anyway.
+list; and prices have an edit grid, which they can have because
+their batch route takes the rows together. A list whose writes are one row at
+a time cannot have a grid worth using, and the round trip is what a shop
+changing four hundred of anything else reaches for.
 
 **Mountable in what it says, not in how it routes.** No screen reaches for a
 global any more: where the API is, what token to send, what to do when it is
