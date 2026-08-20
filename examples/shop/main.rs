@@ -47,7 +47,7 @@
 //!
 //! # What it does not do
 //!
-//! `tests/snapshots/openapi.json` names 483 operations; this walks five of
+//! `tests/snapshots/openapi.json` names 486 operations; this walks five of
 //! them by calling their handler functions directly. Every admin route,
 //! every catalogue write, and every agreement, credit, digital,
 //! inventory-lot, order-basket, payout, subscription and tax-identity route

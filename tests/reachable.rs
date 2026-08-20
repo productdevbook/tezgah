@@ -103,7 +103,7 @@ use std::path::{Path, PathBuf};
 
 /// Public functions nothing in the crate calls, each with the reason.
 /// Adding to this is not a fix.
-const TOLERATED: [(&str, &str); 33] = [
+const TOLERATED: [(&str, &str); 30] = [
     (
         "batch::import_workflow",
         "the import workflow a host runs through the runner when a file is large \
@@ -201,24 +201,11 @@ const TOLERATED: [(&str, &str); 33] = [
          its own way",
     ),
     (
-        "payment::record_webhook",
-        "the host's webhook handler writes the event, acts on it and marks it; no \
-         route receives a provider's callback for it",
-    ),
-    (
-        "payment::mark_processed",
-        "the host's webhook handler writes the event, acts on it and marks it; no \
-         route receives a provider's callback for it",
-    ),
-    (
         "payment::mark_failed",
-        "the host's webhook handler writes the event, acts on it and marks it; no \
-         route receives a provider's callback for it",
-    ),
-    (
-        "payment::unprocessed",
-        "the host's webhook handler writes the event, acts on it and marks it; no \
-         route receives a provider's callback for it",
+        "the host writes down that acting on a callback failed; nothing acts on \
+         one yet — `POST /webhooks/payments/{provider}` records the delivery \
+         and `GET /admin/payment-webhooks` hands it back, and what happens \
+         next is still the host's to write",
     ),
     (
         "pricing::link_shipping_option",

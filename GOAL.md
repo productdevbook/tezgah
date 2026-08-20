@@ -60,10 +60,10 @@ served them, and nothing drew them. [`examples/shop`](examples/shop) is a shop
 that runs — axum over the route table, all five ports implemented including a
 job worker that actually runs what it enqueues, and a `PaymentProvider` built
 over `dyn kasapay_core::Provider`, which is the first thing outside that
-module's own tests to lean on the mapping. It binds 6 of the 483 operations,
+module's own tests to lean on the mapping. It binds 6 of the 486 operations,
 enough to walk browse → cart → checkout → order, and says so. [`app/client/`](app/client)
 is an admin panel over the same surface, with screens for products, orders and
-inventory — 228 of the 483 operations behind a screen, and every section that
+inventory — 228 of the 486 operations behind a screen, and every section that
 has none saying how many it is not drawing. Neither is in the crate: depending
 on tezgah pulls in no axum and no React.
 
@@ -339,10 +339,12 @@ In the library:
       describe theirs (#254); the rest still answer with their path
       parameters alone
 - [ ] a count beside a page, so a back office can say "1–50 of 41,309"
-- [ ] a route a payment provider's callback can reach —
-      `payment::record_webhook` is written and tested and no path in
-      `src/api/` declares it, so an asynchronously confirmed payment has
-      nowhere to be confirmed to
+- [ ] something that *acts* on a payment provider's callback. There is a
+      route now — `POST /webhooks/payments/{provider}` on its own surface,
+      signed, mounted only with a secret, and a redelivery lands once — but
+      it records and answers. Capturing or moving an order's state from what
+      the provider said is provider-specific mapping, and
+      `GET /admin/payment-webhooks` is where what has arrived waits
 - [ ] the 89 routes that answer `not_found` where they mean `denied`, because
       the owner is only known once the row is loaded (#151, #152)
 
@@ -366,7 +368,7 @@ In `app/`:
       its reason. What is left is a mailer — so an invitation, a notification
       and a reset link can exist — and a file store, so a product image is not
       a URL somebody else hosts
-- [ ] the rest of the route table: 113 of 483 bound by hand, 228 drawn by the
+- [ ] the rest of the route table: 116 of 486 bound by hand, 228 drawn by the
       panel. Counted from the other side: of the 77 `/admin/…/{id}/…`
       sub-routes, 70 were drawn by no screen and ten of those were already
       bound — the panel had simply never asked. Those ten are drawn now, and

@@ -6,12 +6,15 @@
  * OpenAPI spec version: 0.0.0
  */
 import type {
+  CallbackView,
   CollectionView,
   GetAdminPaymentCollectionsByIdPaymentSessions200,
+  GetAdminPaymentWebhooks200,
   GetAdminPayments200,
   GetAdminRefundReasons200,
   PaymentProviderView,
   PaymentView,
+  ProviderCallback,
   ProviderView
 } from '../models';
 
@@ -216,6 +219,110 @@ export const getPostAdminPaymentCollectionsByIdPaymentSessionsUrl = (id: string,
 export const postAdminPaymentCollectionsByIdPaymentSessions = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminPaymentCollectionsByIdPaymentSessionsResponse> => {
 
   return apiMutator<postAdminPaymentCollectionsByIdPaymentSessionsResponse>(getPostAdminPaymentCollectionsByIdPaymentSessionsUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+export type getAdminPaymentWebhooksResponse200 = {
+  data: GetAdminPaymentWebhooks200
+  status: 200
+}
+
+export type getAdminPaymentWebhooksResponse400 = {
+  data: void
+  status: 400
+}
+
+export type getAdminPaymentWebhooksResponse403 = {
+  data: void
+  status: 403
+}
+
+export type getAdminPaymentWebhooksResponse404 = {
+  data: void
+  status: 404
+}
+
+export type getAdminPaymentWebhooksResponseSuccess = (getAdminPaymentWebhooksResponse200) & {
+  headers: Headers;
+};
+export type getAdminPaymentWebhooksResponseError = (getAdminPaymentWebhooksResponse400 | getAdminPaymentWebhooksResponse403 | getAdminPaymentWebhooksResponse404) & {
+  headers: Headers;
+};
+
+export type getAdminPaymentWebhooksResponse = (getAdminPaymentWebhooksResponseSuccess | getAdminPaymentWebhooksResponseError)
+
+export const getGetAdminPaymentWebhooksUrl = () => {
+
+
+
+
+  return `/admin/payment-webhooks`
+}
+
+/**
+ * @summary List callbacks received and not yet acted on
+ */
+export const getAdminPaymentWebhooks = async ( options?: Parameters<typeof apiMutator>[1]): Promise<getAdminPaymentWebhooksResponse> => {
+
+  return apiMutator<getAdminPaymentWebhooksResponse>(getGetAdminPaymentWebhooksUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+export type postAdminPaymentWebhooksByIdProcessedResponse200 = {
+  data: void
+  status: 200
+}
+
+export type postAdminPaymentWebhooksByIdProcessedResponse400 = {
+  data: void
+  status: 400
+}
+
+export type postAdminPaymentWebhooksByIdProcessedResponse403 = {
+  data: void
+  status: 403
+}
+
+export type postAdminPaymentWebhooksByIdProcessedResponse404 = {
+  data: void
+  status: 404
+}
+
+export type postAdminPaymentWebhooksByIdProcessedResponseSuccess = (postAdminPaymentWebhooksByIdProcessedResponse200) & {
+  headers: Headers;
+};
+export type postAdminPaymentWebhooksByIdProcessedResponseError = (postAdminPaymentWebhooksByIdProcessedResponse400 | postAdminPaymentWebhooksByIdProcessedResponse403 | postAdminPaymentWebhooksByIdProcessedResponse404) & {
+  headers: Headers;
+};
+
+export type postAdminPaymentWebhooksByIdProcessedResponse = (postAdminPaymentWebhooksByIdProcessedResponseSuccess | postAdminPaymentWebhooksByIdProcessedResponseError)
+
+export const getPostAdminPaymentWebhooksByIdProcessedUrl = (id: string,) => {
+
+
+
+
+  return `/admin/payment-webhooks/${id}/processed`
+}
+
+/**
+ * @summary Say a received callback has been acted on
+ */
+export const postAdminPaymentWebhooksByIdProcessed = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminPaymentWebhooksByIdProcessedResponse> => {
+
+  return apiMutator<postAdminPaymentWebhooksByIdProcessedResponse>(getPostAdminPaymentWebhooksByIdProcessedUrl(id),
   {
     ...options,
     method: 'POST'
@@ -1001,6 +1108,59 @@ export const getStorePaymentProviders = async ( options?: Parameters<typeof apiM
     method: 'GET'
 
 
+  }
+);}
+
+
+export type postWebhooksPaymentsByProviderResponse200 = {
+  data: CallbackView
+  status: 200
+}
+
+export type postWebhooksPaymentsByProviderResponse400 = {
+  data: void
+  status: 400
+}
+
+export type postWebhooksPaymentsByProviderResponse403 = {
+  data: void
+  status: 403
+}
+
+export type postWebhooksPaymentsByProviderResponse404 = {
+  data: void
+  status: 404
+}
+
+export type postWebhooksPaymentsByProviderResponseSuccess = (postWebhooksPaymentsByProviderResponse200) & {
+  headers: Headers;
+};
+export type postWebhooksPaymentsByProviderResponseError = (postWebhooksPaymentsByProviderResponse400 | postWebhooksPaymentsByProviderResponse403 | postWebhooksPaymentsByProviderResponse404) & {
+  headers: Headers;
+};
+
+export type postWebhooksPaymentsByProviderResponse = (postWebhooksPaymentsByProviderResponseSuccess | postWebhooksPaymentsByProviderResponseError)
+
+export const getPostWebhooksPaymentsByProviderUrl = (provider: string,) => {
+
+
+
+
+  return `/webhooks/payments/${provider}`
+}
+
+/**
+ * @summary Receive a payment provider's callback
+ */
+export const postWebhooksPaymentsByProvider = async (provider: string,
+    providerCallback: ProviderCallback, options?: Parameters<typeof apiMutator>[1]): Promise<postWebhooksPaymentsByProviderResponse> => {
+
+  return apiMutator<postWebhooksPaymentsByProviderResponse>(getPostWebhooksPaymentsByProviderUrl(provider),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(providerCallback)
   }
 );}
 

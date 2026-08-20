@@ -2444,6 +2444,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/payment-webhooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List callbacks received and not yet acted on */
+        get: operations["getAdminPaymentWebhooks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/payment-webhooks/{id}/processed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Say a received callback has been acted on */
+        post: operations["postAdminPaymentWebhooksByIdProcessed"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/payments": {
         parameters: {
             query?: never;
@@ -6264,6 +6298,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/webhooks/payments/{provider}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Receive a payment provider's callback */
+        post: operations["postWebhooksPaymentsByProvider"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -6401,6 +6452,14 @@ export interface components {
          *     the matching key gives an ordering that pages back to the beginning.
          */
         By: "created" | "title" | "email";
+        CallbackView: {
+            id: components["schemas"]["PaymentWebhookEventId"] | null;
+            /**
+             * @description `false` when this delivery has been seen before. The provider is
+             *     acknowledged either way; a redelivery just changes nothing.
+             */
+            recorded: boolean;
+        };
         /**
          * Format: uuid
          * @description Identifies one campaign.
@@ -7354,6 +7413,11 @@ export interface components {
          * @description Identifies one payment.
          */
         PaymentId: string;
+        /**
+         * Format: uuid
+         * @description Identifies one payment provider.
+         */
+        PaymentProviderId: string;
         PaymentProviderView: {
             code: string;
         };
@@ -7374,6 +7438,11 @@ export interface components {
             payment_collection_id: components["schemas"]["PaymentCollectionId"];
             payment_session_id: components["schemas"]["PaymentSessionId"] | null;
         };
+        /**
+         * Format: uuid
+         * @description Identifies one payment webhook event.
+         */
+        PaymentWebhookEventId: string;
         /**
          * Format: uuid
          * @description Identifies one payout.
@@ -7401,6 +7470,17 @@ export interface components {
             reference: string;
             /** Format: uuid */
             reference_id: string;
+        };
+        PendingCallbackView: {
+            /** Format: int32 */
+            attempts: number;
+            event_id: string;
+            event_type: string;
+            id: components["schemas"]["PaymentWebhookEventId"];
+            payload: unknown;
+            payment_provider_id: components["schemas"]["PaymentProviderId"];
+            /** Format: date-time */
+            received_at: string;
         };
         PriceChangeRow: {
             amount: string | number;
@@ -7558,6 +7638,30 @@ export interface components {
             usage_limit: number | null;
             /** Format: int32 */
             used: number;
+        };
+        /**
+         * @description What a provider sends, once the host has checked the signature.
+         *
+         *     The signature is not in here on purpose: it is over bytes this type has
+         *     already been parsed out of, and checking it against a re-serialised body
+         *     is how a valid signature stops matching. The host verifies the request it
+         *     received and then calls this.
+         *
+         *     `payload` is the provider's own body, kept verbatim — the audit trail
+         *     wants what arrived rather than what tezgah understood of it.
+         */
+        ProviderCallback: {
+            amount?: components["schemas"]["MoneyIn"] | null;
+            /**
+             * @description The provider's own id for this delivery. The same one arrives again
+             *     when they redeliver, which is what makes the write idempotent.
+             */
+            event_id: string;
+            /** @description The provider's name for it, kept for the audit trail. */
+            event_type: string;
+            kind: components["schemas"]["WebhookKind"];
+            payload: unknown;
+            session_id?: components["schemas"]["PaymentSessionId"] | null;
         };
         ProviderView: {
             code: string;
@@ -8252,6 +8356,7 @@ export interface components {
             width: string | null;
             withdrawal_exclusion: string | null;
         };
+        WebhookKind: ("authorized" | "captured" | "refunded" | "canceled" | "failed") | "other";
         WithdrawalNoticeView: {
             /** Format: date-time */
             notified_at: string | null;
@@ -16229,6 +16334,90 @@ export interface operations {
         };
     };
     postAdminPaymentCollectionsByIdPaymentSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The call succeeded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was not well formed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The host's authorizer refused. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such thing, or none this caller may see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getAdminPaymentWebhooks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The call succeeded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["PendingCallbackView"][];
+                    };
+                };
+            };
+            /** @description The request was not well formed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The host's authorizer refused. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such thing, or none this caller may see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postAdminPaymentWebhooksByIdProcessed: {
         parameters: {
             query?: never;
             header?: never;
@@ -28820,6 +29009,53 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description The request was not well formed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The host's authorizer refused. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such thing, or none this caller may see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postWebhooksPaymentsByProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderCallback"];
+            };
+        };
+        responses: {
+            /** @description The call succeeded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallbackView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {

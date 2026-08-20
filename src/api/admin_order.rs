@@ -22,8 +22,8 @@ use crate::fulfilment;
 use crate::id::{
     ClaimId, ExchangeId, FulfillmentId, FulfillmentSetId, InventoryItemId, LineItemId,
     OrderChangeId, OrderId, OrderItemId, PaymentCollectionId, PaymentId, PaymentProviderId,
-    PaymentSessionId, RefundReasonId, ReturnId, ServiceZoneId, ShippingOptionId, ShippingProfileId,
-    StockLocationId,
+    PaymentSessionId, PaymentWebhookEventId, RefundReasonId, ReturnId, ServiceZoneId,
+    ShippingOptionId, ShippingProfileId, StockLocationId,
 };
 use crate::money::{Currency, Money};
 use crate::order;
@@ -2725,6 +2725,147 @@ pub async fn get_payment(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: PaymentId) -> Resul
     Ok(payment::payment(tx, ctx, id).await?.into())
 }
 
+/// What a provider sends, once the host has checked the signature.
+///
+/// The signature is not in here on purpose: it is over bytes this type has
+/// already been parsed out of, and checking it against a re-serialised body
+/// is how a valid signature stops matching. The host verifies the request it
+/// received and then calls this.
+///
+/// `payload` is the provider's own body, kept verbatim — the audit trail
+/// wants what arrived rather than what tezgah understood of it.
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderCallback {
+    /// The provider's own id for this delivery. The same one arrives again
+    /// when they redeliver, which is what makes the write idempotent.
+    pub event_id: String,
+    /// The provider's name for it, kept for the audit trail.
+    pub event_type: String,
+    pub kind: payment::WebhookKind,
+    pub session_id: Option<PaymentSessionId>,
+    pub amount: Option<MoneyIn>,
+    pub payload: Value,
+}
+
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
+pub struct CallbackView {
+    /// `false` when this delivery has been seen before. The provider is
+    /// acknowledged either way; a redelivery just changes nothing.
+    pub recorded: bool,
+    pub id: Option<PaymentWebhookEventId>,
+}
+
+/// Writes down what a provider said before anything acts on it.
+///
+/// A redelivery lands once: the insert is `on conflict do nothing` against
+/// `(scope, provider, event_id)`, so the second arrival writes no row, changes
+/// nothing, and is acknowledged. That is the whole reason a provider's
+/// callback goes through a table rather than straight into a capture.
+///
+/// Recording is deliberately all this does. Acting on the event — capturing,
+/// moving an order's state — is a second step against a row that is now
+/// durable, so a crash between the two resumes rather than loses.
+pub async fn receive_callback(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    provider_code: &str,
+    body: ProviderCallback,
+) -> Result<CallbackView> {
+    let amount = match body.amount {
+        Some(amount) => Some(amount.money()?),
+        None => None,
+    };
+
+    let event = payment::WebhookEvent {
+        event_id: body.event_id,
+        kind: body.kind,
+        event_type: body.event_type,
+        session_id: body.session_id,
+        amount,
+        payload: body.payload,
+    };
+
+    match payment::record_webhook(tx, ctx, provider_code, &event).await? {
+        payment::WebhookOutcome::Fresh { id } => Ok(CallbackView {
+            recorded: true,
+            id: Some(id),
+        }),
+        payment::WebhookOutcome::AlreadySeen => Ok(CallbackView {
+            recorded: false,
+            id: None,
+        }),
+    }
+}
+
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
+pub struct PendingCallbackView {
+    pub id: PaymentWebhookEventId,
+    pub payment_provider_id: PaymentProviderId,
+    pub event_id: String,
+    pub event_type: String,
+    pub payload: Value,
+    pub attempts: i32,
+    pub received_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl From<payment::PendingWebhook> for PendingCallbackView {
+    fn from(row: payment::PendingWebhook) -> Self {
+        PendingCallbackView {
+            id: row.id,
+            payment_provider_id: row.payment_provider_id,
+            event_id: row.event_id,
+            event_type: row.event_type,
+            payload: row.payload,
+            attempts: row.attempts,
+            received_at: row.received_at,
+        }
+    }
+}
+
+/// Its own struct rather than `api::PagingQuery`, which carries `JsonSchema`
+/// and deliberately no `Deserialize` — it exists to be described once in the
+/// document, not to be read from a query string. This is how the other lists
+/// in this module take theirs.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ListCallbacks {
+    pub after: Option<String>,
+    pub limit: Option<u32>,
+}
+
+/// What arrived and has not been acted on, oldest first.
+pub async fn pending_callbacks(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    query: ListCallbacks,
+) -> Result<Page<PendingCallbackView>> {
+    let limit = query.limit.unwrap_or(crate::page::DEFAULT_LIMIT);
+    let paging = match query.after.as_deref() {
+        Some(text) => Paging::after(Cursor::decode(text)?, limit),
+        None => Paging::first(limit),
+    };
+
+    let page = payment::unprocessed(tx, ctx, paging).await?;
+    Ok(Page {
+        items: page
+            .items
+            .into_iter()
+            .map(PendingCallbackView::from)
+            .collect(),
+        next: page.next,
+    })
+}
+
+/// Says one has been acted on, so it stops coming back.
+pub async fn callback_processed(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: PaymentWebhookEventId,
+) -> Result<()> {
+    payment::mark_processed(tx, ctx, id).await
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CapturePayment {
@@ -4600,6 +4741,31 @@ pub(super) static ROUTES: &[Route] = &[
         "payment",
         "Give back money that was taken"
     ),
+    // A provider's callback, and the two routes that make what it leaves
+    // behind visible. The inbound one is neither a shopper's nor a back
+    // office's: what authenticates it is a signature the host checks, because
+    // the secret belongs to whoever configured the provider.
+    Route {
+        surface: Surface::Webhook,
+        method: Method::Post,
+        path: "/webhooks/payments/{provider}",
+        action: Action::Write,
+        domain: "payment",
+        query: None,
+        summary: "Receive a payment provider's callback",
+    },
+    paged!(
+        "/admin/payment-webhooks",
+        "payment",
+        "List callbacks received and not yet acted on"
+    ),
+    route!(
+        Post,
+        "/admin/payment-webhooks/{id}/processed",
+        Write,
+        "payment",
+        "Say a received callback has been acted on"
+    ),
     route!(
         Post,
         "/admin/orders/{id}/refund-to-credit",
@@ -4929,10 +5095,23 @@ mod tests {
         }
     }
 
+    /// One exception, and it is the whole reason `Surface::Webhook` exists: a
+    /// payment provider's callback belongs to this domain and to neither of
+    /// the two audiences. It is checked here rather than exempted, so a second
+    /// route quietly landing on that surface has to be argued for.
     #[test]
-    fn every_route_is_on_the_admin_surface() {
+    fn every_route_is_on_the_admin_surface_but_the_provider_callback() {
+        let mut elsewhere = Vec::new();
         for route in ROUTES {
-            assert_eq!(route.surface, Surface::Admin, "{} is not admin", route.path);
+            if route.surface != Surface::Admin {
+                elsewhere.push((route.surface, route.path));
+            }
         }
+
+        assert_eq!(
+            elsewhere,
+            vec![(Surface::Webhook, "/webhooks/payments/{provider}")],
+            "a route in this module is on a surface nobody wrote down here"
+        );
     }
 }

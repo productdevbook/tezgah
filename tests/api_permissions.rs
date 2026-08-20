@@ -41,12 +41,12 @@ use tezgah::id::{
     ClaimId, CollectionId, CommissionRuleId, CustomerGroupId, CustomerId, DigitalContentId,
     ExchangeId, FulfillmentId, FulfillmentSetId, GiftCardId, InventoryItemId, InventoryLotId,
     LineItemId, OptionId, OrderBasketId, OrderChangeId, OrderEntitlementId, OrderId,
-    OrderInvoiceId, PaymentCollectionId, PaymentId, PaymentProviderId, PriceId, PriceListId,
-    PriceSetId, ProductId, ProductImageId, ProductTagId, ProductTypeId, PromotionId,
-    PublishableKeyId, RegionId, ReservationId, ReturnId, SalesChannelId, SellingPlanGroupId,
-    SellingPlanId, ServiceZoneId, ShippingOptionId, ShippingProfileId, StockLocationId,
-    StockTransferId, StoreCreditId, SubscriptionId, TaxRateId, TaxRegionId, VariantId,
-    WorkflowRunId,
+    OrderInvoiceId, PaymentCollectionId, PaymentId, PaymentProviderId, PaymentWebhookEventId,
+    PriceId, PriceListId, PriceSetId, ProductId, ProductImageId, ProductTagId, ProductTypeId,
+    PromotionId, PublishableKeyId, RegionId, ReservationId, ReturnId, SalesChannelId,
+    SellingPlanGroupId, SellingPlanId, ServiceZoneId, ShippingOptionId, ShippingProfileId,
+    StockLocationId, StockTransferId, StoreCreditId, SubscriptionId, TaxRateId, TaxRegionId,
+    VariantId, WorkflowRunId,
 };
 use tezgah::ports::{Action, Actor};
 
@@ -115,6 +115,10 @@ fn a_route_lives_under_the_prefix_its_surface_claims() {
         let expected = match route.surface {
             Surface::Store => "/store/",
             Surface::Admin => "/admin/",
+            // Neither a shopper's nor a back office's, and its prefix says so:
+            // what reaches it is an outside system posting where it was told
+            // to, authenticated by a signature the host checks.
+            Surface::Webhook => "/webhooks/",
         };
         assert!(
             route.path.starts_with(expected),
@@ -2094,6 +2098,36 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
         Method::Get,
         "/admin/payments",
         admin_order::list_payments(&mut tx, &ctx, admin_order::ListPayments::default())
+    );
+    // A provider's callback asks before it writes anything down, which is
+    // what makes it deniable at all: `record_webhook`'s permit is its first
+    // statement, ahead of the provider lookup.
+    denied!(
+        Method::Post,
+        "/webhooks/payments/{provider}",
+        admin_order::receive_callback(
+            &mut tx,
+            &ctx,
+            "demo-bank",
+            admin_order::ProviderCallback {
+                event_id: "evt_denied".into(),
+                event_type: "payment_intent.succeeded".into(),
+                kind: tezgah::payment::WebhookKind::Authorized,
+                session_id: None,
+                amount: None,
+                payload: serde_json::json!({}),
+            }
+        )
+    );
+    denied!(
+        Method::Get,
+        "/admin/payment-webhooks",
+        admin_order::pending_callbacks(&mut tx, &ctx, admin_order::ListCallbacks::default())
+    );
+    denied!(
+        Method::Post,
+        "/admin/payment-webhooks/{id}/processed",
+        admin_order::callback_processed(&mut tx, &ctx, PaymentWebhookEventId::new())
     );
     denied!(
         Method::Get,

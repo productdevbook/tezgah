@@ -58,10 +58,10 @@ use tezgah::api::{
 };
 use tezgah::id::{
     CustomerId, DigitalContentId, FulfillmentId, FulfillmentSetId, GiftCardId, InventoryItemId,
-    OrderBasketId, OrderId, PaymentCollectionId, PaymentId, PriceId, PriceListId, PriceSetId,
-    ProductId, PromotionId, RegionId, SalesChannelId, ShippingOptionId, ShippingProfileId,
-    StockLocationId, StoreCreditId, SubscriptionId, TaxRateId, TaxRegionId, VariantId,
-    WorkflowRunId,
+    OrderBasketId, OrderId, PaymentCollectionId, PaymentId, PaymentWebhookEventId, PriceId,
+    PriceListId, PriceSetId, ProductId, PromotionId, RegionId, SalesChannelId, ShippingOptionId,
+    ShippingProfileId, StockLocationId, StoreCreditId, SubscriptionId, TaxRateId, TaxRegionId,
+    VariantId, WorkflowRunId,
 };
 use tezgah::ports::{Action, Actor, Ctx, Host};
 
@@ -162,6 +162,8 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         ("GET", "/admin/payments"),
         ("GET", "/admin/payments/{id}"),
         ("GET", "/admin/payments/payment-providers"),
+        ("GET", "/admin/payment-webhooks"),
+        ("POST", "/admin/payment-webhooks/{id}/processed"),
         ("GET", "/admin/payment-collections/{id}"),
         ("GET", "/admin/payment-collections/{id}/payment-sessions"),
         ("GET", "/admin/refund-reasons"),
@@ -338,6 +340,11 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         .route("/admin/payments", get(list_payments))
         .route("/admin/payments/{id}", get(get_payment))
         .route("/admin/payments/payment-providers", get(payment_providers))
+        .route("/admin/payment-webhooks", get(pending_callbacks))
+        .route(
+            "/admin/payment-webhooks/{id}/processed",
+            post(callback_processed),
+        )
         .route(
             "/admin/payment-collections/{id}",
             get(get_payment_collection),
@@ -453,7 +460,7 @@ pub async fn require_operator(
 /// What the route table already says this route asks for, looked up by the
 /// pattern axum matched.
 ///
-/// Built once. `tezgah::api::routes()` allocates 483 `Route`s and nothing
+/// Built once. `tezgah::api::routes()` allocates 486 `Route`s and nothing
 /// wants that per request.
 fn declared_actions() -> &'static HashMap<(&'static str, &'static str), Action> {
     static ACTIONS: OnceLock<HashMap<(&'static str, &'static str), Action>> = OnceLock::new();
@@ -1657,6 +1664,31 @@ async fn list_payments(
     let page = admin_order::list_payments(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(page))
+}
+
+/// What a provider sent and nothing has acted on yet.
+async fn pending_callbacks(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Query(query): Query<admin_order::ListCallbacks>,
+) -> Result<Json<tezgah::page::Page<admin_order::PendingCallbackView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let page = admin_order::pending_callbacks(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn callback_processed(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<PaymentWebhookEventId>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    admin_order::callback_processed(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "processed": true })))
 }
 
 async fn get_payment(

@@ -38,6 +38,9 @@ fn router() -> Router {
         scope: Scope(Uuid::nil()),
         admin_token: Some(Arc::from(ADMIN_TOKEN)),
         has_operators: false,
+        // Unset, so the callback route is not mounted at all — which is
+        // itself worth a case below.
+        webhook_secret: None,
     };
     let (router, _bound) = http::router(state);
     router

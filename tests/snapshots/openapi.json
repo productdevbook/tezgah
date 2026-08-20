@@ -478,6 +478,29 @@
           }
         ]
       },
+      "CallbackView": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaymentWebhookEventId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recorded": {
+            "description": "`false` when this delivery has been seen before. The provider is\nacknowledged either way; a redelivery just changes nothing.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "recorded",
+          "id"
+        ],
+        "type": "object"
+      },
       "CampaignId": {
         "description": "Identifies one campaign.",
         "format": "uuid",
@@ -3566,6 +3589,11 @@
         "format": "uuid",
         "type": "string"
       },
+      "PaymentProviderId": {
+        "description": "Identifies one payment provider.",
+        "format": "uuid",
+        "type": "string"
+      },
       "PaymentProviderView": {
         "properties": {
           "code": {
@@ -3632,6 +3660,11 @@
           "created_at"
         ],
         "type": "object"
+      },
+      "PaymentWebhookEventId": {
+        "description": "Identifies one payment webhook event.",
+        "format": "uuid",
+        "type": "string"
       },
       "PayoutId": {
         "description": "Identifies one payout.",
@@ -3723,6 +3756,41 @@
           "currency_code",
           "reference",
           "reference_id"
+        ],
+        "type": "object"
+      },
+      "PendingCallbackView": {
+        "properties": {
+          "attempts": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "event_id": {
+            "type": "string"
+          },
+          "event_type": {
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/PaymentWebhookEventId"
+          },
+          "payload": true,
+          "payment_provider_id": {
+            "$ref": "#/components/schemas/PaymentProviderId"
+          },
+          "received_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "payment_provider_id",
+          "event_id",
+          "event_type",
+          "payload",
+          "attempts",
+          "received_at"
         ],
         "type": "object"
       },
@@ -4236,6 +4304,51 @@
           "customer_usage_limit",
           "metadata",
           "created_at"
+        ],
+        "type": "object"
+      },
+      "ProviderCallback": {
+        "additionalProperties": false,
+        "description": "What a provider sends, once the host has checked the signature.\n\nThe signature is not in here on purpose: it is over bytes this type has\nalready been parsed out of, and checking it against a re-serialised body\nis how a valid signature stops matching. The host verifies the request it\nreceived and then calls this.\n\n`payload` is the provider's own body, kept verbatim — the audit trail\nwants what arrived rather than what tezgah understood of it.",
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "event_id": {
+            "description": "The provider's own id for this delivery. The same one arrives again\nwhen they redeliver, which is what makes the write idempotent.",
+            "type": "string"
+          },
+          "event_type": {
+            "description": "The provider's name for it, kept for the audit trail.",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/WebhookKind"
+          },
+          "payload": true,
+          "session_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaymentSessionId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "event_id",
+          "event_type",
+          "kind",
+          "payload"
         ],
         "type": "object"
       },
@@ -6698,6 +6811,25 @@
         ],
         "type": "object"
       },
+      "WebhookKind": {
+        "oneOf": [
+          {
+            "enum": [
+              "authorized",
+              "captured",
+              "refunded",
+              "canceled",
+              "failed"
+            ],
+            "type": "string"
+          },
+          {
+            "const": "other",
+            "description": "Something tezgah does not model. Recorded, acknowledged, ignored.",
+            "type": "string"
+          }
+        ]
+      },
       "WithdrawalNoticeView": {
         "properties": {
           "notified_at": {
@@ -6934,6 +7066,12 @@
         "description": "A back office's token. tezgah does not issue it; the host's authorizer reads it.",
         "scheme": "bearer",
         "type": "http"
+      },
+      "providerSignature": {
+        "description": "A signature over the exact body, checked by the host against the secret the provider was configured with. tezgah never sees the secret; the header's name is the host's own and this is what the binary in app/server reads.",
+        "in": "header",
+        "name": "x-provider-signature",
+        "type": "apiKey"
       },
       "publishableKey": {
         "description": "A storefront's publishable key, which pins it to its sales channels.",
@@ -15676,6 +15814,96 @@
           }
         ],
         "summary": "Open a session with a provider",
+        "tags": [
+          "payment"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/admin/payment-webhooks": {
+      "get": {
+        "operationId": "getAdminPaymentWebhooks",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/PendingCallbackView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "List callbacks received and not yet acted on",
+        "tags": [
+          "payment"
+        ],
+        "x-tezgah-permission": "view"
+      }
+    },
+    "/admin/payment-webhooks/{id}/processed": {
+      "post": {
+        "operationId": "postAdminPaymentWebhooksByIdProcessed",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Say a received callback has been acted on",
         "tags": [
           "payment"
         ],
@@ -28622,6 +28850,62 @@
         "summary": "Pass over my next period without billing it",
         "tags": [
           "subscription"
+        ],
+        "x-tezgah-permission": "write"
+      }
+    },
+    "/webhooks/payments/{provider}": {
+      "post": {
+        "operationId": "postWebhooksPaymentsByProvider",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderCallback"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CallbackView"
+                }
+              }
+            },
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "providerSignature": []
+          }
+        ],
+        "summary": "Receive a payment provider's callback",
+        "tags": [
+          "payment"
         ],
         "x-tezgah-permission": "write"
       }

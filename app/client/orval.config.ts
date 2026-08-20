@@ -3,7 +3,7 @@ import { defineConfig } from "orval"
 import transformer from "./orval/transformer.cjs"
 
 /**
- * The document declares 483 operations against 34 documented schemas
+ * The document declares 486 operations against 34 documented schemas
  * (productdevbook/tezgah#202 is the rest). Orval reads every path either
  * way — the path set is what stopped a typo becoming a request nobody
  * answers before this existed — but only a documented operation gets a

@@ -1,7 +1,7 @@
 //! Route assembly.
 //!
 //! `tests/reachable.rs` in the crate root keeps every domain function honest
-//! about having *a* route; `tezgah::api::routes()` names 483 of them. This
+//! about having *a* route; `tezgah::api::routes()` names 486 of them. This
 //! binary binds a fraction, by hand, and says so out loud at startup rather
 //! than leaving the rest to be discovered by a 404: see [`router`]'s doc
 //! comment for exactly which, and why those.
@@ -11,6 +11,7 @@ pub mod auth;
 pub mod docs;
 pub mod health;
 pub mod store;
+pub mod webhook;
 
 use std::sync::Arc;
 
@@ -47,13 +48,19 @@ pub struct AppState {
     /// account made while this is running is signed in with on the next
     /// restart, and `main.rs` says so.
     pub has_operators: bool,
+    /// The secret a payment provider's callback is signed with. `None` leaves
+    /// `POST /webhooks/payments/{provider}` unmounted — a callback endpoint
+    /// that believes anybody is worse than one that is not there, because a
+    /// provider retries a 404 and says so on its dashboard while an unsigned
+    /// endpoint accepts a forged capture quietly.
+    pub webhook_secret: Option<Arc<str>>,
 }
 
 /// The paths this binary actually serves out of `tezgah::api::routes()`,
 /// versus how many that table declares — logged once at startup and never
 /// silently different from what `router()` below mounted. `health` is
 /// counted separately: `GET /health` is this binary's own, not one of
-/// tezgah's 483, and folding it into the same tally would inflate the count
+/// tezgah's 486, and folding it into the same tally would inflate the count
 /// against a table it was never part of.
 #[derive(Debug)]
 pub struct Bound {
@@ -73,7 +80,7 @@ impl Bound {
             println!("  {method:<6} {path}");
         }
         if self.health {
-            println!("  plus GET /health, which is this binary's own and not one of the 483");
+            println!("  plus GET /health, which is this binary's own and not one of the 486");
             let (paths, schemas) = docs::described();
             println!(
                 "  plus GET /openapi.json and GET /docs, describing {paths} paths \
@@ -108,6 +115,10 @@ pub fn router(state: AppState) -> (Router, Bound) {
     let (store_router, store_bound) = store::router(state.checkout.is_some());
     let mut app = app_base.merge(store_router);
     bound.extend(store_bound);
+
+    let (webhook_router, webhook_bound) = webhook::router(state.webhook_secret.is_some());
+    app = app.merge(webhook_router);
+    bound.extend(webhook_bound);
 
     // Mounted when there is any way to authenticate at all. Before operators
     // existed that was `ADMIN_TOKEN` alone, and an unset one meant the admin

@@ -118,6 +118,11 @@ pub enum Surface {
     Store,
     /// Reached by a back office.
     Admin,
+    /// Reached by an outside system that was told where to send something —
+    /// today, a payment provider's callback. Neither a shopper's key nor a
+    /// back office's token opens it: what authenticates it is a signature the
+    /// host checks, because the secret is the host's and tezgah never sees it.
+    Webhook,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
