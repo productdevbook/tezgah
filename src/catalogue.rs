@@ -720,10 +720,11 @@ pub async fn products(
 
     let (beyond, direction) = (filter.order.beyond(), filter.order.direction());
 
-    let rows = sqlx::query_as::<_, Product>(&format!(concat!(
-        "select ",
-        product_columns!(),
-        " from product p
+    let rows = sqlx::query_as::<_, Product>(&format!(
+        concat!(
+            "select ",
+            product_columns!(),
+            " from product p
          where p.scope = $1
            and p.deleted_at is null
            and ($2::text is null or p.status = $2)
@@ -760,7 +761,13 @@ pub async fn products(
            and ($9::timestamptz is null or (p.created_at, p.id) {beyond} ($9, $10))
          order by p.created_at {direction}, p.id {direction}
          limit $11"
-    )))
+        ),
+        // Named rather than captured: `format_args!` cannot capture from the
+        // surrounding scope when the format string came out of a macro, and
+        // this one comes out of `concat!`.
+        beyond = beyond,
+        direction = direction,
+    ))
     .bind(ctx.scope.0)
     .bind(filter.status)
     .bind(filter.collection.map(CollectionId::as_uuid))
