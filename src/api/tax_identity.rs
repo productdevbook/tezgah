@@ -314,6 +314,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/tax-registrations",
         action: Action::View,
         domain: "tax",
+        query: None,
         summary: "List where the shop is registered and what it files under",
     },
     Route {
@@ -322,6 +323,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/tax-registrations",
         action: Action::Write,
         domain: "tax",
+        query: None,
         summary: "Record where the shop is registered",
     },
     Route {
@@ -330,6 +332,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/tax-registrations/{id}",
         action: Action::Delete,
         domain: "tax",
+        query: None,
         summary: "Take a registration off the shop",
     },
     Route {
@@ -338,6 +341,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/customers/{id}/tax-ids",
         action: Action::View,
         domain: "tax",
+        query: None,
         summary: "List the tax numbers a customer has given",
     },
     Route {
@@ -346,6 +350,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/customers/{id}/tax-ids",
         action: Action::Write,
         domain: "tax",
+        query: None,
         summary: "Record a customer's tax number and what checking it returned",
     },
     Route {
@@ -354,6 +359,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/tax-ids/{id}",
         action: Action::Delete,
         domain: "tax",
+        query: None,
         summary: "Forget a customer's tax number",
     },
     Route {
@@ -362,6 +368,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/customers/{id}/tax-exemptions",
         action: Action::View,
         domain: "tax",
+        query: None,
         summary: "List the certificates a customer holds",
     },
     Route {
@@ -370,6 +377,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/customers/{id}/tax-exemptions",
         action: Action::Write,
         domain: "tax",
+        query: None,
         summary: "File a certificate that exempts a customer",
     },
     Route {
@@ -378,6 +386,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/tax-exemptions/{id}/revoke",
         action: Action::Write,
         domain: "tax",
+        query: None,
         summary: "Stop a certificate applying from a given moment",
     },
 ];

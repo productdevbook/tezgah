@@ -231,6 +231,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/commission-rules",
         action: Action::Write,
         domain: "payout",
+        query: None,
         summary: "Set the commission rate for a category, or the scope's default",
     },
     Route {
@@ -239,6 +240,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/commission-rules",
         action: Action::View,
         domain: "payout",
+        query: None,
         summary: "This scope's commission rules",
     },
     Route {
@@ -247,6 +249,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/commission-rules/{id}",
         action: Action::Delete,
         domain: "payout",
+        query: None,
         summary: "Remove a commission rule",
     },
     Route {
@@ -255,6 +258,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/orders/{id}/payout-lines",
         action: Action::View,
         domain: "payout",
+        query: None,
         summary: "What one order earned this scope and what it cost in commission",
     },
     Route {
@@ -263,6 +267,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/payouts",
         action: Action::View,
         domain: "payout",
+        query: None,
         summary: "This scope's own history of money the host has said left the shop",
     },
     Route {
@@ -271,6 +276,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/payouts",
         action: Action::Settle,
         domain: "payout",
+        query: None,
         summary: "Record that the host has already paid this scope's balance",
     },
     Route {
@@ -279,6 +285,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/payout-balance/{currency_code}",
         action: Action::View,
         domain: "payout",
+        query: None,
         summary: "What this scope is owed right now, in one currency",
     },
 ];

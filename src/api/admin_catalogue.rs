@@ -2978,6 +2978,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products",
         action: Action::View,
         domain: CATALOGUE,
+        query: Some(super::query_schema::<ListProducts>),
         summary: "List products, drafts and archives included",
     },
     Route {
@@ -2986,6 +2987,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products",
         action: Action::Write,
         domain: CATALOGUE,
+        query: None,
         summary: "Create a product",
     },
     Route {
@@ -2994,6 +2996,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/import",
         action: Action::Write,
         domain: CATALOGUE,
+        query: None,
         summary: "Create or update many products from flat rows",
     },
     Route {
@@ -3002,6 +3005,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/batch",
         action: Action::Write,
         domain: CATALOGUE,
+        query: None,
         summary: "Write and delete many products in one call",
     },
     Route {
@@ -3010,6 +3014,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/export",
         action: Action::View,
         domain: CATALOGUE,
+        query: None,
         summary: "A page of variants, flat enough to write as CSV",
     },
     Route {
@@ -3018,6 +3023,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}",
         action: Action::View,
         domain: CATALOGUE,
+        query: None,
         summary: "Fetch one product whatever its status",
     },
     Route {
@@ -3026,6 +3032,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}",
         action: Action::Write,
         domain: CATALOGUE,
+        query: None,
         summary: "Change a product",
     },
     Route {
@@ -3034,6 +3041,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}",
         action: Action::Delete,
         domain: CATALOGUE,
+        query: None,
         summary: "Delete a product",
     },
     Route {
@@ -3042,6 +3050,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}/publish",
         action: Action::Write,
         domain: CATALOGUE,
+        query: None,
         summary: "Put a product on sale",
     },
     Route {
@@ -3050,6 +3059,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}/archive",
         action: Action::Write,
         domain: CATALOGUE,
+        query: None,
         summary: "Take a product off sale without losing it",
     },
     Route {
@@ -3058,6 +3068,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}/submit",
         action: Action::Write,
         domain: CATALOGUE,
+        query: None,
         summary: "Submit a draft or a rejected product for review",
     },
     Route {
@@ -3066,6 +3077,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}/approve",
         action: Action::Moderate,
         domain: CATALOGUE,
+        query: None,
         summary: "Approve a proposed product and publish it",
     },
     Route {
@@ -3074,6 +3086,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}/reject",
         action: Action::Moderate,
         domain: CATALOGUE,
+        query: None,
         summary: "Reject a proposed product, recording why",
     },
     Route {
@@ -3082,6 +3095,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}/images",
         action: Action::View,
         domain: CATALOGUE,
+        query: None,
         summary: "List a product's images",
     },
     Route {
@@ -3090,6 +3104,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}/images",
         action: Action::Write,
         domain: CATALOGUE,
+        query: None,
         summary: "Add an image to a product",
     },
     Route {
@@ -3098,6 +3113,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}/images/{image_id}",
         action: Action::Delete,
         domain: CATALOGUE,
+        query: None,
         summary: "Remove an image from a product",
     },
     Route {
@@ -3106,6 +3122,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}/tags",
         action: Action::View,
         domain: CATALOGUE,
+        query: None,
         summary: "List a product's tags",
     },
     Route {
@@ -3114,6 +3131,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}/tags",
         action: Action::Write,
         domain: CATALOGUE,
+        query: None,
         summary: "Tag a product",
     },
     Route {
@@ -3122,6 +3140,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}/tags/{tag_id}",
         action: Action::Delete,
         domain: CATALOGUE,
+        query: None,
         summary: "Take a tag off a product",
     },
     Route {
@@ -3130,6 +3149,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}/categories",
         action: Action::View,
         domain: CATALOGUE,
+        query: None,
         summary: "List the categories a product is in",
     },
     Route {
@@ -3138,6 +3158,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}/categories",
         action: Action::Write,
         domain: CATALOGUE,
+        query: None,
         summary: "Put a product in a category",
     },
     Route {
@@ -3146,6 +3167,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}/categories/{category_id}",
         action: Action::Delete,
         domain: CATALOGUE,
+        query: None,
         summary: "Take a product out of a category",
     },
     Route {
@@ -3154,6 +3176,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}/channels",
         action: Action::View,
         domain: CATALOGUE,
+        query: None,
         summary: "List the sales channels a product is linked to",
     },
     Route {
@@ -3162,6 +3185,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}/channels",
         action: Action::Write,
         domain: CATALOGUE,
+        query: None,
         summary: "Link a product to a sales channel",
     },
     Route {
@@ -3170,6 +3194,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}/channels/{sales_channel_id}",
         action: Action::Delete,
         domain: CATALOGUE,
+        query: None,
         summary: "Unlink a product from a sales channel",
     },
     Route {
@@ -3178,6 +3203,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}/options",
         action: Action::View,
         domain: CATALOGUE,
+        query: None,
         summary: "List a product's options and their values",
     },
     Route {
@@ -3186,6 +3212,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}/options",
         action: Action::Write,
         domain: CATALOGUE,
+        query: None,
         summary: "Add an option to a product",
     },
     Route {
@@ -3194,6 +3221,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-options/{id}/values",
         action: Action::Write,
         domain: CATALOGUE,
+        query: None,
         summary: "Add a value to an option",
     },
     Route {
@@ -3202,6 +3230,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}/variants",
         action: Action::View,
         domain: CATALOGUE,
+        query: Some(super::query_schema::<super::PagingQuery>),
         summary: "List a product's variants",
     },
     Route {
@@ -3210,6 +3239,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}/variants",
         action: Action::Write,
         domain: CATALOGUE,
+        query: None,
         summary: "Create a variant of a product",
     },
     Route {
@@ -3218,6 +3248,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}/variants/generate",
         action: Action::Write,
         domain: CATALOGUE,
+        query: None,
         summary: "Make every combination of the options that is not excluded",
     },
     Route {
@@ -3226,6 +3257,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-variants/{id}",
         action: Action::View,
         domain: CATALOGUE,
+        query: None,
         summary: "Fetch one variant",
     },
     Route {
@@ -3234,6 +3266,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-variants/{id}",
         action: Action::Write,
         domain: CATALOGUE,
+        query: None,
         summary: "Change a variant",
     },
     Route {
@@ -3242,6 +3275,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-variants/{id}",
         action: Action::Delete,
         domain: CATALOGUE,
+        query: None,
         summary: "Delete a variant",
     },
     Route {
@@ -3250,6 +3284,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-variants/{id}/options",
         action: Action::View,
         domain: CATALOGUE,
+        query: None,
         summary: "The option values one variant stands for",
     },
     Route {
@@ -3258,6 +3293,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-variants/{id}/options",
         action: Action::Write,
         domain: CATALOGUE,
+        query: None,
         summary: "Set which option values a variant stands for",
     },
     Route {
@@ -3266,6 +3302,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-variants/{id}/images",
         action: Action::View,
         domain: CATALOGUE,
+        query: None,
         summary: "List a variant's own attached images",
     },
     Route {
@@ -3274,6 +3311,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-variants/{id}/images",
         action: Action::Write,
         domain: CATALOGUE,
+        query: None,
         summary: "Attach one of the product's images to a variant",
     },
     Route {
@@ -3282,6 +3320,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-variants/{id}/images/{image_id}",
         action: Action::Delete,
         domain: CATALOGUE,
+        query: None,
         summary: "Detach an image from a variant",
     },
     Route {
@@ -3290,6 +3329,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-categories",
         action: Action::View,
         domain: CATALOGUE,
+        query: None,
         summary: "List categories under a parent, or the roots",
     },
     Route {
@@ -3298,6 +3338,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-categories",
         action: Action::Write,
         domain: CATALOGUE,
+        query: None,
         summary: "Create a category",
     },
     Route {
@@ -3306,6 +3347,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-categories/{id}",
         action: Action::View,
         domain: CATALOGUE,
+        query: None,
         summary: "Fetch one category",
     },
     Route {
@@ -3314,6 +3356,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-categories/{id}",
         action: Action::Write,
         domain: CATALOGUE,
+        query: None,
         summary: "Change a category",
     },
     Route {
@@ -3322,6 +3365,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-categories/{id}",
         action: Action::Delete,
         domain: CATALOGUE,
+        query: None,
         summary: "Delete a category",
     },
     Route {
@@ -3330,6 +3374,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-categories/{id}/move",
         action: Action::Write,
         domain: CATALOGUE,
+        query: None,
         summary: "Move a category, and its subtree with it",
     },
     Route {
@@ -3338,6 +3383,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-categories/{id}/subtree",
         action: Action::View,
         domain: CATALOGUE,
+        query: None,
         summary: "List a category and everything under it",
     },
     Route {
@@ -3346,6 +3392,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-tags",
         action: Action::View,
         domain: CATALOGUE,
+        query: None,
         summary: "List tags",
     },
     Route {
@@ -3354,6 +3401,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-tags",
         action: Action::Write,
         domain: CATALOGUE,
+        query: None,
         summary: "Create a tag",
     },
     Route {
@@ -3362,6 +3410,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-tags/{id}",
         action: Action::Delete,
         domain: CATALOGUE,
+        query: None,
         summary: "Delete a tag",
     },
     Route {
@@ -3370,6 +3419,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-types",
         action: Action::View,
         domain: CATALOGUE,
+        query: None,
         summary: "List product types",
     },
     Route {
@@ -3378,6 +3428,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-types",
         action: Action::Write,
         domain: CATALOGUE,
+        query: None,
         summary: "Create a product type",
     },
     Route {
@@ -3386,6 +3437,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-types/{id}",
         action: Action::Delete,
         domain: CATALOGUE,
+        query: None,
         summary: "Delete a product type",
     },
     Route {
@@ -3394,6 +3446,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/collections",
         action: Action::View,
         domain: CATALOGUE,
+        query: Some(super::query_schema::<super::PagingQuery>),
         summary: "List collections",
     },
     Route {
@@ -3402,6 +3455,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/collections",
         action: Action::Write,
         domain: CATALOGUE,
+        query: None,
         summary: "Create a collection",
     },
     Route {
@@ -3410,6 +3464,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/collections/{id}",
         action: Action::View,
         domain: CATALOGUE,
+        query: None,
         summary: "Fetch one collection",
     },
     Route {
@@ -3418,6 +3473,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/collections/{id}",
         action: Action::Write,
         domain: CATALOGUE,
+        query: None,
         summary: "Change a collection",
     },
     Route {
@@ -3426,6 +3482,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/collections/{id}",
         action: Action::Delete,
         domain: CATALOGUE,
+        query: None,
         summary: "Delete a collection",
     },
     Route {
@@ -3434,6 +3491,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}/translations",
         action: Action::View,
         domain: CATALOGUE,
+        query: None,
         summary: "List a product's translations",
     },
     Route {
@@ -3442,6 +3500,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}/translations",
         action: Action::Write,
         domain: CATALOGUE,
+        query: None,
         summary: "Write a product's translation into one locale",
     },
     Route {
@@ -3450,6 +3509,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}/translations/{locale}",
         action: Action::View,
         domain: CATALOGUE,
+        query: None,
         summary: "Read a product in one locale, saying where it fell back",
     },
     Route {
@@ -3458,6 +3518,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}/translations/{locale}",
         action: Action::Delete,
         domain: CATALOGUE,
+        query: None,
         summary: "Drop a product's translation for one locale",
     },
     Route {
@@ -3466,6 +3527,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-categories/{id}/translations",
         action: Action::View,
         domain: CATALOGUE,
+        query: None,
         summary: "List a category's translations",
     },
     Route {
@@ -3474,6 +3536,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-categories/{id}/translations",
         action: Action::Write,
         domain: CATALOGUE,
+        query: None,
         summary: "Write a category's translation into one locale",
     },
     Route {
@@ -3482,6 +3545,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-categories/{id}/translations/{locale}",
         action: Action::View,
         domain: CATALOGUE,
+        query: None,
         summary: "Read a category in one locale, saying where it fell back",
     },
     Route {
@@ -3490,6 +3554,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-categories/{id}/translations/{locale}",
         action: Action::Delete,
         domain: CATALOGUE,
+        query: None,
         summary: "Drop a category's translation for one locale",
     },
     Route {
@@ -3498,6 +3563,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/price-sets",
         action: Action::Write,
         domain: PRICING,
+        query: None,
         summary: "Create a price set",
     },
     Route {
@@ -3506,6 +3572,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/price-sets/{id}",
         action: Action::View,
         domain: PRICING,
+        query: None,
         summary: "Fetch one price set",
     },
     Route {
@@ -3514,6 +3581,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/price-sets/{id}/prices",
         action: Action::View,
         domain: PRICING,
+        query: None,
         summary: "List the prices in a price set",
     },
     Route {
@@ -3522,6 +3590,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-variants/{id}/price-set",
         action: Action::Write,
         domain: PRICING,
+        query: None,
         summary: "Point a variant at a price set",
     },
     Route {
@@ -3530,6 +3599,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-variants/{id}/bundle",
         action: Action::Write,
         domain: PRICING,
+        query: None,
         summary: "Mark a variant as a bundle, and how its price is decided",
     },
     Route {
@@ -3538,6 +3608,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-variants/{id}/bundle/components",
         action: Action::View,
         domain: PRICING,
+        query: None,
         summary: "List what a bundle is made of",
     },
     Route {
@@ -3546,6 +3617,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-variants/{id}/bundle/components",
         action: Action::Write,
         domain: PRICING,
+        query: None,
         summary: "Add a component to a bundle",
     },
     Route {
@@ -3554,6 +3626,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-variants/{id}/bundle/components/{component_variant_id}",
         action: Action::Delete,
         domain: PRICING,
+        query: None,
         summary: "Take a component out of a bundle",
     },
     Route {
@@ -3562,6 +3635,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-variants/{id}/bundle/price",
         action: Action::View,
         domain: PRICING,
+        query: None,
         summary: "What the bundle prices to now, allocated across its components",
     },
     Route {
@@ -3570,6 +3644,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/prices",
         action: Action::Write,
         domain: PRICING,
+        query: None,
         summary: "Add a price",
     },
     Route {
@@ -3578,6 +3653,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/prices/batch",
         action: Action::Write,
         domain: PRICING,
+        query: None,
         summary: "Move many prices at once, one currency to a call",
     },
     Route {
@@ -3586,6 +3662,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/prices/{id}",
         action: Action::Write,
         domain: PRICING,
+        query: None,
         summary: "Change a price",
     },
     Route {
@@ -3594,6 +3671,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/prices/{id}",
         action: Action::Delete,
         domain: PRICING,
+        query: None,
         summary: "Delete a price",
     },
     Route {
@@ -3602,6 +3680,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/prices/{id}/rules",
         action: Action::View,
         domain: PRICING,
+        query: None,
         summary: "List the rules that decide when a price applies",
     },
     Route {
@@ -3610,6 +3689,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/prices/{id}/rules",
         action: Action::Write,
         domain: PRICING,
+        query: None,
         summary: "Add a rule to a price",
     },
     Route {
@@ -3618,6 +3698,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/prices/{id}/rules/{rule_id}",
         action: Action::Delete,
         domain: PRICING,
+        query: None,
         summary: "Take a rule off a price",
     },
     Route {
@@ -3626,6 +3707,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/price-lists",
         action: Action::View,
         domain: PRICING,
+        query: Some(super::query_schema::<super::PagingQuery>),
         summary: "List price lists",
     },
     Route {
@@ -3634,6 +3716,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/price-lists",
         action: Action::Write,
         domain: PRICING,
+        query: None,
         summary: "Create a price list",
     },
     Route {
@@ -3642,6 +3725,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/price-lists/{id}",
         action: Action::View,
         domain: PRICING,
+        query: None,
         summary: "Fetch one price list",
     },
     Route {
@@ -3650,6 +3734,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/price-lists/{id}",
         action: Action::Write,
         domain: PRICING,
+        query: None,
         summary: "Change a price list",
     },
     Route {
@@ -3658,6 +3743,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/price-lists/{id}/rules",
         action: Action::Write,
         domain: PRICING,
+        query: None,
         summary: "Add a rule to a price list",
     },
     Route {
@@ -3666,6 +3752,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/price-preferences",
         action: Action::View,
         domain: PRICING,
+        query: None,
         summary: "Whether an attribute's prices are quoted tax inclusive",
     },
     Route {
@@ -3674,6 +3761,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/price-preferences",
         action: Action::Write,
         domain: PRICING,
+        query: None,
         summary: "Say whether an attribute's prices are quoted tax inclusive",
     },
     Route {
@@ -3682,6 +3770,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/stock-locations",
         action: Action::View,
         domain: INVENTORY,
+        query: None,
         summary: "List stock locations",
     },
     Route {
@@ -3690,6 +3779,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/stock-locations",
         action: Action::Write,
         domain: INVENTORY,
+        query: None,
         summary: "Create a stock location",
     },
     Route {
@@ -3698,6 +3788,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/stock-locations/{id}",
         action: Action::View,
         domain: INVENTORY,
+        query: None,
         summary: "Fetch one stock location",
     },
     Route {
@@ -3706,6 +3797,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/stock-locations/{id}",
         action: Action::Write,
         domain: INVENTORY,
+        query: None,
         summary: "Rename a stock location",
     },
     Route {
@@ -3714,6 +3806,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/stock-locations/{id}",
         action: Action::Delete,
         domain: INVENTORY,
+        query: None,
         summary: "Delete a stock location",
     },
     Route {
@@ -3722,6 +3815,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/stock-locations/{id}/address",
         action: Action::View,
         domain: INVENTORY,
+        query: None,
         summary: "Read where a stock location is",
     },
     Route {
@@ -3730,6 +3824,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/stock-locations/{id}/address",
         action: Action::Write,
         domain: INVENTORY,
+        query: None,
         summary: "Say where a stock location is",
     },
     Route {
@@ -3738,6 +3833,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/stock-locations/{id}/sales-channels",
         action: Action::Write,
         domain: INVENTORY,
+        query: None,
         summary: "Let a sales channel ship from a location",
     },
     Route {
@@ -3746,6 +3842,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/stock-locations/{id}/sales-channels/{sales_channel_id}",
         action: Action::Delete,
         domain: INVENTORY,
+        query: None,
         summary: "Stop a sales channel shipping from a location",
     },
     Route {
@@ -3754,6 +3851,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/sales-channels/{id}/stock-locations",
         action: Action::View,
         domain: INVENTORY,
+        query: None,
         summary: "List the locations that ship for a sales channel",
     },
     Route {
@@ -3762,6 +3860,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/inventory-items",
         action: Action::View,
         domain: INVENTORY,
+        query: Some(super::query_schema::<super::PagingQuery>),
         summary: "List inventory items",
     },
     Route {
@@ -3770,6 +3869,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/inventory-items",
         action: Action::Write,
         domain: INVENTORY,
+        query: None,
         summary: "Create an inventory item",
     },
     Route {
@@ -3778,6 +3878,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/inventory-items/batch",
         action: Action::Write,
         domain: INVENTORY,
+        query: None,
         summary: "Set the counted stock of many items at many locations",
     },
     Route {
@@ -3786,6 +3887,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/inventory-items/{id}",
         action: Action::View,
         domain: INVENTORY,
+        query: None,
         summary: "Fetch one inventory item",
     },
     Route {
@@ -3794,6 +3896,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/inventory-items/{id}",
         action: Action::Delete,
         domain: INVENTORY,
+        query: None,
         summary: "Delete an inventory item",
     },
     Route {
@@ -3802,6 +3905,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/inventory-items/{id}/location-levels",
         action: Action::View,
         domain: INVENTORY,
+        query: None,
         summary: "What is where, for one inventory item",
     },
     Route {
@@ -3810,6 +3914,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/inventory-items/{id}/location-levels",
         action: Action::Write,
         domain: INVENTORY,
+        query: None,
         summary: "Set the counted stock at one location",
     },
     Route {
@@ -3818,6 +3923,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/inventory-items/{id}/location-levels/{location_id}",
         action: Action::View,
         domain: INVENTORY,
+        query: None,
         summary: "The stock of one item at one location",
     },
     Route {
@@ -3826,6 +3932,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/inventory-items/{id}/location-levels/{location_id}/adjust",
         action: Action::Write,
         domain: INVENTORY,
+        query: None,
         summary: "Move the stock at one location by a delta",
     },
     Route {
@@ -3834,6 +3941,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/inventory-items/{id}/transfers",
         action: Action::Write,
         domain: INVENTORY,
+        query: None,
         summary: "Move stock from one location to another in one act",
     },
     Route {
@@ -3842,6 +3950,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/inventory-items/{id}/transfers",
         action: Action::View,
         domain: INVENTORY,
+        query: None,
         summary: "List an item's transfers between locations",
     },
     Route {
@@ -3850,6 +3959,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/stock-transfers/{id}",
         action: Action::View,
         domain: INVENTORY,
+        query: None,
         summary: "Fetch one transfer",
     },
     Route {
@@ -3858,6 +3968,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-variants/{id}/inventory-items",
         action: Action::View,
         domain: INVENTORY,
+        query: None,
         summary: "What a variant is made of, and how much of each",
     },
     Route {
@@ -3866,6 +3977,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-variants/{id}/inventory-items",
         action: Action::Write,
         domain: INVENTORY,
+        query: None,
         summary: "Put an inventory item behind a variant",
     },
     Route {
@@ -3874,6 +3986,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-variants/{id}/inventory-items/{inventory_item_id}",
         action: Action::Delete,
         domain: INVENTORY,
+        query: None,
         summary: "Take an inventory item out from behind a variant",
     },
     Route {
@@ -3882,6 +3995,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/reservations",
         action: Action::View,
         domain: INVENTORY,
+        query: None,
         summary: "List reservations",
     },
     Route {
@@ -3890,6 +4004,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/reservations",
         action: Action::Write,
         domain: INVENTORY,
+        query: None,
         summary: "Hold stock without taking it out",
     },
     Route {
@@ -3898,6 +4013,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/reservations/{id}",
         action: Action::Delete,
         domain: INVENTORY,
+        query: None,
         summary: "Let a held quantity go",
     },
     Route {
@@ -3906,6 +4022,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/reservations/{id}/fulfil",
         action: Action::Write,
         domain: INVENTORY,
+        query: None,
         summary: "Turn a hold into stock that has left",
     },
 ];

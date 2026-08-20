@@ -7030,6 +7030,18 @@ export interface components {
             status?: components["schemas"]["ProductStatus"] | null;
             tag?: components["schemas"]["ProductTagId"] | null;
         };
+        ListTaxRates: {
+            after?: string | null;
+            /** Format: uint32 */
+            limit?: number | null;
+            tax_region_id?: components["schemas"]["TaxRegionId"] | null;
+        };
+        ListWorkflowRuns: {
+            after?: string | null;
+            /** Format: uint32 */
+            limit?: number | null;
+            state?: string | null;
+        };
         LocalisedReturnReasonView: {
             description: string | null;
             is_fallback: boolean;
@@ -7239,6 +7251,35 @@ export interface components {
         Page: {
             items: unknown[];
             next?: string | null;
+        };
+        /**
+         * @description The two parameters every paged list takes, described once.
+         *
+         *     Named `PagingQuery` rather than `Paged`: `openapi.rs` has a test keeping
+         *     `Page<T>` to one schema whatever `T` is, and it reads schema names — so a
+         *     query string called `Paged` looks to it like a second envelope.
+         *
+         *     Five modules have a query struct of their own that is exactly these two
+         *     fields — `admin_rest::List`, `credit::List`, `digital::List`,
+         *     `subscription::List`, `admin_catalogue::ListQuery` — because each
+         *     deserialises in its own file and turns them into a [`crate::page::Paging`]
+         *     its own way. That is five copies of one shape, and five copies in
+         *     `components/schemas` would say the shapes were merely alike rather than
+         *     the same.
+         *
+         *     So this exists only to be described. Nothing deserialises into it: it
+         *     carries `JsonSchema` and not `Deserialize`, which is what keeps it from
+         *     quietly becoming a sixth way to read a query string.
+         */
+        PagingQuery: {
+            /** @description The cursor the previous page ended on. Absent means the first page. */
+            after?: string | null;
+            /**
+             * Format: uint32
+             * @description Clamped rather than refused — `page::MAX_LIMIT` is the ceiling, and a
+             *     caller asking for more gets it rather than an error.
+             */
+            limit?: number | null;
         };
         /**
          * Format: uuid
@@ -8344,7 +8385,10 @@ export interface operations {
     };
     getAdminCampaigns: {
         parameters: {
-            query?: never;
+            query?: {
+                after?: string | null;
+                limit?: number | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -9376,7 +9420,10 @@ export interface operations {
     };
     getAdminCollections: {
         parameters: {
-            query?: never;
+            query?: {
+                after?: string | null;
+                limit?: number | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -9831,7 +9878,10 @@ export interface operations {
     };
     getAdminCustomerGroups: {
         parameters: {
-            query?: never;
+            query?: {
+                after?: string | null;
+                limit?: number | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -9991,7 +10041,10 @@ export interface operations {
     };
     getAdminCustomerGroupsByIdCustomers: {
         parameters: {
-            query?: never;
+            query?: {
+                after?: string | null;
+                limit?: number | null;
+            };
             header?: never;
             path: {
                 id: string;
@@ -10333,7 +10386,10 @@ export interface operations {
     };
     getAdminCustomersByIdAddresses: {
         parameters: {
-            query?: never;
+            query?: {
+                after?: string | null;
+                limit?: number | null;
+            };
             header?: never;
             path: {
                 id: string;
@@ -12354,7 +12410,10 @@ export interface operations {
     };
     getAdminGiftCards: {
         parameters: {
-            query?: never;
+            query?: {
+                after?: string | null;
+                limit?: number | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -12645,7 +12704,10 @@ export interface operations {
     };
     getAdminInventoryItems: {
         parameters: {
-            query?: never;
+            query?: {
+                after?: string | null;
+                limit?: number | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -16569,7 +16631,10 @@ export interface operations {
     };
     getAdminPriceLists: {
         parameters: {
-            query?: never;
+            query?: {
+                after?: string | null;
+                limit?: number | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -20008,7 +20073,10 @@ export interface operations {
     };
     getAdminProductsByIdVariants: {
         parameters: {
-            query?: never;
+            query?: {
+                after?: string | null;
+                limit?: number | null;
+            };
             header?: never;
             path: {
                 id: string;
@@ -20137,7 +20205,10 @@ export interface operations {
     };
     getAdminPromotions: {
         parameters: {
-            query?: never;
+            query?: {
+                after?: string | null;
+                limit?: number | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -20559,7 +20630,10 @@ export interface operations {
     };
     getAdminPublishableApiKeys: {
         parameters: {
-            query?: never;
+            query?: {
+                after?: string | null;
+                limit?: number | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -20931,7 +21005,10 @@ export interface operations {
     };
     getAdminRegions: {
         parameters: {
-            query?: never;
+            query?: {
+                after?: string | null;
+                limit?: number | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -21109,7 +21186,10 @@ export interface operations {
     };
     getAdminRegionsByIdCountries: {
         parameters: {
-            query?: never;
+            query?: {
+                after?: string | null;
+                limit?: number | null;
+            };
             header?: never;
             path: {
                 id: string;
@@ -22321,7 +22401,10 @@ export interface operations {
     };
     getAdminSalesChannels: {
         parameters: {
-            query?: never;
+            query?: {
+                after?: string | null;
+                limit?: number | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -24724,7 +24807,11 @@ export interface operations {
     };
     getAdminTaxRates: {
         parameters: {
-            query?: never;
+            query?: {
+                after?: string | null;
+                limit?: number | null;
+                tax_region_id?: components["schemas"]["TaxRegionId"] | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -25057,7 +25144,10 @@ export interface operations {
     };
     getAdminTaxRegions: {
         parameters: {
-            query?: never;
+            query?: {
+                after?: string | null;
+                limit?: number | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -25518,7 +25608,11 @@ export interface operations {
     };
     getAdminWorkflowsExecutions: {
         parameters: {
-            query?: never;
+            query?: {
+                after?: string | null;
+                limit?: number | null;
+                state?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;

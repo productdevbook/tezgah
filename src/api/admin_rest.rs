@@ -1059,7 +1059,7 @@ pub struct CreateTaxRate {
     pub is_combinable: bool,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ListTaxRates {
     pub after: Option<String>,
@@ -1938,7 +1938,7 @@ impl From<workflow::DeadLetter> for WorkflowDeadLetterView {
     }
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ListWorkflowRuns {
     pub after: Option<String>,
@@ -2011,6 +2011,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/customers",
         action: Action::View,
         domain: "customer",
+        query: Some(super::query_schema::<ListCustomers>),
         summary: "List customers",
     },
     Route {
@@ -2019,6 +2020,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/customers",
         action: Action::Write,
         domain: "customer",
+        query: None,
         summary: "Create a customer",
     },
     Route {
@@ -2027,6 +2029,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/customers/{id}",
         action: Action::View,
         domain: "customer",
+        query: None,
         summary: "Fetch one customer",
     },
     Route {
@@ -2035,6 +2038,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/customers/{id}",
         action: Action::Write,
         domain: "customer",
+        query: None,
         summary: "Edit a customer",
     },
     Route {
@@ -2043,6 +2047,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/customers/{id}",
         action: Action::Delete,
         domain: "customer",
+        query: None,
         summary: "Delete a customer, keeping their orders",
     },
     Route {
@@ -2051,6 +2056,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/customers/{id}/export",
         action: Action::View,
         domain: "customer",
+        query: None,
         summary: "Everything held about one customer, for a data request",
     },
     Route {
@@ -2059,6 +2065,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/customers/{id}/erase",
         action: Action::Delete,
         domain: "customer",
+        query: None,
         summary: "Empty a customer's personal columns, keeping their orders",
     },
     Route {
@@ -2067,6 +2074,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/customers/{id}/addresses",
         action: Action::View,
         domain: "customer",
+        query: Some(super::query_schema::<super::PagingQuery>),
         summary: "List a customer's addresses",
     },
     Route {
@@ -2075,6 +2083,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/customers/{id}/addresses",
         action: Action::Write,
         domain: "customer",
+        query: None,
         summary: "Add an address to a customer",
     },
     Route {
@@ -2083,6 +2092,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/customers/{id}/addresses/{address_id}",
         action: Action::Write,
         domain: "customer",
+        query: None,
         summary: "Edit a customer's address",
     },
     Route {
@@ -2091,6 +2101,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/customers/{id}/addresses/{address_id}",
         action: Action::Delete,
         domain: "customer",
+        query: None,
         summary: "Delete a customer's address",
     },
     Route {
@@ -2099,6 +2110,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/customer-groups",
         action: Action::View,
         domain: "customer",
+        query: Some(super::query_schema::<super::PagingQuery>),
         summary: "List customer groups",
     },
     Route {
@@ -2107,6 +2119,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/customer-groups",
         action: Action::Write,
         domain: "customer",
+        query: None,
         summary: "Create a customer group",
     },
     Route {
@@ -2115,6 +2128,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/customer-groups/{id}",
         action: Action::Write,
         domain: "customer",
+        query: None,
         summary: "Rename a customer group",
     },
     Route {
@@ -2123,6 +2137,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/customer-groups/{id}",
         action: Action::Delete,
         domain: "customer",
+        query: None,
         summary: "Delete a customer group",
     },
     Route {
@@ -2131,6 +2146,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/customer-groups/{id}/customers",
         action: Action::View,
         domain: "customer",
+        query: Some(super::query_schema::<super::PagingQuery>),
         summary: "List a group's members",
     },
     Route {
@@ -2139,6 +2155,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/customer-groups/{id}/customers",
         action: Action::Write,
         domain: "customer",
+        query: None,
         summary: "Put a customer in a group",
     },
     Route {
@@ -2147,6 +2164,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/customer-groups/{id}/customers/{customer_id}",
         action: Action::Write,
         domain: "customer",
+        query: None,
         summary: "Take a customer out of a group",
     },
     Route {
@@ -2155,6 +2173,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/promotions",
         action: Action::View,
         domain: "promotion",
+        query: Some(super::query_schema::<super::PagingQuery>),
         summary: "List promotions",
     },
     Route {
@@ -2163,6 +2182,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/promotions",
         action: Action::Write,
         domain: "promotion",
+        query: None,
         summary: "Create a promotion",
     },
     Route {
@@ -2171,6 +2191,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/promotions/{id}",
         action: Action::View,
         domain: "promotion",
+        query: None,
         summary: "Fetch one promotion",
     },
     Route {
@@ -2179,6 +2200,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/promotions/{id}",
         action: Action::Delete,
         domain: "promotion",
+        query: None,
         summary: "Withdraw a promotion, keeping the discounts it granted",
     },
     Route {
@@ -2187,6 +2209,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/promotions/{id}",
         action: Action::Write,
         domain: "promotion",
+        query: None,
         summary: "Change a promotion's code, automation or usage limits",
     },
     Route {
@@ -2195,6 +2218,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/promotions/{id}/status",
         action: Action::Write,
         domain: "promotion",
+        query: None,
         summary: "Set a promotion's status",
     },
     Route {
@@ -2203,6 +2227,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/promotions/{id}/application-method",
         action: Action::Write,
         domain: "promotion",
+        query: None,
         summary: "Set how a promotion discounts",
     },
     Route {
@@ -2211,6 +2236,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/promotions/{id}/{rule_type}",
         action: Action::Write,
         domain: "promotion",
+        query: None,
         summary: "Add an eligibility, target or buy rule to a promotion",
     },
     Route {
@@ -2219,6 +2245,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/promotions/{id}/{rule_type}",
         action: Action::View,
         domain: "promotion",
+        query: None,
         summary: "List a promotion's eligibility, target or buy rules",
     },
     Route {
@@ -2227,6 +2254,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/promotions/{id}/{rule_type}/{rule_id}",
         action: Action::Delete,
         domain: "promotion",
+        query: None,
         summary: "Take a rule off a promotion",
     },
     Route {
@@ -2235,6 +2263,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/campaigns",
         action: Action::View,
         domain: "promotion",
+        query: Some(super::query_schema::<super::PagingQuery>),
         summary: "List campaigns",
     },
     Route {
@@ -2243,6 +2272,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/campaigns",
         action: Action::Write,
         domain: "promotion",
+        query: None,
         summary: "Create a campaign",
     },
     Route {
@@ -2251,6 +2281,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/campaigns/{id}",
         action: Action::View,
         domain: "promotion",
+        query: None,
         summary: "Fetch one campaign",
     },
     Route {
@@ -2259,6 +2290,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/campaigns/{id}",
         action: Action::Write,
         domain: "promotion",
+        query: None,
         summary: "Change a campaign's name, identifier or dates",
     },
     Route {
@@ -2267,6 +2299,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/campaigns/{id}/promotions",
         action: Action::Write,
         domain: "promotion",
+        query: None,
         summary: "Put a promotion under a campaign",
     },
     Route {
@@ -2275,6 +2308,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/campaigns/{id}/promotions/{promotion_id}",
         action: Action::Write,
         domain: "promotion",
+        query: None,
         summary: "Take a promotion off a campaign",
     },
     Route {
@@ -2283,6 +2317,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/campaigns/{id}/budget",
         action: Action::Write,
         domain: "promotion",
+        query: None,
         summary: "Set a campaign's spend, usage or per-attribute budget",
     },
     Route {
@@ -2291,6 +2326,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/campaigns/{id}/budget/usage",
         action: Action::View,
         domain: "promotion",
+        query: None,
         summary: "List how much of a per-attribute budget each attribute value has used",
     },
     Route {
@@ -2299,6 +2335,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/tax-regions",
         action: Action::View,
         domain: "tax",
+        query: Some(super::query_schema::<super::PagingQuery>),
         summary: "List tax regions",
     },
     Route {
@@ -2307,6 +2344,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/tax-regions",
         action: Action::Write,
         domain: "tax",
+        query: None,
         summary: "Create a tax region",
     },
     Route {
@@ -2315,6 +2353,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/tax-regions/{id}",
         action: Action::View,
         domain: "tax",
+        query: None,
         summary: "Fetch one tax region",
     },
     Route {
@@ -2323,6 +2362,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/tax-regions/{id}",
         action: Action::Write,
         domain: "tax",
+        query: None,
         summary: "Change a tax region's country, province or provider",
     },
     Route {
@@ -2331,6 +2371,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/tax-regions/{id}",
         action: Action::Delete,
         domain: "tax",
+        query: None,
         summary: "Delete a tax region",
     },
     Route {
@@ -2339,6 +2380,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/tax-rates",
         action: Action::View,
         domain: "tax",
+        query: Some(super::query_schema::<ListTaxRates>),
         summary: "List tax rates, optionally within one region",
     },
     Route {
@@ -2347,6 +2389,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/tax-rates",
         action: Action::Write,
         domain: "tax",
+        query: None,
         summary: "Create a tax rate",
     },
     Route {
@@ -2355,6 +2398,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/tax-rates/{id}",
         action: Action::View,
         domain: "tax",
+        query: None,
         summary: "Fetch one tax rate",
     },
     Route {
@@ -2363,6 +2407,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/tax-rates/{id}",
         action: Action::Write,
         domain: "tax",
+        query: None,
         summary: "Change a tax rate",
     },
     Route {
@@ -2371,6 +2416,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/tax-rates/{id}",
         action: Action::Delete,
         domain: "tax",
+        query: None,
         summary: "Delete a tax rate",
     },
     Route {
@@ -2379,6 +2425,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/tax-rates/{id}/rules",
         action: Action::View,
         domain: "tax",
+        query: None,
         summary: "List what a tax rate applies to",
     },
     Route {
@@ -2387,6 +2434,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/tax-rates/{id}/rules",
         action: Action::Write,
         domain: "tax",
+        query: None,
         summary: "Make a tax rate apply to a product, type, collection or shipping option",
     },
     Route {
@@ -2395,6 +2443,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/tax-rates/{id}/rules/{rule_id}",
         action: Action::Delete,
         domain: "tax",
+        query: None,
         summary: "Stop a tax rate applying to something",
     },
     Route {
@@ -2403,6 +2452,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/regions",
         action: Action::View,
         domain: "store",
+        query: Some(super::query_schema::<super::PagingQuery>),
         summary: "List regions",
     },
     Route {
@@ -2411,6 +2461,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/regions",
         action: Action::Write,
         domain: "store",
+        query: None,
         summary: "Create a region",
     },
     Route {
@@ -2419,6 +2470,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/regions/{id}",
         action: Action::View,
         domain: "store",
+        query: None,
         summary: "Fetch one region",
     },
     Route {
@@ -2427,6 +2479,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/regions/{id}",
         action: Action::Write,
         domain: "store",
+        query: None,
         summary: "Change a region's name, currency or tax inclusiveness",
     },
     Route {
@@ -2435,6 +2488,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/regions/{id}/countries",
         action: Action::View,
         domain: "store",
+        query: Some(super::query_schema::<super::PagingQuery>),
         summary: "List the countries a region serves",
     },
     Route {
@@ -2443,6 +2497,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/regions/{id}/countries",
         action: Action::Write,
         domain: "store",
+        query: None,
         summary: "Put a country under a region",
     },
     Route {
@@ -2451,6 +2506,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/regions/{id}/countries/{country_code}",
         action: Action::Delete,
         domain: "store",
+        query: None,
         summary: "Take a country out of its region",
     },
     Route {
@@ -2459,6 +2515,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/sales-channels",
         action: Action::View,
         domain: "store",
+        query: Some(super::query_schema::<super::PagingQuery>),
         summary: "List sales channels",
     },
     Route {
@@ -2467,6 +2524,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/sales-channels",
         action: Action::Write,
         domain: "store",
+        query: None,
         summary: "Create a sales channel",
     },
     Route {
@@ -2475,6 +2533,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/sales-channels/{id}",
         action: Action::View,
         domain: "store",
+        query: None,
         summary: "Fetch one sales channel",
     },
     Route {
@@ -2483,6 +2542,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/sales-channels/{id}",
         action: Action::Write,
         domain: "store",
+        query: None,
         summary: "Edit a sales channel",
     },
     Route {
@@ -2491,6 +2551,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/sales-channels/{id}",
         action: Action::Delete,
         domain: "store",
+        query: None,
         summary: "Delete a sales channel",
     },
     Route {
@@ -2499,6 +2560,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/publishable-api-keys",
         action: Action::View,
         domain: "store",
+        query: Some(super::query_schema::<super::PagingQuery>),
         summary: "List the storefront keys, live and revoked",
     },
     Route {
@@ -2507,6 +2569,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/publishable-api-keys",
         action: Action::Write,
         domain: "store",
+        query: None,
         summary: "Issue a storefront key, whose token is returned once",
     },
     Route {
@@ -2515,6 +2578,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/publishable-api-keys/{id}",
         action: Action::View,
         domain: "store",
+        query: None,
         summary: "Fetch one storefront key",
     },
     Route {
@@ -2523,6 +2587,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/publishable-api-keys/{id}/revoke",
         action: Action::Write,
         domain: "store",
+        query: None,
         summary: "Revoke a storefront key without forgetting it",
     },
     Route {
@@ -2531,6 +2596,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/publishable-api-keys/{id}/sales-channels",
         action: Action::View,
         domain: "store",
+        query: None,
         summary: "The channels one storefront key may see",
     },
     Route {
@@ -2539,6 +2605,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/publishable-api-keys/{id}/sales-channels",
         action: Action::Write,
         domain: "store",
+        query: None,
         summary: "Let a storefront key see a channel",
     },
     Route {
@@ -2547,6 +2614,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/publishable-api-keys/{id}/sales-channels/{channel_id}",
         action: Action::Delete,
         domain: "store",
+        query: None,
         summary: "Stop a storefront key seeing a channel",
     },
     Route {
@@ -2555,6 +2623,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/currencies",
         action: Action::View,
         domain: "store",
+        query: None,
         summary: "List the currencies the shop trades in",
     },
     Route {
@@ -2563,6 +2632,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/currencies",
         action: Action::Write,
         domain: "store",
+        query: None,
         summary: "Enable a currency for the shop",
     },
     Route {
@@ -2571,6 +2641,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/currencies/{code}",
         action: Action::View,
         domain: "store",
+        query: None,
         summary: "Fetch one currency and its exponent",
     },
     Route {
@@ -2579,6 +2650,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/stores",
         action: Action::View,
         domain: "store",
+        query: None,
         summary: "The shop's own settings",
     },
     Route {
@@ -2587,6 +2659,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/stores",
         action: Action::Write,
         domain: "store",
+        query: None,
         summary: "Create the shop's own settings",
     },
     Route {
@@ -2595,6 +2668,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/stores",
         action: Action::Write,
         domain: "store",
+        query: None,
         summary: "Edit the shop's own settings",
     },
     Route {
@@ -2603,6 +2677,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/locales",
         action: Action::View,
         domain: "store",
+        query: None,
         summary: "List the languages the shop is served in",
     },
     Route {
@@ -2611,6 +2686,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/locales",
         action: Action::Write,
         domain: "store",
+        query: None,
         summary: "Set the languages the shop is served in",
     },
     Route {
@@ -2619,6 +2695,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/workflows-executions",
         action: Action::View,
         domain: "workflow",
+        query: Some(super::query_schema::<ListWorkflowRuns>),
         summary: "List workflow runs, optionally in one state",
     },
     Route {
@@ -2627,6 +2704,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/workflows-executions/{id}",
         action: Action::View,
         domain: "workflow",
+        query: None,
         summary: "How a workflow run ended, and what it returned",
     },
     Route {
@@ -2635,6 +2713,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/workflows-executions/{id}/steps",
         action: Action::View,
         domain: "workflow",
+        query: None,
         summary: "The steps of one workflow run, and how each ended",
     },
     Route {
@@ -2643,6 +2722,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/workflow-dead-letters",
         action: Action::View,
         domain: "workflow",
+        query: None,
         summary: "Runs whose compensation failed, which nothing will retry",
     },
 ];

@@ -10,6 +10,7 @@ import type {
   BundleComponentView,
   BundlePriceView,
   GetAdminPriceLists200,
+  GetAdminPriceListsParams,
   GetAdminPriceSetsByIdPrices200,
   LinkPriceSet,
   PriceListView,
@@ -50,20 +51,27 @@ export type getAdminPriceListsResponseError = (getAdminPriceListsResponse400 | g
 
 export type getAdminPriceListsResponse = (getAdminPriceListsResponseSuccess | getAdminPriceListsResponseError)
 
-export const getGetAdminPriceListsUrl = () => {
+export const getGetAdminPriceListsUrl = (params?: GetAdminPriceListsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/admin/price-lists`
+  return stringifiedParams.length > 0 ? `/admin/price-lists?${stringifiedParams}` : `/admin/price-lists`
 }
 
 /**
  * @summary List price lists
  */
-export const getAdminPriceLists = async ( options?: Parameters<typeof apiMutator>[1]): Promise<getAdminPriceListsResponse> => {
+export const getAdminPriceLists = async (params?: GetAdminPriceListsParams, options?: Parameters<typeof apiMutator>[1]): Promise<getAdminPriceListsResponse> => {
 
-  return apiMutator<getAdminPriceListsResponse>(getGetAdminPriceListsUrl(),
+  return apiMutator<getAdminPriceListsResponse>(getGetAdminPriceListsUrl(params),
   {
     ...options,
     method: 'GET'

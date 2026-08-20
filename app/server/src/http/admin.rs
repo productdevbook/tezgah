@@ -40,11 +40,13 @@
 //! so a role carried on an operator row is the seam a split would use.
 //! Nothing here answers that yet; #214 raises it.
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, OnceLock};
 
 use crate::http::auth::Caller;
+use crate::identity::Role;
 
-use axum::extract::{Path, Query, Request, State};
+use axum::extract::{MatchedPath, Path, Query, Request, State};
 use axum::http::{StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
@@ -61,7 +63,7 @@ use tezgah::id::{
     StockLocationId, StoreCreditId, SubscriptionId, TaxRateId, TaxRegionId, VariantId,
     WorkflowRunId,
 };
-use tezgah::ports::{Actor, Ctx, Host};
+use tezgah::ports::{Action, Actor, Ctx, Host};
 
 use super::{ApiError, AppState, begin};
 
@@ -422,6 +424,9 @@ pub async fn require_operator(
 
     match crate::identity::session_operator(&gate.pool, &token).await {
         Ok(Some(operator)) => {
+            if let Some(refusal) = refuse_by_role(&request, operator.role) {
+                return refusal;
+            }
             request
                 .extensions_mut()
                 .insert(Caller::Session { operator, token });
@@ -430,6 +435,63 @@ pub async fn require_operator(
         Ok(None) => denied(),
         Err(err) => ApiError::from(err).into_response(),
     }
+}
+
+/// What the route table already says this route asks for, looked up by the
+/// pattern axum matched.
+///
+/// Built once. `tezgah::api::routes()` allocates 483 `Route`s and nothing
+/// wants that per request.
+fn declared_actions() -> &'static HashMap<(&'static str, &'static str), Action> {
+    static ACTIONS: OnceLock<HashMap<(&'static str, &'static str), Action>> = OnceLock::new();
+    ACTIONS.get_or_init(|| {
+        tezgah::api::routes()
+            .into_iter()
+            .map(|route| ((route.method.as_str(), route.path), route.action))
+            .collect()
+    })
+}
+
+/// Authorization, at the door.
+///
+/// The `Action` comes from `tezgah::api::routes()` — the same table the
+/// OpenAPI document and the permission matrix read — so a role is checked
+/// against what the route declares rather than against a second list kept
+/// here and drifting from it.
+///
+/// This is coarser than an `Authorizer` and is not a replacement for one. It
+/// answers "may this person refund anything at all", not "may this person
+/// refund this order". The second question is what `tezgah::ports::Authorizer`
+/// is for, and `ServerHost` still answers it by granting everything.
+///
+/// A path this binary binds that the table does not declare — its own
+/// `/auth/*` and `/admin/operators*` — is not covered here. Those check the
+/// role themselves, in `http::auth`, because what they need is not one of
+/// tezgah's five actions.
+fn refuse_by_role(request: &Request, role: Role) -> Option<Response> {
+    let matched = request.extensions().get::<MatchedPath>()?;
+    let action = declared_actions().get(&(request.method().as_str(), matched.as_str()))?;
+
+    if role.may(*action) {
+        return None;
+    }
+
+    Some(
+        (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({
+                "error": {
+                    "code": "denied",
+                    "message": format!(
+                        "a {} may not {} — ask an owner",
+                        role.as_str(),
+                        format!("{action:?}").to_lowercase()
+                    ),
+                }
+            })),
+        )
+            .into_response(),
+    )
 }
 
 fn looks_like_session(token: &str) -> bool {

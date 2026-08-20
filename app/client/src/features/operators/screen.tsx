@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useState } from "react"
 import { Add01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Link } from "@tanstack/react-router"
@@ -20,10 +21,35 @@ import {
 import { dateTime } from "@/lib/detail"
 import {
   listOperators,
-  setDisabled,
+  patchOperator,
+  resetPassword,
+  ROLE_MEANS,
   whoAmI,
   type Operator,
+  type Role,
 } from "@/features/operators/api"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { Field, FieldLabel } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 /**
  * Who may reach this back office.
@@ -88,6 +114,7 @@ export function Operators() {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>E-mail</TableHead>
+                  <TableHead>Role</TableHead>
                   <TableHead>Since</TableHead>
                   <TableHead className="text-right">State</TableHead>
                 </TableRow>
@@ -99,11 +126,17 @@ export function Operators() {
                     <TableCell>
                       <Mono>{row.email}</Mono>
                     </TableCell>
+                    <TableCell>
+                      <RolePicker row={row} isSelf={me.data?.id === row.id} />
+                    </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {dateTime(row.created_at)}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Toggle row={row} isSelf={me.data?.id === row.id} />
+                      <div className="flex items-center justify-end gap-2">
+                        <ResetPassword row={row} />
+                        <Toggle row={row} isSelf={me.data?.id === row.id} />
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -116,10 +149,69 @@ export function Operators() {
   )
 }
 
+/**
+ * The role is enforced at the server's door, against the `Action` tezgah's own
+ * route table declares — so this only has to say which of the three somebody
+ * is, and what that means.
+ *
+ * The server refuses the last owner being narrowed, and refuses anybody but an
+ * owner changing a role at all. Both come back as an error rather than being
+ * hidden here: a shop with one owner should be able to read why, not find the
+ * control missing.
+ */
+function RolePicker({ row, isSelf }: { row: Operator; isSelf: boolean }) {
+  const client = useQueryClient()
+  const [refused, setRefused] = useState<string | null>(null)
+
+  const mutation = useMutation({
+    mutationFn: (role: Role) => patchOperator(row.id, { role }),
+    onSuccess: () => {
+      setRefused(null)
+      void client.invalidateQueries({ queryKey: ["operators"] })
+    },
+    onError: (error) =>
+      setRefused(error instanceof Error ? error.message : "Refused."),
+  })
+
+  return (
+    <div className="flex flex-col gap-1">
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Select
+              value={row.role}
+              onValueChange={(value) => mutation.mutate(value as Role)}
+              disabled={mutation.isPending}
+            >
+              <SelectTrigger size="sm" className="w-28">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(ROLE_MEANS) as Role[]).map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          }
+        />
+        <TooltipContent>{ROLE_MEANS[row.role]}</TooltipContent>
+      </Tooltip>
+      {isSelf ? (
+        <span className="text-xs text-muted-foreground">you</span>
+      ) : null}
+      {refused ? (
+        <span className="text-xs text-destructive">{refused}</span>
+      ) : null}
+    </div>
+  )
+}
+
 function Toggle({ row, isSelf }: { row: Operator; isSelf: boolean }) {
   const client = useQueryClient()
   const mutation = useMutation({
-    mutationFn: (disabled: boolean) => setDisabled(row.id, disabled),
+    mutationFn: (disabled: boolean) => patchOperator(row.id, { disabled }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ["operators"] })
     },
@@ -143,5 +235,73 @@ function Toggle({ row, isSelf }: { row: Operator; isSelf: boolean }) {
         {disabled ? "Enable" : "Disable"}
       </Button>
     </div>
+  )
+}
+
+/**
+ * The new password is typed here and told to them out of band. Nothing on
+ * this screen can send it, and the form says so rather than implying a letter
+ * is on its way.
+ */
+function ResetPassword({ row }: { row: Operator }) {
+  const [password, setPassword] = useState("")
+  const [open, setOpen] = useState(false)
+
+  const mutation = useMutation({
+    mutationFn: (next: string) => resetPassword(row.id, next),
+    onSuccess: () => {
+      setPassword("")
+      setOpen(false)
+    },
+  })
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger render={<Button size="sm" variant="outline" />}>
+        Reset password
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Set a new password for {row.name}</DialogTitle>
+          <DialogDescription>
+            Tell them out of band — nothing here can send it. Every session they
+            hold ends, including the one they may be sitting in.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          className="space-y-3"
+          onSubmit={(event) => {
+            event.preventDefault()
+            if (password.length < 12) return
+            mutation.mutate(password)
+          }}
+        >
+          <Field>
+            <FieldLabel htmlFor={`password-${row.id}`}>New password</FieldLabel>
+            <Input
+              id={`password-${row.id}`}
+              type="password"
+              autoComplete="new-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+          </Field>
+          {mutation.isError ? (
+            <p className="text-sm text-destructive">
+              {mutation.error instanceof Error
+                ? mutation.error.message
+                : "Refused."}
+            </p>
+          ) : null}
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={mutation.isPending || password.length < 12}
+          >
+            {mutation.isPending ? "Setting…" : "Set it"}
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }

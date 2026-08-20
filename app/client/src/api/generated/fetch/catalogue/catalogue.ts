@@ -8,7 +8,9 @@
 import type {
   CreateProduct,
   CreateVariant,
+  GetAdminCollectionsParams,
   GetAdminProducts200,
+  GetAdminProductsByIdVariantsParams,
   GetAdminProductsParams,
   GetStoreProductsParams,
   ProductView,
@@ -47,20 +49,27 @@ export type getAdminCollectionsResponseError = (getAdminCollectionsResponse400 |
 
 export type getAdminCollectionsResponse = (getAdminCollectionsResponseSuccess | getAdminCollectionsResponseError)
 
-export const getGetAdminCollectionsUrl = () => {
+export const getGetAdminCollectionsUrl = (params?: GetAdminCollectionsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/admin/collections`
+  return stringifiedParams.length > 0 ? `/admin/collections?${stringifiedParams}` : `/admin/collections`
 }
 
 /**
  * @summary List collections
  */
-export const getAdminCollections = async ( options?: Parameters<typeof apiMutator>[1]): Promise<getAdminCollectionsResponse> => {
+export const getAdminCollections = async (params?: GetAdminCollectionsParams, options?: Parameters<typeof apiMutator>[1]): Promise<getAdminCollectionsResponse> => {
 
-  return apiMutator<getAdminCollectionsResponse>(getGetAdminCollectionsUrl(),
+  return apiMutator<getAdminCollectionsResponse>(getGetAdminCollectionsUrl(params),
   {
     ...options,
     method: 'GET'
@@ -3297,20 +3306,29 @@ export type getAdminProductsByIdVariantsResponseError = (getAdminProductsByIdVar
 
 export type getAdminProductsByIdVariantsResponse = (getAdminProductsByIdVariantsResponseSuccess | getAdminProductsByIdVariantsResponseError)
 
-export const getGetAdminProductsByIdVariantsUrl = (id: string,) => {
+export const getGetAdminProductsByIdVariantsUrl = (id: string,
+    params?: GetAdminProductsByIdVariantsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/admin/products/${id}/variants`
+  return stringifiedParams.length > 0 ? `/admin/products/${id}/variants?${stringifiedParams}` : `/admin/products/${id}/variants`
 }
 
 /**
  * @summary List a product's variants
  */
-export const getAdminProductsByIdVariants = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<getAdminProductsByIdVariantsResponse> => {
+export const getAdminProductsByIdVariants = async (id: string,
+    params?: GetAdminProductsByIdVariantsParams, options?: Parameters<typeof apiMutator>[1]): Promise<getAdminProductsByIdVariantsResponse> => {
 
-  return apiMutator<getAdminProductsByIdVariantsResponse>(getGetAdminProductsByIdVariantsUrl(id),
+  return apiMutator<getAdminProductsByIdVariantsResponse>(getGetAdminProductsByIdVariantsUrl(id,params),
   {
     ...options,
     method: 'GET'

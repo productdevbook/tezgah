@@ -11,6 +11,15 @@ import * as zod from 'zod';
 /**
  * @summary List customer groups
  */
+export const getAdminCustomerGroupsQueryLimitMin = 0;
+
+
+
+export const GetAdminCustomerGroupsQueryParams = zod.object({
+  "after": zod.string().nullish(),
+  "limit": zod.int().min(getAdminCustomerGroupsQueryLimitMin).nullish()
+})
+
 export const GetAdminCustomerGroupsResponse = zod.unknown()
 
 /**
@@ -41,6 +50,15 @@ export const PatchAdminCustomerGroupsByIdResponse = zod.unknown()
  */
 export const GetAdminCustomerGroupsByIdCustomersParams = zod.object({
   "id": zod.string()
+})
+
+export const getAdminCustomerGroupsByIdCustomersQueryLimitMin = 0;
+
+
+
+export const GetAdminCustomerGroupsByIdCustomersQueryParams = zod.object({
+  "after": zod.string().nullish(),
+  "limit": zod.int().min(getAdminCustomerGroupsByIdCustomersQueryLimitMin).nullish()
 })
 
 export const GetAdminCustomerGroupsByIdCustomersResponse = zod.unknown()
@@ -167,6 +185,15 @@ export const PatchAdminCustomersByIdResponse = zod.object({
  */
 export const GetAdminCustomersByIdAddressesParams = zod.object({
   "id": zod.string()
+})
+
+export const getAdminCustomersByIdAddressesQueryLimitMin = 0;
+
+
+
+export const GetAdminCustomersByIdAddressesQueryParams = zod.object({
+  "after": zod.string().nullish(),
+  "limit": zod.int().min(getAdminCustomersByIdAddressesQueryLimitMin).nullish()
 })
 
 export const GetAdminCustomersByIdAddressesResponse = zod.unknown()

@@ -38,6 +38,15 @@ export const PostAdminCustomersByIdStoreCreditResponse = zod.unknown()
 /**
  * @summary List gift cards
  */
+export const getAdminGiftCardsQueryLimitMin = 0;
+
+
+
+export const GetAdminGiftCardsQueryParams = zod.object({
+  "after": zod.string().nullish(),
+  "limit": zod.int().min(getAdminGiftCardsQueryLimitMin).nullish()
+})
+
 export const getAdminGiftCardsResponseTwoItemsItemBalanceRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
 export const getAdminGiftCardsResponseTwoItemsItemInitialBalanceRegExp = new RegExp('^-?\\d+(\\.\\d+)?$');
 

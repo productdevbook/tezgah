@@ -2742,6 +2742,62 @@
         },
         "type": "object"
       },
+      "ListTaxRates": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "tax_region_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaxRegionId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "ListWorkflowRuns": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "state": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "LocalisedReturnReasonView": {
         "properties": {
           "description": {
@@ -3258,6 +3314,28 @@
         "required": [
           "items"
         ],
+        "type": "object"
+      },
+      "PagingQuery": {
+        "description": "The two parameters every paged list takes, described once.\n\nNamed `PagingQuery` rather than `Paged`: `openapi.rs` has a test keeping\n`Page<T>` to one schema whatever `T` is, and it reads schema names — so a\nquery string called `Paged` looks to it like a second envelope.\n\nFive modules have a query struct of their own that is exactly these two\nfields — `admin_rest::List`, `credit::List`, `digital::List`,\n`subscription::List`, `admin_catalogue::ListQuery` — because each\ndeserialises in its own file and turns them into a [`crate::page::Paging`]\nits own way. That is five copies of one shape, and five copies in\n`components/schemas` would say the shapes were merely alike rather than\nthe same.\n\nSo this exists only to be described. Nothing deserialises into it: it\ncarries `JsonSchema` and not `Deserialize`, which is what keeps it from\nquietly becoming a sixth way to read a query string.",
+        "properties": {
+          "after": {
+            "description": "The cursor the previous page ended on. Absent means the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "description": "Clamped rather than refused — `page::MAX_LIMIT` is the ceiling, and a\ncaller asking for more gets it rather than an error.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
         "type": "object"
       },
       "PaymentCollectionId": {
@@ -6704,7 +6782,34 @@
     "/admin/campaigns": {
       "get": {
         "operationId": "getAdminCampaigns",
-        "parameters": [],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "description": "The cursor the previous page ended on. Absent means the first page.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Clamped rather than refused — `page::MAX_LIMIT` is the ceiling, and a\ncaller asking for more gets it rather than an error.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "The call succeeded."
@@ -7803,7 +7908,34 @@
     "/admin/collections": {
       "get": {
         "operationId": "getAdminCollections",
-        "parameters": [],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "description": "The cursor the previous page ended on. Absent means the first page.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Clamped rather than refused — `page::MAX_LIMIT` is the ceiling, and a\ncaller asking for more gets it rather than an error.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "The call succeeded."
@@ -8223,7 +8355,34 @@
     "/admin/customer-groups": {
       "get": {
         "operationId": "getAdminCustomerGroups",
-        "parameters": [],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "description": "The cursor the previous page ended on. Absent means the first page.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Clamped rather than refused — `page::MAX_LIMIT` is the ceiling, and a\ncaller asking for more gets it rather than an error.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "The call succeeded."
@@ -8364,6 +8523,32 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "description": "The cursor the previous page ended on. Absent means the first page.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Clamped rather than refused — `page::MAX_LIMIT` is the ceiling, and a\ncaller asking for more gets it rather than an error.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
             }
           }
         ],
@@ -8756,6 +8941,32 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "description": "The cursor the previous page ended on. Absent means the first page.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Clamped rather than refused — `page::MAX_LIMIT` is the ceiling, and a\ncaller asking for more gets it rather than an error.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
             }
           }
         ],
@@ -10885,7 +11096,34 @@
     "/admin/gift-cards": {
       "get": {
         "operationId": "getAdminGiftCards",
-        "parameters": [],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "description": "The cursor the previous page ended on. Absent means the first page.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Clamped rather than refused — `page::MAX_LIMIT` is the ceiling, and a\ncaller asking for more gets it rather than an error.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -11178,7 +11416,34 @@
     "/admin/inventory-items": {
       "get": {
         "operationId": "getAdminInventoryItems",
-        "parameters": [],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "description": "The cursor the previous page ended on. Absent means the first page.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Clamped rather than refused — `page::MAX_LIMIT` is the ceiling, and a\ncaller asking for more gets it rather than an error.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -15489,7 +15754,34 @@
     "/admin/price-lists": {
       "get": {
         "operationId": "getAdminPriceLists",
-        "parameters": [],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "description": "The cursor the previous page ended on. Absent means the first page.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Clamped rather than refused — `page::MAX_LIMIT` is the ceiling, and a\ncaller asking for more gets it rather than an error.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -18934,6 +19226,32 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "description": "The cursor the previous page ended on. Absent means the first page.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Clamped rather than refused — `page::MAX_LIMIT` is the ceiling, and a\ncaller asking for more gets it rather than an error.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
           }
         ],
         "responses": {
@@ -19058,7 +19376,34 @@
     "/admin/promotions": {
       "get": {
         "operationId": "getAdminPromotions",
-        "parameters": [],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "description": "The cursor the previous page ended on. Absent means the first page.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Clamped rather than refused — `page::MAX_LIMIT` is the ceiling, and a\ncaller asking for more gets it rather than an error.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -19499,7 +19844,34 @@
     "/admin/publishable-api-keys": {
       "get": {
         "operationId": "getAdminPublishableApiKeys",
-        "parameters": [],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "description": "The cursor the previous page ended on. Absent means the first page.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Clamped rather than refused — `page::MAX_LIMIT` is the ceiling, and a\ncaller asking for more gets it rather than an error.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "The call succeeded."
@@ -19854,7 +20226,34 @@
     "/admin/regions": {
       "get": {
         "operationId": "getAdminRegions",
-        "parameters": [],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "description": "The cursor the previous page ended on. Absent means the first page.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Clamped rather than refused — `page::MAX_LIMIT` is the ceiling, and a\ncaller asking for more gets it rather than an error.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -20057,6 +20456,32 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "description": "The cursor the previous page ended on. Absent means the first page.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Clamped rather than refused — `page::MAX_LIMIT` is the ceiling, and a\ncaller asking for more gets it rather than an error.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
             }
           }
         ],
@@ -21357,7 +21782,34 @@
     "/admin/sales-channels": {
       "get": {
         "operationId": "getAdminSalesChannels",
-        "parameters": [],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "description": "The cursor the previous page ended on. Absent means the first page.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Clamped rather than refused — `page::MAX_LIMIT` is the ceiling, and a\ncaller asking for more gets it rather than an error.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -23673,7 +24125,47 @@
     "/admin/tax-rates": {
       "get": {
         "operationId": "getAdminTaxRates",
-        "parameters": [],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "tax_region_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/TaxRegionId"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -24005,7 +24497,34 @@
     "/admin/tax-regions": {
       "get": {
         "operationId": "getAdminTaxRegions",
-        "parameters": [],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "description": "The cursor the previous page ended on. Absent means the first page.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "description": "Clamped rather than refused — `page::MAX_LIMIT` is the ceiling, and a\ncaller asking for more gets it rather than an error.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -24465,7 +24984,43 @@
     "/admin/workflows-executions": {
       "get": {
         "operationId": "getAdminWorkflowsExecutions",
-        "parameters": [],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {

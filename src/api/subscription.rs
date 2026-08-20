@@ -781,6 +781,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/selling-plan-groups",
         action: Action::Write,
         domain: "subscription",
+        query: None,
         summary: "Write a group of selling plans",
     },
     Route {
@@ -789,6 +790,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/selling-plan-groups",
         action: Action::View,
         domain: "subscription",
+        query: None,
         summary: "List the groups of selling plans",
     },
     Route {
@@ -797,6 +799,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/selling-plan-groups/{id}/plans",
         action: Action::Write,
         domain: "subscription",
+        query: None,
         summary: "Add a plan to a group",
     },
     Route {
@@ -805,6 +808,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/selling-plan-groups/{id}/plans",
         action: Action::View,
         domain: "subscription",
+        query: None,
         summary: "List a group's plans",
     },
     Route {
@@ -813,6 +817,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/selling-plans/{id}",
         action: Action::View,
         domain: "subscription",
+        query: None,
         summary: "One plan and how often it bills",
     },
     Route {
@@ -821,6 +826,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/selling-plans/{id}/variants",
         action: Action::Write,
         domain: "subscription",
+        query: None,
         summary: "Offer a variant on this plan",
     },
     Route {
@@ -829,6 +835,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/subscriptions",
         action: Action::Write,
         domain: "subscription",
+        query: None,
         summary: "Open a contract",
     },
     Route {
@@ -837,6 +844,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/subscriptions",
         action: Action::View,
         domain: "subscription",
+        query: None,
         summary: "List the contracts",
     },
     Route {
@@ -845,6 +853,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/subscriptions/due",
         action: Action::View,
         domain: "subscription",
+        query: None,
         summary: "What is owed a renewal",
     },
     Route {
@@ -853,6 +862,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/subscriptions/{id}",
         action: Action::View,
         domain: "subscription",
+        query: None,
         summary: "One contract and what it is for",
     },
     Route {
@@ -861,6 +871,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/subscriptions/{id}/events",
         action: Action::View,
         domain: "subscription",
+        query: None,
         summary: "What has happened to this contract",
     },
     Route {
@@ -869,6 +880,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/subscriptions/{id}/renew",
         action: Action::Settle,
         domain: "subscription",
+        query: None,
         summary: "Bill this contract for the cycle it is owed",
     },
     Route {
@@ -877,6 +889,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/subscriptions/{id}/cancel",
         action: Action::Write,
         domain: "subscription",
+        query: None,
         summary: "Stop a contract",
     },
     Route {
@@ -885,6 +898,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/subscriptions/{id}/pause",
         action: Action::Write,
         domain: "subscription",
+        query: None,
         summary: "Stop a contract renewing until it is resumed",
     },
     Route {
@@ -893,6 +907,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/subscriptions/{id}/resume",
         action: Action::Write,
         domain: "subscription",
+        query: None,
         summary: "Start a paused contract renewing again",
     },
     Route {
@@ -901,6 +916,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/subscriptions/{id}/skip",
         action: Action::Write,
         domain: "subscription",
+        query: None,
         summary: "Pass over the next period without billing it",
     },
     Route {
@@ -909,6 +925,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/subscriptions/{id}/swap",
         action: Action::Write,
         domain: "subscription",
+        query: None,
         summary: "Swap what a contract is for",
     },
     Route {
@@ -917,6 +934,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/subscriptions/{id}/card",
         action: Action::Write,
         domain: "subscription",
+        query: None,
         summary: "Point a contract at a different saved card",
     },
     Route {
@@ -925,6 +943,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/subscriptions/due-deliveries",
         action: Action::View,
         domain: "subscription",
+        query: None,
         summary: "What is owed a delivery on a prepaid term",
     },
     Route {
@@ -933,6 +952,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/subscriptions/{id}/deliver",
         action: Action::Write,
         domain: "subscription",
+        query: None,
         summary: "Ship one delivery a prepaid term already paid for",
     },
     Route {
@@ -941,6 +961,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/subscriptions",
         action: Action::View,
         domain: "subscription",
+        query: None,
         summary: "What I have subscribed to",
     },
     Route {
@@ -949,6 +970,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/subscriptions/{id}/cancel",
         action: Action::Write,
         domain: "subscription",
+        query: None,
         summary: "Stop mine at the end of this period",
     },
     Route {
@@ -957,6 +979,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/subscriptions/{id}/pause",
         action: Action::Write,
         domain: "subscription",
+        query: None,
         summary: "Stop mine renewing until I resume it",
     },
     Route {
@@ -965,6 +988,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/subscriptions/{id}/resume",
         action: Action::Write,
         domain: "subscription",
+        query: None,
         summary: "Start mine renewing again",
     },
     Route {
@@ -973,6 +997,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/subscriptions/{id}/skip",
         action: Action::Write,
         domain: "subscription",
+        query: None,
         summary: "Pass over my next period without billing it",
     },
     Route {
@@ -981,6 +1006,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/subscriptions/{id}/card",
         action: Action::Write,
         domain: "subscription",
+        query: None,
         summary: "Point mine at a different saved card",
     },
 ];

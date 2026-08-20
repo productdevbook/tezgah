@@ -11,8 +11,12 @@ import type {
   CreateRegion,
   CreateSalesChannel,
   CurrencyView,
+  GetAdminPublishableApiKeysParams,
   GetAdminRegions200,
+  GetAdminRegionsByIdCountriesParams,
+  GetAdminRegionsParams,
   GetAdminSalesChannels200,
+  GetAdminSalesChannelsParams,
   IssuedKeyView,
   RegionView,
   SalesChannelView,
@@ -311,20 +315,27 @@ export type getAdminPublishableApiKeysResponseError = (getAdminPublishableApiKey
 
 export type getAdminPublishableApiKeysResponse = (getAdminPublishableApiKeysResponseSuccess | getAdminPublishableApiKeysResponseError)
 
-export const getGetAdminPublishableApiKeysUrl = () => {
+export const getGetAdminPublishableApiKeysUrl = (params?: GetAdminPublishableApiKeysParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/admin/publishable-api-keys`
+  return stringifiedParams.length > 0 ? `/admin/publishable-api-keys?${stringifiedParams}` : `/admin/publishable-api-keys`
 }
 
 /**
  * @summary List the storefront keys, live and revoked
  */
-export const getAdminPublishableApiKeys = async ( options?: Parameters<typeof apiMutator>[1]): Promise<getAdminPublishableApiKeysResponse> => {
+export const getAdminPublishableApiKeys = async (params?: GetAdminPublishableApiKeysParams, options?: Parameters<typeof apiMutator>[1]): Promise<getAdminPublishableApiKeysResponse> => {
 
-  return apiMutator<getAdminPublishableApiKeysResponse>(getGetAdminPublishableApiKeysUrl(),
+  return apiMutator<getAdminPublishableApiKeysResponse>(getGetAdminPublishableApiKeysUrl(params),
   {
     ...options,
     method: 'GET'
@@ -677,20 +688,27 @@ export type getAdminRegionsResponseError = (getAdminRegionsResponse400 | getAdmi
 
 export type getAdminRegionsResponse = (getAdminRegionsResponseSuccess | getAdminRegionsResponseError)
 
-export const getGetAdminRegionsUrl = () => {
+export const getGetAdminRegionsUrl = (params?: GetAdminRegionsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/admin/regions`
+  return stringifiedParams.length > 0 ? `/admin/regions?${stringifiedParams}` : `/admin/regions`
 }
 
 /**
  * @summary List regions
  */
-export const getAdminRegions = async ( options?: Parameters<typeof apiMutator>[1]): Promise<getAdminRegionsResponse> => {
+export const getAdminRegions = async (params?: GetAdminRegionsParams, options?: Parameters<typeof apiMutator>[1]): Promise<getAdminRegionsResponse> => {
 
-  return apiMutator<getAdminRegionsResponse>(getGetAdminRegionsUrl(),
+  return apiMutator<getAdminRegionsResponse>(getGetAdminRegionsUrl(params),
   {
     ...options,
     method: 'GET'
@@ -886,20 +904,29 @@ export type getAdminRegionsByIdCountriesResponseError = (getAdminRegionsByIdCoun
 
 export type getAdminRegionsByIdCountriesResponse = (getAdminRegionsByIdCountriesResponseSuccess | getAdminRegionsByIdCountriesResponseError)
 
-export const getGetAdminRegionsByIdCountriesUrl = (id: string,) => {
+export const getGetAdminRegionsByIdCountriesUrl = (id: string,
+    params?: GetAdminRegionsByIdCountriesParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/admin/regions/${id}/countries`
+  return stringifiedParams.length > 0 ? `/admin/regions/${id}/countries?${stringifiedParams}` : `/admin/regions/${id}/countries`
 }
 
 /**
  * @summary List the countries a region serves
  */
-export const getAdminRegionsByIdCountries = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<getAdminRegionsByIdCountriesResponse> => {
+export const getAdminRegionsByIdCountries = async (id: string,
+    params?: GetAdminRegionsByIdCountriesParams, options?: Parameters<typeof apiMutator>[1]): Promise<getAdminRegionsByIdCountriesResponse> => {
 
-  return apiMutator<getAdminRegionsByIdCountriesResponse>(getGetAdminRegionsByIdCountriesUrl(id),
+  return apiMutator<getAdminRegionsByIdCountriesResponse>(getGetAdminRegionsByIdCountriesUrl(id,params),
   {
     ...options,
     method: 'GET'
@@ -1044,20 +1071,27 @@ export type getAdminSalesChannelsResponseError = (getAdminSalesChannelsResponse4
 
 export type getAdminSalesChannelsResponse = (getAdminSalesChannelsResponseSuccess | getAdminSalesChannelsResponseError)
 
-export const getGetAdminSalesChannelsUrl = () => {
+export const getGetAdminSalesChannelsUrl = (params?: GetAdminSalesChannelsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/admin/sales-channels`
+  return stringifiedParams.length > 0 ? `/admin/sales-channels?${stringifiedParams}` : `/admin/sales-channels`
 }
 
 /**
  * @summary List sales channels
  */
-export const getAdminSalesChannels = async ( options?: Parameters<typeof apiMutator>[1]): Promise<getAdminSalesChannelsResponse> => {
+export const getAdminSalesChannels = async (params?: GetAdminSalesChannelsParams, options?: Parameters<typeof apiMutator>[1]): Promise<getAdminSalesChannelsResponse> => {
 
-  return apiMutator<getAdminSalesChannelsResponse>(getGetAdminSalesChannelsUrl(),
+  return apiMutator<getAdminSalesChannelsResponse>(getGetAdminSalesChannelsUrl(params),
   {
     ...options,
     method: 'GET'

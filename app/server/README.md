@@ -172,25 +172,53 @@ find. Startup says which of the two it found.
 | `GET /auth/me` | no | who the caller is; `null` for `ADMIN_TOKEN` |
 | `POST /auth/password` | no | changes the caller's own, ending every other session they hold |
 | `GET /admin/operators` | no | the accounts, and which are disabled |
-| `POST /admin/operators` | no | makes one |
-| `PATCH /admin/operators/{id}` | no | disables or re-enables one; never itself |
+| `POST /admin/operators` | no | makes one — owner only |
+| `POST /admin/operators/{id}/password` | no | sets somebody else's — owner only, and ends every session they hold |
+| `PATCH /admin/operators/{id}` | no | changes a role, disables or re-enables one — owner only, never itself, never the last owner |
 
 None of these is one of tezgah's 483 — the crate declares no route for
 something it does not do — so the startup tally does not count them, the same
 way it does not count `GET /health`.
 
-**No invitation and no password reset.** Both need a letter and this binary
-has no mailer; a reset link it cannot send would be worse than one it never
-offered. An account is made with a password by somebody already inside, and
-`ADMIN_TOKEN` is the way back in.
+**No invitation, and the reset is a person rather than a link.** Both would
+need a letter and this binary has no mailer; a link it cannot send would be
+worse than one it never offered. So an account is made with a password by
+somebody already inside, and an operator who forgets theirs has an owner set
+a new one — told to them the same way the first one was. Every session that
+operator holds ends with it, including the one they may be sitting in: an
+account whose password was reset by somebody else is an account that may have
+been taken.
 
-**Authentication, not authorization.** Whoever clears the gate reaches
-`ctx_for` as `Actor::Staff` and `ServerHost` grants every `Action` to it —
-a caller who can list customers can also mint a publishable key or create a
-product. `src/http/admin.rs`'s own doc comment says where the split would go:
-`Authorizer::authorize` already receives the `Action`, and the request now
-carries who is asking, so a role on the operator row is the seam. Not done
-here — #214 raises the question rather than answering it.
+`ADMIN_TOKEN` is still the way back in when there is no owner left to ask.
+
+**Three roles, checked at the door.**
+
+| Role | May |
+|---|---|
+| `owner` | anything, and the only role that may make or disable an account |
+| `staff` | the day-to-day — reading, writing, deleting, moderating. Not moving money |
+| `viewer` | reading |
+
+The split is tezgah's own rather than one invented here: `ports::Action`
+already separates `Settle` — capture, refund, cancel — from `Write`, because
+"editing an order and refunding one are not one power". The gate reads the
+`Action` each route declares in `tezgah::api::routes()`, the same table the
+OpenAPI document and the permission matrix read, so a role is checked against
+what the route says rather than against a second list kept here and drifting
+from it.
+
+The first account made is the owner whatever was asked for, and the last
+owner can be neither demoted nor disabled: a shop whose only account cannot
+make a second has locked itself out with the key inside, and the way back
+would be the `ADMIN_TOKEN` it was told it could stop keeping. `ADMIN_TOKEN`
+itself counts as an owner, and has to.
+
+**This is authorization at the door, not at the row.** It answers "may this
+person refund anything at all"; it does not answer "may this person refund
+*this* order". That second question is what `tezgah::ports::Authorizer` is
+for, and `ServerHost` still answers it by granting everything — which is the
+right shape for a library that asks a host, and the thing a shop with finer
+rules brings its own answer to. #214 is where that is argued.
 
 ## What runs without being asked
 
@@ -207,10 +235,27 @@ stock it reserved was held for ever.
 
 Not jobs. `ports::Jobs` is enqueue-only by design — tezgah writes a job in
 the transaction the change belongs to and never decides when it runs — so
-recurrence is the host's and lives here. The queue itself is still a gap:
-`host::spawn_worker` claims what was enqueued, prints it and marks it
-processed, and the one kind tezgah enqueues is a subscription's dunning
-retry.
+recurrence is the host's and lives here.
+
+The queue is separate and runs beside it. `host::Dispatcher` matches on a
+job's kind; a job that fails records its reason, waits a doubling backoff,
+and after five attempts is left dead with that reason still on it. A kind
+nothing handles fails the same way rather than being marked done — which is
+what the worker used to do to every job it claimed, including the one kind
+tezgah enqueues, so a declined subscription renewal was retried never.
+
+Dispatching that one needs a `RecurringProvider`, and there is none. Charging
+a card a shopper left on file means naming which card, and kasapay 0.0.5 —
+the version this crate pins — has no field for one: `ChargeRequest` carries a
+customer and nothing to say which of their saved instruments to take. Naming
+the customer alone and calling it a stored charge is the "accept a field and
+drop it" kasapay's own documentation refuses, so `src/provider.rs` implements
+neither and says so where somebody would look for it.
+
+tezgah's rule is that a missing provider capability is opened on kasapay
+rather than worked around here. Until it arrives a dunning retry records
+exactly that as its reason — which is still an improvement on being marked
+done by a worker that did nothing.
 
 ## Route table
 

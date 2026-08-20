@@ -145,6 +145,19 @@ impl PaymentProvider for KasapayProvider {
     }
 }
 
+// There is no `impl RecurringProvider for KasapayProvider` here, and its
+// absence is the answer rather than an omission. Charging an instrument a
+// shopper left on file needs the request to name that instrument, and
+// kasapay 0.0.5 — the version this crate pins — has no field for one:
+// `ChargeRequest` carries a `customer` and nothing to say which of their
+// saved cards to take. Naming the customer alone and calling it a stored
+// charge is precisely the "accept a field and drop it" that kasapay's own doc
+// refuses, so this does neither.
+//
+// tezgah's own rule is that a missing provider capability is opened on
+// kasapay rather than worked around here. Until it arrives,
+// `host::Dispatcher` records exactly this as a dunning retry's reason instead
+// of marking the job done.
 #[async_trait]
 impl LookupProvider for KasapayProvider {
     async fn lookup(
@@ -197,7 +210,14 @@ impl kasapay_core::Provider for DemoBank {
             status: kasapay_core::Status::Authorized,
             next_action: None,
             provider: self.id(),
-            raw: kasapay_core::Raw::from_json(&serde_json::json!({ "demo": true })),
+            // The payer is echoed rather than dropped. kasapay's own doc is
+            // explicit that accepting a field and ignoring it reads as a
+            // guarantee where there is none, and a demo is where that habit
+            // would start.
+            raw: kasapay_core::Raw::from_json(&serde_json::json!({
+                "demo": true,
+                "customer": request.customer.as_deref(),
+            })),
         })
     }
 

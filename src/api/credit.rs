@@ -472,6 +472,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/gift-cards",
         action: Action::Settle,
         domain: "credit",
+        query: None,
         summary: "Issue a gift card and read its code once",
     },
     Route {
@@ -480,6 +481,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/gift-cards",
         action: Action::View,
         domain: "credit",
+        query: Some(super::query_schema::<super::PagingQuery>),
         summary: "List gift cards",
     },
     Route {
@@ -488,6 +490,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/gift-cards/lookup",
         action: Action::View,
         domain: "credit",
+        query: None,
         summary: "Find the gift card a code names",
     },
     Route {
@@ -496,6 +499,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/gift-cards/{id}",
         action: Action::View,
         domain: "credit",
+        query: None,
         summary: "Fetch one gift card",
     },
     Route {
@@ -504,6 +508,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/gift-cards/{id}/disable",
         action: Action::Settle,
         domain: "credit",
+        query: None,
         summary: "Stop a gift card being spent",
     },
     Route {
@@ -512,6 +517,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/gift-cards/{id}/transactions",
         action: Action::View,
         domain: "credit",
+        query: None,
         summary: "List what moved on a gift card",
     },
     Route {
@@ -520,6 +526,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/gift-cards/{id}/adjust",
         action: Action::Settle,
         domain: "credit",
+        query: None,
         summary: "Correct a card's balance by hand, with a reason",
     },
     Route {
@@ -528,6 +535,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/customers/{id}/store-credit",
         action: Action::View,
         domain: "credit",
+        query: None,
         summary: "Read a customer's balance in one currency",
     },
     Route {
@@ -536,6 +544,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/customers/{id}/store-credit",
         action: Action::Settle,
         domain: "credit",
+        query: None,
         summary: "Put money on a customer's balance",
     },
     Route {
@@ -544,6 +553,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/store-credits/{id}/transactions",
         action: Action::View,
         domain: "credit",
+        query: None,
         summary: "List what moved on a balance",
     },
     Route {
@@ -552,6 +562,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/store-credits/{id}/adjust",
         action: Action::Settle,
         domain: "credit",
+        query: None,
         summary: "Correct a customer's balance by hand, with a reason",
     },
     Route {
@@ -560,6 +571,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/carts/{id}/gift-cards",
         action: Action::Write,
         domain: "credit",
+        query: None,
         summary: "Say this cart will pay with a gift card",
     },
     Route {
@@ -568,6 +580,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/carts/{id}/store-credit",
         action: Action::Write,
         domain: "credit",
+        query: None,
         summary: "Say this cart will pay from my balance",
     },
     Route {
@@ -576,6 +589,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/carts/{id}/credits",
         action: Action::View,
         domain: "credit",
+        query: None,
         summary: "What this cart means to pay with",
     },
     Route {
@@ -584,6 +598,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/carts/{id}/credits/{credit_id}",
         action: Action::Write,
         domain: "credit",
+        query: None,
         summary: "Take a gift card or a balance off this cart",
     },
     Route {
@@ -592,6 +607,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/customers/me/store-credit",
         action: Action::View,
         domain: "credit",
+        query: None,
         summary: "Read my own balance in one currency",
     },
 ];

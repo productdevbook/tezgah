@@ -424,6 +424,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/agreements",
         action: Action::Write,
         domain: "order",
+        query: None,
         summary: "Publish a version of a document",
     },
     Route {
@@ -432,6 +433,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/agreements",
         action: Action::View,
         domain: "order",
+        query: None,
         summary: "List published versions",
     },
     Route {
@@ -440,6 +442,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/agreements/{id}",
         action: Action::View,
         domain: "order",
+        query: None,
         summary: "Fetch one published version",
     },
     Route {
@@ -448,6 +451,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/orders/{id}/agreements",
         action: Action::View,
         domain: "order",
+        query: None,
         summary: "What this order's buyer accepted",
     },
     Route {
@@ -456,6 +460,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/orders/{id}/agreements/{kind}",
         action: Action::View,
         domain: "order",
+        query: None,
         summary: "The text this order's buyer accepted",
     },
     Route {
@@ -464,6 +469,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/orders/{id}/withdrawal",
         action: Action::View,
         domain: "order",
+        query: None,
         summary: "When each line's window to change their mind closes",
     },
     Route {
@@ -472,6 +478,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/returns/{id}/withdrawal",
         action: Action::Write,
         domain: "order",
+        query: None,
         summary: "Record that the buyer is withdrawing",
     },
     Route {
@@ -480,6 +487,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/orders/{id}/invoices",
         action: Action::View,
         domain: "order",
+        query: None,
         summary: "List the documents issued for an order",
     },
     Route {
@@ -488,6 +496,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/orders/{id}/invoices",
         action: Action::Write,
         domain: "order",
+        query: None,
         summary: "Record that an invoice was issued",
     },
     Route {
@@ -496,6 +505,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/orders/{id}/invoices/{invoice_id}/credit-note",
         action: Action::Settle,
         domain: "order",
+        query: None,
         summary: "Record the document that reverses an invoice",
     },
     Route {
@@ -504,6 +514,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/invoices/{id}",
         action: Action::Write,
         domain: "order",
+        query: None,
         summary: "Write down what the authority answered",
     },
     Route {
@@ -512,6 +523,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/orders/{id}/agreements",
         action: Action::Write,
         domain: "order",
+        query: None,
         summary: "Accept a document against my order",
     },
     Route {
@@ -520,6 +532,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/orders/{id}/agreements/{kind}",
         action: Action::View,
         domain: "order",
+        query: None,
         summary: "Read the text I accepted",
     },
 ];

@@ -281,6 +281,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/variants/{id}/digital-content",
         action: Action::Write,
         domain: "digital",
+        query: None,
         summary: "Put a file on a variant",
     },
     Route {
@@ -289,6 +290,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/variants/{id}/digital-content",
         action: Action::View,
         domain: "digital",
+        query: None,
         summary: "List the files a variant carries",
     },
     Route {
@@ -297,6 +299,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/digital-content/{id}",
         action: Action::Delete,
         domain: "digital",
+        query: None,
         summary: "Take a file off a variant",
     },
     Route {
@@ -305,6 +308,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/orders/{id}/entitlements",
         action: Action::View,
         domain: "digital",
+        query: None,
         summary: "What this order's money bought the right to",
     },
     Route {
@@ -313,6 +317,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/orders/{id}/entitlements/revoke",
         action: Action::Settle,
         domain: "digital",
+        query: None,
         summary: "Take an order's downloads back",
     },
     Route {
@@ -321,6 +326,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/entitlements",
         action: Action::View,
         domain: "digital",
+        query: None,
         summary: "What I may download",
     },
     Route {
@@ -329,6 +335,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/entitlements/{id}/token",
         action: Action::View,
         domain: "digital",
+        query: None,
         summary: "Ask for a download link",
     },
     Route {
@@ -337,6 +344,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/store/downloads",
         action: Action::View,
         domain: "digital",
+        query: None,
         summary: "Spend one download of a link",
     },
 ];

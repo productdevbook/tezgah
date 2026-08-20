@@ -26,6 +26,7 @@ use chrono::{DateTime, Duration, Utc};
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use subtle::ConstantTimeEq;
+use tezgah::ports::Action;
 use uuid::Uuid;
 
 /// How long a session lasts from the moment it was issued. Not extended by
@@ -35,11 +36,77 @@ const SESSION_DAYS: i64 = 30;
 
 /// What `select` hands back for an account, before it is anything else.
 /// Named because clippy is right that five anonymous fields is not a type.
-type OperatorTuple = (Uuid, String, String, DateTime<Utc>, Option<DateTime<Utc>>);
+type OperatorTuple = (
+    Uuid,
+    String,
+    String,
+    String,
+    DateTime<Utc>,
+    Option<DateTime<Utc>>,
+);
 
 /// The same, with the password hash in place of the created-at: what sign-in
 /// needs and a listing must never carry.
-type CredentialTuple = (Uuid, String, String, String, Option<DateTime<Utc>>);
+type CredentialTuple = (Uuid, String, String, String, String, Option<DateTime<Utc>>);
+
+/// What an operator is allowed to do, in three steps.
+///
+/// The split is the crate's own rather than one invented here.
+/// `tezgah::ports::Action` already separates `Settle` — capture, refund,
+/// cancel — from `Write`, and says why: "editing an order and refunding one
+/// are not one power". So does `Moderate`, for approving somebody else's
+/// listing. A role here is which of those five a person may ask for.
+///
+/// Coarser than an `Authorizer`, and deliberately so: this is enforced at the
+/// door, against the `Action` the route table already declares, not against
+/// the row a handler is about to read. A shop that needs "this operator may
+/// refund orders under a hundred lira" needs an authorizer, which is the port
+/// tezgah asks for and this binary answers permissively.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Role {
+    /// Everything, and the only role that may make or disable an account.
+    Owner,
+    /// The shop's day-to-day: reading, writing, deleting, moderating. Not
+    /// moving money.
+    Staff,
+    /// Reading, and nothing else.
+    Viewer,
+}
+
+impl Role {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Role::Owner => "owner",
+            Role::Staff => "staff",
+            Role::Viewer => "viewer",
+        }
+    }
+
+    /// An unrecognised value reads as the narrowest role rather than the
+    /// widest: a column somebody hand-edited into nonsense should close the
+    /// door, not open it.
+    pub fn parse(text: &str) -> Role {
+        match text {
+            "owner" => Role::Owner,
+            "staff" => Role::Staff,
+            _ => Role::Viewer,
+        }
+    }
+
+    pub fn may(self, action: Action) -> bool {
+        match self {
+            Role::Owner => true,
+            Role::Staff => !matches!(action, Action::Settle),
+            Role::Viewer => matches!(action, Action::View),
+        }
+    }
+
+    /// Making, renaming and disabling accounts. Not one of tezgah's actions —
+    /// these are this binary's own routes — so it is asked separately.
+    pub fn may_manage_operators(self) -> bool {
+        matches!(self, Role::Owner)
+    }
+}
 
 /// Somebody who may reach the back office.
 #[derive(Debug, Clone)]
@@ -47,6 +114,7 @@ pub struct Operator {
     pub id: Uuid,
     pub email: String,
     pub name: String,
+    pub role: Role,
 }
 
 /// The one time a session's own token exists in plain text.
@@ -62,6 +130,7 @@ pub struct OperatorRow {
     pub id: Uuid,
     pub email: String,
     pub name: String,
+    pub role: Role,
     pub created_at: DateTime<Utc>,
     pub disabled_at: Option<DateTime<Utc>>,
 }
@@ -78,6 +147,15 @@ pub async fn create_tables(pool: &PgPool) -> tezgah::Result<()> {
              created_at timestamptz not null default now(),
              disabled_at timestamptz
          )",
+    )
+    .execute(pool)
+    .await?;
+
+    // The first installation of this table had no roles; an installation with
+    // accounts in it keeps them, and they become `staff` rather than `owner` —
+    // widening somebody's power in a migration is not a migration's decision.
+    sqlx::query(
+        "alter table server_operator add column if not exists role text not null default 'staff'",
     )
     .execute(pool)
     .await?;
@@ -159,6 +237,7 @@ pub async fn create_operator(
     email: &str,
     name: &str,
     password: &str,
+    role: Role,
 ) -> tezgah::Result<Operator> {
     if password.chars().count() < 12 {
         return Err(tezgah::Error::invalid(
@@ -172,14 +251,25 @@ pub async fn create_operator(
     let id = Uuid::now_v7();
     let hash = hash_password(password)?;
 
+    // The first account is always the owner, whatever was asked for. A shop
+    // whose only account cannot make a second one has locked itself out with
+    // the key inside — and the only way back would be the `ADMIN_TOKEN` it
+    // was told it could stop keeping.
+    let role = if count(pool).await? == 0 {
+        Role::Owner
+    } else {
+        role
+    };
+
     sqlx::query(
-        "insert into server_operator (id, email, name, password_hash)
-         values ($1, $2, $3, $4)",
+        "insert into server_operator (id, email, name, password_hash, role)
+         values ($1, $2, $3, $4, $5)",
     )
     .bind(id)
     .bind(email)
     .bind(name)
     .bind(&hash)
+    .bind(role.as_str())
     .execute(pool)
     .await
     .map_err(|err| match err {
@@ -193,12 +283,13 @@ pub async fn create_operator(
         id,
         email: email.to_owned(),
         name: name.to_owned(),
+        role,
     })
 }
 
 pub async fn list_operators(pool: &PgPool) -> tezgah::Result<Vec<OperatorRow>> {
     let rows: Vec<OperatorTuple> = sqlx::query_as(
-        "select id, email, name, created_at, disabled_at
+        "select id, email, name, role, created_at, disabled_at
          from server_operator
          order by created_at",
     )
@@ -207,13 +298,16 @@ pub async fn list_operators(pool: &PgPool) -> tezgah::Result<Vec<OperatorRow>> {
 
     Ok(rows
         .into_iter()
-        .map(|(id, email, name, created_at, disabled_at)| OperatorRow {
-            id,
-            email,
-            name,
-            created_at,
-            disabled_at,
-        })
+        .map(
+            |(id, email, name, role, created_at, disabled_at)| OperatorRow {
+                id,
+                email,
+                name,
+                role: Role::parse(&role),
+                created_at,
+                disabled_at,
+            },
+        )
         .collect())
 }
 
@@ -291,7 +385,7 @@ pub async fn change_password(
 /// that is wrong, so this cannot be asked which addresses exist.
 pub async fn sign_in(pool: &PgPool, email: &str, password: &str) -> tezgah::Result<IssuedSession> {
     let found: Option<CredentialTuple> = sqlx::query_as(
-        "select id, email, name, password_hash, disabled_at
+        "select id, email, name, password_hash, role, disabled_at
          from server_operator
          where lower(email) = lower($1)",
     )
@@ -299,7 +393,7 @@ pub async fn sign_in(pool: &PgPool, email: &str, password: &str) -> tezgah::Resu
     .fetch_optional(pool)
     .await?;
 
-    let Some((id, email, name, hash, disabled_at)) = found else {
+    let Some((id, email, name, hash, role, disabled_at)) = found else {
         // An argon2 hash is run anyway, and discarded. Verifying against a
         // stored hash costs the same work as producing one, so an address
         // nobody holds takes as long to refuse as a password that is wrong —
@@ -329,7 +423,12 @@ pub async fn sign_in(pool: &PgPool, email: &str, password: &str) -> tezgah::Resu
     Ok(IssuedSession {
         token,
         expires_at,
-        operator: Operator { id, email, name },
+        operator: Operator {
+            id,
+            email,
+            name,
+            role: Role::parse(&role),
+        },
     })
 }
 
@@ -339,7 +438,7 @@ pub async fn sign_in(pool: &PgPool, email: &str, password: &str) -> tezgah::Resu
 /// written by the same `update ... returning`, so there is no window between
 /// reading a session and finding it already gone.
 pub async fn session_operator(pool: &PgPool, token: &str) -> tezgah::Result<Option<Operator>> {
-    let found: Option<(Uuid, String, String)> = sqlx::query_as(
+    let found: Option<(Uuid, String, String, String)> = sqlx::query_as(
         "update server_session s
          set last_seen_at = now()
          from server_operator o
@@ -347,13 +446,18 @@ pub async fn session_operator(pool: &PgPool, token: &str) -> tezgah::Result<Opti
            and s.expires_at > now()
            and o.id = s.operator_id
            and o.disabled_at is null
-         returning o.id, o.email, o.name",
+         returning o.id, o.email, o.name, o.role",
     )
     .bind(digest(token))
     .fetch_optional(pool)
     .await?;
 
-    Ok(found.map(|(id, email, name)| Operator { id, email, name }))
+    Ok(found.map(|(id, email, name, role)| Operator {
+        id,
+        email,
+        name,
+        role: Role::parse(&role),
+    }))
 }
 
 pub async fn sign_out(pool: &PgPool, token: &str) -> tezgah::Result<()> {
@@ -377,4 +481,30 @@ pub async fn drop_expired_sessions(pool: &PgPool) -> tezgah::Result<u64> {
 /// byte-by-byte timing difference cannot be used to guess it.
 pub fn is_admin_token(presented: &str, expected: &str) -> bool {
     presented.len() == expected.len() && bool::from(presented.as_bytes().ct_eq(expected.as_bytes()))
+}
+
+/// Changing what somebody may do. Their sessions survive: a role is read off
+/// the operator row on every request, so a narrowed operator is narrowed on
+/// their next one rather than at their next sign-in.
+pub async fn set_role(pool: &PgPool, id: Uuid, role: Role) -> tezgah::Result<()> {
+    let changed = sqlx::query("update server_operator set role = $2 where id = $1")
+        .bind(id)
+        .bind(role.as_str())
+        .execute(pool)
+        .await?;
+
+    if changed.rows_affected() == 0 {
+        return Err(tezgah::Error::not_found("operator"));
+    }
+    Ok(())
+}
+
+/// How many owners are left, asked before one is taken away.
+pub async fn owners(pool: &PgPool) -> tezgah::Result<i64> {
+    let (total,): (i64,) = sqlx::query_as(
+        "select count(*) from server_operator where role = 'owner' and disabled_at is null",
+    )
+    .fetch_one(pool)
+    .await?;
+    Ok(total)
 }

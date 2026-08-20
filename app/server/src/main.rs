@@ -80,7 +80,6 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     host::create_jobs_table(&pool).await?;
-    host::spawn_worker(pool.clone());
     identity::create_tables(&pool).await?;
 
     let scope = bootstrap_scope(&pool).await?;
@@ -109,6 +108,23 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             None
         }
     };
+
+    // No `Renewals` to dispatch into, and `provider.rs` says why: kasapay
+    // 0.0.5 cannot name the instrument a stored charge is meant to take, so
+    // nothing here implements `RecurringProvider`. A dunning retry records
+    // that as its reason rather than being marked done by a worker that did
+    // nothing.
+    println!(
+        "subscription renewals not dispatched: no recurring payment provider — \
+         see app/server/src/provider.rs"
+    );
+    host::spawn_worker(
+        pool.clone(),
+        Arc::new(host::Dispatcher {
+            renewals: None,
+            scope,
+        }),
+    );
 
     let admin_token: Option<Arc<str>> = config.admin_token.as_deref().map(Arc::from);
     let operators = identity::count(&pool).await?;

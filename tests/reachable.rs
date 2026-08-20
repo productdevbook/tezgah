@@ -636,7 +636,16 @@ fn every_route_handler_is_declared_in_routes() {
         let handlers = free_public_functions(source).len();
         let declared = match source.find("static ROUTES") {
             Some(at) => {
-                source[at..].matches("Route {").count() + source[at..].matches("route!(").count()
+                // Three spellings, because `admin_order` declares its routes
+                // through macros: `route!` for one that takes no query string
+                // and `paged!` for one that does. Two macros rather than a
+                // sixth argument on the first, so a list that forgot to say it
+                // pages reads as a list that does not — and this count has to
+                // know about both or sixteen routes go missing here rather
+                // than in the router.
+                source[at..].matches("Route {").count()
+                    + source[at..].matches("route!(").count()
+                    + source[at..].matches("paged!(").count()
             }
             None => 0,
         };

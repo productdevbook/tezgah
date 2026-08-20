@@ -11,6 +11,15 @@ import * as zod from 'zod';
 /**
  * @summary List price lists
  */
+export const getAdminPriceListsQueryLimitMin = 0;
+
+
+
+export const GetAdminPriceListsQueryParams = zod.object({
+  "after": zod.string().nullish(),
+  "limit": zod.int().min(getAdminPriceListsQueryLimitMin).nullish()
+})
+
 export const GetAdminPriceListsResponse = zod.object({
   "items": zod.array(zod.unknown()),
   "next": zod.string().nullish()

@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::http::{ApiError, AppState};
-use crate::identity::{self, Operator};
+use crate::identity::{self, Operator, Role};
 
 #[derive(Debug, Deserialize)]
 pub struct Credentials {
@@ -39,6 +39,7 @@ pub struct OperatorView {
     pub id: Uuid,
     pub email: String,
     pub name: String,
+    pub role: &'static str,
 }
 
 impl From<Operator> for OperatorView {
@@ -47,6 +48,7 @@ impl From<Operator> for OperatorView {
             id: operator.id,
             email: operator.email,
             name: operator.name,
+            role: operator.role.as_str(),
         }
     }
 }
@@ -56,6 +58,7 @@ pub struct OperatorRowView {
     pub id: Uuid,
     pub email: String,
     pub name: String,
+    pub role: &'static str,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub disabled_at: Option<chrono::DateTime<chrono::Utc>>,
 }
@@ -65,11 +68,16 @@ pub struct NewOperator {
     pub email: String,
     pub name: String,
     pub password: String,
+    /// `owner`, `staff` or `viewer`. Anything else reads as `viewer` — the
+    /// narrowest, because a typo should close the door rather than open it.
+    /// The first account made is the owner whatever this says.
+    pub role: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct OperatorPatch {
     pub disabled: Option<bool>,
+    pub role: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -93,6 +101,7 @@ pub fn gated_router() -> Router<AppState> {
         .route("/auth/password", post(set_own_password))
         .route("/admin/operators", get(list).post(create))
         .route("/admin/operators/{id}", patch(update))
+        .route("/admin/operators/{id}/password", post(reset_password))
 }
 
 async fn sign_in(
@@ -144,6 +153,8 @@ async fn set_own_password(
     Ok(Json(serde_json::json!({ "changed": true })))
 }
 
+/// Reading who else is here is not owner-only: an operator who cannot see the
+/// accounts cannot tell whether the person asking them for something has one.
 async fn list(State(state): State<AppState>) -> Result<Json<Vec<OperatorRowView>>, ApiError> {
     let rows = identity::list_operators(&state.pool).await?;
     Ok(Json(
@@ -152,6 +163,7 @@ async fn list(State(state): State<AppState>) -> Result<Json<Vec<OperatorRowView>
                 id: row.id,
                 email: row.email,
                 name: row.name,
+                role: row.role.as_str(),
                 created_at: row.created_at,
                 disabled_at: row.disabled_at,
             })
@@ -161,11 +173,52 @@ async fn list(State(state): State<AppState>) -> Result<Json<Vec<OperatorRowView>
 
 async fn create(
     State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
     Json(body): Json<NewOperator>,
 ) -> Result<Json<OperatorView>, ApiError> {
+    only_an_owner(&caller)?;
+
+    let role = body.role.as_deref().map_or(Role::Staff, Role::parse);
     let made =
-        identity::create_operator(&state.pool, &body.email, &body.name, &body.password).await?;
+        identity::create_operator(&state.pool, &body.email, &body.name, &body.password, role)
+            .await?;
     Ok(Json(made.into()))
+}
+
+/// An owner setting somebody else's password.
+///
+/// This is what a shop does when an operator forgets theirs, and it is why
+/// there is no reset e-mail: an owner sets a new one and tells them the way
+/// they told them the first one. A link this server cannot send would be
+/// worse than one it never offered.
+///
+/// Every session that operator holds ends with it — including, deliberately,
+/// the one they may be sitting in. An account whose password was reset by
+/// somebody else is an account that may have been taken.
+async fn reset_password(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<NewPassword>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    only_an_owner(&caller)?;
+    identity::change_password(&state.pool, id, &body.password, None).await?;
+    Ok(Json(serde_json::json!({ "changed": true })))
+}
+
+/// `ADMIN_TOKEN` counts as an owner, and has to: it is how the first account
+/// is made, and how a shop that lost every owner's password makes another.
+fn only_an_owner(caller: &Caller) -> Result<(), ApiError> {
+    let allowed = match caller {
+        Caller::AdminToken => true,
+        Caller::Session { operator, .. } => operator.role.may_manage_operators(),
+    };
+
+    if allowed {
+        Ok(())
+    } else {
+        Err(tezgah::Error::denied().into())
+    }
 }
 
 async fn update(
@@ -174,12 +227,46 @@ async fn update(
     Path(id): Path<Uuid>,
     Json(body): Json<OperatorPatch>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
+    only_an_owner(&caller)?;
+
+    if let Some(role) = body.role.as_deref().map(Role::parse) {
+        // The last owner cannot be demoted, for the same reason the first
+        // account is made one: a shop with no owner cannot make an account,
+        // and the only way back is the token it was told it could stop
+        // keeping.
+        let is_owner_now = identity::list_operators(&state.pool)
+            .await?
+            .into_iter()
+            .any(|row| row.id == id && row.role == Role::Owner);
+
+        if is_owner_now && role != Role::Owner && identity::owners(&state.pool).await? <= 1 {
+            return Err(tezgah::Error::invalid(
+                "that is the last owner — make another before narrowing this one",
+            )
+            .into());
+        }
+
+        identity::set_role(&state.pool, id, role).await?;
+    }
+
     if let Some(disabled) = body.disabled {
         // Disabling yourself locks the door with the key inside. `ADMIN_TOKEN`
         // would still open it, but a deployment that unset it after making
         // accounts would have nothing left.
         if disabled && caller.operator().map(|operator| operator.id) == Some(id) {
             return Err(tezgah::Error::invalid("an operator cannot disable itself").into());
+        }
+        if disabled && identity::owners(&state.pool).await? <= 1 {
+            let last_owner = identity::list_operators(&state.pool)
+                .await?
+                .into_iter()
+                .any(|row| row.id == id && row.role == Role::Owner);
+            if last_owner {
+                return Err(tezgah::Error::invalid(
+                    "that is the last owner — make another before disabling this one",
+                )
+                .into());
+            }
         }
         identity::set_disabled(&state.pool, id, disabled).await?;
     }
