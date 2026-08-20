@@ -3230,7 +3230,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}/variants",
         action: Action::View,
         domain: CATALOGUE,
-        query: Some(super::query_schema::<super::Paged>),
+        query: Some(super::query_schema::<super::PagingQuery>),
         summary: "List a product's variants",
     },
     Route {
@@ -3446,7 +3446,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/collections",
         action: Action::View,
         domain: CATALOGUE,
-        query: Some(super::query_schema::<super::Paged>),
+        query: Some(super::query_schema::<super::PagingQuery>),
         summary: "List collections",
     },
     Route {
@@ -3707,7 +3707,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/price-lists",
         action: Action::View,
         domain: PRICING,
-        query: Some(super::query_schema::<super::Paged>),
+        query: Some(super::query_schema::<super::PagingQuery>),
         summary: "List price lists",
     },
     Route {
@@ -3860,7 +3860,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/inventory-items",
         action: Action::View,
         domain: INVENTORY,
-        query: Some(super::query_schema::<super::Paged>),
+        query: Some(super::query_schema::<super::PagingQuery>),
         summary: "List inventory items",
     },
     Route {

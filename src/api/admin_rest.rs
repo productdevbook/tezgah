@@ -2074,7 +2074,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/customers/{id}/addresses",
         action: Action::View,
         domain: "customer",
-        query: Some(super::query_schema::<super::Paged>),
+        query: Some(super::query_schema::<super::PagingQuery>),
         summary: "List a customer's addresses",
     },
     Route {
@@ -2110,7 +2110,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/customer-groups",
         action: Action::View,
         domain: "customer",
-        query: Some(super::query_schema::<super::Paged>),
+        query: Some(super::query_schema::<super::PagingQuery>),
         summary: "List customer groups",
     },
     Route {
@@ -2146,7 +2146,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/customer-groups/{id}/customers",
         action: Action::View,
         domain: "customer",
-        query: Some(super::query_schema::<super::Paged>),
+        query: Some(super::query_schema::<super::PagingQuery>),
         summary: "List a group's members",
     },
     Route {
@@ -2173,7 +2173,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/promotions",
         action: Action::View,
         domain: "promotion",
-        query: Some(super::query_schema::<super::Paged>),
+        query: Some(super::query_schema::<super::PagingQuery>),
         summary: "List promotions",
     },
     Route {
@@ -2263,7 +2263,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/campaigns",
         action: Action::View,
         domain: "promotion",
-        query: Some(super::query_schema::<super::Paged>),
+        query: Some(super::query_schema::<super::PagingQuery>),
         summary: "List campaigns",
     },
     Route {
@@ -2335,7 +2335,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/tax-regions",
         action: Action::View,
         domain: "tax",
-        query: Some(super::query_schema::<super::Paged>),
+        query: Some(super::query_schema::<super::PagingQuery>),
         summary: "List tax regions",
     },
     Route {
@@ -2452,7 +2452,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/regions",
         action: Action::View,
         domain: "store",
-        query: Some(super::query_schema::<super::Paged>),
+        query: Some(super::query_schema::<super::PagingQuery>),
         summary: "List regions",
     },
     Route {
@@ -2488,7 +2488,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/regions/{id}/countries",
         action: Action::View,
         domain: "store",
-        query: Some(super::query_schema::<super::Paged>),
+        query: Some(super::query_schema::<super::PagingQuery>),
         summary: "List the countries a region serves",
     },
     Route {
@@ -2515,7 +2515,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/sales-channels",
         action: Action::View,
         domain: "store",
-        query: Some(super::query_schema::<super::Paged>),
+        query: Some(super::query_schema::<super::PagingQuery>),
         summary: "List sales channels",
     },
     Route {
@@ -2560,7 +2560,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/publishable-api-keys",
         action: Action::View,
         domain: "store",
-        query: Some(super::query_schema::<super::Paged>),
+        query: Some(super::query_schema::<super::PagingQuery>),
         summary: "List the storefront keys, live and revoked",
     },
     Route {

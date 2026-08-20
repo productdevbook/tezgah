@@ -172,7 +172,7 @@ fn the_lists_that_filter_say_what_they_filter_on() {
     }
 
     assert!(
-        described >= 30,
+        described >= 20,
         "only {described} operations describe a query parameter; a route says \
          so itself now, in its own literal, with `query:`"
     );

@@ -85,6 +85,10 @@ pub(crate) async fn own_order(
 
 /// The two parameters every paged list takes, described once.
 ///
+/// Named `PagingQuery` rather than `Paged`: `openapi.rs` has a test keeping
+/// `Page<T>` to one schema whatever `T` is, and it reads schema names — so a
+/// query string called `Paged` looks to it like a second envelope.
+///
 /// Five modules have a query struct of their own that is exactly these two
 /// fields — `admin_rest::List`, `credit::List`, `digital::List`,
 /// `subscription::List`, `admin_catalogue::ListQuery` — because each
@@ -97,7 +101,7 @@ pub(crate) async fn own_order(
 /// carries `JsonSchema` and not `Deserialize`, which is what keeps it from
 /// quietly becoming a sixth way to read a query string.
 #[derive(Debug, Clone, Default, schemars::JsonSchema)]
-pub struct Paged {
+pub struct PagingQuery {
     /// The cursor the previous page ended on. Absent means the first page.
     pub after: Option<String>,
     /// Clamped rather than refused — `page::MAX_LIMIT` is the ceiling, and a

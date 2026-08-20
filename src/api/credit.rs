@@ -481,7 +481,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/gift-cards",
         action: Action::View,
         domain: "credit",
-        query: Some(super::query_schema::<super::Paged>),
+        query: Some(super::query_schema::<super::PagingQuery>),
         summary: "List gift cards",
     },
     Route {
