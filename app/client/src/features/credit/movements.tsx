@@ -1,10 +1,9 @@
 import { useQuery } from "@tanstack/react-query"
 
+import { z } from "zod"
+
 import { get, type ApiPath } from "@/api/client"
-import {
-  GetAdminGiftCardsByIdTransactionsResponse,
-  GetAdminStoreCreditsByIdTransactionsResponse,
-} from "@/api/generated/zod/credit/credit"
+import { page } from "@/api/schemas"
 import { Empty, Mono } from "@/components/detail-fields"
 import { Section } from "@/components/section"
 import {
@@ -28,24 +27,47 @@ import { dateTime } from "@/lib/detail"
  * describes the page, and no route answers one movement on its own to name
  * an item after.
  */
+/**
+ * `CreditMovementView`, written out here rather than imported.
+ *
+ * The document describes it only inside a page, and a page's generated
+ * schema is an intersection — `{items: unknown[]} & {items: Movement[]}` —
+ * whose element type TypeScript resolves back to `unknown`. So the generated
+ * page cannot be used whole, and no route answers one movement on its own to
+ * name an item schema after: adjusting a balance returns the balance.
+ *
+ * A wrong field here is caught the first time a row arrives, by
+ * `parseResponse`, and says which field it was.
+ */
+const movement = z.object({
+  id: z.string(),
+  amount: z.string(),
+  currency_code: z.string(),
+  kind: z.string(),
+  order_id: z.string().nullable(),
+  reason: z.string().nullable(),
+  created_at: z.string(),
+})
+
 export function Movements({
   path,
   id,
-  schema,
   bare = false,
 }: {
   path: ApiPath
   id: string
-  schema:
-    | typeof GetAdminGiftCardsByIdTransactionsResponse
-    | typeof GetAdminStoreCreditsByIdTransactionsResponse
   /** Inside a section that already has a heading, rather than being one. */
   bare?: boolean
 }) {
   const result = useQuery({
     queryKey: ["credit-movements", path, id],
     queryFn: ({ signal }) =>
-      get(path, { signal, schema, params: { id }, query: { limit: 50 } }),
+      get(path, {
+        signal,
+        schema: page(movement),
+        params: { id },
+        query: { limit: 50 },
+      }),
   })
 
   const rows = result.data?.items ?? []

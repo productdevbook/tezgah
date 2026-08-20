@@ -3,7 +3,6 @@ import { Mono } from "@/components/detail-fields"
 import { DetailPage } from "@/components/detail-page"
 import { Section, SectionRow, SectionRows } from "@/components/section"
 import { Badge } from "@/components/ui/badge"
-import { GetAdminGiftCardsByIdTransactionsResponse } from "@/api/generated/zod/credit/credit"
 import { Movements } from "@/features/credit/movements"
 import { dateTime, useDetail } from "@/lib/detail"
 
@@ -57,11 +56,7 @@ export function GiftCardDetail({ id }: { id: string }) {
             </SectionRows>
           </Section>
 
-          <Movements
-            path="/admin/gift-cards/{id}/transactions"
-            id={item.id}
-            schema={GetAdminGiftCardsByIdTransactionsResponse}
-          />
+          <Movements path="/admin/gift-cards/{id}/transactions" id={item.id} />
         </>
       )}
       side={(item) => (

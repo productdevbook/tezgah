@@ -1,10 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 
 import { get } from "@/api/client"
-import {
-  GetAdminCustomersByIdStoreCreditResponse,
-  GetAdminStoreCreditsByIdTransactionsResponse,
-} from "@/api/generated/zod/credit/credit"
+import { GetAdminCustomersByIdStoreCreditResponse } from "@/api/generated/zod/credit/credit"
 import { Movements } from "@/features/credit/movements"
 import {
   GetAdminCustomersByIdTaxExemptionsResponse,
@@ -84,7 +81,6 @@ export function StoreCredit({ customerId }: { customerId: string }) {
           <Movements
             path="/admin/store-credits/{id}/transactions"
             id={result.data.id}
-            schema={GetAdminStoreCreditsByIdTransactionsResponse}
             bare
           />
         </>
