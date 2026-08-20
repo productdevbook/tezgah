@@ -1,25 +1,15 @@
 //! The admin surface: one list endpoint per screen the panel in `client/`
-//! draws — products, orders, inventory items, customers, promotions,
-//! subscriptions, and the two the store screen's tabs read, regions and
-//! sales channels — plus the currencies list the overview screen reads, and
-//! the two lists the panel needs and did not have: publishable API keys and
-//! stock locations. Alongside every list, the one-row read behind it: a
-//! click on a row in any of those seven screens has somewhere to go —
-//! `GET /admin/{products,orders,inventory-items,customers,promotions,
-//! regions,sales-channels,subscriptions}/{id}`. Alongside them, the writes a
-//! fresh install needs to reach its first order and cannot make any other
-//! way: enabling a currency, opening a region, a sales channel and a stock
-//! location, minting a publishable key, and creating a product, its
-//! variants, a price and a stocked inventory level — #214. Past that, the
-//! list and single-row read behind an order basket, a workflow run and a
-//! seller scope's own payouts: `GET /admin/order-baskets/{id}` and its two
-//! sub-lists, `GET /admin/workflows-executions` and the single run, its
-//! steps and the scope-wide dead letters, and `GET /admin/commission-rules`,
-//! `/admin/orders/{id}/payout-lines`, `/admin/payouts` and
-//! `/admin/payout-balance/{currency_code}` — none of the three has a screen
-//! in `client/` yet, so nothing calls them but this binary's own startup
-//! count. Everything else `tezgah::api` offers stays unbound; nothing here
-//! was chosen for this binary beyond what those needs cover.
+//! draws, the single-row read behind a click on any of them, the twelve
+//! writes a fresh install needs to reach its first order (#214), and, past
+//! the panel, every list-and-single-read a domain already had the
+//! functions for in `src/api/` with nothing here calling them —
+//! order-basket, workflow, payout, fulfilment, tax, pricing, payment,
+//! credit and (list, single read and writes both, because the domain had
+//! no route at all) digital. `../README.md`'s own route table carries the
+//! full breakdown, kept there rather than duplicated here because it moves
+//! with every domain this binary picks up next. Everything else
+//! `tezgah::api` offers stays unbound; nothing here was chosen for this
+//! binary beyond what those needs cover.
 //!
 //! # Why a bearer token, and why it is the whole of this
 //!
@@ -58,18 +48,18 @@ use axum::extract::{Path, Query, Request, State};
 use axum::http::{StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use subtle::ConstantTimeEq;
 use tezgah::api::{
-    admin_catalogue, admin_order, admin_rest, order_basket, payout, store as store_api,
-    subscription, tax_identity,
+    admin_catalogue, admin_order, admin_rest, credit, digital, order_basket, payout,
+    store as store_api, subscription, tax_identity,
 };
 use tezgah::id::{
-    CustomerId, FulfillmentId, FulfillmentSetId, InventoryItemId, OrderBasketId, OrderId,
-    PaymentCollectionId, PaymentId, PriceId, PriceListId, PriceSetId, ProductId, PromotionId,
-    RegionId, SalesChannelId, ShippingOptionId, ShippingProfileId, SubscriptionId, TaxRateId,
-    TaxRegionId, VariantId, WorkflowRunId,
+    CustomerId, DigitalContentId, FulfillmentId, FulfillmentSetId, GiftCardId, InventoryItemId,
+    OrderBasketId, OrderId, PaymentCollectionId, PaymentId, PriceId, PriceListId, PriceSetId,
+    ProductId, PromotionId, RegionId, SalesChannelId, ShippingOptionId, ShippingProfileId,
+    StoreCreditId, SubscriptionId, TaxRateId, TaxRegionId, VariantId, WorkflowRunId,
 };
 use tezgah::ports::{Actor, Ctx, Host};
 use uuid::Uuid;
@@ -156,6 +146,16 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         ("GET", "/admin/payment-collections/{id}"),
         ("GET", "/admin/payment-collections/{id}/payment-sessions"),
         ("GET", "/admin/refund-reasons"),
+        ("GET", "/admin/gift-cards"),
+        ("GET", "/admin/gift-cards/{id}"),
+        ("GET", "/admin/gift-cards/{id}/transactions"),
+        ("GET", "/admin/customers/{id}/store-credit"),
+        ("GET", "/admin/store-credits/{id}/transactions"),
+        ("GET", "/admin/orders/{id}/entitlements"),
+        ("POST", "/admin/orders/{id}/entitlements/revoke"),
+        ("GET", "/admin/variants/{id}/digital-content"),
+        ("POST", "/admin/variants/{id}/digital-content"),
+        ("DELETE", "/admin/digital-content/{id}"),
     ];
 
     let router = Router::new()
@@ -292,7 +292,31 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
             "/admin/payment-collections/{id}/payment-sessions",
             get(payment_sessions),
         )
-        .route("/admin/refund-reasons", get(list_refund_reasons));
+        .route("/admin/refund-reasons", get(list_refund_reasons))
+        .route("/admin/gift-cards", get(list_gift_cards))
+        .route("/admin/gift-cards/{id}", get(get_gift_card))
+        .route(
+            "/admin/gift-cards/{id}/transactions",
+            get(gift_card_movements),
+        )
+        .route("/admin/customers/{id}/store-credit", get(get_store_credit))
+        .route(
+            "/admin/store-credits/{id}/transactions",
+            get(store_credit_movements),
+        )
+        .route(
+            "/admin/orders/{id}/entitlements",
+            get(list_order_entitlements),
+        )
+        .route(
+            "/admin/orders/{id}/entitlements/revoke",
+            post(revoke_entitlements),
+        )
+        .route(
+            "/admin/variants/{id}/digital-content",
+            get(list_content).post(put_content),
+        )
+        .route("/admin/digital-content/{id}", delete(delete_content));
 
     (router, bound)
 }
@@ -1218,4 +1242,119 @@ async fn list_refund_reasons(
     let page = admin_order::list_refund_reasons(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(page))
+}
+
+async fn list_gift_cards(
+    State(state): State<AppState>,
+    Query(query): Query<credit::List>,
+) -> Result<Json<tezgah::page::Page<credit::GiftCardView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = credit::list_gift_cards(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn get_gift_card(
+    State(state): State<AppState>,
+    Path(id): Path<GiftCardId>,
+) -> Result<Json<credit::GiftCardView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let card = credit::get_gift_card(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(card))
+}
+
+async fn gift_card_movements(
+    State(state): State<AppState>,
+    Path(id): Path<GiftCardId>,
+    Query(query): Query<credit::List>,
+) -> Result<Json<tezgah::page::Page<credit::CreditMovementView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = credit::gift_card_movements(&mut tx, &ctx, id, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn get_store_credit(
+    State(state): State<AppState>,
+    Path(id): Path<CustomerId>,
+    Query(query): Query<credit::BalanceQuery>,
+) -> Result<Json<credit::StoreCreditView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let balance = credit::get_store_credit(&mut tx, &ctx, id, query).await?;
+    tx.commit().await?;
+    Ok(Json(balance))
+}
+
+async fn store_credit_movements(
+    State(state): State<AppState>,
+    Path(id): Path<StoreCreditId>,
+    Query(query): Query<credit::List>,
+) -> Result<Json<tezgah::page::Page<credit::CreditMovementView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let page = credit::store_credit_movements(&mut tx, &ctx, id, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn list_order_entitlements(
+    State(state): State<AppState>,
+    Path(id): Path<OrderId>,
+) -> Result<Json<Vec<digital::EntitlementView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let entitlements = digital::list_order_entitlements(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(entitlements))
+}
+
+async fn revoke_entitlements(
+    State(state): State<AppState>,
+    Path(id): Path<OrderId>,
+    Json(body): Json<digital::RevokeEntitlements>,
+) -> Result<Json<Vec<digital::EntitlementView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let entitlements = digital::revoke_entitlements(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(entitlements))
+}
+
+async fn list_content(
+    State(state): State<AppState>,
+    Path(id): Path<VariantId>,
+) -> Result<Json<Vec<digital::ContentView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let content = digital::list_content(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(content))
+}
+
+async fn put_content(
+    State(state): State<AppState>,
+    Path(id): Path<VariantId>,
+    Json(body): Json<digital::PutContent>,
+) -> Result<Json<digital::ContentView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    let content = digital::put_content(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(content))
+}
+
+async fn delete_content(
+    State(state): State<AppState>,
+    Path(id): Path<DigitalContentId>,
+) -> Result<StatusCode, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    digital::delete_content(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
 }

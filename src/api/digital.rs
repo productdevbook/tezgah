@@ -41,7 +41,7 @@ impl List {
 // Views
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ContentView {
     pub id: DigitalContentId,
     pub variant_id: VariantId,
@@ -72,7 +72,7 @@ impl From<digital::DigitalContent> for ContentView {
 
 /// An entitlement as it leaves the building. No `content_key`: what a shopper
 /// needs is whether they may still download it, not where it is kept.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct EntitlementView {
     pub id: OrderEntitlementId,
     pub order_id: OrderId,
@@ -105,7 +105,7 @@ impl From<digital::OrderEntitlement> for EntitlementView {
 
 /// The one answer carrying a token, the way an issued gift card is the one
 /// answer carrying a code.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TokenView {
     pub token: String,
     pub expires_at: chrono::DateTime<chrono::Utc>,
@@ -114,7 +114,7 @@ pub struct TokenView {
 
 /// What the host hands to its own storage. tezgah has counted the download by
 /// the time this is returned.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct DownloadView {
     pub entitlement_id: OrderEntitlementId,
     pub content_key: String,
@@ -126,7 +126,7 @@ pub struct DownloadView {
 // Admin
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PutContent {
     pub content_key: String,
@@ -187,7 +187,7 @@ pub async fn list_order_entitlements(
         .collect())
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RevokeEntitlements {
     pub reason: Option<String>,
@@ -241,7 +241,7 @@ pub async fn create_token(
     })
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Redeem {
     pub token: String,

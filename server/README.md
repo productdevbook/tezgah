@@ -169,7 +169,7 @@ receives the `Action` on every call, so a second token (or a role
 by hand, and says exactly how many out loud at startup:
 
 ```
-bound 86 of 483 declared routes
+bound 97 of 483 declared routes
   GET    /store/products
   GET    /store/products/{handle}
   POST   /store/carts
@@ -256,6 +256,17 @@ bound 86 of 483 declared routes
   GET    /admin/payment-collections/{id}/payment-sessions
   GET    /admin/refund-reasons
   GET    /store/payment-providers
+  GET    /admin/gift-cards
+  GET    /admin/gift-cards/{id}
+  GET    /admin/gift-cards/{id}/transactions
+  GET    /admin/customers/{id}/store-credit
+  GET    /admin/store-credits/{id}/transactions
+  GET    /store/carts/{id}/credits
+  GET    /admin/orders/{id}/entitlements
+  POST   /admin/orders/{id}/entitlements/revoke
+  GET    /admin/variants/{id}/digital-content
+  POST   /admin/variants/{id}/digital-content
+  DELETE /admin/digital-content/{id}
   plus GET /health, which is this binary's own and not one of the 483
 ```
 
@@ -348,6 +359,33 @@ not already offer:
   are the payment domain's own raw-`Decimal` money fields, so
   `money_crosses_the_wire_as_a_string_not_a_number` grows four more
   pointers for them.
+- **credit** — gift cards with a list, single read and their transactions,
+  and a customer's store-credit balance in one currency with its own
+  transactions (`credit::list_gift_cards`, `get_gift_card`,
+  `gift_card_movements`, `get_store_credit`, `store_credit_movements`),
+  plus what a cart currently means to pay with,
+  `GET /store/carts/{id}/credits` (`list_cart_credits`).
+  `GET /store/customers/me/store-credit` (`my_store_credit`) is not among
+  these: it calls `signed_in(ctx)`, which only ever succeeds for
+  `Actor::Customer`, and this binary has no customer sign-in anywhere —
+  every storefront route it binds runs as `Actor::Guest`. Binding it would
+  mean a route that answers `denied` to every caller, which is worse than
+  leaving it unbound; giving this binary a customer identity is a separate
+  decision, the same shape as #214.
+- **digital** — what an order's money bought the right to, a list and a
+  hand revocation, and a variant's own files, list, write and delete
+  (`digital::list_order_entitlements`, `revoke_entitlements`,
+  `list_content`, `put_content`, `delete_content`). Writes are bound here,
+  past this round's read-only rule for the other nine domains, because the
+  domain had no route at all — a shop with digital products could not
+  reach any of it. The storefront half —
+  `GET /store/entitlements`, `POST /store/entitlements/{id}/token`,
+  `POST /store/downloads` (`my_entitlements`, `create_token`, `redeem`) —
+  is not bound for the same reason `GET /store/customers/me/store-credit`
+  above is not: all three call `signed_in(ctx)` before anything else, and
+  answer `denied` to the `Actor::Guest` every storefront route in this
+  binary runs as. Binding a route that refuses its every caller would be
+  worse than the gap it replaces.
 
 Everything else `tezgah::api` offers stays unbound; wiring in more of the
 483 is a matter of adding a handler in `src/http/admin.rs` or

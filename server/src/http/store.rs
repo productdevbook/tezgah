@@ -1,7 +1,7 @@
 //! The storefront: catalogue, cart, and — when `state.checkout` is `Some` —
 //! checkout.
 //!
-//! Eight routes when a stock location is configured, seven without — a
+//! Nine routes when a stock location is configured, eight without — a
 //! browser walking catalogue to order needs exactly this shape:
 //! `examples/shop` walks the same five calls (plus checkout) directly,
 //! without a router at all, to show what these look like as plain library
@@ -12,12 +12,28 @@
 //! and `GET /store/payment-providers` take neither — the cart each prices
 //! delivery for, or narrows a provider list to the region of, is named in
 //! its own query, the same as `own_cart` asks the host about for every
-//! other route here.
+//! other route here. `GET /store/carts/{id}/credits` takes only the id,
+//! the same as the two cart-by-id routes above it.
+//!
+//! # What this surface still cannot reach
+//!
+//! `tezgah::api` declares four more storefront routes this binary does not
+//! bind: `GET /store/customers/me/store-credit`
+//! (`credit::my_store_credit`), and digital's `GET /store/entitlements`,
+//! `POST /store/entitlements/{id}/token` and `POST /store/downloads`
+//! (`digital::my_entitlements`, `create_token`, `redeem`) — every one of
+//! them calls `signed_in` before anything else, which succeeds only for
+//! `Actor::Customer`. Every route this file binds runs as `Actor::Guest`:
+//! this binary has no customer sign-in anywhere. Binding one of these four
+//! would mean a route that answers `denied` to every caller it could ever
+//! have, which is worse than leaving it unbound — giving this binary a
+//! customer identity is a separate decision, the same shape as #214.
 
 use axum::extract::{Path, Query, State};
 use axum::http::HeaderMap;
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use tezgah::api::credit;
 use tezgah::api::store::{self, AddLineItem, CreateCart};
 use tezgah::id::CartId;
 use tezgah::ports::{Actor, Ctx, Host};
@@ -38,6 +54,7 @@ pub fn router(checkout_configured: bool) -> (Router<AppState>, Vec<(&'static str
         ("POST", "/store/carts/{id}/line-items"),
         ("GET", "/store/shipping-options"),
         ("GET", "/store/payment-providers"),
+        ("GET", "/store/carts/{id}/credits"),
     ];
 
     let mut router = Router::new()
@@ -47,7 +64,8 @@ pub fn router(checkout_configured: bool) -> (Router<AppState>, Vec<(&'static str
         .route("/store/carts/{id}", get(get_cart))
         .route("/store/carts/{id}/line-items", post(add_line_item))
         .route("/store/shipping-options", get(list_shipping_options))
-        .route("/store/payment-providers", get(list_payment_providers));
+        .route("/store/payment-providers", get(list_payment_providers))
+        .route("/store/carts/{id}/credits", get(list_cart_credits));
 
     if checkout_configured {
         router = router.route("/store/carts/{id}/complete", post(complete_cart));
@@ -185,4 +203,15 @@ async fn list_payment_providers(
     let providers = store::list_payment_providers(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(providers))
+}
+
+async fn list_cart_credits(
+    State(state): State<AppState>,
+    Path(id): Path<CartId>,
+) -> Result<Json<Vec<credit::CartCreditView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, Actor::Guest { cart: id.as_uuid() });
+    let credits = credit::list_cart_credits(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(credits))
 }

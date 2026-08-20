@@ -25,8 +25,8 @@ use serde_json::{Map, Value, json};
 use crate::page::Page;
 
 use super::{
-    Method, Route, Surface, admin_catalogue, admin_order, admin_rest, agreement, order_basket,
-    payout, routes, store, subscription, tax_identity,
+    Method, Route, Surface, admin_catalogue, admin_order, admin_rest, agreement, credit, digital,
+    order_basket, payout, routes, store, subscription, tax_identity,
 };
 
 /// A storefront's key, which pins it to its sales channels.
@@ -1061,6 +1061,78 @@ static BODIES: &[Body] = &[
         request: None,
         response: Some(schema_of::<Vec<store::PaymentProviderView>>),
     },
+    // -------------------------------------------------------------- credit
+    Body {
+        operation_id: "getAdminGiftCards",
+        request: None,
+        response: Some(page_of::<credit::GiftCardView>),
+    },
+    Body {
+        operation_id: "getAdminGiftCardsById",
+        request: None,
+        response: Some(schema_of::<credit::GiftCardView>),
+    },
+    Body {
+        operation_id: "getAdminGiftCardsByIdTransactions",
+        request: None,
+        response: Some(page_of::<credit::CreditMovementView>),
+    },
+    Body {
+        operation_id: "getAdminCustomersByIdStoreCredit",
+        request: None,
+        response: Some(schema_of::<credit::StoreCreditView>),
+    },
+    Body {
+        operation_id: "getAdminStoreCreditsByIdTransactions",
+        request: None,
+        response: Some(page_of::<credit::CreditMovementView>),
+    },
+    Body {
+        operation_id: "getStoreCartsByIdCredits",
+        request: None,
+        response: Some(schema_of::<Vec<credit::CartCreditView>>),
+    },
+    Body {
+        operation_id: "getStoreCustomersMeStoreCredit",
+        request: None,
+        response: Some(schema_of::<credit::StoreCreditView>),
+    },
+    // ------------------------------------------------------------- digital
+    Body {
+        operation_id: "getAdminOrdersByIdEntitlements",
+        request: None,
+        response: Some(schema_of::<Vec<digital::EntitlementView>>),
+    },
+    Body {
+        operation_id: "postAdminOrdersByIdEntitlementsRevoke",
+        request: Some(schema_of::<digital::RevokeEntitlements>),
+        response: Some(schema_of::<Vec<digital::EntitlementView>>),
+    },
+    Body {
+        operation_id: "getAdminVariantsByIdDigitalContent",
+        request: None,
+        response: Some(schema_of::<Vec<digital::ContentView>>),
+    },
+    Body {
+        operation_id: "postAdminVariantsByIdDigitalContent",
+        request: Some(schema_of::<digital::PutContent>),
+        response: Some(schema_of::<digital::ContentView>),
+    },
+    Body {
+        operation_id: "getStoreEntitlements",
+        request: None,
+        response: Some(page_of::<digital::EntitlementView>),
+    },
+    Body {
+        operation_id: "postStoreEntitlementsByIdToken",
+        request: None,
+        response: Some(schema_of::<digital::TokenView>),
+    },
+    Body {
+        operation_id: "postStoreDownloads",
+        request: Some(schema_of::<digital::Redeem>),
+        response: Some(schema_of::<digital::DownloadView>),
+    },
 ];
 
 fn operation(
@@ -1322,9 +1394,10 @@ mod tests {
         // bundle's own priced total and its components' shares, and a
         // payment collection's own four running totals, which `CollectionView`
         // carries as raw `Decimal` rather than through `amount_view` because
-        // all four already share the collection's one fixed currency, all
-        // riding the same `for_serialize` generator and answering the same
-        // way even though not all of them are money.
+        // all four already share the collection's one fixed currency, and a
+        // gift card's, a store credit's and a cart credit's own balances and
+        // movements, all riding the same `for_serialize` generator and
+        // answering the same way even though not all of them are money.
         for pointer in [
             "/components/schemas/BalanceView/properties/amount",
             "/components/schemas/PayoutView/properties/amount",
@@ -1336,6 +1409,11 @@ mod tests {
             "/components/schemas/ProductView/properties/width",
             "/components/schemas/MoneyView/properties/amount",
             "/components/schemas/InvoiceView/properties/total_amount",
+            "/components/schemas/GiftCardView/properties/initial_balance",
+            "/components/schemas/GiftCardView/properties/balance",
+            "/components/schemas/CreditMovementView/properties/amount",
+            "/components/schemas/StoreCreditView/properties/balance",
+            "/components/schemas/CartCreditView/properties/amount",
             "/components/schemas/PriceView/properties/amount",
             "/components/schemas/BundlePriceView/properties/total",
             "/components/schemas/BundlePriceComponentView/properties/unit_price",
