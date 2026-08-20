@@ -18,7 +18,7 @@ use tezgah::checkout::Checkout;
 use tezgah::payment::PaymentProvider;
 use tezgah::ports::Scope;
 use tezgah_server::config::Config;
-use tezgah_server::{deliver, host, http, identity, mail, provider, schedule, seed};
+use tezgah_server::{deliver, files, host, http, identity, mail, provider, schedule, seed};
 use tokio::net::TcpListener;
 use uuid::Uuid;
 
@@ -189,6 +189,23 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     };
     let panel_url: Option<Arc<str>> = config.panel_url.as_deref().map(Arc::from);
 
+    let files = match &config.file_dir {
+        Some(dir) => {
+            println!(
+                "files stored in {dir}, served from {}",
+                config.file_base_url
+            );
+            Some(files::Store::open(dir, &config.file_base_url).await?)
+        }
+        None => {
+            println!(
+                "no file store: TEZGAH_FILE_DIR is unset — a product's image is a URL \
+                 somebody else hosts"
+            );
+            None
+        }
+    };
+
     let state = http::AppState {
         pool,
         host,
@@ -199,6 +216,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         webhook_secret,
         mailer,
         panel_url,
+        files,
     };
 
     let (router, bound) = http::router(state);

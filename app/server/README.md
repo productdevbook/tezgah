@@ -49,6 +49,8 @@ naming what is wrong, rather than on the first request that needed a pool.
 | `TEZGAH_SMTP_URL` | no | unset | lettre's own URL, `smtps://user:pass@host:465`; unset means this shop sends no letters |
 | `TEZGAH_MAIL_FROM` | with the above | unset | who a letter is from |
 | `TEZGAH_PANEL_URL` | with the above | unset | where the panel is, so an invitation can carry a link |
+| `TEZGAH_FILE_DIR` | no | unset | a directory to store uploads in; unset means this shop stores no files — see "Where a file lives" |
+| `TEZGAH_FILE_BASE_URL` | no | `/files` | what a stored file's URL starts with — a CDN in front of that directory, say |
 
 Configuration comes from the environment and nowhere else: no config file
 format, because a container is not handed one separately from the
@@ -281,6 +283,36 @@ field and drop it" kasapay's own documentation refuses, so `src/provider.rs`
 implements neither and says so where somebody would look for it. Until there
 is a release a dunning retry records exactly that as its reason — still an
 improvement on being marked done by a worker that did nothing.
+
+## Where a file lives
+
+Unset `TEZGAH_FILE_DIR` and this binary stores none: a product's image is a
+URL somebody else serves, which is what tezgah's own catalogue models and all
+this ever was.
+
+Set it and two routes appear. `POST /admin/files` takes one multipart field
+and answers `{"url": "…"}`; that URL goes in the product's `thumbnail_url`,
+so nothing in the catalogue changes shape. `GET /files/{name}` serves it back,
+unauthenticated — an image on a storefront is public, and a signed URL for a
+product photo is ceremony.
+
+**What is not trusted.** The name the browser sent never reaches the disk: a
+file is written as `<uuid>.<ext>`, and the extension comes from the content
+type this binary recognises rather than from anything in the request. That is
+what makes traversal impossible rather than handled, and reading one back
+checks the same shape — thirty-two hex characters, a dot, one of five
+extensions — before the name touches a path.
+
+**Five types, listed rather than matched.** jpeg, png, webp, gif, avif.
+`image/svg+xml` is an image by any `image/` prefix check and a script by every
+other measure, and serving one back from the shop's own origin is a
+cross-site scripting hole with a picture frame around it. Files are served
+with the type this binary chose and `X-Content-Type-Options: nosniff`, so a
+browser does not get to decide it knows better from the bytes.
+
+8 MB a file. A directory on one disk is a deliberate ceiling: a shop
+outgrowing it wants object storage, and because what is stored in the product
+is an ordinary URL, moving to one is putting the bucket behind the same path.
 
 ## Inviting somebody
 

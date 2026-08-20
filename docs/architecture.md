@@ -220,11 +220,16 @@ says so rather than pretending. What sends one today is an operator
 invitation: a one-use token in a link, seven days, replacing any open
 invitation for the same address rather than adding a second.
 
-**Nothing else does yet, and there is still no file store.** A shopper gets
-no order confirmation, an operator who forgets a password still has an owner
-set them a new one rather than asking for a link, and a product image can
-only be a URL somebody else hosts. The first two are now a letter each rather
-than a missing subsystem; the third is not.
+**There is a file store too, and one screen uploads to it.** A directory,
+five image types listed rather than prefix-matched, a name this binary
+chooses so nothing a caller sent decides where a file lands. A product's
+image is still a URL in a column — which is what tezgah models and what makes
+moving to object storage a matter of putting a bucket behind the same path.
+
+**What still sends no letter.** A shopper gets no order confirmation, and an
+operator who forgets a password has an owner set them a new one rather than
+asking for a link. Both are one letter each now rather than a missing
+subsystem.
 
 **116 of 486 declared routes are bound.** The panel draws 228. The difference
 is not a mistake — each binding is written by hand, deliberately — but it does

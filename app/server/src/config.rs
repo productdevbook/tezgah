@@ -71,6 +71,12 @@ pub struct Config {
     /// click. Required with `smtp_url` for the same reason: a link this
     /// binary has to guess is a link that goes to the wrong host.
     pub panel_url: Option<String>,
+    /// A directory this binary stores uploads in. Unset means it stores none
+    /// and both file routes are unmounted.
+    pub file_dir: Option<String>,
+    /// What a stored file's URL starts with — a CDN in front of that
+    /// directory, or this binary's own `/files` when left alone.
+    pub file_base_url: String,
 }
 
 #[derive(Debug)]
@@ -219,6 +225,14 @@ impl Config {
             ));
         }
 
+        let file_dir = std::env::var("TEZGAH_FILE_DIR")
+            .ok()
+            .filter(|dir| !dir.trim().is_empty());
+        let file_base_url = std::env::var("TEZGAH_FILE_BASE_URL")
+            .ok()
+            .filter(|url| !url.trim().is_empty())
+            .unwrap_or_else(|| "/files".into());
+
         Ok(Config {
             database_url,
             port,
@@ -233,6 +247,8 @@ impl Config {
             smtp_url,
             mail_from,
             panel_url,
+            file_dir,
+            file_base_url,
         })
     }
 }

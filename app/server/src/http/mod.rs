@@ -9,6 +9,7 @@
 pub mod admin;
 pub mod auth;
 pub mod docs;
+pub mod files;
 pub mod health;
 pub mod store;
 pub mod webhook;
@@ -60,6 +61,10 @@ pub struct AppState {
     /// Where the panel lives, for the link in an invitation. Present exactly
     /// when `mailer` is — `config::Config` refuses one without the other.
     pub panel_url: Option<Arc<str>>,
+    /// `None` when `TEZGAH_FILE_DIR` is unset. The upload route and the one
+    /// that serves a file back are both unmounted then, and the panel goes on
+    /// taking a URL somebody else hosts.
+    pub files: Option<crate::files::Store>,
 }
 
 /// The paths this binary actually serves out of `tezgah::api::routes()`,
@@ -126,6 +131,13 @@ pub fn router(state: AppState) -> (Router, Bound) {
     app = app.merge(webhook_router);
     bound.extend(webhook_bound);
 
+    // Reading a file back is open: an image on a storefront is public, and a
+    // signed URL for a product photo is ceremony. Uploading one is not, and
+    // goes in with the admin surface below.
+    let (file_router, file_bound) = files::router(state.files.is_some());
+    app = app.merge(file_router);
+    bound.extend(file_bound);
+
     // Mounted when there is any way to authenticate at all. Before operators
     // existed that was `ADMIN_TOKEN` alone, and an unset one meant the admin
     // surface did not exist to be reached rather than existing and refusing
@@ -137,6 +149,9 @@ pub fn router(state: AppState) -> (Router, Bound) {
             admin_token: state.admin_token.clone(),
         };
         let (admin_router, admin_bound) = admin::router();
+        let (upload_router, upload_bound) = files::admin_router(state.files.is_some());
+        let admin_router = admin_router.merge(upload_router);
+        bound.extend(upload_bound);
         // `route_layer`, not `layer`: `layer` also wraps a router's own
         // fallback, and `Router::merge` picks the *other* router's fallback
         // when both are still the untouched default — so a `.layer`'d

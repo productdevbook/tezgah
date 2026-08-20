@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useT } from "@/panel/i18n"
 import { ProductDrawer } from "@/features/products/drawer"
+import { UploadImage } from "@/features/products/upload"
 
 const fields = z.object({
   thumbnail_url: z
@@ -28,17 +29,20 @@ const fields = z.object({
 type Fields = z.infer<typeof fields>
 
 /**
- * A URL and no upload, and that is the library's decision rather than this
- * screen's: tezgah stores no files. A host already has media, so a product
- * carries the address of an image somebody else is serving —
- * `docs/architecture.md` has it under what a host supplies.
+ * A URL, and an upload when the host has somewhere to put one.
+ *
+ * The column holds an address either way, which is the library's decision
+ * rather than this screen's: tezgah stores no files. What changed is that
+ * `app/server` can be one of the hosts that does — started with a file
+ * directory, it takes the image and hands back the address; started without,
+ * the upload route is not bound and this falls back to what it always was.
  */
 export function EditMedia({ id }: { id: string }) {
   return (
     <ProductDrawer
       id={id}
       title="Media"
-      description="An address, not an upload. tezgah stores no files — whatever already serves the shop's images serves this one."
+      description="An address — uploaded here if this shop stores files, or wherever it is already served from."
     >
       {(item) => <Body item={item} />}
     </ProductDrawer>
@@ -94,6 +98,17 @@ function Body({ item }: { item: Product }) {
               <Input id={field.name} placeholder="https://…" {...field} />
             )}
           </FormField>
+          {/* Writes into the same field rather than saving by itself: the
+              upload stored a file, and which product points at it is still
+              this form's save. */}
+          <UploadImage
+            onStored={(stored) =>
+              form.setValue("thumbnail_url", stored, {
+                shouldDirty: true,
+                shouldValidate: true,
+              })
+            }
+          />
           {/* Shown rather than described: an address that 404s is a broken
               image here, which is the fastest way to find out. */}
           {url && /^https?:\/\//.test(url) ? (

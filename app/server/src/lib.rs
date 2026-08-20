@@ -4,6 +4,7 @@
 
 pub mod config;
 pub mod deliver;
+pub mod files;
 pub mod host;
 pub mod http;
 pub mod identity;
