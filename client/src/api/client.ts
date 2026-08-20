@@ -1,5 +1,7 @@
 import type { z } from "zod"
 
+import { held } from "@/lib/token"
+
 import type { paths } from "./schema"
 
 /**
@@ -24,6 +26,12 @@ export type ApiPath = keyof paths
  * `unreachable` is its own case rather than a status of zero: no host is
  * serving the API, which is the state this panel is written in, and a screen
  * that renders it as "nothing here yet" tells the reader something false.
+ *
+ * `unauthenticated` is kept apart from `denied` because the two are not the
+ * same sentence to read. A 401 with no token held means this panel never
+ * presented one; a 401 with a token held means the server looked at it and
+ * said no. Telling an operator "the authorizer refused" when the panel simply
+ * had nothing to send is a wrong answer that sends them to the wrong place.
  *
  * `drifted` is the one this panel needs most. Its types are transcribed from
  * `src/api/*.rs` by hand (#202), so the crate can change one without this
@@ -51,12 +59,14 @@ export class ApiError extends Error {
 
 export type ApiErrorKind =
   | "unreachable"
+  | "unauthenticated"
   | "denied"
   | "not_found"
   | "refused"
   | "drifted"
 
-function kindOf(status: number): ApiErrorKind {
+function kindOf(status: number, hadToken: boolean): ApiErrorKind {
+  if (status === 401 && !hadToken) return "unauthenticated"
   if (status === 401 || status === 403) return "denied"
   if (status === 404) return "not_found"
   return "refused"
@@ -84,12 +94,13 @@ export async function get<S extends z.ZodTypeAny>(
     if (value !== undefined) url.searchParams.set(key, String(value))
   }
 
+  const token = held()
+  const headers: Record<string, string> = { accept: "application/json" }
+  if (token) headers.authorization = `Bearer ${token}`
+
   let response: Response
   try {
-    response = await fetch(url, {
-      signal: options.signal,
-      headers: { accept: "application/json" },
-    })
+    response = await fetch(url, { signal: options.signal, headers })
   } catch {
     throw new ApiError("unreachable", 0, `no host answered at ${BASE}`)
   }
@@ -98,7 +109,7 @@ export async function get<S extends z.ZodTypeAny>(
     const body: unknown = await response.json().catch(() => null)
     const said = (body ?? {}) as { code?: string; message?: string }
     throw new ApiError(
-      kindOf(response.status),
+      kindOf(response.status, token !== null),
       response.status,
       said.message ?? response.statusText,
       said.code,

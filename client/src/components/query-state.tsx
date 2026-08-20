@@ -1,6 +1,7 @@
 import type { UseQueryResult } from "@tanstack/react-query"
 
 import { ApiError } from "@/api/client"
+import { forget } from "@/lib/token"
 import { Button } from "@/components/ui/button"
 import {
   Empty,
@@ -66,10 +67,15 @@ function Failure({ error, onRetry }: { error: unknown; onRetry: () => void }) {
       description:
         "tezgah is a library and serves nothing itself. Point VITE_TEZGAH_API at whatever mounts api::routes(), or run the example shop.",
     },
+    unauthenticated: {
+      title: "This panel has no token",
+      description:
+        "The admin surface wants one and nothing was sent. Connect the panel with the server's ADMIN_TOKEN.",
+    },
     denied: {
       title: "Refused",
       description:
-        "The host's authorizer said no. It never says which rows exist, so there is nothing more to read into this.",
+        "The token was sent and the server said no — wrong token, or one the server no longer holds. It never says which rows exist, so there is nothing more to read into that.",
     },
     not_found: {
       title: "Not here",
@@ -100,7 +106,18 @@ function Failure({ error, onRetry }: { error: unknown; onRetry: () => void }) {
             </code>
           ) : null}
           <div className="flex items-center gap-2">
-            <Button size="sm" onClick={onRetry}>
+            {api?.kind === "unauthenticated" || api?.kind === "denied" ? (
+              <Button
+                size="sm"
+                onClick={() => {
+                  forget()
+                  location.reload()
+                }}
+              >
+                Connect
+              </Button>
+            ) : null}
+            <Button size="sm" variant="outline" onClick={onRetry}>
               Try again
             </Button>
             {api?.code ? (

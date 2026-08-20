@@ -1,6 +1,6 @@
 import { Link, Outlet, useMatchRoute } from "@tanstack/react-router"
 
-import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import {
   Sidebar,
@@ -19,6 +19,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { COVERAGE, GROUPS } from "@/lib/nav"
+import { forget } from "@/lib/token"
 
 export function AppShell() {
   const matchRoute = useMatchRoute()
@@ -91,9 +92,17 @@ export function AppShell() {
           <Link to="/" className="text-sm font-medium">
             Overview
           </Link>
-          <Badge variant="outline" className="ml-auto text-xs">
-            no host connected
-          </Badge>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="ml-auto text-xs"
+            onClick={() => {
+              forget()
+              location.reload()
+            }}
+          >
+            Disconnect
+          </Button>
         </header>
         <main className="flex-1 p-4 md:p-6">
           <Outlet />
