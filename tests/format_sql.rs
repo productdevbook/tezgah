@@ -56,12 +56,14 @@
 //!   SQL is building it against its own fixture, and there is no host
 //!   boundary there for a caller to smuggle a string through.
 //! - Check 2 can only state the property for a dynamic name that is
-//!   literally a function parameter. Six of the fifteen tolerated names are
-//!   not — `on_conflict`/`conflict_target`/`conflict` are `let` bindings
+//!   literally a function parameter. Eight of the seventeen tolerated names
+//!   are not — `on_conflict`/`conflict_target`/`conflict` are `let` bindings
 //!   chosen between literals by an `if`, `carried` is read from
-//!   `information_schema`, and `key`/`parent_table`/`adjustment_table`/
+//!   `information_schema`, `key`/`parent_table`/`adjustment_table`/
 //!   `tax_table` are elements of a literal tuple returned by a private
-//!   method's `match`. Check 2 does not and cannot cover those; their safety
+//!   method's `match`, and `beyond`/`direction` are `let` bindings off
+//!   `page::Order`'s two methods, each of which returns one of two literals
+//!   and nothing else. Check 2 does not and cannot cover those; their safety
 //!   rests on the reason in `TOLERATED` and a human reading it, same as
 //!   always. `table`, `column`, and `parent` are each true for a mix of
 //!   function-parameter and loop-variable occurrences, so check 2 covers
@@ -87,7 +89,22 @@ use std::path::Path;
 /// SQL `format!` in `src/`, and why its value cannot come from a caller.
 /// Adding to this is not a fix — a new entry has to argue for itself, the
 /// same as `tests/permit_asked.rs`'s. The list may only shrink.
-const TOLERATED: [(&str, &str); 15] = [
+const TOLERATED: [(&str, &str); 17] = [
+    (
+        "beyond",
+        "`page::Order::beyond`, which answers `\">\"` or `\"<\"` and nothing \
+         else — the comparison a paged query makes against its cursor, picked \
+         by which end of the list was asked for. The three lists that take an \
+         `Order` read it off the filter they were handed; nothing reaches a \
+         string in",
+    ),
+    (
+        "direction",
+        "`page::Order::direction`, which answers `\"asc\"` or `\"desc\"` and \
+         nothing else, and is always used beside `beyond` — the two have to \
+         agree or a list pages away from its own cursor, which is what \
+         `page.rs`'s own test asserts",
+    ),
     (
         "on_conflict",
         "picked by an `if`/`else if` between two or three `on conflict` \
