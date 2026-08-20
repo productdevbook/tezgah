@@ -72,6 +72,25 @@ export async function exportProducts(
   return parseResponse(exportPage, data, status)
 }
 
+/**
+ * The same route as the import, with the other half of its body.
+ *
+ * `POST /admin/products/batch` takes rows to write and ids to delete, and a
+ * bulk delete is that call with no rows — which is why this lives beside the
+ * import rather than in the products screen: one route, one place.
+ */
+export async function deleteProducts(ids: string[]): Promise<ImportResult> {
+  const { data, status } = await apiMutator<{ data: unknown; status: number }>(
+    "/admin/products/batch",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ rows: [], delete: ids }),
+    }
+  )
+  return parseResponse(importResult, data, status)
+}
+
 export async function importProducts(rows: unknown[]): Promise<ImportResult> {
   const { data, status } = await apiMutator<{ data: unknown; status: number }>(
     "/admin/products/batch",

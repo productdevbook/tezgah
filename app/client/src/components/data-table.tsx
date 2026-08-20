@@ -4,8 +4,9 @@ import {
   type ColumnDef,
   type RowData,
 } from "@tanstack/react-table"
-import type { ReactNode } from "react"
+import { useState, type ReactNode } from "react"
 
+import { Checkbox } from "@/components/ui/checkbox"
 import { QueryState } from "@/components/query-state"
 import { Button } from "@/components/ui/button"
 import {
@@ -37,6 +38,7 @@ export function DataTable<T extends RowData>({
   columns,
   empty,
   header,
+  select,
   rowLink,
 }: {
   paged: PagedList<T>
@@ -51,6 +53,19 @@ export function DataTable<T extends RowData>({
    */
   header?: { title: string; description?: string; actions?: ReactNode }
   /**
+   * Multi-select, when there is something to do with a selection.
+   *
+   * Off unless a screen passes this, because a checkbox column on a list with
+   * no bulk action is a control that does nothing. `id` is what a row is
+   * named by — the caller says which field, because not every row here is
+   * keyed the same way.
+   */
+  select?: {
+    id: (row: T) => string
+    /** Drawn in place of the header's own actions while anything is chosen. */
+    actions: (chosen: string[], clear: () => void) => ReactNode
+  }
+  /**
    * A row goes to `rowLink(row)`'s address by way of a real anchor stretched
    * over it — `absolute inset-0` inside the row's first cell, the row itself
    * `position: relative` — never an `onClick`, which a middle click or
@@ -59,10 +74,28 @@ export function DataTable<T extends RowData>({
   rowLink?: (row: T) => ReactNode
 }) {
   const page = paged.result.data
+  const [chosen, setChosen] = useState<string[]>([])
+
+  // A selection is about rows that are on screen. Paging away and back would
+  // otherwise leave ids selected that nobody can see, and a bulk action would
+  // act on them.
+  const visible = page?.items ?? []
+  const ids = select ? visible.map(select.id) : []
+  const kept = chosen.filter((id) => ids.includes(id))
+  if (kept.length !== chosen.length) setChosen(kept)
 
   return (
     <div className="overflow-hidden rounded-xl border bg-card">
-      {header ? <Header {...header} /> : null}
+      {header ? (
+        <Header
+          {...header}
+          actions={
+            select && chosen.length > 0
+              ? select.actions(chosen, () => setChosen([]))
+              : header.actions
+          }
+        />
+      ) : null}
       {page === undefined ? (
         // Loading, refusal and drift are padded; a table draws its own.
         <div className="px-6 py-6">
@@ -74,7 +107,29 @@ export function DataTable<T extends RowData>({
         <Nothing empty={empty} />
       ) : (
         <>
-          <Rows items={page.items} columns={columns} rowLink={rowLink} />
+          <Rows
+            items={page.items}
+            columns={columns}
+            rowLink={rowLink}
+            select={
+              select
+                ? {
+                    id: select.id,
+                    chosen,
+                    toggle: (id) =>
+                      setChosen((was: string[]) =>
+                        was.includes(id)
+                          ? was.filter((one) => one !== id)
+                          : [...was, id]
+                      ),
+                    all: () =>
+                      setChosen((was) =>
+                        was.length === ids.length ? [] : ids
+                      ),
+                  }
+                : undefined
+            }
+          />
           {paged.hasPrevious || page.next ? (
             <div className="flex items-center justify-end gap-2 border-t px-6 py-3">
               <Button
@@ -153,14 +208,23 @@ export function Header({
   )
 }
 
+type Selection<T> = {
+  id: (row: T) => string
+  chosen: string[]
+  toggle: (id: string) => void
+  all: () => void
+}
+
 function Rows<T extends RowData>({
   items,
   columns,
   rowLink,
+  select,
 }: {
   items: T[]
   columns: Columns<T>
   rowLink?: (row: T) => ReactNode
+  select?: Selection<T>
 }) {
   const table = useTable({ features, columns, data: items })
 
@@ -169,6 +233,22 @@ function Rows<T extends RowData>({
       <TableHeader>
         {table.getHeaderGroups().map((group) => (
           <TableRow key={group.id}>
+            {select ? (
+              <TableHead className="w-10">
+                <Checkbox
+                  aria-label="Choose every row on this page"
+                  checked={
+                    select.chosen.length > 0 &&
+                    select.chosen.length === items.length
+                  }
+                  indeterminate={
+                    select.chosen.length > 0 &&
+                    select.chosen.length < items.length
+                  }
+                  onCheckedChange={select.all}
+                />
+              </TableHead>
+            ) : null}
             {group.headers.map((header) => (
               <TableHead
                 key={header.id}
@@ -185,6 +265,18 @@ function Rows<T extends RowData>({
       <TableBody>
         {table.getRowModel().rows.map((row) => (
           <TableRow key={row.id} className={rowLink ? "relative" : undefined}>
+            {select ? (
+              // Outside the stretched link's cell on purpose: a checkbox
+              // inside it would be covered by the anchor, and clicking to
+              // choose a row would open it instead.
+              <TableCell className="w-10">
+                <Checkbox
+                  aria-label="Choose this row"
+                  checked={select.chosen.includes(select.id(row.original))}
+                  onCheckedChange={() => select.toggle(select.id(row.original))}
+                />
+              </TableCell>
+            ) : null}
             {row.getAllCells().map((cell, index) => (
               <TableCell
                 key={cell.id}

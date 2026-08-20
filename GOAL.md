@@ -375,9 +375,9 @@ In the panel:
       `useState` and a map of field errors each
 - [ ] the screens' own words in the dictionary — English and Turkish exist
       and the compiler keeps them in step, over the shared chrome only
-- [ ] multi-select on a list and an edit grid in the browser — the CSV round
-      trip is drawn (`/batch`, and the server binds the four routes it needs),
-      and it is what a shop changing four hundred prices actually uses
+- [ ] an edit grid past prices — `/pricing/prices` has one, because
+      `POST /admin/prices/batch` takes the rows together; a list whose writes
+      are one row at a time cannot have one worth using
 - [ ] the routing half of the seam — what a screen says and sends is a
       host's answer now; where it lives is still a fixed route root and a
       sidebar switched over a closed route union
