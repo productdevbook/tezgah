@@ -2826,14 +2826,7 @@ pub async fn pending_callbacks(
     };
 
     let page = payment::unprocessed(tx, ctx, paging).await?;
-    Ok(Page {
-        items: page
-            .items
-            .into_iter()
-            .map(PendingCallbackView::from)
-            .collect(),
-        next: page.next,
-    })
+    Ok(page.map(PendingCallbackView::from))
 }
 
 /// Says one has been acted on, so it stops coming back.
