@@ -18,7 +18,7 @@ use tezgah::checkout::Checkout;
 use tezgah::payment::PaymentProvider;
 use tezgah::ports::Scope;
 use tezgah_server::config::Config;
-use tezgah_server::{host, http, identity, provider, schedule, seed, shopper};
+use tezgah_server::{host, http, identity, provider, schedule, seed};
 use tokio::net::TcpListener;
 use uuid::Uuid;
 
@@ -79,10 +79,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         tezgah::MIGRATIONS.run(&pool).await?;
     }
 
-    host::create_jobs_table(&pool).await?;
-    host::create_record_tables(&pool).await?;
-    identity::create_tables(&pool).await?;
-    shopper::create_tables(&pool).await?;
+    tezgah_server::prepare(&pool).await?;
 
     let scope = bootstrap_scope(&pool).await?;
     schedule::spawn(pool.clone(), scope);

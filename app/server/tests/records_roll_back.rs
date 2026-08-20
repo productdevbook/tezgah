@@ -12,7 +12,7 @@
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{Executor, PgPool};
 use tezgah::ports::{Action, Actor, AuditEntry, AuditSink, Event, EventSink};
-use tezgah_server::host::{self, ServerHost};
+use tezgah_server::host::ServerHost;
 use uuid::Uuid;
 
 struct Database {
@@ -47,11 +47,12 @@ impl Database {
             .await
             .expect("its own database");
 
-        // Only the two tables this binary owns. Nothing here touches a table
-        // `tezgah::MIGRATIONS` makes, and the audit trail is not scoped.
-        host::create_record_tables(&pool)
+        // The tables this binary owns. Nothing here touches one
+        // `tezgah::MIGRATIONS` makes, and the audit trail is not scoped, so
+        // the commerce schema is never applied.
+        tezgah_server::prepare(&pool)
             .await
-            .expect("the record tables");
+            .expect("the tables this binary owns");
 
         Database { admin, pool, name }
     }
