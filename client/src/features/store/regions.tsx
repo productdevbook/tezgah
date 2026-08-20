@@ -1,0 +1,75 @@
+import { HugeiconsIcon } from "@hugeicons/react"
+import { Add01Icon } from "@hugeicons/core-free-icons"
+import { Link } from "@tanstack/react-router"
+
+import { region, type Region } from "@/api/schemas"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { DataTable, type Columns } from "@/components/data-table"
+import { usePagedList } from "@/lib/paged"
+
+const columns: Columns<Region> = [
+  { header: "Name", accessorKey: "name", meta: { className: "font-medium" } },
+  {
+    header: "Currency",
+    accessorKey: "currency_code",
+    meta: { className: "font-mono text-xs uppercase" },
+  },
+  {
+    header: "Tax",
+    accessorKey: "is_tax_inclusive",
+    cell: ({ row }) => (
+      <div className="flex items-center gap-1.5">
+        <Badge variant="outline">
+          {row.original.is_tax_inclusive ? "inclusive" : "exclusive"}
+        </Badge>
+        {row.original.has_automatic_taxes ? <Badge>automatic</Badge> : null}
+      </div>
+    ),
+  },
+  {
+    header: "Providers",
+    accessorKey: "payment_providers",
+    cell: ({ row }) =>
+      row.original.payment_providers.length ? (
+        <span className="font-mono text-xs">
+          {row.original.payment_providers.join(", ")}
+        </span>
+      ) : (
+        <span className="text-xs text-muted-foreground">none</span>
+      ),
+    meta: { className: "text-right" },
+  },
+]
+
+export function StoreRegions({
+  after,
+  onAfterChange,
+}: {
+  after: string | undefined
+  onAfterChange: (after: string | undefined) => void
+}) {
+  const paged = usePagedList(["regions"], "/admin/regions", region, {
+    after,
+    onAfterChange,
+  })
+
+  return (
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <Button size="sm" nativeButton={false} render={<Link to="/store/regions/new" />}>
+          <HugeiconsIcon icon={Add01Icon} strokeWidth={2} />
+          New region
+        </Button>
+      </div>
+      <DataTable
+        paged={paged}
+        columns={columns}
+        empty={{
+          title: "No regions",
+          description: "A region decides currency and how tax is shown.",
+        }}
+      />
+    </div>
+  )
+}

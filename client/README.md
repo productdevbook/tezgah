@@ -97,12 +97,49 @@ diff the same way it does for `schema.d.ts`.
 
 A route file is deliberately thin — the path, `validateSearch`, and enough
 wiring to turn a route's search params into props. The screen it renders lives
-in `src/features/<domain>/screen.tsx` and never imports from `@tanstack/router`
-itself; a route owns the URL, a screen just takes what it's given. The seven
-built sections each have a real route; the other ten fall through to
-`src/routes/$section.tsx`, which is what `NotBuilt` used to be reached
-through — a static route always wins the match over a dynamic one, so a slug
-that gains a screen just needs a file added here.
+in `src/features/<domain>/`, one file per screen, and never reads router
+*state* itself (`useSearch`, `useParams`, a loader's data) — that still comes
+in as props from the route, which is what keeps a screen shareable rather than
+carrying state a URL doesn't. A screen may render a `Link` to a fixed sibling
+route (a "New product" button that points at `/products/new`, a "Cancel" that
+points back at the list) or call `useNavigate()` after a mutation succeeds,
+the same way `components/app-shell.tsx` already builds the sidebar's own
+links — pointing at a fixed address is markup, not state, and forcing it
+through the route as a pre-built prop would only move the same import without
+removing it. The seven built sections each have a real route; the other ten
+fall through to `src/routes/$section.tsx`, which is what `NotBuilt` used to be
+reached through — a static route always wins the match over a dynamic one, so
+a slug that gains a screen just needs a file added here.
+
+### A creation form is a route, not a dialog
+
+`/products/new` and the four under `/store/*/new` (currencies, regions, sales
+channels, publishable keys) are their own addresses — `src/features/<domain>/new*.tsx`,
+each thin enough to be one form, one mutation, and a save/cancel that both
+land back on the list. They are file-named with a trailing underscore before
+the segment that would otherwise nest them —
+`routes/store_.currencies.new.tsx` is `/store/currencies/new` as a sibling of
+`routes/store.tsx`, not a child rendered inside its `<Outlet />` — because a
+creation page is a full page, not a tab's content, and `@tanstack/router-generator`
+takes that convention from Remix's flat routes. `/store/keys/new` is the one
+exception to "save returns to the list": the token it mints is shown once and
+never stored anywhere it could be read back, so the page shows it in place
+first and only returns to `/store/keys` once the operator says "Done" —
+navigating away immediately would make the token unreachable a screen ever
+gets to show.
+
+### The store's tabs are routes, not `Tabs` state
+
+`/store/currencies`, `/store/regions`, `/store/sales-channels` and
+`/store/keys` are four real routes nested under `routes/store.tsx`, which
+renders `<Outlet />` inside `StoreLayout` the same way `routes/__root.tsx`
+renders `<Outlet />` inside `AppShell` — a layout, not a screen, so it is
+allowed to know about routing. `components/store-tabs.tsx` picks the active
+tab the same way `app-shell.tsx` picks the active section (`useMatchRoute`
+against the current URL), and each `Tabs.Tab` renders as a `Link` rather than
+switching client state — `nativeButton={false}` tells Base UI the element
+underneath is the anchor, not a button it renders itself. `/store` on its own
+names no tab, so `routes/store.index.tsx` redirects to `/store/currencies`.
 
 ### Pagination lives in the URL
 

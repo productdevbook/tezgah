@@ -1,31 +1,20 @@
-import { createFileRoute } from "@tanstack/react-router"
-import { z } from "zod"
+import { createFileRoute, Outlet } from "@tanstack/react-router"
 
-import { Store } from "@/features/store/screen"
+import { StoreLayout } from "@/features/store/layout"
 
-const storeSearch = z.object({
-  regionsAfter: z.string().optional(),
-  channelsAfter: z.string().optional(),
-})
-
+/**
+ * The layout every `/store/*` tab renders inside — the tabs and heading are
+ * shared chrome, the same way `routes/__root.tsx` wraps every route in
+ * `AppShell`. Which tab is open is `<Outlet />`'s business, not this file's.
+ */
 export const Route = createFileRoute("/store")({
-  validateSearch: storeSearch,
   component: RouteComponent,
 })
 
 export function RouteComponent() {
-  const { regionsAfter, channelsAfter } = Route.useSearch()
-  const navigate = Route.useNavigate()
   return (
-    <Store
-      regionsAfter={regionsAfter}
-      onRegionsAfterChange={(next) =>
-        void navigate({ search: (prev) => ({ ...prev, regionsAfter: next }) })
-      }
-      channelsAfter={channelsAfter}
-      onChannelsAfterChange={(next) =>
-        void navigate({ search: (prev) => ({ ...prev, channelsAfter: next }) })
-      }
-    />
+    <StoreLayout>
+      <Outlet />
+    </StoreLayout>
   )
 }

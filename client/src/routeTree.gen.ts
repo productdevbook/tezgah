@@ -18,6 +18,16 @@ import { Route as ProductsRouteImport } from './routes/products'
 import { Route as PromotionsRouteImport } from './routes/promotions'
 import { Route as StoreRouteImport } from './routes/store'
 import { Route as SubscriptionsRouteImport } from './routes/subscriptions'
+import { Route as ProductsNewRouteImport } from './routes/products_.new'
+import { Route as StoreIndexRouteImport } from './routes/store.index'
+import { Route as StoreCurrenciesRouteImport } from './routes/store.currencies'
+import { Route as StoreKeysRouteImport } from './routes/store.keys'
+import { Route as StoreRegionsRouteImport } from './routes/store.regions'
+import { Route as StoreSalesChannelsRouteImport } from './routes/store.sales-channels'
+import { Route as StoreCurrenciesNewRouteImport } from './routes/store_.currencies.new'
+import { Route as StoreKeysNewRouteImport } from './routes/store_.keys.new'
+import { Route as StoreRegionsNewRouteImport } from './routes/store_.regions.new'
+import { Route as StoreSalesChannelsNewRouteImport } from './routes/store_.sales-channels.new'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -64,6 +74,56 @@ const SubscriptionsRoute = SubscriptionsRouteImport.update({
   path: '/subscriptions',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProductsNewRoute = ProductsNewRouteImport.update({
+  id: '/products_/new',
+  path: '/products/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StoreIndexRoute = StoreIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => StoreRoute,
+} as any)
+const StoreCurrenciesRoute = StoreCurrenciesRouteImport.update({
+  id: '/currencies',
+  path: '/currencies',
+  getParentRoute: () => StoreRoute,
+} as any)
+const StoreKeysRoute = StoreKeysRouteImport.update({
+  id: '/keys',
+  path: '/keys',
+  getParentRoute: () => StoreRoute,
+} as any)
+const StoreRegionsRoute = StoreRegionsRouteImport.update({
+  id: '/regions',
+  path: '/regions',
+  getParentRoute: () => StoreRoute,
+} as any)
+const StoreSalesChannelsRoute = StoreSalesChannelsRouteImport.update({
+  id: '/sales-channels',
+  path: '/sales-channels',
+  getParentRoute: () => StoreRoute,
+} as any)
+const StoreCurrenciesNewRoute = StoreCurrenciesNewRouteImport.update({
+  id: '/store_/currencies/new',
+  path: '/store/currencies/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StoreKeysNewRoute = StoreKeysNewRouteImport.update({
+  id: '/store_/keys/new',
+  path: '/store/keys/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StoreRegionsNewRoute = StoreRegionsNewRouteImport.update({
+  id: '/store_/regions/new',
+  path: '/store/regions/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StoreSalesChannelsNewRoute = StoreSalesChannelsNewRouteImport.update({
+  id: '/store_/sales-channels/new',
+  path: '/store/sales-channels/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -73,8 +133,18 @@ export interface FileRoutesByFullPath {
   '/orders': typeof OrdersRoute
   '/products': typeof ProductsRoute
   '/promotions': typeof PromotionsRoute
-  '/store': typeof StoreRoute
+  '/store': typeof StoreRouteWithChildren
   '/subscriptions': typeof SubscriptionsRoute
+  '/products/new': typeof ProductsNewRoute
+  '/store/currencies': typeof StoreCurrenciesRoute
+  '/store/keys': typeof StoreKeysRoute
+  '/store/regions': typeof StoreRegionsRoute
+  '/store/sales-channels': typeof StoreSalesChannelsRoute
+  '/store/': typeof StoreIndexRoute
+  '/store/currencies/new': typeof StoreCurrenciesNewRoute
+  '/store/keys/new': typeof StoreKeysNewRoute
+  '/store/regions/new': typeof StoreRegionsNewRoute
+  '/store/sales-channels/new': typeof StoreSalesChannelsNewRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -84,8 +154,17 @@ export interface FileRoutesByTo {
   '/orders': typeof OrdersRoute
   '/products': typeof ProductsRoute
   '/promotions': typeof PromotionsRoute
-  '/store': typeof StoreRoute
   '/subscriptions': typeof SubscriptionsRoute
+  '/products/new': typeof ProductsNewRoute
+  '/store/currencies': typeof StoreCurrenciesRoute
+  '/store/keys': typeof StoreKeysRoute
+  '/store/regions': typeof StoreRegionsRoute
+  '/store/sales-channels': typeof StoreSalesChannelsRoute
+  '/store': typeof StoreIndexRoute
+  '/store/currencies/new': typeof StoreCurrenciesNewRoute
+  '/store/keys/new': typeof StoreKeysNewRoute
+  '/store/regions/new': typeof StoreRegionsNewRoute
+  '/store/sales-channels/new': typeof StoreSalesChannelsNewRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -96,8 +175,18 @@ export interface FileRoutesById {
   '/orders': typeof OrdersRoute
   '/products': typeof ProductsRoute
   '/promotions': typeof PromotionsRoute
-  '/store': typeof StoreRoute
+  '/store': typeof StoreRouteWithChildren
   '/subscriptions': typeof SubscriptionsRoute
+  '/products_/new': typeof ProductsNewRoute
+  '/store/currencies': typeof StoreCurrenciesRoute
+  '/store/keys': typeof StoreKeysRoute
+  '/store/regions': typeof StoreRegionsRoute
+  '/store/sales-channels': typeof StoreSalesChannelsRoute
+  '/store/': typeof StoreIndexRoute
+  '/store_/currencies/new': typeof StoreCurrenciesNewRoute
+  '/store_/keys/new': typeof StoreKeysNewRoute
+  '/store_/regions/new': typeof StoreRegionsNewRoute
+  '/store_/sales-channels/new': typeof StoreSalesChannelsNewRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -111,6 +200,16 @@ export interface FileRouteTypes {
     | '/promotions'
     | '/store'
     | '/subscriptions'
+    | '/products/new'
+    | '/store/currencies'
+    | '/store/keys'
+    | '/store/regions'
+    | '/store/sales-channels'
+    | '/store/'
+    | '/store/currencies/new'
+    | '/store/keys/new'
+    | '/store/regions/new'
+    | '/store/sales-channels/new'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -120,8 +219,17 @@ export interface FileRouteTypes {
     | '/orders'
     | '/products'
     | '/promotions'
-    | '/store'
     | '/subscriptions'
+    | '/products/new'
+    | '/store/currencies'
+    | '/store/keys'
+    | '/store/regions'
+    | '/store/sales-channels'
+    | '/store'
+    | '/store/currencies/new'
+    | '/store/keys/new'
+    | '/store/regions/new'
+    | '/store/sales-channels/new'
   id:
     | '__root__'
     | '/'
@@ -133,6 +241,16 @@ export interface FileRouteTypes {
     | '/promotions'
     | '/store'
     | '/subscriptions'
+    | '/products_/new'
+    | '/store/currencies'
+    | '/store/keys'
+    | '/store/regions'
+    | '/store/sales-channels'
+    | '/store/'
+    | '/store_/currencies/new'
+    | '/store_/keys/new'
+    | '/store_/regions/new'
+    | '/store_/sales-channels/new'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -143,8 +261,13 @@ export interface RootRouteChildren {
   OrdersRoute: typeof OrdersRoute
   ProductsRoute: typeof ProductsRoute
   PromotionsRoute: typeof PromotionsRoute
-  StoreRoute: typeof StoreRoute
+  StoreRoute: typeof StoreRouteWithChildren
   SubscriptionsRoute: typeof SubscriptionsRoute
+  ProductsNewRoute: typeof ProductsNewRoute
+  StoreCurrenciesNewRoute: typeof StoreCurrenciesNewRoute
+  StoreKeysNewRoute: typeof StoreKeysNewRoute
+  StoreRegionsNewRoute: typeof StoreRegionsNewRoute
+  StoreSalesChannelsNewRoute: typeof StoreSalesChannelsNewRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -212,8 +335,96 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SubscriptionsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/products_/new': {
+      id: '/products_/new'
+      path: '/products/new'
+      fullPath: '/products/new'
+      preLoaderRoute: typeof ProductsNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/store/': {
+      id: '/store/'
+      path: '/'
+      fullPath: '/store/'
+      preLoaderRoute: typeof StoreIndexRouteImport
+      parentRoute: typeof StoreRoute
+    }
+    '/store/currencies': {
+      id: '/store/currencies'
+      path: '/currencies'
+      fullPath: '/store/currencies'
+      preLoaderRoute: typeof StoreCurrenciesRouteImport
+      parentRoute: typeof StoreRoute
+    }
+    '/store/keys': {
+      id: '/store/keys'
+      path: '/keys'
+      fullPath: '/store/keys'
+      preLoaderRoute: typeof StoreKeysRouteImport
+      parentRoute: typeof StoreRoute
+    }
+    '/store/regions': {
+      id: '/store/regions'
+      path: '/regions'
+      fullPath: '/store/regions'
+      preLoaderRoute: typeof StoreRegionsRouteImport
+      parentRoute: typeof StoreRoute
+    }
+    '/store/sales-channels': {
+      id: '/store/sales-channels'
+      path: '/sales-channels'
+      fullPath: '/store/sales-channels'
+      preLoaderRoute: typeof StoreSalesChannelsRouteImport
+      parentRoute: typeof StoreRoute
+    }
+    '/store_/currencies/new': {
+      id: '/store_/currencies/new'
+      path: '/store/currencies/new'
+      fullPath: '/store/currencies/new'
+      preLoaderRoute: typeof StoreCurrenciesNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/store_/keys/new': {
+      id: '/store_/keys/new'
+      path: '/store/keys/new'
+      fullPath: '/store/keys/new'
+      preLoaderRoute: typeof StoreKeysNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/store_/regions/new': {
+      id: '/store_/regions/new'
+      path: '/store/regions/new'
+      fullPath: '/store/regions/new'
+      preLoaderRoute: typeof StoreRegionsNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/store_/sales-channels/new': {
+      id: '/store_/sales-channels/new'
+      path: '/store/sales-channels/new'
+      fullPath: '/store/sales-channels/new'
+      preLoaderRoute: typeof StoreSalesChannelsNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
+
+interface StoreRouteChildren {
+  StoreCurrenciesRoute: typeof StoreCurrenciesRoute
+  StoreKeysRoute: typeof StoreKeysRoute
+  StoreRegionsRoute: typeof StoreRegionsRoute
+  StoreSalesChannelsRoute: typeof StoreSalesChannelsRoute
+  StoreIndexRoute: typeof StoreIndexRoute
+}
+
+const StoreRouteChildren: StoreRouteChildren = {
+  StoreCurrenciesRoute: StoreCurrenciesRoute,
+  StoreKeysRoute: StoreKeysRoute,
+  StoreRegionsRoute: StoreRegionsRoute,
+  StoreSalesChannelsRoute: StoreSalesChannelsRoute,
+  StoreIndexRoute: StoreIndexRoute,
+}
+
+const StoreRouteWithChildren = StoreRoute._addFileChildren(StoreRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -223,8 +434,13 @@ const rootRouteChildren: RootRouteChildren = {
   OrdersRoute: OrdersRoute,
   ProductsRoute: ProductsRoute,
   PromotionsRoute: PromotionsRoute,
-  StoreRoute: StoreRoute,
+  StoreRoute: StoreRouteWithChildren,
   SubscriptionsRoute: SubscriptionsRoute,
+  ProductsNewRoute: ProductsNewRoute,
+  StoreCurrenciesNewRoute: StoreCurrenciesNewRoute,
+  StoreKeysNewRoute: StoreKeysNewRoute,
+  StoreRegionsNewRoute: StoreRegionsNewRoute,
+  StoreSalesChannelsNewRoute: StoreSalesChannelsNewRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
