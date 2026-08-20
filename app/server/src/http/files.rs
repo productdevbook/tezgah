@@ -62,11 +62,15 @@ async fn upload(
         return Err(tezgah::Error::not_found("file store").into());
     };
 
-    while let Some(field) = form
+    // The first field, and only the first. A form carrying two files is a
+    // caller asking for something this route does not do, and quietly storing
+    // one of them would be answering a question nobody asked.
+    let field = form
         .next_field()
         .await
-        .map_err(|err| tezgah::Error::invalid(format!("that upload is malformed: {err}")))?
-    {
+        .map_err(|err| tezgah::Error::invalid(format!("that upload is malformed: {err}")))?;
+
+    if let Some(field) = field {
         // The content type the browser attached, checked against a list
         // rather than believed — `files::extension_for` is where that happens
         // and why an SVG is not an image here.
