@@ -3095,7 +3095,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}/images",
         action: Action::View,
         domain: CATALOGUE,
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List a product's images",
     },
     Route {
@@ -3122,7 +3122,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}/tags",
         action: Action::View,
         domain: CATALOGUE,
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List a product's tags",
     },
     Route {
@@ -3149,7 +3149,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}/categories",
         action: Action::View,
         domain: CATALOGUE,
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List the categories a product is in",
     },
     Route {
@@ -3176,7 +3176,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}/channels",
         action: Action::View,
         domain: CATALOGUE,
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List the sales channels a product is linked to",
     },
     Route {
@@ -3203,7 +3203,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}/options",
         action: Action::View,
         domain: CATALOGUE,
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List a product's options and their values",
     },
     Route {
@@ -3302,7 +3302,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-variants/{id}/images",
         action: Action::View,
         domain: CATALOGUE,
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List a variant's own attached images",
     },
     Route {
@@ -3329,7 +3329,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-categories",
         action: Action::View,
         domain: CATALOGUE,
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List categories under a parent, or the roots",
     },
     Route {
@@ -3383,7 +3383,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-categories/{id}/subtree",
         action: Action::View,
         domain: CATALOGUE,
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List a category and everything under it",
     },
     Route {
@@ -3392,7 +3392,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-tags",
         action: Action::View,
         domain: CATALOGUE,
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List tags",
     },
     Route {
@@ -3419,7 +3419,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-types",
         action: Action::View,
         domain: CATALOGUE,
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List product types",
     },
     Route {
@@ -3491,7 +3491,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/{id}/translations",
         action: Action::View,
         domain: CATALOGUE,
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List a product's translations",
     },
     Route {
@@ -3527,7 +3527,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-categories/{id}/translations",
         action: Action::View,
         domain: CATALOGUE,
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List a category's translations",
     },
     Route {
@@ -3581,7 +3581,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/price-sets/{id}/prices",
         action: Action::View,
         domain: PRICING,
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List the prices in a price set",
     },
     Route {
@@ -3608,7 +3608,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/product-variants/{id}/bundle/components",
         action: Action::View,
         domain: PRICING,
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List what a bundle is made of",
     },
     Route {
@@ -3680,7 +3680,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/prices/{id}/rules",
         action: Action::View,
         domain: PRICING,
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List the rules that decide when a price applies",
     },
     Route {
@@ -3770,7 +3770,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/stock-locations",
         action: Action::View,
         domain: INVENTORY,
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List stock locations",
     },
     Route {
@@ -3851,7 +3851,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/sales-channels/{id}/stock-locations",
         action: Action::View,
         domain: INVENTORY,
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List the locations that ship for a sales channel",
     },
     Route {
@@ -3950,7 +3950,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/inventory-items/{id}/transfers",
         action: Action::View,
         domain: INVENTORY,
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List an item's transfers between locations",
     },
     Route {
@@ -3995,7 +3995,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/reservations",
         action: Action::View,
         domain: INVENTORY,
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List reservations",
     },
     Route {

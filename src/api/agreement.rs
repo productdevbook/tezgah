@@ -433,7 +433,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/agreements",
         action: Action::View,
         domain: "order",
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List published versions",
     },
     Route {
@@ -487,7 +487,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/orders/{id}/invoices",
         action: Action::View,
         domain: "order",
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List the documents issued for an order",
     },
     Route {

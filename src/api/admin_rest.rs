@@ -2245,7 +2245,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/promotions/{id}/{rule_type}",
         action: Action::View,
         domain: "promotion",
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List a promotion's eligibility, target or buy rules",
     },
     Route {
@@ -2326,7 +2326,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/campaigns/{id}/budget/usage",
         action: Action::View,
         domain: "promotion",
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List how much of a per-attribute budget each attribute value has used",
     },
     Route {
@@ -2425,7 +2425,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/tax-rates/{id}/rules",
         action: Action::View,
         domain: "tax",
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List what a tax rate applies to",
     },
     Route {
@@ -2623,7 +2623,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/currencies",
         action: Action::View,
         domain: "store",
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List the currencies the shop trades in",
     },
     Route {
@@ -2677,7 +2677,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/locales",
         action: Action::View,
         domain: "store",
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List the languages the shop is served in",
     },
     Route {

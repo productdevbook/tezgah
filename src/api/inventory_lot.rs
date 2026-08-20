@@ -315,7 +315,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/inventory-items/{id}/lots",
         action: Action::View,
         domain: "inventory",
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List an item's lots",
     },
     Route {
@@ -324,7 +324,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/inventory-lots/expiring",
         action: Action::View,
         domain: "inventory",
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List what is about to go out of date",
     },
     Route {

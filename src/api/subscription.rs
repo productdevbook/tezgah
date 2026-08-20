@@ -790,7 +790,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/selling-plan-groups",
         action: Action::View,
         domain: "subscription",
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List the groups of selling plans",
     },
     Route {
@@ -808,7 +808,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/selling-plan-groups/{id}/plans",
         action: Action::View,
         domain: "subscription",
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List a group's plans",
     },
     Route {
@@ -844,7 +844,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/subscriptions",
         action: Action::View,
         domain: "subscription",
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List the contracts",
     },
     Route {

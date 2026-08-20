@@ -314,7 +314,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/tax-registrations",
         action: Action::View,
         domain: "tax",
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List where the shop is registered and what it files under",
     },
     Route {
@@ -341,7 +341,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/customers/{id}/tax-ids",
         action: Action::View,
         domain: "tax",
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List the tax numbers a customer has given",
     },
     Route {
@@ -368,7 +368,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/customers/{id}/tax-exemptions",
         action: Action::View,
         domain: "tax",
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List the certificates a customer holds",
     },
     Route {

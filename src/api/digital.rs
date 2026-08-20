@@ -290,7 +290,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/variants/{id}/digital-content",
         action: Action::View,
         domain: "digital",
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List the files a variant carries",
     },
     Route {

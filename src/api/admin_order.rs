@@ -4013,7 +4013,7 @@ macro_rules! paged {
             path: $path,
             action: Action::View,
             domain: $domain,
-            query: Some(super::query_schema::<super::Paged>),
+            query: None,
             summary: $summary,
         }
     };
@@ -4074,18 +4074,24 @@ pub(super) static ROUTES: &[Route] = &[
         "order",
         "Correct the order's e-mail address"
     ),
-    paged!(
+    route!(
+        Get,
         "/admin/orders/{id}/line-items",
+        View,
         "order",
         "List an order's lines"
     ),
-    paged!(
+    route!(
+        Get,
         "/admin/orders/{id}/items",
+        View,
         "order",
         "List an order's quantities at one version"
     ),
-    paged!(
+    route!(
+        Get,
         "/admin/orders/{id}/shipping-methods",
+        View,
         "order",
         "List an order's shipping methods"
     ),
@@ -4110,8 +4116,10 @@ pub(super) static ROUTES: &[Route] = &[
         "order",
         "What has been authorised, captured and refunded"
     ),
-    paged!(
+    route!(
+        Get,
         "/admin/orders/{id}/transactions",
+        View,
         "order",
         "List an order's money movements"
     ),
@@ -4677,8 +4685,10 @@ pub(super) static ROUTES: &[Route] = &[
         "order",
         "Add a return reason"
     ),
-    paged!(
+    route!(
+        Get,
         "/admin/return-reasons/{id}/translations",
+        View,
         "order",
         "List a return reason's translations"
     ),
@@ -4759,8 +4769,10 @@ pub(super) static ROUTES: &[Route] = &[
         "fulfilment",
         "Remove a fulfilment set"
     ),
-    paged!(
+    route!(
+        Get,
         "/admin/fulfillment-sets/{id}/service-zones",
+        View,
         "fulfilment",
         "List a set's service zones"
     ),
@@ -4832,8 +4844,10 @@ pub(super) static ROUTES: &[Route] = &[
         "fulfilment",
         "Add a rule to a shipping option"
     ),
-    paged!(
+    route!(
+        Get,
         "/admin/shipping-options/{id}/translations",
+        View,
         "fulfilment",
         "List a shipping option's translations"
     ),

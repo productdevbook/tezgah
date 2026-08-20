@@ -229,7 +229,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/carts",
         action: Action::View,
         domain: "cart",
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List carts, abandoned ones included",
     },
 ];

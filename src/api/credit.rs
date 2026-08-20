@@ -517,7 +517,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/gift-cards/{id}/transactions",
         action: Action::View,
         domain: "credit",
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List what moved on a gift card",
     },
     Route {
@@ -553,7 +553,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/store-credits/{id}/transactions",
         action: Action::View,
         domain: "credit",
-        query: Some(super::query_schema::<super::Paged>),
+        query: None,
         summary: "List what moved on a balance",
     },
     Route {
