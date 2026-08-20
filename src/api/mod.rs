@@ -96,7 +96,7 @@ pub(crate) async fn own_order(
 /// So this exists only to be described. Nothing deserialises into it: it
 /// carries `JsonSchema` and not `Deserialize`, which is what keeps it from
 /// quietly becoming a sixth way to read a query string.
-#[derive(Debug, Clone, Copy, Default, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, schemars::JsonSchema)]
 pub struct Paged {
     /// The cursor the previous page ended on. Absent means the first page.
     pub after: Option<String>,
