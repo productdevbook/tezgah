@@ -350,12 +350,10 @@ In `app/`:
 - [ ] invitations and a password reset — accounts, sessions and revocation
       exist; everything that needs a letter does not, because nothing here
       can send one
-- [ ] roles — whoever clears the gate is granted every `Action`. The seam is
-      there: `authorize` receives the action, and the request now carries who
-      is asking
-- [ ] a job worker that dispatches — it claims, prints and marks processed;
-      the one job kind the crate enqueues is a dunning retry, which is
-      therefore retried never
+- [ ] per-row authorization — three roles are checked at the door against the
+      `Action` the route table declares, which answers "may this person refund
+      anything"; "may this person refund this order" is an `Authorizer`, and
+      the app still grants everything
 - [ ] somewhere for an event to go, a file to live and a letter to be sent —
       all three are stdout or a URL somebody else hosts
 - [ ] the rest of the route table: 111 of 483 bound by hand, 228 drawn by the

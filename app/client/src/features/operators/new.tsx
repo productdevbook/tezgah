@@ -14,8 +14,17 @@ import { useT } from "@/panel/i18n"
 import {
   createOperator,
   newOperator,
+  ROLE_MEANS,
   type NewOperator,
+  type Role,
 } from "@/features/operators/api"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 export function NewOperatorForm() {
   const navigate = useNavigate()
@@ -34,7 +43,7 @@ function Body() {
 
   const form = useForm<NewOperator>({
     resolver: zodResolver(newOperator),
-    defaultValues: { email: "", name: "", password: "" },
+    defaultValues: { email: "", name: "", password: "", role: "staff" },
   })
 
   const mutation = useMutation({
@@ -62,6 +71,30 @@ function Body() {
           </FormField>
           <FormField control={form.control} name="email" label="E-mail">
             {(field) => <Input id={field.name} type="email" {...field} />}
+          </FormField>
+          <FormField
+            control={form.control}
+            name="role"
+            label="Role"
+            description="The first account made is the owner whatever this says — a shop whose only account cannot make a second has locked itself out."
+          >
+            {(field) => (
+              <Select
+                value={field.value}
+                onValueChange={(value) => field.onChange(value)}
+              >
+                <SelectTrigger id={field.name}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(ROLE_MEANS) as Role[]).map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option} — {ROLE_MEANS[option]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </FormField>
           <FormField
             control={form.control}

@@ -137,20 +137,29 @@ is everything that needs a mailer: an invitation, a password reset, a
 notification that an account was made. There is no mailer, and a reset link a
 server cannot send is worse than one it never offered.
 
-**Authentication, not authorization.** Whoever clears the gate reaches the
-crate as `Actor::Staff`, and the app's `Authorizer` grants every `Action` to
-it — `View` and `Write` and `Delete` alike. The seam for a split is already
-there: `authorize` receives the `Action` on every call and the request now
-carries who is asking. Nothing answers it yet.
+**Authorization at the door, not at the row.** An operator has one of three
+roles, and the gate checks it against the `Action` the route table already
+declares — the same table the OpenAPI document and the permission matrix read.
+A viewer may only `View`; staff may do everything but `Settle`, which is
+capture, refund and cancel; an owner may do anything and is the only role that
+may make an account. The split is the crate's own: `ports::Action` separates
+`Settle` from `Write` and says why.
 
-**The sweeps run; the jobs still do not.** `cart::expire` and
+What that answers is "may this person refund anything at all". What it does
+not answer is "may this person refund *this* order" — that is what
+`ports::Authorizer` is for, and the app still answers it by granting
+everything. A shop needing per-row rules needs an authorizer, which is the
+port tezgah asks for precisely so a host can bring one.
+
+**The sweeps and the queue both run.** `cart::expire` and
 `inventory::expire_reservations` are called every five minutes by
-`app/server/src/schedule.rs` — before that they were called by tests and by
+`app/server/src/schedule.rs`; before that they were called by tests and by
 nothing else, so on the shipped image an abandoned cart was never cleared and
-the stock it reserved was held for ever. What still does not run is the queue:
-the crate enqueues exactly one job kind, a subscription's dunning retry, and
-the worker claims it, prints it and marks it processed. So a declined renewal
-is retried never.
+the stock it reserved was held for ever. The worker used to claim a job, print
+it and mark it processed whatever its kind was, which swallowed the one kind
+the crate enqueues; it dispatches now, retries with a doubling backoff, and
+leaves a job dead with its reason after five attempts. A kind nothing handles
+fails with that as its reason rather than being marked done.
 
 **Events go to stdout.** No outbox, no subscriber, no delivery, no retry. A
 shop that wants `order.paid` to reach its own systems, or to become an e-mail,

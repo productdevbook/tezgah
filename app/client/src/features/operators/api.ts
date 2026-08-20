@@ -13,10 +13,27 @@ import { apiMutator } from "@/api/mutator"
  * plainly that their shapes are transcribed from `app/server/src/http/auth.rs`
  * rather than generated from a document.
  */
+export const role = z.enum(["owner", "staff", "viewer"])
+
+export type Role = z.infer<typeof role>
+
+/**
+ * What each may ask for, said here because the screen has to explain it and
+ * the server is where it is enforced — `app/server/src/identity.rs`. An owner
+ * may do anything and is the only one who may make an account; staff may run
+ * the shop but not move money; a viewer may read.
+ */
+export const ROLE_MEANS: Record<Role, string> = {
+  owner: "Anything, including making and disabling accounts",
+  staff: "The shop's day-to-day. Not capturing, refunding or cancelling",
+  viewer: "Reading, and nothing else",
+}
+
 export const operator = z.object({
   id: z.string(),
   email: z.string(),
   name: z.string(),
+  role,
   created_at: z.string(),
   disabled_at: z.string().nullable(),
 })
@@ -27,13 +44,14 @@ export const newOperator = z.object({
   email: z.string().trim().email("that is not an e-mail address"),
   name: z.string().trim().min(1, "a name is needed"),
   password: z.string().min(12, "a password is at least twelve characters"),
+  role,
 })
 
 export type NewOperator = z.infer<typeof newOperator>
 
 /** `null` when the caller is holding `ADMIN_TOKEN`, which is not a person. */
 export const whoami = operator
-  .pick({ id: true, email: true, name: true })
+  .pick({ id: true, email: true, name: true, role: true })
   .nullable()
 
 export async function listOperators(signal?: AbortSignal): Promise<Operator[]> {
@@ -52,14 +70,14 @@ export async function createOperator(body: NewOperator): Promise<void> {
   })
 }
 
-export async function setDisabled(
+export async function patchOperator(
   id: string,
-  disabled: boolean
+  patch: { disabled?: boolean; role?: Role }
 ): Promise<void> {
   await apiMutator(`/admin/operators/${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ disabled }),
+    body: JSON.stringify(patch),
   })
 }
 

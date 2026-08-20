@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useState } from "react"
 import { Add01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Link } from "@tanstack/react-router"
@@ -20,10 +21,24 @@ import {
 import { dateTime } from "@/lib/detail"
 import {
   listOperators,
-  setDisabled,
+  patchOperator,
+  ROLE_MEANS,
   whoAmI,
   type Operator,
+  type Role,
 } from "@/features/operators/api"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 /**
  * Who may reach this back office.
@@ -88,6 +103,7 @@ export function Operators() {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>E-mail</TableHead>
+                  <TableHead>Role</TableHead>
                   <TableHead>Since</TableHead>
                   <TableHead className="text-right">State</TableHead>
                 </TableRow>
@@ -98,6 +114,9 @@ export function Operators() {
                     <TableCell className="font-medium">{row.name}</TableCell>
                     <TableCell>
                       <Mono>{row.email}</Mono>
+                    </TableCell>
+                    <TableCell>
+                      <RolePicker row={row} isSelf={me.data?.id === row.id} />
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {dateTime(row.created_at)}
@@ -116,10 +135,69 @@ export function Operators() {
   )
 }
 
+/**
+ * The role is enforced at the server's door, against the `Action` tezgah's own
+ * route table declares — so this only has to say which of the three somebody
+ * is, and what that means.
+ *
+ * The server refuses the last owner being narrowed, and refuses anybody but an
+ * owner changing a role at all. Both come back as an error rather than being
+ * hidden here: a shop with one owner should be able to read why, not find the
+ * control missing.
+ */
+function RolePicker({ row, isSelf }: { row: Operator; isSelf: boolean }) {
+  const client = useQueryClient()
+  const [refused, setRefused] = useState<string | null>(null)
+
+  const mutation = useMutation({
+    mutationFn: (role: Role) => patchOperator(row.id, { role }),
+    onSuccess: () => {
+      setRefused(null)
+      void client.invalidateQueries({ queryKey: ["operators"] })
+    },
+    onError: (error) =>
+      setRefused(error instanceof Error ? error.message : "Refused."),
+  })
+
+  return (
+    <div className="flex flex-col gap-1">
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Select
+              value={row.role}
+              onValueChange={(value) => mutation.mutate(value as Role)}
+              disabled={mutation.isPending}
+            >
+              <SelectTrigger size="sm" className="w-28">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(ROLE_MEANS) as Role[]).map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          }
+        />
+        <TooltipContent>{ROLE_MEANS[row.role]}</TooltipContent>
+      </Tooltip>
+      {isSelf ? (
+        <span className="text-xs text-muted-foreground">you</span>
+      ) : null}
+      {refused ? (
+        <span className="text-xs text-destructive">{refused}</span>
+      ) : null}
+    </div>
+  )
+}
+
 function Toggle({ row, isSelf }: { row: Operator; isSelf: boolean }) {
   const client = useQueryClient()
   const mutation = useMutation({
-    mutationFn: (disabled: boolean) => setDisabled(row.id, disabled),
+    mutationFn: (disabled: boolean) => patchOperator(row.id, { disabled }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ["operators"] })
     },
