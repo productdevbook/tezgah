@@ -38,6 +38,12 @@ import {
 } from "@/api/generated/zod/pricing/pricing"
 import { GetAdminPaymentsByIdResponse } from "@/api/generated/zod/payment/payment"
 import { GetAdminGiftCardsByIdResponse } from "@/api/generated/zod/credit/credit"
+import {
+  GetAdminOrdersByIdEntitlementsResponseItem,
+  PostAdminOrdersByIdEntitlementsRevokeBody,
+  GetAdminVariantsByIdDigitalContentResponseItem,
+  PostAdminVariantsByIdDigitalContentBody,
+} from "@/api/generated/zod/digital/digital"
 
 /**
  * What the admin surface answers with, as schemas checked at runtime.
@@ -471,3 +477,17 @@ export type RefundReason = z.infer<typeof refundReason>
 
 export const giftCard = GetAdminGiftCardsByIdResponse
 export type GiftCard = z.infer<typeof giftCard>
+
+/** `GET /admin/orders/{id}/entitlements` — what an order's money bought the right to. */
+export const entitlement = GetAdminOrdersByIdEntitlementsResponseItem
+export type Entitlement = z.infer<typeof entitlement>
+
+export const revokeEntitlements = PostAdminOrdersByIdEntitlementsRevokeBody
+export type RevokeEntitlements = z.infer<typeof revokeEntitlements>
+
+/** `GET /admin/variants/{id}/digital-content` — a file a variant carries. */
+export const digitalContent = GetAdminVariantsByIdDigitalContentResponseItem
+export type DigitalContent = z.infer<typeof digitalContent>
+
+export const createDigitalContent = PostAdminVariantsByIdDigitalContentBody
+export type CreateDigitalContent = z.infer<typeof createDigitalContent>

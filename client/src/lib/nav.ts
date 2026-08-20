@@ -75,7 +75,7 @@ export const GROUPS: Group[] = [
         title: "Digital",
         tag: "digital",
         operations: 8,
-        built: false,
+        built: true,
         folded: "the order's entitlements and the product's digital content",
       },
       { slug: "workflows", title: "Workflows", tag: "workflow", operations: 4, built: true },
