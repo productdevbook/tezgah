@@ -42,10 +42,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@nextest
       - run: cargo fmt --all -- --check
-      - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo nextest run --profile ci --all-features
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo nextest run --workspace --profile ci --all-features
       # nextest does not run doctests. This step is not redundant.
-      - run: cargo test --doc
+      - run: cargo test --workspace --doc
       - name: Upload the generated OpenAPI document
         if: always()
         uses: actions/upload-artifact@v4

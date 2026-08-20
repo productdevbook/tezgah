@@ -128,9 +128,9 @@ pub async fn run(pool: &PgPool, host: &ExampleHost) -> tezgah::Result<Seeded> {
         NewInventoryItem {
             sku: Some("mug-001".to_string()),
             title: Some("Mug".to_string()),
-            // No `PATCH /store/carts/{id}` is bound in `http.rs` to set a
+            // `main.rs` never calls `PATCH /store/carts/{id}` to set a
             // shipping address, so the one product this shop sells is
-            // digital-like on purpose — see `main.rs`'s doc comment.
+            // digital-like on purpose — see its own doc comment.
             requires_shipping: false,
         },
     )

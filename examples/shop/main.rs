@@ -1,7 +1,20 @@
-//! A minimal running shop: enough of tezgah's HTTP surface, its five host
-//! ports, and a `PaymentProvider` over kasapay-core to walk one browser from
-//! the catalogue to a placed order — issue #199, filed because nothing in
-//! this repository stood one up.
+//! The smallest way to embed tezgah: enough of its five host ports and a
+//! `PaymentProvider` over kasapay-core to walk catalogue → cart → checkout →
+//! order as plain library calls, against a real Postgres — issue #199, filed
+//! because nothing in this repository stood one up.
+//!
+//! # This is not a server
+//!
+//! [`server/`](../../server) is that: a real binary, reading `PORT` and
+//! `DATABASE_URL` from its environment, serving HTTP for as long as it runs.
+//! This file calls `tezgah::api::store` functions directly, the same
+//! functions `server/src/http/store.rs`'s handlers call, minus the framework
+//! that would turn them into routes — there is no listener here and nothing
+//! to `curl`. Read this file to see what embedding tezgah looks like at its
+//! smallest; read `server/` to see it made into something you would deploy.
+//! `axum` is not a dependency of this crate at all for exactly that reason:
+//! nobody consuming tezgah as a library is handed an HTTP framework they did
+//! not ask for, and this example does not need one to make its point.
 //!
 //! # Running it
 //!
@@ -15,78 +28,48 @@
 //! ```
 //!
 //! `DATABASE_URL` defaults to `postgres://postgres:postgres@localhost:5432/postgres`
-//! — the same default `tests/common` uses. `PORT` defaults to `3000`.
+//! — the same default `tests/common` uses.
 //!
 //! # What it does
 //!
 //! Runs `tezgah::MIGRATIONS`, then seeds one shop (`seed.rs`): a currency, a
 //! region, a sales channel, a publishable key, one stock location, and one
-//! product with one priced and stocked variant. Then it serves six routes:
+//! product with one priced and stocked variant. Then it calls, in order:
 //!
-//! | Method | Path | What |
-//! |---|---|---|
-//! | GET | `/store/products` | the catalogue |
-//! | GET | `/store/products/{handle}` | one product |
-//! | POST | `/store/carts` | open a cart |
-//! | GET | `/store/carts/{id}` | read it back |
-//! | POST | `/store/carts/{id}/line-items` | add to it |
-//! | POST | `/store/carts/{id}/complete` | check out |
+//! - `store::list_products` and `store::get_product` — the catalogue
+//! - `store::create_cart` and `store::add_line_item` — opening a cart and
+//!   adding the seeded variant to it
+//! - `store::complete_cart` — checkout, through `checkout::Checkout` and the
+//!   `KasapayProvider` in `provider.rs`
 //!
-//! The two `/store/products` routes and `POST /store/carts` read the
-//! seeded publishable key as `x-publishable-key` — see `http.rs`'s doc
-//! comment for why the cart-by-id routes below need no such header. Both
-//! the token and the variant id this shop sells are printed to stdout at
-//! startup. Walk the whole flow with them:
-//!
-//! ```text
-//! curl localhost:3000/store/products -H 'x-publishable-key: <token>'
-//!
-//! curl -X POST localhost:3000/store/carts \
-//!     -H 'x-publishable-key: <token>' -H 'content-type: application/json' \
-//!     -d '{"currency_code":"TRY","email":"shopper@example.com"}'
-//!
-//! curl -X POST localhost:3000/store/carts/<cart id>/line-items \
-//!     -H 'content-type: application/json' \
-//!     -d '{"variant_id":"<variant id>","quantity":1}'
-//!
-//! curl -X POST localhost:3000/store/carts/<cart id>/complete
-//! ```
-//!
-//! The last call answers an order id: catalogue → cart → checkout → order,
-//! all the way through, against a real router and a real Postgres.
+//! Each call opens its own transaction and commits it, the same boundary an
+//! HTTP handler would draw around one request — see `begin` below.
 //!
 //! # What it does not do
 //!
-//! `tests/snapshots/openapi.json` names 483 operations; `http.rs` binds six
-//! of them, by hand. Every admin route, every catalogue write, and every
-//! agreement, credit, digital, inventory-lot, order-basket, payout,
-//! subscription and tax-identity route stays unbound — this is a storefront
-//! walkthrough, not a panel. Nothing here generates or checks the binding
-//! either: `tests/reachable.rs`, in the crate proper, is what keeps every
-//! domain function honest about having *a* route; this example is one
-//! host's choice of which of those routes it will actually serve, and nine
-//! times out of ten more that choice does not reach.
+//! `tests/snapshots/openapi.json` names 483 operations; this walks five of
+//! them by calling their handler functions directly. Every admin route,
+//! every catalogue write, and every agreement, credit, digital,
+//! inventory-lot, order-basket, payout, subscription and tax-identity route
+//! is untouched — this is a storefront walkthrough, not a panel, and
+//! `tests/reachable.rs`, in the crate proper, is what keeps every domain
+//! function honest about having *a* route regardless of whether this example
+//! calls it.
 //!
 //! The product this shop seeds is `requires_shipping: false`, so the
-//! walkthrough never needs `PATCH /store/carts/{id}` to set an address —
-//! one honestly unavoidable route among the six earns its place over an
-//! address form.
-//!
-//! `axum` is a `dev-dependency` here and nowhere else: nothing under `src/`
-//! depends on it, and nobody consuming tezgah as a library is handed an HTTP
-//! framework they did not ask for.
+//! walkthrough never needs to set a shipping address.
 
 mod host;
-mod http;
 mod provider;
 mod seed;
 
-use std::net::SocketAddr;
 use std::sync::Arc;
 
+use sqlx::PgPool;
+use tezgah::api::store;
 use tezgah::checkout::Checkout;
 use tezgah::payment::PaymentProvider;
-use tokio::net::TcpListener;
+use tezgah::ports::{Actor, Ctx, Host, Scope, Tx};
 
 /// The shop's one currency's decimal places — `seed.rs` enables `TRY` at
 /// this exponent, and `provider::KasapayProvider` is fixed to it for the
@@ -97,10 +80,6 @@ const CURRENCY_EXPONENT: u32 = 2;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let database_url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/postgres".to_string());
-    let port: u16 = std::env::var("PORT")
-        .ok()
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(3000);
 
     let pool = sqlx::postgres::PgPoolOptions::new()
         .max_connections(8)
@@ -113,27 +92,96 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let host = Arc::new(host::ExampleHost);
     let seeded = seed::run(&pool, &host).await?;
-    println!("publishable key: {}", seeded.token);
-    println!("product handle:  {}", seeded.product_handle);
-    println!("variant id:      {}", seeded.variant_id);
+    println!("product handle: {}", seeded.product_handle);
+    println!("variant id:     {}", seeded.variant_id);
 
     let bank: Arc<dyn kasapay_core::Provider> = Arc::new(provider::DemoBank);
     let kasapay_provider: Arc<dyn PaymentProvider> =
         Arc::new(provider::KasapayProvider::new(bank, CURRENCY_EXPONENT));
-    let checkout = Arc::new(Checkout::new(kasapay_provider, seeded.location_id));
+    let checkout = Checkout::new(kasapay_provider, seeded.location_id);
 
-    let state = http::AppState {
-        pool,
-        host,
-        checkout,
-        scope: seeded.scope,
+    let guest = Actor::Guest {
+        cart: uuid::Uuid::nil(),
     };
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
-    let listener = TcpListener::bind(addr).await?;
-    println!("listening on http://{addr}");
+    let mut tx = begin(&pool, seeded.scope).await?;
+    let ctx = Ctx::new(seeded.scope, guest.clone(), host.as_ref() as &dyn Host);
+    let catalogue =
+        store::list_products(&mut tx, &ctx, &seeded.token, store::ListProducts::default()).await?;
+    tx.commit().await?;
+    println!("catalogue: {} product(s)", catalogue.items.len());
 
-    axum::serve(listener, http::router(state)).await?;
+    let mut tx = begin(&pool, seeded.scope).await?;
+    let ctx = Ctx::new(seeded.scope, guest.clone(), host.as_ref() as &dyn Host);
+    let product =
+        store::get_product(&mut tx, &ctx, &seeded.token, &seeded.product_handle, None).await?;
+    tx.commit().await?;
+    println!("fetched product: {}", product.title);
+
+    let mut tx = begin(&pool, seeded.scope).await?;
+    let ctx = Ctx::new(seeded.scope, guest.clone(), host.as_ref() as &dyn Host);
+    let cart = store::create_cart(
+        &mut tx,
+        &ctx,
+        &seeded.token,
+        store::CreateCart {
+            currency_code: "TRY".to_string(),
+            region_id: None,
+            sales_channel_id: None,
+            email: Some("shopper@example.com".to_string()),
+        },
+    )
+    .await?;
+    tx.commit().await?;
+    println!("opened cart: {}", cart.id);
+
+    let cart_actor = Actor::Guest {
+        cart: cart.id.as_uuid(),
+    };
+
+    let mut tx = begin(&pool, seeded.scope).await?;
+    let ctx = Ctx::new(seeded.scope, cart_actor.clone(), host.as_ref() as &dyn Host);
+    let line = store::add_line_item(
+        &mut tx,
+        &ctx,
+        cart.id,
+        store::AddLineItem {
+            variant_id: seeded.variant_id,
+            quantity: 1,
+            selling_plan_id: None,
+        },
+    )
+    .await?;
+    tx.commit().await?;
+    println!(
+        "added line item: {} x {}",
+        line.quantity, line.product_title
+    );
+
+    let mut tx = begin(&pool, seeded.scope).await?;
+    let ctx = Ctx::new(seeded.scope, cart_actor, host.as_ref() as &dyn Host);
+    let completed = store::complete_cart(&mut tx, &ctx, cart.id, &checkout, &pool).await?;
+    tx.commit().await?;
+
+    match completed.order_id {
+        Some(order_id) => println!("placed order: {order_id}"),
+        None => println!(
+            "checkout did not finish: requires_more = {}",
+            completed.requires_more
+        ),
+    }
 
     Ok(())
+}
+
+/// Opens a transaction and announces this shop's scope on it —
+/// `crate::ports::scoped` does exactly this inside the crate, but it is
+/// `pub(crate)`, so, like `seed.rs`, this writes the two lines by hand.
+async fn begin(pool: &PgPool, scope: Scope) -> tezgah::Result<Tx<'static>> {
+    let mut tx = pool.begin().await?;
+    sqlx::query("select set_config('app.scope', $1, true)")
+        .bind(scope.0.to_string())
+        .execute(&mut *tx)
+        .await?;
+    Ok(tx)
 }
