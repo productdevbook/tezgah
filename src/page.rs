@@ -68,11 +68,14 @@ impl Cursor {
 ///
 /// This costs nothing to support and needs no new cursor, which is worth
 /// saying plainly because it looks like it should. A cursor here is
-/// `(created_at, id)` — the sort key of *both* directions — so newest-first is
-/// the same tuple compared the other way and ordered the other way.
-/// **Sorting by some other column is the change this is not**: that needs the
-/// cursor to carry that column's value instead of a timestamp, and it is not
-/// done.
+/// `(created_at, id)` — the sort key of either direction — so newest-first is
+/// the same tuple compared the other way and ordered the other way. Sorting
+/// by some other column is the change this is not: that needs the cursor to
+/// carry that column's value instead of a timestamp, and it is not done.
+///
+/// This doc comment reaches the OpenAPI document and from there a code
+/// generator, which escapes what it finds — so it is written without markdown
+/// emphasis. An asterisk here became a lint error in generated TypeScript.
 ///
 /// It lives on a filter rather than on [`Paging`] on purpose. Four lists
 /// honour it and sixty-odd do not; on `Paging` those sixty-odd would take a
