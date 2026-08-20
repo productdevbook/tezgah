@@ -28,9 +28,18 @@ holds English and Turkish and the compiler enforces that they match, and what
 they cover is the shared chrome — actions, errors, the unsaved-changes
 prompt. Every screen's own words are still English in the source.
 
-**Nothing is bulk.** No multi-select, no edit grid, and no screen at all for
-the three `batch` endpoints — products, prices and stock — that are routed
-and drawn by nobody.
+**Bulk is a round trip, not a grid.** `/batch` exports a page of variants as
+CSV and takes the same columns back — which is how a shop changes four
+hundred prices, and it works because the export's columns and the import's
+are the same. What is still absent is multi-select on a list and an edit grid
+in the browser; the round trip is the thing a shop can already do without
+either.
+
+`features/batch/csv.ts` is sixty lines and no library. What bites in a shop's
+data is a comma in a title, a quote in one, and a newline in a description;
+RFC 4180 answers all three the same way and that is the whole of what is
+there. Round-tripped against the real code — quotes, commas, an embedded
+newline, CRLF from a spreadsheet, and a file that is only a header.
 
 **A section can be read and not changed.** A record's page is a stack of
 sections, and only the one carrying the fields `PATCH` accepts has an action

@@ -2868,7 +2868,7 @@ pub async fn batch_products(
     import_products(tx, ctx, body).await
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ExportQuery {
     pub after: Option<String>,
@@ -3014,7 +3014,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/products/export",
         action: Action::View,
         domain: CATALOGUE,
-        query: None,
+        query: Some(super::query_schema::<ExportQuery>),
         summary: "A page of variants, flat enough to write as CSV",
     },
     Route {

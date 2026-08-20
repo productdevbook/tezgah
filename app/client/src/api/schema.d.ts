@@ -6790,6 +6790,12 @@ export interface components {
             /** Format: date-time */
             verified_at: string | null;
         };
+        ExportQuery: {
+            after?: string | null;
+            currency_code?: string | null;
+            /** Format: uint32 */
+            limit?: number | null;
+        };
         /** @description A fulfilment with what is in the box and what is on the outside of it. */
         FulfillmentDetailView: {
             fulfillment: components["schemas"]["FulfillmentView"];
@@ -18915,7 +18921,11 @@ export interface operations {
     };
     getAdminProductsExport: {
         parameters: {
-            query?: never;
+            query?: {
+                after?: string | null;
+                currency_code?: string | null;
+                limit?: number | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;

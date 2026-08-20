@@ -391,6 +391,16 @@ export const PostAdminProductsBatchResponse = zod.unknown()
 /**
  * @summary A page of variants, flat enough to write as CSV
  */
+export const getAdminProductsExportQueryLimitMin = 0;
+
+
+
+export const GetAdminProductsExportQueryParams = zod.object({
+  "after": zod.string().nullish(),
+  "currency_code": zod.string().nullish(),
+  "limit": zod.int().min(getAdminProductsExportQueryLimitMin).nullish()
+})
+
 export const GetAdminProductsExportResponse = zod.unknown()
 
 /**

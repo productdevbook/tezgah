@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SectionRouteImport } from './routes/$section'
 import { Route as BasketsRouteImport } from './routes/baskets'
+import { Route as BatchRouteImport } from './routes/batch'
 import { Route as CartsRouteImport } from './routes/carts'
 import { Route as CreditRouteImport } from './routes/credit'
 import { Route as CustomersRouteImport } from './routes/customers'
@@ -96,6 +97,11 @@ const SectionRoute = SectionRouteImport.update({
 const BasketsRoute = BasketsRouteImport.update({
   id: '/baskets',
   path: '/baskets',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BatchRoute = BatchRouteImport.update({
+  id: '/batch',
+  path: '/batch',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CartsRoute = CartsRouteImport.update({
@@ -459,6 +465,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$section': typeof SectionRoute
   '/baskets': typeof BasketsRoute
+  '/batch': typeof BatchRoute
   '/carts': typeof CartsRoute
   '/credit': typeof CreditRoute
   '/customers': typeof CustomersRoute
@@ -534,6 +541,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/$section': typeof SectionRoute
   '/baskets': typeof BasketsRoute
+  '/batch': typeof BatchRoute
   '/carts': typeof CartsRoute
   '/credit': typeof CreditRoute
   '/customers': typeof CustomersRoute
@@ -603,6 +611,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/$section': typeof SectionRoute
   '/baskets': typeof BasketsRoute
+  '/batch': typeof BatchRoute
   '/carts': typeof CartsRoute
   '/credit': typeof CreditRoute
   '/customers': typeof CustomersRoute
@@ -680,6 +689,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$section'
     | '/baskets'
+    | '/batch'
     | '/carts'
     | '/credit'
     | '/customers'
@@ -755,6 +765,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$section'
     | '/baskets'
+    | '/batch'
     | '/carts'
     | '/credit'
     | '/customers'
@@ -823,6 +834,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$section'
     | '/baskets'
+    | '/batch'
     | '/carts'
     | '/credit'
     | '/customers'
@@ -899,6 +911,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   SectionRoute: typeof SectionRoute
   BasketsRoute: typeof BasketsRoute
+  BatchRoute: typeof BatchRoute
   CartsRoute: typeof CartsRoute
   CreditRoute: typeof CreditRoute
   CustomersRoute: typeof CustomersRoute
@@ -955,6 +968,13 @@ declare module '@tanstack/react-router' {
       path: '/baskets'
       fullPath: '/baskets'
       preLoaderRoute: typeof BasketsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/batch': {
+      id: '/batch'
+      path: '/batch'
+      fullPath: '/batch'
+      preLoaderRoute: typeof BatchRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/carts': {
@@ -1700,6 +1720,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   SectionRoute: SectionRoute,
   BasketsRoute: BasketsRoute,
+  BatchRoute: BatchRoute,
   CartsRoute: CartsRoute,
   CreditRoute: CreditRoute,
   CustomersRoute: CustomersRoute,
