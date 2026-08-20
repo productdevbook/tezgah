@@ -33,9 +33,15 @@ prompt. Every screen's own words are still English in the source.
 **Bulk is a round trip, not a grid.** `/batch` exports a page of variants as
 CSV and takes the same columns back — which is how a shop changes four
 hundred prices, and it works because the export's columns and the import's
-are the same. What is still absent is multi-select on a list and an edit grid
-in the browser; the round trip is the thing a shop can already do without
-either.
+are the same. Multi-select is on the products list beside it —
+`POST /admin/products/batch` takes rows to write and ids to delete, and a
+bulk delete is that call with no rows. An edit grid in the browser is still
+absent, and the round trip is what a shop uses instead.
+
+The checkbox column is off unless a screen passes `select`, because a
+checkbox on a list with no bulk action is a control that does nothing. A
+selection is about the rows on screen: paging away drops it, rather than
+leaving ids chosen that nobody can see for a bulk action to act on.
 
 `features/batch/csv.ts` is sixty lines and no library. What bites in a shop's
 data is a comma in a title, a quote in one, and a newline in a description;
