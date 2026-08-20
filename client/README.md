@@ -77,11 +77,12 @@ one had a screen wired to it yet.
 ## Coverage
 
 The sidebar reads `src/lib/nav.ts`, which carries the number of admin
-operations each section's tag declares. Ten sections have screens — products,
-orders, inventory, customers, promotions, subscriptions, store, payouts,
-workflows and baskets — which is 346 of the 483 operations. The rest say how
-many they are not drawing yet, because those operations exist and work; only
-the screen is missing.
+operations each section's tag declares. Sixteen sections have screens —
+products, orders, inventory, customers, promotions, subscriptions, store,
+payouts, workflows, baskets, fulfilment, tax, pricing, payments, credit and
+carts — which is 475 of the 483 operations. `digital` is the rest: its eight
+operations exist and work, and `nav.ts`'s `folded` says why there is no
+screen for them yet.
 
 Tables are TanStack Table v9, with no feature registered. Nothing sorts or
 filters on the client on purpose: every list handler takes a cursor and a
@@ -107,10 +108,10 @@ points back at the list) or call `useNavigate()` after a mutation succeeds,
 the same way `components/app-shell.tsx` already builds the sidebar's own
 links — pointing at a fixed address is markup, not state, and forcing it
 through the route as a pre-built prop would only move the same import without
-removing it. The ten built sections each have a real route; the other seven
-fall through to `src/routes/$section.tsx`, which is what `NotBuilt` used to be
-reached through — a static route always wins the match over a dynamic one, so
-a slug that gains a screen just needs a file added here.
+removing it. The sixteen built sections each have a real route; `digital`
+falls through to `src/routes/$section.tsx`, which is what `NotBuilt` used to
+be reached through — a static route always wins the match over a dynamic
+one, so a slug that gains a screen just needs a file added here.
 
 ### A creation form is a route, not a dialog
 
@@ -133,10 +134,16 @@ gets to show.
 
 `/products/$id`, `/orders/$id`, `/inventory/$id`, `/customers/$id`,
 `/promotions/$id`, `/subscriptions/$id`, `/store/regions/$id`,
-`/store/sales-channels/$id` and `/workflows/$id` are the nine `GET .../{id}`
-operations bound alongside their lists — `src/features/<domain>/detail.tsx`,
-one screen each, reading every field the response carries rather than the
-subset its list column happened to need. Their route files take the same
+`/store/sales-channels/$id`, `/workflows/$id`, `/fulfilment/shipping-options/$id`,
+`/fulfilment/shipping-profiles/$id`, `/tax/rates/$id`, `/tax/regions/$id`,
+`/pricing/price-lists/$id`, `/payments/$id` and `/credit/$id` are the sixteen
+`GET .../{id}` operations bound alongside their lists — `src/features/<domain>/detail.tsx`
+or `.../<domain>-detail.tsx`, one screen each, reading every field the
+response carries rather than the subset its list column happened to need. A
+list whose `GET .../{id}` is not bound — `fulfilment`'s providers, sets and
+shipping option types; `tax`'s registrations; `payment`'s refund reasons;
+`carts` entirely — draws no `rowLink`, because there is nowhere for the row
+to go. Their route files take the same
 trailing-underscore escape the `new` routes do (`routes/products_.$id.tsx`,
 `routes/store_.regions.$id.tsx`), for the same reason: a list's own route is
 not a layout, and `/store`'s tabs are chrome a single record's page does not
@@ -173,6 +180,20 @@ while a scope's own payouts and a run's own executions are real content, so
 `routes/payouts.index.tsx` and `routes/workflows.index.tsx` render their tab
 directly instead of redirecting to a sibling.
 
+`/fulfilment` (five tabs), `/tax` (three) and `/pricing` (four) take the
+`/store` shape — none of their tabs is the section itself, so each redirects
+from its own index to the first. `/payments` takes the `/payouts` shape
+instead: `payments` is real content on its own, so `routes/payments.index.tsx`
+renders it directly and only `/payments/refund-reasons` is a sibling route.
+`pricing`'s own two operations without a list — `price-sets` (only
+`GET .../{id}`) and `prices` (only listed scoped to the set that owns them,
+`GET /admin/price-sets/{id}/prices`) — are lookups by id on their own tab, the
+same shape as `/payouts`'s balance and order-lines widgets, not tables with
+nothing to page through. `price-preferences` is the same again: `GET
+/admin/price-preferences` wants an `attribute` the document does not declare
+as a parameter, so it is reached the same undeclared way `/admin/payout-balance/{currency_code}`
+already was.
+
 ### Baskets have no list
 
 `order_basket` (5 operations) has no `GET /admin/order-baskets` — the crate
@@ -185,6 +206,25 @@ would have opened if this section had rows. Its two sub-lists, carts and
 orders, are real `Page<T>` endpoints and keep their own cursors in the
 detail route's own `validateSearch` (`cartsAfter`, `ordersAfter`), the same
 as any other paginated list.
+
+### Carts have a list and no detail
+
+`GET /admin/carts` is bound and was, until now, reachable from nothing — the
+back office drew no screen for it, so `tests/reachable.rs` tolerated it under
+a reason that named exactly that. `/carts` (`src/features/carts/screen.tsx`)
+is what makes the reason false. There is still no `GET /admin/carts/{id}` —
+only a shopper's own cart is fetched by id, at `/store/carts/{id}` — so
+`/carts`'s rows are not `Link`s.
+
+A handful of other lists are `Page<T>`-shaped in the document but orval does
+not export their item on its own — `fulfilment`'s sets and shipping option
+types, `payment`'s refund reasons — because the schema embeds the item inline
+rather than by `$ref`. `api/schemas.ts` transcribes those by hand, the same
+discipline as an operation #202 does not document at all, and says so at each
+one. A few lists answer a plain array rather than `Page<T>` and so skip
+`usePagedList` for a small `useQuery` of their own, the same as
+`features/store/currencies.tsx` already did: `fulfilment`'s providers and
+`tax`'s registrations.
 
 ### Pagination lives in the URL
 

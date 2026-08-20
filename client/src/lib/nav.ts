@@ -36,7 +36,7 @@ export const GROUPS: Group[] = [
     title: "Selling",
     sections: [
       { slug: "products", title: "Products", tag: "catalogue", operations: 79, built: true },
-      { slug: "pricing", title: "Pricing", tag: "pricing", operations: 23, built: false },
+      { slug: "pricing", title: "Pricing", tag: "pricing", operations: 23, built: true },
       { slug: "promotions", title: "Promotions", tag: "promotion", operations: 19, built: true },
     ],
   },
@@ -45,7 +45,7 @@ export const GROUPS: Group[] = [
     sections: [
       { slug: "orders", title: "Orders", tag: "order", operations: 112, built: true },
       { slug: "baskets", title: "Baskets", tag: "order_basket", operations: 5, built: true },
-      { slug: "carts", title: "Carts", tag: "cart", operations: 11, built: false },
+      { slug: "carts", title: "Carts", tag: "cart", operations: 11, built: true },
       { slug: "subscriptions", title: "Subscriptions", tag: "subscription", operations: 26, built: true },
     ],
   },
@@ -53,16 +53,16 @@ export const GROUPS: Group[] = [
     title: "Getting it there",
     sections: [
       { slug: "inventory", title: "Inventory", tag: "inventory", operations: 37, built: true },
-      { slug: "fulfilment", title: "Fulfilment", tag: "fulfilment", operations: 35, built: false },
+      { slug: "fulfilment", title: "Fulfilment", tag: "fulfilment", operations: 35, built: true },
     ],
   },
   {
     title: "Money",
     sections: [
-      { slug: "payments", title: "Payments", tag: "payment", operations: 19, built: false },
-      { slug: "credit", title: "Credit", tag: "credit", operations: 17, built: false },
+      { slug: "payments", title: "Payments", tag: "payment", operations: 19, built: true },
+      { slug: "credit", title: "Credit", tag: "credit", operations: 17, built: true },
       { slug: "payouts", title: "Payouts", tag: "payout", operations: 7, built: true },
-      { slug: "tax", title: "Tax", tag: "tax", operations: 24, built: false },
+      { slug: "tax", title: "Tax", tag: "tax", operations: 24, built: true },
     ],
   },
   {

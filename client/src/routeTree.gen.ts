@@ -12,21 +12,42 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SectionRouteImport } from './routes/$section'
 import { Route as BasketsRouteImport } from './routes/baskets'
+import { Route as CartsRouteImport } from './routes/carts'
+import { Route as CreditRouteImport } from './routes/credit'
 import { Route as CustomersRouteImport } from './routes/customers'
+import { Route as FulfilmentRouteImport } from './routes/fulfilment'
 import { Route as InventoryRouteImport } from './routes/inventory'
 import { Route as OrdersRouteImport } from './routes/orders'
+import { Route as PaymentsRouteImport } from './routes/payments'
 import { Route as PayoutsRouteImport } from './routes/payouts'
+import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as ProductsRouteImport } from './routes/products'
 import { Route as PromotionsRouteImport } from './routes/promotions'
 import { Route as StoreRouteImport } from './routes/store'
 import { Route as SubscriptionsRouteImport } from './routes/subscriptions'
+import { Route as TaxRouteImport } from './routes/tax'
 import { Route as WorkflowsRouteImport } from './routes/workflows'
 import { Route as BasketsIdRouteImport } from './routes/baskets_.$id'
+import { Route as CreditIdRouteImport } from './routes/credit_.$id'
 import { Route as CustomersIdRouteImport } from './routes/customers_.$id'
+import { Route as FulfilmentIndexRouteImport } from './routes/fulfilment.index'
+import { Route as FulfilmentProvidersRouteImport } from './routes/fulfilment.providers'
+import { Route as FulfilmentSetsRouteImport } from './routes/fulfilment.sets'
+import { Route as FulfilmentShippingOptionTypesRouteImport } from './routes/fulfilment.shipping-option-types'
+import { Route as FulfilmentShippingOptionsRouteImport } from './routes/fulfilment.shipping-options'
+import { Route as FulfilmentShippingProfilesRouteImport } from './routes/fulfilment.shipping-profiles'
 import { Route as InventoryIdRouteImport } from './routes/inventory_.$id'
 import { Route as OrdersIdRouteImport } from './routes/orders_.$id'
+import { Route as PaymentsIndexRouteImport } from './routes/payments.index'
+import { Route as PaymentsRefundReasonsRouteImport } from './routes/payments.refund-reasons'
+import { Route as PaymentsIdRouteImport } from './routes/payments_.$id'
 import { Route as PayoutsIndexRouteImport } from './routes/payouts.index'
 import { Route as PayoutsCommissionRulesRouteImport } from './routes/payouts.commission-rules'
+import { Route as PricingIndexRouteImport } from './routes/pricing.index'
+import { Route as PricingPriceListsRouteImport } from './routes/pricing.price-lists'
+import { Route as PricingPricePreferencesRouteImport } from './routes/pricing.price-preferences'
+import { Route as PricingPriceSetsRouteImport } from './routes/pricing.price-sets'
+import { Route as PricingPricesRouteImport } from './routes/pricing.prices'
 import { Route as ProductsIdRouteImport } from './routes/products_.$id'
 import { Route as ProductsNewRouteImport } from './routes/products_.new'
 import { Route as PromotionsIdRouteImport } from './routes/promotions_.$id'
@@ -36,10 +57,17 @@ import { Route as StoreKeysRouteImport } from './routes/store.keys'
 import { Route as StoreRegionsRouteImport } from './routes/store.regions'
 import { Route as StoreSalesChannelsRouteImport } from './routes/store.sales-channels'
 import { Route as SubscriptionsIdRouteImport } from './routes/subscriptions_.$id'
+import { Route as TaxIndexRouteImport } from './routes/tax.index'
+import { Route as TaxRatesRouteImport } from './routes/tax.rates'
+import { Route as TaxRegionsRouteImport } from './routes/tax.regions'
+import { Route as TaxRegistrationsRouteImport } from './routes/tax.registrations'
 import { Route as WorkflowsIndexRouteImport } from './routes/workflows.index'
 import { Route as WorkflowsDeadLettersRouteImport } from './routes/workflows.dead-letters'
 import { Route as WorkflowsIdRouteImport } from './routes/workflows_.$id'
 import { Route as CustomersIdEditRouteImport } from './routes/customers_.$id.edit'
+import { Route as FulfilmentShippingOptionsIdRouteImport } from './routes/fulfilment_.shipping-options.$id'
+import { Route as FulfilmentShippingProfilesIdRouteImport } from './routes/fulfilment_.shipping-profiles.$id'
+import { Route as PricingPriceListsIdRouteImport } from './routes/pricing_.price-lists.$id'
 import { Route as ProductsIdEditRouteImport } from './routes/products_.$id.edit'
 import { Route as PromotionsIdEditRouteImport } from './routes/promotions_.$id.edit'
 import { Route as StoreCurrenciesNewRouteImport } from './routes/store_.currencies.new'
@@ -48,6 +76,8 @@ import { Route as StoreRegionsIdRouteImport } from './routes/store_.regions.$id'
 import { Route as StoreRegionsNewRouteImport } from './routes/store_.regions.new'
 import { Route as StoreSalesChannelsIdRouteImport } from './routes/store_.sales-channels.$id'
 import { Route as StoreSalesChannelsNewRouteImport } from './routes/store_.sales-channels.new'
+import { Route as TaxRatesIdRouteImport } from './routes/tax_.rates.$id'
+import { Route as TaxRegionsIdRouteImport } from './routes/tax_.regions.$id'
 import { Route as StoreRegionsIdEditRouteImport } from './routes/store_.regions.$id.edit'
 import { Route as StoreSalesChannelsIdEditRouteImport } from './routes/store_.sales-channels.$id.edit'
 
@@ -66,9 +96,24 @@ const BasketsRoute = BasketsRouteImport.update({
   path: '/baskets',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CartsRoute = CartsRouteImport.update({
+  id: '/carts',
+  path: '/carts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CreditRoute = CreditRouteImport.update({
+  id: '/credit',
+  path: '/credit',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CustomersRoute = CustomersRouteImport.update({
   id: '/customers',
   path: '/customers',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FulfilmentRoute = FulfilmentRouteImport.update({
+  id: '/fulfilment',
+  path: '/fulfilment',
   getParentRoute: () => rootRouteImport,
 } as any)
 const InventoryRoute = InventoryRouteImport.update({
@@ -81,9 +126,19 @@ const OrdersRoute = OrdersRouteImport.update({
   path: '/orders',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PaymentsRoute = PaymentsRouteImport.update({
+  id: '/payments',
+  path: '/payments',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PayoutsRoute = PayoutsRouteImport.update({
   id: '/payouts',
   path: '/payouts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PricingRoute = PricingRouteImport.update({
+  id: '/pricing',
+  path: '/pricing',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProductsRoute = ProductsRouteImport.update({
@@ -106,6 +161,11 @@ const SubscriptionsRoute = SubscriptionsRouteImport.update({
   path: '/subscriptions',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TaxRoute = TaxRouteImport.update({
+  id: '/tax',
+  path: '/tax',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const WorkflowsRoute = WorkflowsRouteImport.update({
   id: '/workflows',
   path: '/workflows',
@@ -116,11 +176,49 @@ const BasketsIdRoute = BasketsIdRouteImport.update({
   path: '/baskets/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CreditIdRoute = CreditIdRouteImport.update({
+  id: '/credit_/$id',
+  path: '/credit/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CustomersIdRoute = CustomersIdRouteImport.update({
   id: '/customers_/$id',
   path: '/customers/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FulfilmentIndexRoute = FulfilmentIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => FulfilmentRoute,
+} as any)
+const FulfilmentProvidersRoute = FulfilmentProvidersRouteImport.update({
+  id: '/providers',
+  path: '/providers',
+  getParentRoute: () => FulfilmentRoute,
+} as any)
+const FulfilmentSetsRoute = FulfilmentSetsRouteImport.update({
+  id: '/sets',
+  path: '/sets',
+  getParentRoute: () => FulfilmentRoute,
+} as any)
+const FulfilmentShippingOptionTypesRoute =
+  FulfilmentShippingOptionTypesRouteImport.update({
+    id: '/shipping-option-types',
+    path: '/shipping-option-types',
+    getParentRoute: () => FulfilmentRoute,
+  } as any)
+const FulfilmentShippingOptionsRoute =
+  FulfilmentShippingOptionsRouteImport.update({
+    id: '/shipping-options',
+    path: '/shipping-options',
+    getParentRoute: () => FulfilmentRoute,
+  } as any)
+const FulfilmentShippingProfilesRoute =
+  FulfilmentShippingProfilesRouteImport.update({
+    id: '/shipping-profiles',
+    path: '/shipping-profiles',
+    getParentRoute: () => FulfilmentRoute,
+  } as any)
 const InventoryIdRoute = InventoryIdRouteImport.update({
   id: '/inventory_/$id',
   path: '/inventory/$id',
@@ -129,6 +227,21 @@ const InventoryIdRoute = InventoryIdRouteImport.update({
 const OrdersIdRoute = OrdersIdRouteImport.update({
   id: '/orders_/$id',
   path: '/orders/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PaymentsIndexRoute = PaymentsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => PaymentsRoute,
+} as any)
+const PaymentsRefundReasonsRoute = PaymentsRefundReasonsRouteImport.update({
+  id: '/refund-reasons',
+  path: '/refund-reasons',
+  getParentRoute: () => PaymentsRoute,
+} as any)
+const PaymentsIdRoute = PaymentsIdRouteImport.update({
+  id: '/payments_/$id',
+  path: '/payments/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PayoutsIndexRoute = PayoutsIndexRouteImport.update({
@@ -140,6 +253,31 @@ const PayoutsCommissionRulesRoute = PayoutsCommissionRulesRouteImport.update({
   id: '/commission-rules',
   path: '/commission-rules',
   getParentRoute: () => PayoutsRoute,
+} as any)
+const PricingIndexRoute = PricingIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => PricingRoute,
+} as any)
+const PricingPriceListsRoute = PricingPriceListsRouteImport.update({
+  id: '/price-lists',
+  path: '/price-lists',
+  getParentRoute: () => PricingRoute,
+} as any)
+const PricingPricePreferencesRoute = PricingPricePreferencesRouteImport.update({
+  id: '/price-preferences',
+  path: '/price-preferences',
+  getParentRoute: () => PricingRoute,
+} as any)
+const PricingPriceSetsRoute = PricingPriceSetsRouteImport.update({
+  id: '/price-sets',
+  path: '/price-sets',
+  getParentRoute: () => PricingRoute,
+} as any)
+const PricingPricesRoute = PricingPricesRouteImport.update({
+  id: '/prices',
+  path: '/prices',
+  getParentRoute: () => PricingRoute,
 } as any)
 const ProductsIdRoute = ProductsIdRouteImport.update({
   id: '/products_/$id',
@@ -186,6 +324,26 @@ const SubscriptionsIdRoute = SubscriptionsIdRouteImport.update({
   path: '/subscriptions/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TaxIndexRoute = TaxIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => TaxRoute,
+} as any)
+const TaxRatesRoute = TaxRatesRouteImport.update({
+  id: '/rates',
+  path: '/rates',
+  getParentRoute: () => TaxRoute,
+} as any)
+const TaxRegionsRoute = TaxRegionsRouteImport.update({
+  id: '/regions',
+  path: '/regions',
+  getParentRoute: () => TaxRoute,
+} as any)
+const TaxRegistrationsRoute = TaxRegistrationsRouteImport.update({
+  id: '/registrations',
+  path: '/registrations',
+  getParentRoute: () => TaxRoute,
+} as any)
 const WorkflowsIndexRoute = WorkflowsIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -205,6 +363,23 @@ const CustomersIdEditRoute = CustomersIdEditRouteImport.update({
   id: '/edit',
   path: '/edit',
   getParentRoute: () => CustomersIdRoute,
+} as any)
+const FulfilmentShippingOptionsIdRoute =
+  FulfilmentShippingOptionsIdRouteImport.update({
+    id: '/fulfilment_/shipping-options/$id',
+    path: '/fulfilment/shipping-options/$id',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const FulfilmentShippingProfilesIdRoute =
+  FulfilmentShippingProfilesIdRouteImport.update({
+    id: '/fulfilment_/shipping-profiles/$id',
+    path: '/fulfilment/shipping-profiles/$id',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const PricingPriceListsIdRoute = PricingPriceListsIdRouteImport.update({
+  id: '/pricing_/price-lists/$id',
+  path: '/pricing/price-lists/$id',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const ProductsIdEditRoute = ProductsIdEditRouteImport.update({
   id: '/edit',
@@ -246,6 +421,16 @@ const StoreSalesChannelsNewRoute = StoreSalesChannelsNewRouteImport.update({
   path: '/store/sales-channels/new',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TaxRatesIdRoute = TaxRatesIdRouteImport.update({
+  id: '/tax_/rates/$id',
+  path: '/tax/rates/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TaxRegionsIdRoute = TaxRegionsIdRouteImport.update({
+  id: '/tax_/regions/$id',
+  path: '/tax/regions/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const StoreRegionsIdEditRoute = StoreRegionsIdEditRouteImport.update({
   id: '/edit',
   path: '/edit',
@@ -262,20 +447,38 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$section': typeof SectionRoute
   '/baskets': typeof BasketsRoute
+  '/carts': typeof CartsRoute
+  '/credit': typeof CreditRoute
   '/customers': typeof CustomersRoute
+  '/fulfilment': typeof FulfilmentRouteWithChildren
   '/inventory': typeof InventoryRoute
   '/orders': typeof OrdersRoute
+  '/payments': typeof PaymentsRouteWithChildren
   '/payouts': typeof PayoutsRouteWithChildren
+  '/pricing': typeof PricingRouteWithChildren
   '/products': typeof ProductsRoute
   '/promotions': typeof PromotionsRoute
   '/store': typeof StoreRouteWithChildren
   '/subscriptions': typeof SubscriptionsRoute
+  '/tax': typeof TaxRouteWithChildren
   '/workflows': typeof WorkflowsRouteWithChildren
   '/baskets/$id': typeof BasketsIdRoute
+  '/credit/$id': typeof CreditIdRoute
   '/customers/$id': typeof CustomersIdRouteWithChildren
+  '/fulfilment/providers': typeof FulfilmentProvidersRoute
+  '/fulfilment/sets': typeof FulfilmentSetsRoute
+  '/fulfilment/shipping-option-types': typeof FulfilmentShippingOptionTypesRoute
+  '/fulfilment/shipping-options': typeof FulfilmentShippingOptionsRoute
+  '/fulfilment/shipping-profiles': typeof FulfilmentShippingProfilesRoute
   '/inventory/$id': typeof InventoryIdRoute
   '/orders/$id': typeof OrdersIdRoute
+  '/payments/refund-reasons': typeof PaymentsRefundReasonsRoute
+  '/payments/$id': typeof PaymentsIdRoute
   '/payouts/commission-rules': typeof PayoutsCommissionRulesRoute
+  '/pricing/price-lists': typeof PricingPriceListsRoute
+  '/pricing/price-preferences': typeof PricingPricePreferencesRoute
+  '/pricing/price-sets': typeof PricingPriceSetsRoute
+  '/pricing/prices': typeof PricingPricesRoute
   '/products/$id': typeof ProductsIdRouteWithChildren
   '/products/new': typeof ProductsNewRoute
   '/promotions/$id': typeof PromotionsIdRouteWithChildren
@@ -284,12 +487,22 @@ export interface FileRoutesByFullPath {
   '/store/regions': typeof StoreRegionsRoute
   '/store/sales-channels': typeof StoreSalesChannelsRoute
   '/subscriptions/$id': typeof SubscriptionsIdRoute
+  '/tax/rates': typeof TaxRatesRoute
+  '/tax/regions': typeof TaxRegionsRoute
+  '/tax/registrations': typeof TaxRegistrationsRoute
   '/workflows/dead-letters': typeof WorkflowsDeadLettersRoute
   '/workflows/$id': typeof WorkflowsIdRoute
+  '/fulfilment/': typeof FulfilmentIndexRoute
+  '/payments/': typeof PaymentsIndexRoute
   '/payouts/': typeof PayoutsIndexRoute
+  '/pricing/': typeof PricingIndexRoute
   '/store/': typeof StoreIndexRoute
+  '/tax/': typeof TaxIndexRoute
   '/workflows/': typeof WorkflowsIndexRoute
   '/customers/$id/edit': typeof CustomersIdEditRoute
+  '/fulfilment/shipping-options/$id': typeof FulfilmentShippingOptionsIdRoute
+  '/fulfilment/shipping-profiles/$id': typeof FulfilmentShippingProfilesIdRoute
+  '/pricing/price-lists/$id': typeof PricingPriceListsIdRoute
   '/products/$id/edit': typeof ProductsIdEditRoute
   '/promotions/$id/edit': typeof PromotionsIdEditRoute
   '/store/currencies/new': typeof StoreCurrenciesNewRoute
@@ -298,6 +511,8 @@ export interface FileRoutesByFullPath {
   '/store/regions/new': typeof StoreRegionsNewRoute
   '/store/sales-channels/$id': typeof StoreSalesChannelsIdRouteWithChildren
   '/store/sales-channels/new': typeof StoreSalesChannelsNewRoute
+  '/tax/rates/$id': typeof TaxRatesIdRoute
+  '/tax/regions/$id': typeof TaxRegionsIdRoute
   '/store/regions/$id/edit': typeof StoreRegionsIdEditRoute
   '/store/sales-channels/$id/edit': typeof StoreSalesChannelsIdEditRoute
 }
@@ -305,6 +520,8 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/$section': typeof SectionRoute
   '/baskets': typeof BasketsRoute
+  '/carts': typeof CartsRoute
+  '/credit': typeof CreditRoute
   '/customers': typeof CustomersRoute
   '/inventory': typeof InventoryRoute
   '/orders': typeof OrdersRoute
@@ -312,10 +529,22 @@ export interface FileRoutesByTo {
   '/promotions': typeof PromotionsRoute
   '/subscriptions': typeof SubscriptionsRoute
   '/baskets/$id': typeof BasketsIdRoute
+  '/credit/$id': typeof CreditIdRoute
   '/customers/$id': typeof CustomersIdRouteWithChildren
+  '/fulfilment/providers': typeof FulfilmentProvidersRoute
+  '/fulfilment/sets': typeof FulfilmentSetsRoute
+  '/fulfilment/shipping-option-types': typeof FulfilmentShippingOptionTypesRoute
+  '/fulfilment/shipping-options': typeof FulfilmentShippingOptionsRoute
+  '/fulfilment/shipping-profiles': typeof FulfilmentShippingProfilesRoute
   '/inventory/$id': typeof InventoryIdRoute
   '/orders/$id': typeof OrdersIdRoute
+  '/payments/refund-reasons': typeof PaymentsRefundReasonsRoute
+  '/payments/$id': typeof PaymentsIdRoute
   '/payouts/commission-rules': typeof PayoutsCommissionRulesRoute
+  '/pricing/price-lists': typeof PricingPriceListsRoute
+  '/pricing/price-preferences': typeof PricingPricePreferencesRoute
+  '/pricing/price-sets': typeof PricingPriceSetsRoute
+  '/pricing/prices': typeof PricingPricesRoute
   '/products/$id': typeof ProductsIdRouteWithChildren
   '/products/new': typeof ProductsNewRoute
   '/promotions/$id': typeof PromotionsIdRouteWithChildren
@@ -324,12 +553,22 @@ export interface FileRoutesByTo {
   '/store/regions': typeof StoreRegionsRoute
   '/store/sales-channels': typeof StoreSalesChannelsRoute
   '/subscriptions/$id': typeof SubscriptionsIdRoute
+  '/tax/rates': typeof TaxRatesRoute
+  '/tax/regions': typeof TaxRegionsRoute
+  '/tax/registrations': typeof TaxRegistrationsRoute
   '/workflows/dead-letters': typeof WorkflowsDeadLettersRoute
   '/workflows/$id': typeof WorkflowsIdRoute
+  '/fulfilment': typeof FulfilmentIndexRoute
+  '/payments': typeof PaymentsIndexRoute
   '/payouts': typeof PayoutsIndexRoute
+  '/pricing': typeof PricingIndexRoute
   '/store': typeof StoreIndexRoute
+  '/tax': typeof TaxIndexRoute
   '/workflows': typeof WorkflowsIndexRoute
   '/customers/$id/edit': typeof CustomersIdEditRoute
+  '/fulfilment/shipping-options/$id': typeof FulfilmentShippingOptionsIdRoute
+  '/fulfilment/shipping-profiles/$id': typeof FulfilmentShippingProfilesIdRoute
+  '/pricing/price-lists/$id': typeof PricingPriceListsIdRoute
   '/products/$id/edit': typeof ProductsIdEditRoute
   '/promotions/$id/edit': typeof PromotionsIdEditRoute
   '/store/currencies/new': typeof StoreCurrenciesNewRoute
@@ -338,6 +577,8 @@ export interface FileRoutesByTo {
   '/store/regions/new': typeof StoreRegionsNewRoute
   '/store/sales-channels/$id': typeof StoreSalesChannelsIdRouteWithChildren
   '/store/sales-channels/new': typeof StoreSalesChannelsNewRoute
+  '/tax/rates/$id': typeof TaxRatesIdRoute
+  '/tax/regions/$id': typeof TaxRegionsIdRoute
   '/store/regions/$id/edit': typeof StoreRegionsIdEditRoute
   '/store/sales-channels/$id/edit': typeof StoreSalesChannelsIdEditRoute
 }
@@ -346,20 +587,38 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/$section': typeof SectionRoute
   '/baskets': typeof BasketsRoute
+  '/carts': typeof CartsRoute
+  '/credit': typeof CreditRoute
   '/customers': typeof CustomersRoute
+  '/fulfilment': typeof FulfilmentRouteWithChildren
   '/inventory': typeof InventoryRoute
   '/orders': typeof OrdersRoute
+  '/payments': typeof PaymentsRouteWithChildren
   '/payouts': typeof PayoutsRouteWithChildren
+  '/pricing': typeof PricingRouteWithChildren
   '/products': typeof ProductsRoute
   '/promotions': typeof PromotionsRoute
   '/store': typeof StoreRouteWithChildren
   '/subscriptions': typeof SubscriptionsRoute
+  '/tax': typeof TaxRouteWithChildren
   '/workflows': typeof WorkflowsRouteWithChildren
   '/baskets_/$id': typeof BasketsIdRoute
+  '/credit_/$id': typeof CreditIdRoute
   '/customers_/$id': typeof CustomersIdRouteWithChildren
+  '/fulfilment/providers': typeof FulfilmentProvidersRoute
+  '/fulfilment/sets': typeof FulfilmentSetsRoute
+  '/fulfilment/shipping-option-types': typeof FulfilmentShippingOptionTypesRoute
+  '/fulfilment/shipping-options': typeof FulfilmentShippingOptionsRoute
+  '/fulfilment/shipping-profiles': typeof FulfilmentShippingProfilesRoute
   '/inventory_/$id': typeof InventoryIdRoute
   '/orders_/$id': typeof OrdersIdRoute
+  '/payments/refund-reasons': typeof PaymentsRefundReasonsRoute
+  '/payments_/$id': typeof PaymentsIdRoute
   '/payouts/commission-rules': typeof PayoutsCommissionRulesRoute
+  '/pricing/price-lists': typeof PricingPriceListsRoute
+  '/pricing/price-preferences': typeof PricingPricePreferencesRoute
+  '/pricing/price-sets': typeof PricingPriceSetsRoute
+  '/pricing/prices': typeof PricingPricesRoute
   '/products_/$id': typeof ProductsIdRouteWithChildren
   '/products_/new': typeof ProductsNewRoute
   '/promotions_/$id': typeof PromotionsIdRouteWithChildren
@@ -368,12 +627,22 @@ export interface FileRoutesById {
   '/store/regions': typeof StoreRegionsRoute
   '/store/sales-channels': typeof StoreSalesChannelsRoute
   '/subscriptions_/$id': typeof SubscriptionsIdRoute
+  '/tax/rates': typeof TaxRatesRoute
+  '/tax/regions': typeof TaxRegionsRoute
+  '/tax/registrations': typeof TaxRegistrationsRoute
   '/workflows/dead-letters': typeof WorkflowsDeadLettersRoute
   '/workflows_/$id': typeof WorkflowsIdRoute
+  '/fulfilment/': typeof FulfilmentIndexRoute
+  '/payments/': typeof PaymentsIndexRoute
   '/payouts/': typeof PayoutsIndexRoute
+  '/pricing/': typeof PricingIndexRoute
   '/store/': typeof StoreIndexRoute
+  '/tax/': typeof TaxIndexRoute
   '/workflows/': typeof WorkflowsIndexRoute
   '/customers_/$id/edit': typeof CustomersIdEditRoute
+  '/fulfilment_/shipping-options/$id': typeof FulfilmentShippingOptionsIdRoute
+  '/fulfilment_/shipping-profiles/$id': typeof FulfilmentShippingProfilesIdRoute
+  '/pricing_/price-lists/$id': typeof PricingPriceListsIdRoute
   '/products_/$id/edit': typeof ProductsIdEditRoute
   '/promotions_/$id/edit': typeof PromotionsIdEditRoute
   '/store_/currencies/new': typeof StoreCurrenciesNewRoute
@@ -382,6 +651,8 @@ export interface FileRoutesById {
   '/store_/regions/new': typeof StoreRegionsNewRoute
   '/store_/sales-channels/$id': typeof StoreSalesChannelsIdRouteWithChildren
   '/store_/sales-channels/new': typeof StoreSalesChannelsNewRoute
+  '/tax_/rates/$id': typeof TaxRatesIdRoute
+  '/tax_/regions/$id': typeof TaxRegionsIdRoute
   '/store_/regions/$id/edit': typeof StoreRegionsIdEditRoute
   '/store_/sales-channels/$id/edit': typeof StoreSalesChannelsIdEditRoute
 }
@@ -391,20 +662,38 @@ export interface FileRouteTypes {
     | '/'
     | '/$section'
     | '/baskets'
+    | '/carts'
+    | '/credit'
     | '/customers'
+    | '/fulfilment'
     | '/inventory'
     | '/orders'
+    | '/payments'
     | '/payouts'
+    | '/pricing'
     | '/products'
     | '/promotions'
     | '/store'
     | '/subscriptions'
+    | '/tax'
     | '/workflows'
     | '/baskets/$id'
+    | '/credit/$id'
     | '/customers/$id'
+    | '/fulfilment/providers'
+    | '/fulfilment/sets'
+    | '/fulfilment/shipping-option-types'
+    | '/fulfilment/shipping-options'
+    | '/fulfilment/shipping-profiles'
     | '/inventory/$id'
     | '/orders/$id'
+    | '/payments/refund-reasons'
+    | '/payments/$id'
     | '/payouts/commission-rules'
+    | '/pricing/price-lists'
+    | '/pricing/price-preferences'
+    | '/pricing/price-sets'
+    | '/pricing/prices'
     | '/products/$id'
     | '/products/new'
     | '/promotions/$id'
@@ -413,12 +702,22 @@ export interface FileRouteTypes {
     | '/store/regions'
     | '/store/sales-channels'
     | '/subscriptions/$id'
+    | '/tax/rates'
+    | '/tax/regions'
+    | '/tax/registrations'
     | '/workflows/dead-letters'
     | '/workflows/$id'
+    | '/fulfilment/'
+    | '/payments/'
     | '/payouts/'
+    | '/pricing/'
     | '/store/'
+    | '/tax/'
     | '/workflows/'
     | '/customers/$id/edit'
+    | '/fulfilment/shipping-options/$id'
+    | '/fulfilment/shipping-profiles/$id'
+    | '/pricing/price-lists/$id'
     | '/products/$id/edit'
     | '/promotions/$id/edit'
     | '/store/currencies/new'
@@ -427,6 +726,8 @@ export interface FileRouteTypes {
     | '/store/regions/new'
     | '/store/sales-channels/$id'
     | '/store/sales-channels/new'
+    | '/tax/rates/$id'
+    | '/tax/regions/$id'
     | '/store/regions/$id/edit'
     | '/store/sales-channels/$id/edit'
   fileRoutesByTo: FileRoutesByTo
@@ -434,6 +735,8 @@ export interface FileRouteTypes {
     | '/'
     | '/$section'
     | '/baskets'
+    | '/carts'
+    | '/credit'
     | '/customers'
     | '/inventory'
     | '/orders'
@@ -441,10 +744,22 @@ export interface FileRouteTypes {
     | '/promotions'
     | '/subscriptions'
     | '/baskets/$id'
+    | '/credit/$id'
     | '/customers/$id'
+    | '/fulfilment/providers'
+    | '/fulfilment/sets'
+    | '/fulfilment/shipping-option-types'
+    | '/fulfilment/shipping-options'
+    | '/fulfilment/shipping-profiles'
     | '/inventory/$id'
     | '/orders/$id'
+    | '/payments/refund-reasons'
+    | '/payments/$id'
     | '/payouts/commission-rules'
+    | '/pricing/price-lists'
+    | '/pricing/price-preferences'
+    | '/pricing/price-sets'
+    | '/pricing/prices'
     | '/products/$id'
     | '/products/new'
     | '/promotions/$id'
@@ -453,12 +768,22 @@ export interface FileRouteTypes {
     | '/store/regions'
     | '/store/sales-channels'
     | '/subscriptions/$id'
+    | '/tax/rates'
+    | '/tax/regions'
+    | '/tax/registrations'
     | '/workflows/dead-letters'
     | '/workflows/$id'
+    | '/fulfilment'
+    | '/payments'
     | '/payouts'
+    | '/pricing'
     | '/store'
+    | '/tax'
     | '/workflows'
     | '/customers/$id/edit'
+    | '/fulfilment/shipping-options/$id'
+    | '/fulfilment/shipping-profiles/$id'
+    | '/pricing/price-lists/$id'
     | '/products/$id/edit'
     | '/promotions/$id/edit'
     | '/store/currencies/new'
@@ -467,6 +792,8 @@ export interface FileRouteTypes {
     | '/store/regions/new'
     | '/store/sales-channels/$id'
     | '/store/sales-channels/new'
+    | '/tax/rates/$id'
+    | '/tax/regions/$id'
     | '/store/regions/$id/edit'
     | '/store/sales-channels/$id/edit'
   id:
@@ -474,20 +801,38 @@ export interface FileRouteTypes {
     | '/'
     | '/$section'
     | '/baskets'
+    | '/carts'
+    | '/credit'
     | '/customers'
+    | '/fulfilment'
     | '/inventory'
     | '/orders'
+    | '/payments'
     | '/payouts'
+    | '/pricing'
     | '/products'
     | '/promotions'
     | '/store'
     | '/subscriptions'
+    | '/tax'
     | '/workflows'
     | '/baskets_/$id'
+    | '/credit_/$id'
     | '/customers_/$id'
+    | '/fulfilment/providers'
+    | '/fulfilment/sets'
+    | '/fulfilment/shipping-option-types'
+    | '/fulfilment/shipping-options'
+    | '/fulfilment/shipping-profiles'
     | '/inventory_/$id'
     | '/orders_/$id'
+    | '/payments/refund-reasons'
+    | '/payments_/$id'
     | '/payouts/commission-rules'
+    | '/pricing/price-lists'
+    | '/pricing/price-preferences'
+    | '/pricing/price-sets'
+    | '/pricing/prices'
     | '/products_/$id'
     | '/products_/new'
     | '/promotions_/$id'
@@ -496,12 +841,22 @@ export interface FileRouteTypes {
     | '/store/regions'
     | '/store/sales-channels'
     | '/subscriptions_/$id'
+    | '/tax/rates'
+    | '/tax/regions'
+    | '/tax/registrations'
     | '/workflows/dead-letters'
     | '/workflows_/$id'
+    | '/fulfilment/'
+    | '/payments/'
     | '/payouts/'
+    | '/pricing/'
     | '/store/'
+    | '/tax/'
     | '/workflows/'
     | '/customers_/$id/edit'
+    | '/fulfilment_/shipping-options/$id'
+    | '/fulfilment_/shipping-profiles/$id'
+    | '/pricing_/price-lists/$id'
     | '/products_/$id/edit'
     | '/promotions_/$id/edit'
     | '/store_/currencies/new'
@@ -510,6 +865,8 @@ export interface FileRouteTypes {
     | '/store_/regions/new'
     | '/store_/sales-channels/$id'
     | '/store_/sales-channels/new'
+    | '/tax_/rates/$id'
+    | '/tax_/regions/$id'
     | '/store_/regions/$id/edit'
     | '/store_/sales-channels/$id/edit'
   fileRoutesById: FileRoutesById
@@ -518,30 +875,43 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   SectionRoute: typeof SectionRoute
   BasketsRoute: typeof BasketsRoute
+  CartsRoute: typeof CartsRoute
+  CreditRoute: typeof CreditRoute
   CustomersRoute: typeof CustomersRoute
+  FulfilmentRoute: typeof FulfilmentRouteWithChildren
   InventoryRoute: typeof InventoryRoute
   OrdersRoute: typeof OrdersRoute
+  PaymentsRoute: typeof PaymentsRouteWithChildren
   PayoutsRoute: typeof PayoutsRouteWithChildren
+  PricingRoute: typeof PricingRouteWithChildren
   ProductsRoute: typeof ProductsRoute
   PromotionsRoute: typeof PromotionsRoute
   StoreRoute: typeof StoreRouteWithChildren
   SubscriptionsRoute: typeof SubscriptionsRoute
+  TaxRoute: typeof TaxRouteWithChildren
   WorkflowsRoute: typeof WorkflowsRouteWithChildren
   BasketsIdRoute: typeof BasketsIdRoute
+  CreditIdRoute: typeof CreditIdRoute
   CustomersIdRoute: typeof CustomersIdRouteWithChildren
   InventoryIdRoute: typeof InventoryIdRoute
   OrdersIdRoute: typeof OrdersIdRoute
+  PaymentsIdRoute: typeof PaymentsIdRoute
   ProductsIdRoute: typeof ProductsIdRouteWithChildren
   ProductsNewRoute: typeof ProductsNewRoute
   PromotionsIdRoute: typeof PromotionsIdRouteWithChildren
   SubscriptionsIdRoute: typeof SubscriptionsIdRoute
   WorkflowsIdRoute: typeof WorkflowsIdRoute
+  FulfilmentShippingOptionsIdRoute: typeof FulfilmentShippingOptionsIdRoute
+  FulfilmentShippingProfilesIdRoute: typeof FulfilmentShippingProfilesIdRoute
+  PricingPriceListsIdRoute: typeof PricingPriceListsIdRoute
   StoreCurrenciesNewRoute: typeof StoreCurrenciesNewRoute
   StoreKeysNewRoute: typeof StoreKeysNewRoute
   StoreRegionsIdRoute: typeof StoreRegionsIdRouteWithChildren
   StoreRegionsNewRoute: typeof StoreRegionsNewRoute
   StoreSalesChannelsIdRoute: typeof StoreSalesChannelsIdRouteWithChildren
   StoreSalesChannelsNewRoute: typeof StoreSalesChannelsNewRoute
+  TaxRatesIdRoute: typeof TaxRatesIdRoute
+  TaxRegionsIdRoute: typeof TaxRegionsIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -567,11 +937,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BasketsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/carts': {
+      id: '/carts'
+      path: '/carts'
+      fullPath: '/carts'
+      preLoaderRoute: typeof CartsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/credit': {
+      id: '/credit'
+      path: '/credit'
+      fullPath: '/credit'
+      preLoaderRoute: typeof CreditRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/customers': {
       id: '/customers'
       path: '/customers'
       fullPath: '/customers'
       preLoaderRoute: typeof CustomersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/fulfilment': {
+      id: '/fulfilment'
+      path: '/fulfilment'
+      fullPath: '/fulfilment'
+      preLoaderRoute: typeof FulfilmentRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/inventory': {
@@ -588,11 +979,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrdersRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/payments': {
+      id: '/payments'
+      path: '/payments'
+      fullPath: '/payments'
+      preLoaderRoute: typeof PaymentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/payouts': {
       id: '/payouts'
       path: '/payouts'
       fullPath: '/payouts'
       preLoaderRoute: typeof PayoutsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pricing': {
+      id: '/pricing'
+      path: '/pricing'
+      fullPath: '/pricing'
+      preLoaderRoute: typeof PricingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/products': {
@@ -623,6 +1028,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SubscriptionsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/tax': {
+      id: '/tax'
+      path: '/tax'
+      fullPath: '/tax'
+      preLoaderRoute: typeof TaxRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/workflows': {
       id: '/workflows'
       path: '/workflows'
@@ -637,12 +1049,61 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BasketsIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/credit_/$id': {
+      id: '/credit_/$id'
+      path: '/credit/$id'
+      fullPath: '/credit/$id'
+      preLoaderRoute: typeof CreditIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/customers_/$id': {
       id: '/customers_/$id'
       path: '/customers/$id'
       fullPath: '/customers/$id'
       preLoaderRoute: typeof CustomersIdRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/fulfilment/': {
+      id: '/fulfilment/'
+      path: '/'
+      fullPath: '/fulfilment/'
+      preLoaderRoute: typeof FulfilmentIndexRouteImport
+      parentRoute: typeof FulfilmentRoute
+    }
+    '/fulfilment/providers': {
+      id: '/fulfilment/providers'
+      path: '/providers'
+      fullPath: '/fulfilment/providers'
+      preLoaderRoute: typeof FulfilmentProvidersRouteImport
+      parentRoute: typeof FulfilmentRoute
+    }
+    '/fulfilment/sets': {
+      id: '/fulfilment/sets'
+      path: '/sets'
+      fullPath: '/fulfilment/sets'
+      preLoaderRoute: typeof FulfilmentSetsRouteImport
+      parentRoute: typeof FulfilmentRoute
+    }
+    '/fulfilment/shipping-option-types': {
+      id: '/fulfilment/shipping-option-types'
+      path: '/shipping-option-types'
+      fullPath: '/fulfilment/shipping-option-types'
+      preLoaderRoute: typeof FulfilmentShippingOptionTypesRouteImport
+      parentRoute: typeof FulfilmentRoute
+    }
+    '/fulfilment/shipping-options': {
+      id: '/fulfilment/shipping-options'
+      path: '/shipping-options'
+      fullPath: '/fulfilment/shipping-options'
+      preLoaderRoute: typeof FulfilmentShippingOptionsRouteImport
+      parentRoute: typeof FulfilmentRoute
+    }
+    '/fulfilment/shipping-profiles': {
+      id: '/fulfilment/shipping-profiles'
+      path: '/shipping-profiles'
+      fullPath: '/fulfilment/shipping-profiles'
+      preLoaderRoute: typeof FulfilmentShippingProfilesRouteImport
+      parentRoute: typeof FulfilmentRoute
     }
     '/inventory_/$id': {
       id: '/inventory_/$id'
@@ -658,6 +1119,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrdersIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/payments/': {
+      id: '/payments/'
+      path: '/'
+      fullPath: '/payments/'
+      preLoaderRoute: typeof PaymentsIndexRouteImport
+      parentRoute: typeof PaymentsRoute
+    }
+    '/payments/refund-reasons': {
+      id: '/payments/refund-reasons'
+      path: '/refund-reasons'
+      fullPath: '/payments/refund-reasons'
+      preLoaderRoute: typeof PaymentsRefundReasonsRouteImport
+      parentRoute: typeof PaymentsRoute
+    }
+    '/payments_/$id': {
+      id: '/payments_/$id'
+      path: '/payments/$id'
+      fullPath: '/payments/$id'
+      preLoaderRoute: typeof PaymentsIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/payouts/': {
       id: '/payouts/'
       path: '/'
@@ -671,6 +1153,41 @@ declare module '@tanstack/react-router' {
       fullPath: '/payouts/commission-rules'
       preLoaderRoute: typeof PayoutsCommissionRulesRouteImport
       parentRoute: typeof PayoutsRoute
+    }
+    '/pricing/': {
+      id: '/pricing/'
+      path: '/'
+      fullPath: '/pricing/'
+      preLoaderRoute: typeof PricingIndexRouteImport
+      parentRoute: typeof PricingRoute
+    }
+    '/pricing/price-lists': {
+      id: '/pricing/price-lists'
+      path: '/price-lists'
+      fullPath: '/pricing/price-lists'
+      preLoaderRoute: typeof PricingPriceListsRouteImport
+      parentRoute: typeof PricingRoute
+    }
+    '/pricing/price-preferences': {
+      id: '/pricing/price-preferences'
+      path: '/price-preferences'
+      fullPath: '/pricing/price-preferences'
+      preLoaderRoute: typeof PricingPricePreferencesRouteImport
+      parentRoute: typeof PricingRoute
+    }
+    '/pricing/price-sets': {
+      id: '/pricing/price-sets'
+      path: '/price-sets'
+      fullPath: '/pricing/price-sets'
+      preLoaderRoute: typeof PricingPriceSetsRouteImport
+      parentRoute: typeof PricingRoute
+    }
+    '/pricing/prices': {
+      id: '/pricing/prices'
+      path: '/prices'
+      fullPath: '/pricing/prices'
+      preLoaderRoute: typeof PricingPricesRouteImport
+      parentRoute: typeof PricingRoute
     }
     '/products_/$id': {
       id: '/products_/$id'
@@ -735,6 +1252,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SubscriptionsIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/tax/': {
+      id: '/tax/'
+      path: '/'
+      fullPath: '/tax/'
+      preLoaderRoute: typeof TaxIndexRouteImport
+      parentRoute: typeof TaxRoute
+    }
+    '/tax/rates': {
+      id: '/tax/rates'
+      path: '/rates'
+      fullPath: '/tax/rates'
+      preLoaderRoute: typeof TaxRatesRouteImport
+      parentRoute: typeof TaxRoute
+    }
+    '/tax/regions': {
+      id: '/tax/regions'
+      path: '/regions'
+      fullPath: '/tax/regions'
+      preLoaderRoute: typeof TaxRegionsRouteImport
+      parentRoute: typeof TaxRoute
+    }
+    '/tax/registrations': {
+      id: '/tax/registrations'
+      path: '/registrations'
+      fullPath: '/tax/registrations'
+      preLoaderRoute: typeof TaxRegistrationsRouteImport
+      parentRoute: typeof TaxRoute
+    }
     '/workflows/': {
       id: '/workflows/'
       path: '/'
@@ -762,6 +1307,27 @@ declare module '@tanstack/react-router' {
       fullPath: '/customers/$id/edit'
       preLoaderRoute: typeof CustomersIdEditRouteImport
       parentRoute: typeof CustomersIdRoute
+    }
+    '/fulfilment_/shipping-options/$id': {
+      id: '/fulfilment_/shipping-options/$id'
+      path: '/fulfilment/shipping-options/$id'
+      fullPath: '/fulfilment/shipping-options/$id'
+      preLoaderRoute: typeof FulfilmentShippingOptionsIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/fulfilment_/shipping-profiles/$id': {
+      id: '/fulfilment_/shipping-profiles/$id'
+      path: '/fulfilment/shipping-profiles/$id'
+      fullPath: '/fulfilment/shipping-profiles/$id'
+      preLoaderRoute: typeof FulfilmentShippingProfilesIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pricing_/price-lists/$id': {
+      id: '/pricing_/price-lists/$id'
+      path: '/pricing/price-lists/$id'
+      fullPath: '/pricing/price-lists/$id'
+      preLoaderRoute: typeof PricingPriceListsIdRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/products_/$id/edit': {
       id: '/products_/$id/edit'
@@ -819,6 +1385,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StoreSalesChannelsNewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/tax_/rates/$id': {
+      id: '/tax_/rates/$id'
+      path: '/tax/rates/$id'
+      fullPath: '/tax/rates/$id'
+      preLoaderRoute: typeof TaxRatesIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/tax_/regions/$id': {
+      id: '/tax_/regions/$id'
+      path: '/tax/regions/$id'
+      fullPath: '/tax/regions/$id'
+      preLoaderRoute: typeof TaxRegionsIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/store_/regions/$id/edit': {
       id: '/store_/regions/$id/edit'
       path: '/edit'
@@ -836,6 +1416,42 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface FulfilmentRouteChildren {
+  FulfilmentProvidersRoute: typeof FulfilmentProvidersRoute
+  FulfilmentSetsRoute: typeof FulfilmentSetsRoute
+  FulfilmentShippingOptionTypesRoute: typeof FulfilmentShippingOptionTypesRoute
+  FulfilmentShippingOptionsRoute: typeof FulfilmentShippingOptionsRoute
+  FulfilmentShippingProfilesRoute: typeof FulfilmentShippingProfilesRoute
+  FulfilmentIndexRoute: typeof FulfilmentIndexRoute
+}
+
+const FulfilmentRouteChildren: FulfilmentRouteChildren = {
+  FulfilmentProvidersRoute: FulfilmentProvidersRoute,
+  FulfilmentSetsRoute: FulfilmentSetsRoute,
+  FulfilmentShippingOptionTypesRoute: FulfilmentShippingOptionTypesRoute,
+  FulfilmentShippingOptionsRoute: FulfilmentShippingOptionsRoute,
+  FulfilmentShippingProfilesRoute: FulfilmentShippingProfilesRoute,
+  FulfilmentIndexRoute: FulfilmentIndexRoute,
+}
+
+const FulfilmentRouteWithChildren = FulfilmentRoute._addFileChildren(
+  FulfilmentRouteChildren,
+)
+
+interface PaymentsRouteChildren {
+  PaymentsRefundReasonsRoute: typeof PaymentsRefundReasonsRoute
+  PaymentsIndexRoute: typeof PaymentsIndexRoute
+}
+
+const PaymentsRouteChildren: PaymentsRouteChildren = {
+  PaymentsRefundReasonsRoute: PaymentsRefundReasonsRoute,
+  PaymentsIndexRoute: PaymentsIndexRoute,
+}
+
+const PaymentsRouteWithChildren = PaymentsRoute._addFileChildren(
+  PaymentsRouteChildren,
+)
+
 interface PayoutsRouteChildren {
   PayoutsCommissionRulesRoute: typeof PayoutsCommissionRulesRoute
   PayoutsIndexRoute: typeof PayoutsIndexRoute
@@ -848,6 +1464,25 @@ const PayoutsRouteChildren: PayoutsRouteChildren = {
 
 const PayoutsRouteWithChildren =
   PayoutsRoute._addFileChildren(PayoutsRouteChildren)
+
+interface PricingRouteChildren {
+  PricingPriceListsRoute: typeof PricingPriceListsRoute
+  PricingPricePreferencesRoute: typeof PricingPricePreferencesRoute
+  PricingPriceSetsRoute: typeof PricingPriceSetsRoute
+  PricingPricesRoute: typeof PricingPricesRoute
+  PricingIndexRoute: typeof PricingIndexRoute
+}
+
+const PricingRouteChildren: PricingRouteChildren = {
+  PricingPriceListsRoute: PricingPriceListsRoute,
+  PricingPricePreferencesRoute: PricingPricePreferencesRoute,
+  PricingPriceSetsRoute: PricingPriceSetsRoute,
+  PricingPricesRoute: PricingPricesRoute,
+  PricingIndexRoute: PricingIndexRoute,
+}
+
+const PricingRouteWithChildren =
+  PricingRoute._addFileChildren(PricingRouteChildren)
 
 interface StoreRouteChildren {
   StoreCurrenciesRoute: typeof StoreCurrenciesRoute
@@ -866,6 +1501,22 @@ const StoreRouteChildren: StoreRouteChildren = {
 }
 
 const StoreRouteWithChildren = StoreRoute._addFileChildren(StoreRouteChildren)
+
+interface TaxRouteChildren {
+  TaxRatesRoute: typeof TaxRatesRoute
+  TaxRegionsRoute: typeof TaxRegionsRoute
+  TaxRegistrationsRoute: typeof TaxRegistrationsRoute
+  TaxIndexRoute: typeof TaxIndexRoute
+}
+
+const TaxRouteChildren: TaxRouteChildren = {
+  TaxRatesRoute: TaxRatesRoute,
+  TaxRegionsRoute: TaxRegionsRoute,
+  TaxRegistrationsRoute: TaxRegistrationsRoute,
+  TaxIndexRoute: TaxIndexRoute,
+}
+
+const TaxRouteWithChildren = TaxRoute._addFileChildren(TaxRouteChildren)
 
 interface WorkflowsRouteChildren {
   WorkflowsDeadLettersRoute: typeof WorkflowsDeadLettersRoute
@@ -944,30 +1595,43 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   SectionRoute: SectionRoute,
   BasketsRoute: BasketsRoute,
+  CartsRoute: CartsRoute,
+  CreditRoute: CreditRoute,
   CustomersRoute: CustomersRoute,
+  FulfilmentRoute: FulfilmentRouteWithChildren,
   InventoryRoute: InventoryRoute,
   OrdersRoute: OrdersRoute,
+  PaymentsRoute: PaymentsRouteWithChildren,
   PayoutsRoute: PayoutsRouteWithChildren,
+  PricingRoute: PricingRouteWithChildren,
   ProductsRoute: ProductsRoute,
   PromotionsRoute: PromotionsRoute,
   StoreRoute: StoreRouteWithChildren,
   SubscriptionsRoute: SubscriptionsRoute,
+  TaxRoute: TaxRouteWithChildren,
   WorkflowsRoute: WorkflowsRouteWithChildren,
   BasketsIdRoute: BasketsIdRoute,
+  CreditIdRoute: CreditIdRoute,
   CustomersIdRoute: CustomersIdRouteWithChildren,
   InventoryIdRoute: InventoryIdRoute,
   OrdersIdRoute: OrdersIdRoute,
+  PaymentsIdRoute: PaymentsIdRoute,
   ProductsIdRoute: ProductsIdRouteWithChildren,
   ProductsNewRoute: ProductsNewRoute,
   PromotionsIdRoute: PromotionsIdRouteWithChildren,
   SubscriptionsIdRoute: SubscriptionsIdRoute,
   WorkflowsIdRoute: WorkflowsIdRoute,
+  FulfilmentShippingOptionsIdRoute: FulfilmentShippingOptionsIdRoute,
+  FulfilmentShippingProfilesIdRoute: FulfilmentShippingProfilesIdRoute,
+  PricingPriceListsIdRoute: PricingPriceListsIdRoute,
   StoreCurrenciesNewRoute: StoreCurrenciesNewRoute,
   StoreKeysNewRoute: StoreKeysNewRoute,
   StoreRegionsIdRoute: StoreRegionsIdRouteWithChildren,
   StoreRegionsNewRoute: StoreRegionsNewRoute,
   StoreSalesChannelsIdRoute: StoreSalesChannelsIdRouteWithChildren,
   StoreSalesChannelsNewRoute: StoreSalesChannelsNewRoute,
+  TaxRatesIdRoute: TaxRatesIdRoute,
+  TaxRegionsIdRoute: TaxRegionsIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
