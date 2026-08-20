@@ -15,12 +15,40 @@ import { forget, held } from "@/lib/token"
  * the same `<Panel/>`; nothing under `features/` changes, and nothing under
  * `features/` can tell which of the two is running it.
  */
+/**
+ * Read once, at load. An invitation's token arrives in the URL because a
+ * letter cannot carry anything else, and this is the host reading the host's
+ * address bar — the one file allowed to.
+ */
+function invitationFromUrl(): string | undefined {
+  try {
+    return (
+      new URLSearchParams(window.location.search).get("invitation") ?? undefined
+    )
+  } catch {
+    return undefined
+  }
+}
+
 export function App() {
   const [token, setToken] = useState(held)
+  const [invitation] = useState(invitationFromUrl)
 
   // Asked for before anything is drawn rather than after a screen has already
   // said "refused" — the panel knows it holds nothing without a round trip.
-  if (!token) return <Connect onConnected={() => setToken(held)} />
+  if (!token) {
+    return (
+      <Connect
+        invitation={invitation}
+        onConnected={() => {
+          // The token is spent. Leaving it in the address bar leaves it in
+          // the history, the referrer and whatever the browser syncs.
+          window.history.replaceState(null, "", window.location.pathname)
+          setToken(held)
+        }}
+      />
+    )
+  }
 
   return (
     <Panel

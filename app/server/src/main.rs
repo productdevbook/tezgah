@@ -18,7 +18,7 @@ use tezgah::checkout::Checkout;
 use tezgah::payment::PaymentProvider;
 use tezgah::ports::Scope;
 use tezgah_server::config::Config;
-use tezgah_server::{deliver, host, http, identity, provider, schedule, seed};
+use tezgah_server::{deliver, host, http, identity, mail, provider, schedule, seed};
 use tokio::net::TcpListener;
 use uuid::Uuid;
 
@@ -173,6 +173,22 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
+    let mailer = match (&config.smtp_url, &config.mail_from) {
+        (Some(url), Some(from)) => {
+            // The sender, never the URL: it carries the password.
+            println!("letters sent as {from}");
+            Some(mail::Mailer::new(url, from)?)
+        }
+        _ => {
+            println!(
+                "no mailer: TEZGAH_SMTP_URL is unset — an operator is invited by an owner \
+                 setting their password and telling them"
+            );
+            None
+        }
+    };
+    let panel_url: Option<Arc<str>> = config.panel_url.as_deref().map(Arc::from);
+
     let state = http::AppState {
         pool,
         host,
@@ -181,6 +197,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         admin_token,
         has_operators,
         webhook_secret,
+        mailer,
+        panel_url,
     };
 
     let (router, bound) = http::router(state);

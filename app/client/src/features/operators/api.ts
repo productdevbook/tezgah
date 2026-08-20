@@ -109,3 +109,66 @@ export async function resetPassword(
     body: JSON.stringify({ password }),
   })
 }
+
+/** Who has been invited and not arrived. The token is not here and cannot be. */
+export const invitation = z.object({
+  id: z.string(),
+  email: z.string(),
+  name: z.string(),
+  role,
+  created_at: z.string(),
+  expires_at: z.string(),
+})
+
+export type Invitation = z.infer<typeof invitation>
+
+export async function listInvitations(
+  signal?: AbortSignal
+): Promise<Invitation[]> {
+  const { data, status } = await apiMutator<{ data: unknown; status: number }>(
+    "/admin/invitations",
+    { method: "GET", signal }
+  )
+  return parseResponse(z.array(invitation), data, status)
+}
+
+export const newInvitation = z.object({
+  email: z.string().trim().email("that is not an e-mail address"),
+  name: z.string().trim().min(1, "a name is needed"),
+  role,
+})
+
+export type NewInvitation = z.infer<typeof newInvitation>
+
+/**
+ * Refused by a server with no mailer, on purpose — there is no token in the
+ * answer for an owner to pass along by hand, because a token that travels
+ * that way is a password sent in the clear.
+ */
+export async function invite(body: NewInvitation): Promise<void> {
+  await apiMutator("/admin/invitations", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  })
+}
+
+/**
+ * Turns an invitation's token into an account. The one call in this bundle
+ * that needs no token of its own — whoever holds an invitation has no account
+ * yet, which is what an invitation is for.
+ */
+export async function acceptInvitation(
+  token: string,
+  password: string
+): Promise<{ token: string }> {
+  const { data, status } = await apiMutator<{ data: unknown; status: number }>(
+    "/auth/invitation",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token, password }),
+    }
+  )
+  return parseResponse(z.object({ token: z.string() }), data, status)
+}

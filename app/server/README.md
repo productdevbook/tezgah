@@ -46,6 +46,9 @@ naming what is wrong, rather than on the first request that needed a pool.
 | `TEZGAH_EVENT_WEBHOOK` | no | unset | where an outbox row is posted; unset leaves every event written and unsent — see "Events leave the building" |
 | `TEZGAH_EVENT_SECRET` | with the above | unset | signs the body. Startup fails if a webhook is set without one |
 | `TEZGAH_PAYMENT_WEBHOOK_SECRET` | no | unset | the secret a payment provider's callback is signed with; unset leaves that route unmounted — see "A provider calls back" |
+| `TEZGAH_SMTP_URL` | no | unset | lettre's own URL, `smtps://user:pass@host:465`; unset means this shop sends no letters |
+| `TEZGAH_MAIL_FROM` | with the above | unset | who a letter is from |
+| `TEZGAH_PANEL_URL` | with the above | unset | where the panel is, so an invitation can carry a link |
 
 Configuration comes from the environment and nowhere else: no config file
 format, because a container is not handed one separately from the
@@ -175,6 +178,9 @@ find. Startup says which of the two it found.
 | `GET /auth/me` | no | who the caller is; `null` for `ADMIN_TOKEN` |
 | `POST /auth/password` | no | changes the caller's own, ending every other session they hold |
 | `GET /admin/operators` | no | the accounts, and which are disabled |
+| `POST /auth/invitation` | **yes** | turns an invitation's token into an account |
+| `GET /admin/invitations` | no | who has been invited and not arrived — owner only |
+| `POST /admin/invitations` | no | invites somebody by e-mail — owner only, needs a mailer |
 | `GET /admin/records/audit` | no | who did what to which row, newest first — owner only |
 | `GET /admin/records/events` | no | the outbox, newest first — owner only |
 | `POST /admin/operators` | no | makes one — owner only |
@@ -275,6 +281,33 @@ field and drop it" kasapay's own documentation refuses, so `src/provider.rs`
 implements neither and says so where somebody would look for it. Until there
 is a release a dunning retry records exactly that as its reason — still an
 improvement on being marked done by a worker that did nothing.
+
+## Inviting somebody
+
+An owner makes an account and tells the person their password. That works, it
+is what this binary did before there was a mailer, and it is still the way a
+shop with no SMTP adds a colleague.
+
+With `TEZGAH_SMTP_URL`, `TEZGAH_MAIL_FROM` and `TEZGAH_PANEL_URL` set,
+`POST /admin/invitations` sends a letter instead:
+
+    {"email": "…", "name": "…", "role": "staff"}
+
+The link is `<panel>/?invitation=<token>` and the token is in it and nowhere
+else — not in the response, not in the row (which keeps only a digest), not in
+the log. An owner who loses it invites again, which replaces the open
+invitation rather than adding a second: two live tokens for one person is two
+ways in.
+
+Good for seven days. `POST /auth/invitation` takes the token and a password
+and makes the account, marking the invitation used in the same transaction —
+so two requests arriving together cannot make two accounts from one token.
+A token that never existed, one already used and one expired all get the same
+refusal; which of the three it was is not the holder's business.
+
+Without a mailer the invite route refuses outright rather than handing the
+owner a token to pass along. A token that travels by whatever somebody pastes
+it into is a password sent in the clear.
 
 ## A provider calls back
 

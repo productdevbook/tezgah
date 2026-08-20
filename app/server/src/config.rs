@@ -60,6 +60,17 @@ pub struct Config {
     /// The secret a payment provider's callback is signed with. Unset leaves
     /// `POST /webhooks/payments/{provider}` unmounted rather than open.
     pub webhook_secret: Option<String>,
+    /// lettre's own URL — `smtps://user:pass@host:465`. Unset means this shop
+    /// cannot send a letter, and everything that would have needed one says so
+    /// rather than pretending it was sent.
+    pub smtp_url: Option<String>,
+    /// Who a letter is from. Required with `smtp_url`, because a message with
+    /// no sender is a message most servers refuse.
+    pub mail_from: Option<String>,
+    /// Where the panel is, so an invitation can carry a link somebody can
+    /// click. Required with `smtp_url` for the same reason: a link this
+    /// binary has to guess is a link that goes to the wrong host.
+    pub panel_url: Option<String>,
 }
 
 #[derive(Debug)]
@@ -181,6 +192,33 @@ impl Config {
             Err(_) => None,
         };
 
+        let smtp_url = match std::env::var("TEZGAH_SMTP_URL") {
+            Ok(url) if url.trim().is_empty() => {
+                return Err(err(
+                    "TEZGAH_SMTP_URL is set but empty — unset it to run without a mailer",
+                ));
+            }
+            Ok(url) => Some(url),
+            Err(_) => None,
+        };
+
+        let mail_from = std::env::var("TEZGAH_MAIL_FROM")
+            .ok()
+            .filter(|from| !from.trim().is_empty());
+        let panel_url = std::env::var("TEZGAH_PANEL_URL")
+            .ok()
+            .filter(|url| !url.trim().is_empty());
+
+        // Refused together rather than discovered one invitation later. A
+        // mailer with no sender cannot send, and one with no panel address
+        // sends a link to nowhere.
+        if smtp_url.is_some() && (mail_from.is_none() || panel_url.is_none()) {
+            return Err(err(
+                "TEZGAH_SMTP_URL is set without TEZGAH_MAIL_FROM and TEZGAH_PANEL_URL — \
+                 a letter needs a sender and an invitation needs somewhere to point",
+            ));
+        }
+
         Ok(Config {
             database_url,
             port,
@@ -192,6 +230,9 @@ impl Config {
             event_webhook,
             event_secret,
             webhook_secret,
+            smtp_url,
+            mail_from,
+            panel_url,
         })
     }
 }

@@ -41,6 +41,8 @@ fn router() -> Router {
         // Unset, so the callback route is not mounted at all — which is
         // itself worth a case below.
         webhook_secret: None,
+        mailer: None,
+        panel_url: None,
     };
     let (router, _bound) = http::router(state);
     router

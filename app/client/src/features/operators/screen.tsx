@@ -19,6 +19,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { dateTime } from "@/lib/detail"
+import { InviteAction, OpenInvitations } from "@/features/operators/invite"
 import { useWhoAmI } from "@/lib/session"
 import {
   listOperators,
@@ -73,6 +74,7 @@ export function Operators() {
         title="Operators"
         subtitle="An account belongs to a person and can be revoked. The admin token belongs to nobody and cannot."
       >
+        <InviteAction />
         <Button
           size="sm"
           nativeButton={false}
@@ -82,6 +84,8 @@ export function Operators() {
           New operator
         </Button>
       </PageHeading>
+
+      <OpenInvitations />
 
       {me.data === null ? (
         <p className="text-sm text-muted-foreground">

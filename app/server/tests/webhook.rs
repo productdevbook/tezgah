@@ -36,6 +36,8 @@ fn router_with(pool: PgPool, scope: Scope, secret: Option<&str>) -> Router {
         admin_token: Some(Arc::from("test-only-admin-token")),
         has_operators: false,
         webhook_secret: secret.map(Arc::from),
+        mailer: None,
+        panel_url: None,
     };
     let (router, _bound) = http::router(state);
     router
