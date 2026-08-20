@@ -365,7 +365,7 @@ In `app/`:
       row, each in the transaction of the change it belongs to, read at
       `/records` — but nothing delivers them, and a product image is still a
       URL somebody else hosts
-- [ ] the rest of the route table: 111 of 483 bound by hand, 228 drawn by the
+- [ ] the rest of the route table: 112 of 483 bound by hand, 228 drawn by the
       panel
 - [ ] tracing, metrics, a request log, readiness apart from liveness, a CORS
       policy, a rate limit

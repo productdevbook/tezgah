@@ -943,6 +943,11 @@ static BODIES: &[Body] = &[
         response: Some(page_of::<admin_catalogue::InventoryLevelView>),
     },
     Body {
+        operation_id: "getAdminInventoryItemsByIdLocationLevelsByLocationId",
+        request: None,
+        response: Some(schema_of::<admin_catalogue::InventoryLevelView>),
+    },
+    Body {
         operation_id: "postAdminInventoryItemsByIdLocationLevels",
         request: Some(schema_of::<admin_catalogue::SetStock>),
         response: Some(schema_of::<admin_catalogue::InventoryLevelView>),
