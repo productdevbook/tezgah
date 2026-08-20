@@ -1,8 +1,11 @@
+import { Link } from "@tanstack/react-router"
+
 import { region } from "@/api/schemas"
 import { DetailField, FieldGrid, Empty } from "@/components/detail-fields"
 import { DetailHeader } from "@/components/detail-header"
 import { QueryState } from "@/components/query-state"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { dateTime, useDetail } from "@/lib/detail"
 
@@ -19,6 +22,14 @@ export function RegionDetail({ id }: { id: string }) {
                 {item.is_tax_inclusive ? "tax inclusive" : "tax exclusive"}
               </Badge>
               {item.has_automatic_taxes ? <Badge>automatic taxes</Badge> : null}
+              <Button
+                variant="outline"
+                size="sm"
+                nativeButton={false}
+                render={<Link to="/store/regions/$id/edit" params={{ id: item.id }} />}
+              >
+                Edit
+              </Button>
             </DetailHeader>
             <Card>
               <CardContent>

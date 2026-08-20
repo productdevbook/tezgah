@@ -1,8 +1,12 @@
+import { Link } from "@tanstack/react-router"
+
 import { promotion } from "@/api/schemas"
+import { DeleteAction } from "@/components/delete-action"
 import { DetailField, FieldGrid, Metadata, Empty } from "@/components/detail-fields"
 import { DetailHeader } from "@/components/detail-header"
 import { QueryState } from "@/components/query-state"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { dateTime, useDetail } from "@/lib/detail"
 
@@ -22,6 +26,21 @@ export function PromotionDetail({ id }: { id: string }) {
                 {item.status}
               </Badge>
               {item.is_automatic ? <Badge variant="outline">automatic</Badge> : null}
+              <Button
+                variant="outline"
+                size="sm"
+                nativeButton={false}
+                render={<Link to="/promotions/$id/edit" params={{ id: item.id }} />}
+              >
+                Edit
+              </Button>
+              <DeleteAction
+                path="/admin/promotions/{id}"
+                params={{ id: item.id }}
+                invalidateKey={["promotions"]}
+                kind="promotion"
+                name={item.code}
+              />
             </DetailHeader>
             <Card>
               <CardContent>

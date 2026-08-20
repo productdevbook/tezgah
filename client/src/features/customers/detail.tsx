@@ -1,8 +1,12 @@
+import { Link } from "@tanstack/react-router"
+
 import { customer, type Customer } from "@/api/schemas"
+import { DeleteAction } from "@/components/delete-action"
 import { DetailField, FieldGrid, Metadata, Empty } from "@/components/detail-fields"
 import { DetailHeader } from "@/components/detail-header"
 import { QueryState } from "@/components/query-state"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { dateTime, useDetail } from "@/lib/detail"
 
@@ -32,6 +36,21 @@ export function CustomerDetail({ id }: { id: string }) {
               </Badge>
               {/* Erased on request; the orders stay, the person does not. */}
               {item.anonymised ? <Badge variant="outline">erased</Badge> : null}
+              <Button
+                variant="outline"
+                size="sm"
+                nativeButton={false}
+                render={<Link to="/customers/$id/edit" params={{ id: item.id }} />}
+              >
+                Edit
+              </Button>
+              <DeleteAction
+                path="/admin/customers/{id}"
+                params={{ id: item.id }}
+                invalidateKey={["customers"]}
+                kind="customer"
+                name={name(item) ?? item.email ?? "this customer"}
+              />
             </DetailHeader>
             <Card>
               <CardContent>
