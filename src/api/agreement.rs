@@ -203,6 +203,7 @@ pub async fn list_agreements(
             .map(AgreementVersionView::from)
             .collect(),
         next: page.next,
+        total: page.total,
     })
 }
 

@@ -7131,6 +7131,12 @@ export interface components {
             by?: components["schemas"]["By"] | null;
             category?: components["schemas"]["CategoryId"] | null;
             collection?: components["schemas"]["CollectionId"] | null;
+            /**
+             * @description Asks how many products match, as well as this page of them. Off unless
+             *     asked: it is a second query over the whole match, which a back office
+             *     saying "1–50 of 41,309" wants and a list nobody is counting does not.
+             */
+            count?: boolean | null;
             /** Format: uint32 */
             limit?: number | null;
             /**
@@ -7373,6 +7379,8 @@ export interface components {
         Page: {
             items: unknown[];
             next?: string | null;
+            /** @description How many rows match, when the caller asked for a count and the list can answer one. Absent or null means nobody asked — never zero, which is a real answer. */
+            total?: number | null;
         };
         /**
          * @description The two parameters every paged list takes, described once.
@@ -19079,6 +19087,7 @@ export interface operations {
                 by?: components["schemas"]["By"] | null;
                 category?: components["schemas"]["CategoryId"] | null;
                 collection?: components["schemas"]["CollectionId"] | null;
+                count?: boolean | null;
                 limit?: number | null;
                 order?: components["schemas"]["Order"] | null;
                 product_type?: components["schemas"]["ProductTypeId"] | null;

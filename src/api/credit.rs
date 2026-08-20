@@ -34,10 +34,7 @@ fn paging(after: Option<&str>, limit: Option<u32>) -> Result<Paging> {
 }
 
 fn map<T, U>(page: Page<T>, into: impl Fn(T) -> U) -> Page<U> {
-    Page {
-        items: page.items.into_iter().map(into).collect(),
-        next: page.next,
-    }
+    page.map(into)
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

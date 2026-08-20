@@ -103,7 +103,15 @@ export function Products({
     {
       after,
       onAfterChange,
-      query: { status: status === "all" ? undefined : status, q, by },
+      // The one list the API counts, which is what puts "25 of 41,309" under
+      // the table. Every other list leaves `total` null and the pager says
+      // nothing rather than counting the rows on screen.
+      query: {
+        status: status === "all" ? undefined : status,
+        q,
+        by,
+        count: "true",
+      },
     }
   )
 

@@ -1081,10 +1081,7 @@ pub async fn list_orders(
     )
     .await?;
 
-    Ok(Page {
-        items: page.items.into_iter().map(OrderView::from).collect(),
-        next: page.next,
-    })
+    Ok(page.map(OrderView::from))
 }
 
 pub async fn get_order(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: OrderId) -> Result<OrderView> {
@@ -1509,10 +1506,7 @@ pub async fn order_changes(
     query: Listing,
 ) -> Result<Page<ChangeView>> {
     let page = order::changes(tx, ctx, id, query.paging()?).await?;
-    Ok(Page {
-        items: page.items.into_iter().map(ChangeView::from).collect(),
-        next: page.next,
-    })
+    Ok(page.map(ChangeView::from))
 }
 
 pub async fn order_returns(
@@ -1522,10 +1516,7 @@ pub async fn order_returns(
     query: Listing,
 ) -> Result<Page<ReturnView>> {
     let page = order::returns(tx, ctx, id, query.paging()?).await?;
-    Ok(Page {
-        items: page.items.into_iter().map(ReturnView::from).collect(),
-        next: page.next,
-    })
+    Ok(page.map(ReturnView::from))
 }
 
 // ---------------------------------------------------------------------------
@@ -1551,10 +1542,7 @@ pub async fn list_draft_orders(
     )
     .await?;
 
-    Ok(Page {
-        items: page.items.into_iter().map(OrderView::from).collect(),
-        next: page.next,
-    })
+    Ok(page.map(OrderView::from))
 }
 
 pub async fn get_draft_order(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: OrderId) -> Result<OrderView> {
@@ -1640,6 +1628,9 @@ pub async fn list_order_edits(
             .map(ChangeView::from)
             .collect(),
         next: page.next,
+        // Not `page.total`: the count is of rows before this filter
+        // dropped some of them, so it would not describe what is here.
+        total: None,
     })
 }
 
@@ -1973,10 +1964,7 @@ pub async fn list_returns(
         Cursor::at(row.created_at, row.id.as_uuid())
     });
 
-    Ok(Page {
-        items: page.items.into_iter().map(ReturnView::from).collect(),
-        next: page.next,
-    })
+    Ok(page.map(ReturnView::from))
 }
 
 pub async fn get_return(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ReturnId) -> Result<ReturnView> {
@@ -2262,10 +2250,7 @@ pub async fn list_exchanges(
         Cursor::at(row.created_at, row.id.as_uuid())
     });
 
-    Ok(Page {
-        items: page.items.into_iter().map(ExchangeView::from).collect(),
-        next: page.next,
-    })
+    Ok(page.map(ExchangeView::from))
 }
 
 pub async fn get_exchange(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ExchangeId) -> Result<ExchangeView> {
@@ -2501,10 +2486,7 @@ pub async fn list_claims(
         Cursor::at(row.created_at, row.id.as_uuid())
     });
 
-    Ok(Page {
-        items: page.items.into_iter().map(ClaimView::from).collect(),
-        next: page.next,
-    })
+    Ok(page.map(ClaimView::from))
 }
 
 pub async fn get_claim(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: ClaimId) -> Result<ClaimView> {
@@ -2715,10 +2697,7 @@ pub async fn list_payments(
         Cursor::at(row.created_at, row.id.as_uuid())
     });
 
-    Ok(Page {
-        items: page.items.into_iter().map(PaymentView::from).collect(),
-        next: page.next,
-    })
+    Ok(page.map(PaymentView::from))
 }
 
 pub async fn get_payment(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: PaymentId) -> Result<PaymentView> {
@@ -2847,14 +2826,7 @@ pub async fn pending_callbacks(
     };
 
     let page = payment::unprocessed(tx, ctx, paging).await?;
-    Ok(Page {
-        items: page
-            .items
-            .into_iter()
-            .map(PendingCallbackView::from)
-            .collect(),
-        next: page.next,
-    })
+    Ok(page.map(PendingCallbackView::from))
 }
 
 /// Says one has been acted on, so it stops coming back.
@@ -3035,10 +3007,7 @@ pub async fn payment_sessions(
     query: Listing,
 ) -> Result<Page<SessionView>> {
     let page = payment::sessions(tx, ctx, id, query.paging()?).await?;
-    Ok(Page {
-        items: page.items.into_iter().map(SessionView::from).collect(),
-        next: page.next,
-    })
+    Ok(page.map(SessionView::from))
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -3385,10 +3354,7 @@ pub async fn order_fulfillments(
         Cursor::at(row.created_at, row.id.as_uuid())
     });
 
-    Ok(Page {
-        items: page.items.into_iter().map(FulfillmentView::from).collect(),
-        next: page.next,
-    })
+    Ok(page.map(FulfillmentView::from))
 }
 
 pub async fn get_fulfillment(
@@ -3517,6 +3483,7 @@ pub async fn list_fulfillment_sets(
             .map(FulfillmentSetView::from)
             .collect(),
         next: page.next,
+        total: page.total,
     })
 }
 
@@ -3696,6 +3663,7 @@ pub async fn list_shipping_options(
             .map(ShippingOptionView::from)
             .collect(),
         next: page.next,
+        total: page.total,
     })
 }
 

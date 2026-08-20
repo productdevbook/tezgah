@@ -78,6 +78,12 @@ editor, and for most of them that is right rather than unfinished: a customer
 has six fields, a sales channel three, and splitting three fields across two
 drawers is ceremony. The product is the record with seventeen.
 
+**A list says how many there are, where the API answers that.** The pager
+under the products table reads "25 of 41,309" because `GET /admin/products`
+takes `count=true` and answers a `total`. Every other list leaves it null and
+the pager says nothing — counting the rows on screen and calling it a total is
+the kind of second answer this panel is not allowed to invent.
+
 **Mountable.** A host renders one element and gets the whole panel:
 
     import { Panel } from "tezgah-panel/src/panel"

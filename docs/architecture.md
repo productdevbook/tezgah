@@ -104,11 +104,16 @@ catalogue passed CI without changing a byte of the snapshot, and a snapshot
 that cannot notice a new filter is not watching the thing it was meant to
 watch.
 
-**`Page<T>` carries no count.** `items` and `next`, by design — a cursor page
-does not know how many rows are behind it. It is the right shape for paging
-and the wrong shape for a back office, which wants to say "1–50 of 41,309".
-A count is a second, cheaper question (`count(*)` under the same filter,
-answered once and cached by the caller), not a change to how paging works.
+**`Page<T>` carries a count when it is asked for, on one list.** `items` and
+`next` by design — a cursor page does not know how many rows are behind it —
+plus `total`, which is `null` unless the caller said `count=true` and the
+list can answer. Null and zero stay distinguishable: zero is a real answer.
+
+`GET /admin/products` answers one. Its predicates moved into a
+`product_filter!` macro that both queries read, because a count assembled
+from a second copy of the where clause is one fact with two answers and would
+drift the day a filter changed. Every other list still says `null`, and each
+gaining one is that same extraction — small, but not free.
 
 **A provider's callback is received, and nothing acts on it.**
 `POST /webhooks/payments/{provider}` is declared on its own surface —

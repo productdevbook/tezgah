@@ -10,4 +10,9 @@ export interface Page {
   items: unknown[];
   /** @nullable */
   next?: string | null;
+  /**
+     * How many rows match, when the caller asked for a count and the list can answer one. Absent or null means nobody asked — never zero, which is a real answer.
+     * @nullable
+     */
+  total?: number | null;
 }

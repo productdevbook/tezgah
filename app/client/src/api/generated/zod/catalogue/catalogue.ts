@@ -279,6 +279,7 @@ export const GetAdminProductsQueryParams = zod.object({
   "by": zod.union([zod.union([zod.literal("created").describe('When the row was written. What every list did before there was a\nchoice, and what a list with nothing better to offer still does.'),zod.literal("title").describe('What a person reads the row as — a product\'s title.'),zod.literal("email").describe('The address on the row. An order\'s, a customer\'s: the thing somebody\nlooking for one of them types.\n\nThere is deliberately no variant for an order\'s number. A display\nnumber is assigned in order, so ordering by it is ordering by when the\norder was placed — `Created` already answers that, and a second name\nfor one ordering is a way for the two to disagree.')]).describe('Which column a list is ordered by.\n\nOne variant per column any list here can be ordered by, rather than a\nstring a caller picks: the column name is interpolated into SQL, and a\nclosed set is what makes that safe to read as well as to run.\n\nA list that offers a second ordering needs a cursor that can resume from\nit — which is why [`Cursor`] carries a key rather than a timestamp. The\ntwo go together: adding a variant here without teaching the list to bind\nthe matching key gives an ordering that pages back to the beginning.'),zod.null()]).optional(),
   "category": zod.union([zod.uuid().describe('Identifies one category.'),zod.null()]).optional(),
   "collection": zod.union([zod.uuid().describe('Identifies one collection.'),zod.null()]).optional(),
+  "count": zod.boolean().nullish(),
   "limit": zod.int().min(getAdminProductsQueryLimitMin).nullish(),
   "order": zod.union([zod.union([zod.literal("oldest").describe('Oldest first — what every list did before there was a choice.'),zod.literal("newest").describe('Newest first.')]).describe('Which end of the list comes first.\n\nEvery list in this crate has answered `Oldest` since it was written, which\nis right for a shopper walking a catalogue and backwards for a back office:\nan operator opening Orders wants today\'s, not the first order the shop ever\ntook.\n\nThis costs nothing to support and needs no new cursor, which is worth\nsaying plainly because it looks like it should. A cursor here is\n`(created_at, id)` — the sort key of either direction — so newest-first is\nthe same tuple compared the other way and ordered the other way. Sorting\nby some other column is the change this is not: that needs the cursor to\ncarry that column\'s value instead of a timestamp, and it is not done.\n\nThis doc comment reaches the OpenAPI document and from there a code\ngenerator, which escapes what it finds — so it is written without markdown\nemphasis. An asterisk here became a lint error in generated TypeScript.\n\nIt lives on a filter rather than on [`Paging`] on purpose. Four lists\nhonour it and sixty-odd do not; on `Paging` those sixty-odd would take a\ndirection and silently ignore it, which is the failure this codebase has\nwritten down more than once. On a filter, a list that cannot answer never\noffers the question.'),zod.null()]).optional(),
   "product_type": zod.union([zod.uuid().describe('Identifies one type.'),zod.null()]).optional(),
@@ -295,7 +296,8 @@ export const getAdminProductsResponseTwoItemsItemWidthRegExp = new RegExp('^-?\\
 
 export const GetAdminProductsResponse = zod.object({
   "items": zod.array(zod.unknown()),
-  "next": zod.string().nullish()
+  "next": zod.string().nullish(),
+  "total": zod.int().nullish().describe('How many rows match, when the caller asked for a count and the list can answer one. Absent or null means nobody asked — never zero, which is a real answer.')
 }).and(zod.object({
   "items": zod.array(zod.object({
   "created_at": zod.iso.datetime({"offset":true}),
@@ -796,7 +798,8 @@ export const getAdminProductsByIdVariantsResponseTwoItemsItemWidthRegExp = new R
 
 export const GetAdminProductsByIdVariantsResponse = zod.object({
   "items": zod.array(zod.unknown()),
-  "next": zod.string().nullish()
+  "next": zod.string().nullish(),
+  "total": zod.int().nullish().describe('How many rows match, when the caller asked for a count and the list can answer one. Absent or null means nobody asked — never zero, which is a real answer.')
 }).and(zod.object({
   "items": zod.array(zod.object({
   "allows_backorder": zod.boolean(),

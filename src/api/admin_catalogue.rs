@@ -40,10 +40,7 @@ fn paging(after: Option<&str>, limit: Option<u32>) -> Result<Paging> {
 }
 
 fn map_page<T, U: From<T>>(page: Page<T>) -> Page<U> {
-    Page {
-        items: page.items.into_iter().map(U::from).collect(),
-        next: page.next,
-    }
+    page.map(U::from)
 }
 
 /// Tells a field left out apart from one sent as `null`.
@@ -717,6 +714,10 @@ pub struct ListProducts {
     /// operator asks for; a cursor from one ordering means nothing under the
     /// other, so changing this starts the list again.
     pub by: Option<crate::page::By>,
+    /// Asks how many products match, as well as this page of them. Off unless
+    /// asked: it is a second query over the whole match, which a back office
+    /// saying "1–50 of 41,309" wants and a list nobody is counting does not.
+    pub count: Option<bool>,
 }
 
 pub async fn list_products(
@@ -735,13 +736,11 @@ pub async fn list_products(
         order: query.order.unwrap_or(crate::page::Order::Newest),
         by: query.by.unwrap_or_default(),
     };
-    let page = catalogue::products(
-        tx,
-        ctx,
-        filter,
-        paging(query.after.as_deref(), query.limit)?,
-    )
-    .await?;
+    let mut asked = paging(query.after.as_deref(), query.limit)?;
+    if query.count.unwrap_or(false) {
+        asked = asked.counting();
+    }
+    let page = catalogue::products(tx, ctx, filter, asked).await?;
     Ok(map_page(page))
 }
 

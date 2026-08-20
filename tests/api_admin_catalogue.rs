@@ -189,6 +189,98 @@ async fn a_listing_is_paged_and_a_greedy_limit_is_brought_down() {
     shop.close().await;
 }
 
+/// A back office wants to say "1–2 of 5", and a cursor page cannot tell it
+/// that on its own. The count is a second query, asked for and paid for.
+#[tokio::test]
+async fn a_page_counts_what_matches_only_when_asked() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    for at in 0..5 {
+        admin::create_product(&mut tx, &ctx, draft(&format!("kilim-{at}"), "A kilim"))
+            .await
+            .expect("a product");
+    }
+    // A sixth, published, so a filtered count has something to leave out.
+    let published = admin::create_product(&mut tx, &ctx, draft("kilim-published", "A kilim"))
+        .await
+        .expect("a product");
+    admin::publish_product(&mut tx, &ctx, published.id)
+        .await
+        .expect("to publish");
+
+    let quiet = admin::list_products(
+        &mut tx,
+        &ctx,
+        admin::ListProducts {
+            limit: Some(2),
+            ..admin::ListProducts::default()
+        },
+    )
+    .await
+    .expect("to list");
+    assert_eq!(
+        quiet.total, None,
+        "a list nobody asked to count came back with a number"
+    );
+
+    let counted = admin::list_products(
+        &mut tx,
+        &ctx,
+        admin::ListProducts {
+            limit: Some(2),
+            count: Some(true),
+            ..admin::ListProducts::default()
+        },
+    )
+    .await
+    .expect("to list");
+    assert_eq!(counted.len(), 2, "the count must not change the page");
+    assert_eq!(
+        counted.total,
+        Some(6),
+        "the total counts every row that matches, not the page"
+    );
+
+    // The count answers the same question the page does, filters included —
+    // which is the whole reason both read one macro for their predicates.
+    let drafts = admin::list_products(
+        &mut tx,
+        &ctx,
+        admin::ListProducts {
+            limit: Some(2),
+            count: Some(true),
+            status: Some(ProductStatus::Draft),
+            ..admin::ListProducts::default()
+        },
+    )
+    .await
+    .expect("to list");
+    assert_eq!(
+        drafts.total,
+        Some(5),
+        "the count ignored the filter the page applied"
+    );
+
+    let searched = admin::list_products(
+        &mut tx,
+        &ctx,
+        admin::ListProducts {
+            limit: Some(2),
+            count: Some(true),
+            q: Some("kilim-published".into()),
+            ..admin::ListProducts::default()
+        },
+    )
+    .await
+    .expect("to list");
+    assert_eq!(searched.total, Some(1));
+
+    drop(tx);
+    shop.close().await;
+}
+
 #[tokio::test]
 async fn a_cursor_that_is_not_one_is_refused() {
     let shop = Shop::open().await;

@@ -46,7 +46,8 @@ export const PostAdminFulfillmentProvidersByIdEnableResponse = zod.unknown()
  */
 export const GetAdminFulfillmentSetsResponse = zod.object({
   "items": zod.array(zod.unknown()),
-  "next": zod.string().nullish()
+  "next": zod.string().nullish(),
+  "total": zod.int().nullish().describe('How many rows match, when the caller asked for a count and the list can answer one. Absent or null means nobody asked — never zero, which is a real answer.')
 }).and(zod.object({
   "items": zod.array(zod.object({
   "created_at": zod.iso.datetime({"offset":true}),
@@ -102,7 +103,8 @@ export const GetAdminOrdersByIdFulfillmentsParams = zod.object({
 
 export const GetAdminOrdersByIdFulfillmentsResponse = zod.object({
   "items": zod.array(zod.unknown()),
-  "next": zod.string().nullish()
+  "next": zod.string().nullish(),
+  "total": zod.int().nullish().describe('How many rows match, when the caller asked for a count and the list can answer one. Absent or null means nobody asked — never zero, which is a real answer.')
 }).and(zod.object({
   "items": zod.array(zod.object({
   "canceled_at": zod.iso.datetime({"offset":true}).nullable(),
@@ -245,7 +247,8 @@ export const GetAdminOrdersByIdShippingOptionsResponse = zod.array(GetAdminOrder
  */
 export const GetAdminShippingOptionTypesResponse = zod.object({
   "items": zod.array(zod.unknown()),
-  "next": zod.string().nullish()
+  "next": zod.string().nullish(),
+  "total": zod.int().nullish().describe('How many rows match, when the caller asked for a count and the list can answer one. Absent or null means nobody asked — never zero, which is a real answer.')
 }).and(zod.object({
   "items": zod.array(zod.object({
   "code": zod.string(),
@@ -266,7 +269,8 @@ export const PostAdminShippingOptionTypesResponse = zod.unknown()
  */
 export const GetAdminShippingOptionsResponse = zod.object({
   "items": zod.array(zod.unknown()),
-  "next": zod.string().nullish()
+  "next": zod.string().nullish(),
+  "total": zod.int().nullish().describe('How many rows match, when the caller asked for a count and the list can answer one. Absent or null means nobody asked — never zero, which is a real answer.')
 }).and(zod.object({
   "items": zod.array(zod.object({
   "created_at": zod.iso.datetime({"offset":true}),
@@ -376,7 +380,8 @@ export const GetAdminShippingOptionsByIdTranslationsByLocaleResponse = zod.objec
  */
 export const GetAdminShippingProfilesResponse = zod.object({
   "items": zod.array(zod.unknown()),
-  "next": zod.string().nullish()
+  "next": zod.string().nullish(),
+  "total": zod.int().nullish().describe('How many rows match, when the caller asked for a count and the list can answer one. Absent or null means nobody asked — never zero, which is a real answer.')
 }).and(zod.object({
   "items": zod.array(zod.object({
   "created_at": zod.iso.datetime({"offset":true}),
