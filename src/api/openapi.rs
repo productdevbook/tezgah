@@ -219,6 +219,11 @@ static BODIES: &[Body] = &[
         request: None,
         response: Some(schema_of::<admin_catalogue::InventoryItemView>),
     },
+    Body {
+        operation_id: "deleteAdminInventoryItemsById",
+        request: None,
+        response: None,
+    },
     // ---------------------------------------------------------- customer
     Body {
         operation_id: "getAdminCustomers",

@@ -18,8 +18,14 @@
 //! `/admin/orders/{id}/payout-lines`, `/admin/payouts` and
 //! `/admin/payout-balance/{currency_code}` — none of the three has a screen
 //! in `client/` yet, so nothing calls them but this binary's own startup
-//! count. Everything else `tezgah::api` offers stays unbound; nothing here
-//! was chosen for this binary beyond what those needs cover.
+//! count. Past all of that, deleting a row a screen already lists: `DELETE
+//! /admin/inventory-items/{id}` (`admin_catalogue::delete_inventory_item`,
+//! `Action::Delete`). `tezgah::api` has no update for an inventory item
+//! itself — only for the stock a location holds of it, at
+//! `POST /admin/inventory-items/{id}/location-levels`, already bound above
+//! — so there is no `PATCH /admin/inventory-items/{id}` here to bind.
+//! Everything else `tezgah::api` offers stays unbound; nothing here was
+//! chosen for this binary beyond what those needs cover.
 //!
 //! # Why a bearer token, and why it is the whole of this
 //!
@@ -82,6 +88,7 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         ("GET", "/admin/orders/{id}"),
         ("GET", "/admin/inventory-items"),
         ("GET", "/admin/inventory-items/{id}"),
+        ("DELETE", "/admin/inventory-items/{id}"),
         ("GET", "/admin/customers"),
         ("GET", "/admin/customers/{id}"),
         ("GET", "/admin/promotions"),
@@ -129,7 +136,10 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
             "/admin/inventory-items",
             get(list_inventory_items).post(create_inventory_item),
         )
-        .route("/admin/inventory-items/{id}", get(get_inventory_item))
+        .route(
+            "/admin/inventory-items/{id}",
+            get(get_inventory_item).delete(delete_inventory_item),
+        )
         .route("/admin/customers", get(list_customers))
         .route("/admin/customers/{id}", get(get_customer))
         .route("/admin/promotions", get(list_promotions))
@@ -304,6 +314,17 @@ async fn get_inventory_item(
     let item = admin_catalogue::get_inventory_item(&mut tx, &ctx, id).await?;
     tx.commit().await?;
     Ok(Json(item))
+}
+
+async fn delete_inventory_item(
+    State(state): State<AppState>,
+    Path(id): Path<InventoryItemId>,
+) -> Result<StatusCode, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state);
+    admin_catalogue::delete_inventory_item(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn list_customers(
