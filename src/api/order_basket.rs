@@ -22,7 +22,7 @@ use crate::ports::{Action, Ctx, Tx};
 
 use super::{Method, Route, Surface};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct BasketView {
     pub id: OrderBasketId,
     pub display_id: Option<i64>,

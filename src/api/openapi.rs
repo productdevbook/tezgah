@@ -25,8 +25,8 @@ use serde_json::{Map, Value, json};
 use crate::page::Page;
 
 use super::{
-    Method, Route, Surface, admin_catalogue, admin_order, admin_rest, agreement, payout, routes,
-    store, subscription,
+    Method, Route, Surface, admin_catalogue, admin_order, admin_rest, agreement, order_basket,
+    payout, routes, store, subscription,
 };
 
 /// A storefront's key, which pins it to its sales channels.
@@ -829,6 +829,43 @@ static BODIES: &[Body] = &[
         operation_id: "postAdminInventoryItemsByIdLocationLevels",
         request: Some(schema_of::<admin_catalogue::SetStock>),
         response: Some(schema_of::<admin_catalogue::InventoryLevelView>),
+    },
+    // ----------------------------------------------------- order_basket
+    Body {
+        operation_id: "getAdminOrderBasketsById",
+        request: None,
+        response: Some(schema_of::<order_basket::BasketView>),
+    },
+    Body {
+        operation_id: "getAdminOrderBasketsByIdOrders",
+        request: None,
+        response: Some(page_of::<admin_order::OrderView>),
+    },
+    Body {
+        operation_id: "getAdminOrderBasketsByIdCarts",
+        request: None,
+        response: Some(page_of::<store::CartView>),
+    },
+    // ------------------------------------------------------------ workflow
+    Body {
+        operation_id: "getAdminWorkflowsExecutions",
+        request: None,
+        response: Some(page_of::<admin_rest::WorkflowRunSummaryView>),
+    },
+    Body {
+        operation_id: "getAdminWorkflowsExecutionsById",
+        request: None,
+        response: Some(schema_of::<admin_rest::WorkflowRunView>),
+    },
+    Body {
+        operation_id: "getAdminWorkflowsExecutionsByIdSteps",
+        request: None,
+        response: Some(schema_of::<Vec<admin_rest::WorkflowStepView>>),
+    },
+    Body {
+        operation_id: "getAdminWorkflowDeadLetters",
+        request: None,
+        response: Some(page_of::<admin_rest::WorkflowDeadLetterView>),
     },
 ];
 

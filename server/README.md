@@ -169,7 +169,7 @@ receives the `Action` on every call, so a second token (or a role
 by hand, and says exactly how many out loud at startup:
 
 ```
-bound 37 of 483 declared routes
+bound 48 of 483 declared routes
   GET    /store/products
   GET    /store/products/{handle}
   POST   /store/carts
@@ -207,6 +207,17 @@ bound 37 of 483 declared routes
   POST   /admin/prices
   POST   /admin/inventory-items
   POST   /admin/inventory-items/{id}/location-levels
+  GET    /admin/order-baskets/{id}
+  GET    /admin/order-baskets/{id}/orders
+  GET    /admin/order-baskets/{id}/carts
+  GET    /admin/workflows-executions
+  GET    /admin/workflows-executions/{id}
+  GET    /admin/workflows-executions/{id}/steps
+  GET    /admin/workflow-dead-letters
+  GET    /admin/commission-rules
+  GET    /admin/orders/{id}/payout-lines
+  GET    /admin/payouts
+  GET    /admin/payout-balance/{currency_code}
   plus GET /health, which is this binary's own and not one of the 483
 ```
 
@@ -239,11 +250,23 @@ inventory level — the smallest set that gets a fresh install to something a
 storefront can check out from. `tezgah-server seed` (above) does the first
 five of those in one command; the rest — a real catalogue — go in through
 these routes, by hand or by whatever the panel or a script does with them.
-Everything else `tezgah::api` offers stays unbound; wiring in more of the 483
-is a matter of adding a handler in `src/http/admin.rs`, not a limitation of
-the approach.
 
-Every one of the eight single-row reads asks `ctx.permit(..)` before it looks
+**Past the panel: reads with no screen yet.** An order basket's own record
+and the two scope-local lists under it (`order_basket::get_basket`,
+`basket_orders`, `basket_carts`), a workflow run's list, single read and
+steps (`admin_rest::list_workflow_runs`, `get_workflow_run`,
+`list_workflow_run_steps`) plus the scope-wide dead-letter list
+(`list_workflow_dead_letters`), and a seller scope's own commission rules,
+one order's payout lines, its payout history and its balance in one currency
+(`payout::commission_rules`, `order_payout_lines`, `payouts`, `balance`) —
+eleven `GET` routes bound because their list-and-single-read functions
+already existed in `src/api/`, not because `client/` draws anything for them
+yet. Everything else `tezgah::api` offers stays unbound; wiring in more of
+the 483 is a matter of adding a handler in `src/http/admin.rs`, not a
+limitation of the approach.
+
+Every one of the eight single-row reads the panel's own screens use asks
+`ctx.permit(..)` before it looks
 for the row, not after: `tests/api_permissions.rs` calls each of
 `admin_catalogue::get_product`, `admin_order::get_order`,
 `admin_catalogue::get_inventory_item`, `admin_rest::get_customer`,

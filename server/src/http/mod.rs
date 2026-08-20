@@ -83,11 +83,11 @@ impl Bound {
 /// depending on whether checkout is configured. The admin surface is mounted
 /// only when `state.admin_token` is `Some`, and everything under it — eleven
 /// list endpoints the panel in `client/` reads, the eight single-row reads
-/// behind a click on one of those lists, plus the twelve writes a fresh
-/// install needs to fill a shop (`admin::router`'s own doc comment names all
-/// three) — requires that same bearer token: see `admin::router`'s doc
-/// comment for why an unset token means no admin surface at all rather than
-/// an open one.
+/// behind a click on one of those lists, the twelve writes a fresh install
+/// needs to fill a shop, and the reads past what the panel has a screen for
+/// yet (`admin::router`'s own doc comment names all four) — requires that
+/// same bearer token: see `admin::router`'s doc comment for why an unset
+/// token means no admin surface at all rather than an open one.
 pub fn router(state: AppState) -> (Router, Bound) {
     let mut bound = Vec::new();
 
