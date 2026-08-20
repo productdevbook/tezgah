@@ -7,6 +7,7 @@
  */
 import type {
   AddPrice,
+  BatchResultView,
   BundleComponentView,
   BundlePriceView,
   GetAdminPriceLists200,
@@ -17,7 +18,8 @@ import type {
   PricePreferenceView,
   PriceRuleView,
   PriceSetView,
-  PriceView
+  PriceView,
+  UpdatePricesBody
 } from '../models';
 
 import { apiMutator } from '../../../mutator';
@@ -602,7 +604,7 @@ export const postAdminPrices = async (addPrice: AddPrice, options?: Parameters<t
 
 
 export type postAdminPricesBatchResponse200 = {
-  data: void
+  data: BatchResultView
   status: 200
 }
 
@@ -641,14 +643,14 @@ export const getPostAdminPricesBatchUrl = () => {
 /**
  * @summary Move many prices at once, one currency to a call
  */
-export const postAdminPricesBatch = async ( options?: Parameters<typeof apiMutator>[1]): Promise<postAdminPricesBatchResponse> => {
+export const postAdminPricesBatch = async (updatePricesBody: UpdatePricesBody, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminPricesBatchResponse> => {
 
   return apiMutator<postAdminPricesBatchResponse>(getPostAdminPricesBatchUrl(),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updatePricesBody)
   }
 );}
 

@@ -35,16 +35,22 @@ CSV and takes the same columns back — which is how a shop changes four
 hundred prices, and it works because the export's columns and the import's
 are the same. Multi-select is on the products list beside it —
 `POST /admin/products/batch` takes rows to write and ids to delete, and a
-bulk delete is that call with no rows. The edit grid is one screen:
-`/pricing/prices` types an amount in place for every price in a set and
-writes them with one `POST /admin/prices/batch`. It can exist because that
-route takes them together — a grid saving a row at a time would be a hundred
-requests and a half-applied page if one failed.
+bulk delete is that call with no rows. There are two edit grids, and both
+exist for the same reason: their batch route takes the rows together, so the
+grid is one call rather than a hundred and a half-applied page if one failed.
 
-Only the amount is editable there. A currency, a quantity band and a rule are
-what make a price the price it is; changing one is making a different price,
-which is a different call. Everywhere else, the round trip is what a shop
-uses.
+`/pricing/prices` types an amount in place for every price in a set. Only the
+amount is editable: a currency, a quantity band and a rule are what make a
+price the price it is, and changing one is making a different price, which is
+a different call.
+
+An inventory item's screen counts its stock the same way — every location it
+sits at, the count and what is incoming typed in place, written with one
+`POST /admin/inventory-items/batch`. Reserved is not editable and will not
+be: a reservation belongs to the order or cart holding the stock, and typing
+over the number would release nothing.
+
+Everywhere else, the round trip is what a shop uses.
 
 The checkbox column is off unless a screen passes `select`, because a
 checkbox on a list with no bulk action is a control that does nothing. A

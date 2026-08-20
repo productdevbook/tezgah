@@ -6,14 +6,18 @@
  * OpenAPI spec version: 0.0.0
  */
 import type {
+  BatchResultView,
   CreateInventoryItem,
   CreateStockLocation,
   GetAdminInventoryItems200,
+  GetAdminInventoryItemsByIdLocationLevels200,
   GetAdminInventoryItemsParams,
+  GetAdminStockLocations200,
   InventoryItemView,
   InventoryLevelView,
   RenameStockLocation,
   SetStock,
+  SetStockLevelsBody,
   StockLocationView
 } from '../models';
 
@@ -131,7 +135,7 @@ export const postAdminInventoryItems = async (createInventoryItem: CreateInvento
 
 
 export type postAdminInventoryItemsBatchResponse200 = {
-  data: void
+  data: BatchResultView
   status: 200
 }
 
@@ -170,14 +174,14 @@ export const getPostAdminInventoryItemsBatchUrl = () => {
 /**
  * @summary Set the counted stock of many items at many locations
  */
-export const postAdminInventoryItemsBatch = async ( options?: Parameters<typeof apiMutator>[1]): Promise<postAdminInventoryItemsBatchResponse> => {
+export const postAdminInventoryItemsBatch = async (setStockLevelsBody: SetStockLevelsBody, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminInventoryItemsBatchResponse> => {
 
   return apiMutator<postAdminInventoryItemsBatchResponse>(getPostAdminInventoryItemsBatchUrl(),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(setStockLevelsBody)
   }
 );}
 
@@ -287,7 +291,7 @@ export const getAdminInventoryItemsById = async (id: string, options?: Parameter
 
 
 export type getAdminInventoryItemsByIdLocationLevelsResponse200 = {
-  data: void
+  data: GetAdminInventoryItemsByIdLocationLevels200
   status: 200
 }
 
@@ -392,7 +396,7 @@ export const postAdminInventoryItemsByIdLocationLevels = async (id: string,
 
 
 export type getAdminInventoryItemsByIdLocationLevelsByLocationIdResponse200 = {
-  data: void
+  data: InventoryLevelView
   status: 200
 }
 
@@ -1438,7 +1442,7 @@ export const getAdminSalesChannelsByIdStockLocations = async (id: string, option
 
 
 export type getAdminStockLocationsResponse200 = {
-  data: void
+  data: GetAdminStockLocations200
   status: 200
 }
 

@@ -10,10 +10,13 @@ import type {
   CreateVariant,
   GetAdminCollectionsParams,
   GetAdminProducts200,
+  GetAdminProductsByIdVariants200,
   GetAdminProductsByIdVariantsParams,
   GetAdminProductsExportParams,
   GetAdminProductsParams,
   GetStoreProductsParams,
+  ImportProductsBody,
+  ImportResultView,
   ProductView,
   UpdateProduct,
   VariantView
@@ -1758,7 +1761,7 @@ export const postAdminProducts = async (createProduct: CreateProduct, options?: 
 
 
 export type postAdminProductsBatchResponse200 = {
-  data: void
+  data: ImportResultView
   status: 200
 }
 
@@ -1797,14 +1800,14 @@ export const getPostAdminProductsBatchUrl = () => {
 /**
  * @summary Write and delete many products in one call
  */
-export const postAdminProductsBatch = async ( options?: Parameters<typeof apiMutator>[1]): Promise<postAdminProductsBatchResponse> => {
+export const postAdminProductsBatch = async (importProductsBody: ImportProductsBody, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminProductsBatchResponse> => {
 
   return apiMutator<postAdminProductsBatchResponse>(getPostAdminProductsBatchUrl(),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(importProductsBody)
   }
 );}
 
@@ -3286,7 +3289,7 @@ export const getAdminProductsByIdTranslationsByLocale = async (id: string,
 
 
 export type getAdminProductsByIdVariantsResponse200 = {
-  data: void
+  data: GetAdminProductsByIdVariants200
   status: 200
 }
 

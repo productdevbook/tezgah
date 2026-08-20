@@ -6356,6 +6356,11 @@ export interface components {
             id: components["schemas"]["OrderBasketId"];
             payment_collection_id: components["schemas"]["PaymentCollectionId"] | null;
         };
+        BatchResultView: {
+            /** Format: uint */
+            applied: number;
+            rejected: components["schemas"]["RejectionView"][];
+        };
         /**
          * Format: uuid
          * @description Identifies one bundle component.
@@ -6880,6 +6885,35 @@ export interface components {
             issued_order_id: components["schemas"]["OrderId"] | null;
         };
         /**
+         * @description The rows themselves, never a URL to fetch them from: where the file lives is
+         *     the host's business, and tezgah does not read one.
+         */
+        ImportProductsBody: {
+            /** @default [] */
+            delete: components["schemas"]["ProductId"][];
+            rows: components["schemas"]["ImportRow"][];
+        };
+        ImportResultView: {
+            /** Format: uint */
+            created: number;
+            /** Format: uint */
+            deleted: number;
+            rejected: components["schemas"]["RejectionView"][];
+            /** Format: uint */
+            updated: number;
+        };
+        ImportRow: {
+            description?: string | null;
+            handle: string;
+            price_amount?: string | number | null;
+            price_currency?: string | null;
+            sku?: string | null;
+            status?: components["schemas"]["ProductStatus"] | null;
+            subtitle?: string | null;
+            title: string;
+            variant_title?: string | null;
+        };
+        /**
          * Format: uuid
          * @description Identifies one inventory item.
          */
@@ -7368,6 +7402,11 @@ export interface components {
             /** Format: uuid */
             reference_id: string;
         };
+        PriceChangeRow: {
+            amount: string | number;
+            currency_code: string;
+            id: components["schemas"]["PriceId"];
+        };
         /**
          * Format: uuid
          * @description Identifies one price.
@@ -7635,6 +7674,11 @@ export interface components {
             /** Format: date-time */
             valid_until: string | null;
         };
+        RejectionView: {
+            reason: string;
+            /** Format: uint */
+            row: number;
+        };
         RenameStockLocation: {
             name: string;
         };
@@ -7805,6 +7849,9 @@ export interface components {
             /** Format: int32 */
             stocked_quantity: number;
         };
+        SetStockLevelsBody: {
+            levels: components["schemas"]["StockLevelRowBody"][];
+        };
         ShippingMethodView: {
             amount: components["schemas"]["MoneyView"];
             /** Format: uuid */
@@ -7857,6 +7904,14 @@ export interface components {
             id: components["schemas"]["ShippingProfileId"];
             kind: string;
             name: string;
+        };
+        StockLevelRowBody: {
+            /** Format: int32 */
+            incoming_quantity?: number | null;
+            inventory_item_id: components["schemas"]["InventoryItemId"];
+            location_id: components["schemas"]["StockLocationId"];
+            /** Format: int32 */
+            stocked_quantity: number;
         };
         /**
          * @description Where a location is. The country is what makes it the origin of a supply,
@@ -8116,6 +8171,9 @@ export interface components {
         };
         UpdateEmail: {
             email: string;
+        };
+        UpdatePricesBody: {
+            prices: components["schemas"]["PriceChangeRow"][];
         };
         /** @description A field left out is left alone; `null` on a nullable link clears it. */
         UpdateProduct: {
@@ -12830,14 +12888,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetStockLevelsBody"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["BatchResultView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -12962,7 +13026,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["InventoryLevelView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -13051,7 +13119,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["InventoryLevelView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -17131,14 +17201,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePricesBody"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["BatchResultView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -18913,14 +18989,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportProductsBody"];
+            };
+        };
         responses: {
             /** @description The call succeeded. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ImportResultView"];
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -20126,7 +20208,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["VariantView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {
@@ -23579,7 +23665,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page"] & {
+                        items?: components["schemas"]["StockLocationView"][];
+                    };
+                };
             };
             /** @description The request was not well formed. */
             400: {

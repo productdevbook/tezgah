@@ -4,6 +4,7 @@ import { Mono } from "@/components/detail-fields"
 import { DetailPage } from "@/components/detail-page"
 import { Section, SectionRow, SectionRows } from "@/components/section"
 import { Badge } from "@/components/ui/badge"
+import { Levels } from "@/features/inventory/levels"
 import { dateTime, useDetail } from "@/lib/detail"
 
 export function InventoryItemDetail({ id }: { id: string }) {
@@ -40,21 +41,24 @@ export function InventoryItemDetail({ id }: { id: string }) {
         </>
       )}
       main={(item) => (
-        <Section title="The item">
-          <SectionRows>
-            <SectionRow label="Title" value={item.title} />
-            <SectionRow
-              label="SKU"
-              value={item.sku ? <Mono>{item.sku}</Mono> : null}
-            />
-            <SectionRow
-              label="Ships"
-              value={
-                item.requires_shipping ? "Shipped" : "Digital, no shipping"
-              }
-            />
-          </SectionRows>
-        </Section>
+        <>
+          <Section title="The item">
+            <SectionRows>
+              <SectionRow label="Title" value={item.title} />
+              <SectionRow
+                label="SKU"
+                value={item.sku ? <Mono>{item.sku}</Mono> : null}
+              />
+              <SectionRow
+                label="Ships"
+                value={
+                  item.requires_shipping ? "Shipped" : "Digital, no shipping"
+                }
+              />
+            </SectionRows>
+          </Section>
+          <Levels itemId={item.id} />
+        </>
       )}
       side={(item) => (
         <Section title="Details">

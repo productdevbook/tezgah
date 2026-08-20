@@ -351,6 +351,26 @@
         ],
         "type": "object"
       },
+      "BatchResultView": {
+        "properties": {
+          "applied": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "rejected": {
+            "items": {
+              "$ref": "#/components/schemas/RejectionView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "applied",
+          "rejected"
+        ],
+        "type": "object"
+      },
       "BundleComponentId": {
         "description": "Identifies one bundle component.",
         "format": "uuid",
@@ -2261,6 +2281,125 @@
         ],
         "type": "object"
       },
+      "ImportProductsBody": {
+        "additionalProperties": false,
+        "description": "The rows themselves, never a URL to fetch them from: where the file lives is\nthe host's business, and tezgah does not read one.",
+        "properties": {
+          "delete": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ProductId"
+            },
+            "type": "array"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ImportRow"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "rows"
+        ],
+        "type": "object"
+      },
+      "ImportResultView": {
+        "properties": {
+          "created": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "deleted": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "rejected": {
+            "items": {
+              "$ref": "#/components/schemas/RejectionView"
+            },
+            "type": "array"
+          },
+          "updated": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "created",
+          "updated",
+          "deleted",
+          "rejected"
+        ],
+        "type": "object"
+      },
+      "ImportRow": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "handle": {
+            "type": "string"
+          },
+          "price_amount": {
+            "pattern": "^-?\\d+(\\.\\d+)?([eE]\\d+)?$",
+            "type": [
+              "string",
+              "number",
+              "null"
+            ]
+          },
+          "price_currency": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sku": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProductStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "variant_title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "handle",
+          "title"
+        ],
+        "type": "object"
+      },
       "InventoryItemId": {
         "description": "Identifies one inventory item.",
         "format": "uuid",
@@ -3587,6 +3726,30 @@
         ],
         "type": "object"
       },
+      "PriceChangeRow": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "pattern": "^-?\\d+(\\.\\d+)?([eE]\\d+)?$",
+            "type": [
+              "string",
+              "number"
+            ]
+          },
+          "currency_code": {
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/PriceId"
+          }
+        },
+        "required": [
+          "id",
+          "amount",
+          "currency_code"
+        ],
+        "type": "object"
+      },
       "PriceId": {
         "description": "Identifies one price.",
         "format": "uuid",
@@ -4458,6 +4621,23 @@
         ],
         "type": "object"
       },
+      "RejectionView": {
+        "properties": {
+          "reason": {
+            "type": "string"
+          },
+          "row": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "row",
+          "reason"
+        ],
+        "type": "object"
+      },
       "RenameStockLocation": {
         "additionalProperties": false,
         "properties": {
@@ -5064,6 +5244,21 @@
         ],
         "type": "object"
       },
+      "SetStockLevelsBody": {
+        "additionalProperties": false,
+        "properties": {
+          "levels": {
+            "items": {
+              "$ref": "#/components/schemas/StockLevelRowBody"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "levels"
+        ],
+        "type": "object"
+      },
       "ShippingMethodView": {
         "properties": {
           "amount": {
@@ -5237,6 +5432,34 @@
           "name",
           "kind",
           "created_at"
+        ],
+        "type": "object"
+      },
+      "StockLevelRowBody": {
+        "additionalProperties": false,
+        "properties": {
+          "incoming_quantity": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "inventory_item_id": {
+            "$ref": "#/components/schemas/InventoryItemId"
+          },
+          "location_id": {
+            "$ref": "#/components/schemas/StockLocationId"
+          },
+          "stocked_quantity": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "inventory_item_id",
+          "location_id",
+          "stocked_quantity"
         ],
         "type": "object"
       },
@@ -6087,6 +6310,21 @@
         },
         "required": [
           "email"
+        ],
+        "type": "object"
+      },
+      "UpdatePricesBody": {
+        "additionalProperties": false,
+        "properties": {
+          "prices": {
+            "items": {
+              "$ref": "#/components/schemas/PriceChangeRow"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "prices"
         ],
         "type": "object"
       },
@@ -11635,8 +11873,25 @@
       "post": {
         "operationId": "postAdminInventoryItemsBatch",
         "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetStockLevelsBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchResultView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -11759,6 +12014,27 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/InventoryLevelView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -11860,6 +12136,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryLevelView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -16356,8 +16639,25 @@
       "post": {
         "operationId": "postAdminPricesBatch",
         "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePricesBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchResultView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -18188,8 +18488,25 @@
       "post": {
         "operationId": "postAdminProductsBatch",
         "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportProductsBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportResultView"
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -19419,6 +19736,27 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/VariantView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
@@ -23086,6 +23424,27 @@
         "parameters": [],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Page"
+                    },
+                    {
+                      "properties": {
+                        "items": {
+                          "items": {
+                            "$ref": "#/components/schemas/StockLocationView"
+                          },
+                          "type": "array"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
             "description": "The call succeeded."
           },
           "400": {
