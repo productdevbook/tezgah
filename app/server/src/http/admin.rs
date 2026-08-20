@@ -1463,7 +1463,10 @@ async fn reserve_from_lot(
     Extension(caller): Extension<Caller>,
     Path(id): Path<InventoryLotId>,
     Json(body): Json<inventory_lot::ReserveFromLot>,
-) -> Result<Json<inventory_lot::ReservationView>, ApiError> {
+    // `admin_catalogue`'s, not `inventory_lot`'s: reserving from a lot answers
+    // the same view a reservation anywhere else does, and the lot module
+    // imports it rather than declaring a second one.
+) -> Result<Json<admin_catalogue::ReservationView>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
     let ctx = ctx_for(&state, &caller);
     let view = inventory_lot::reserve_from_lot(&mut tx, &ctx, id, body).await?;
