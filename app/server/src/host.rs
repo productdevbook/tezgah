@@ -45,11 +45,68 @@ pub struct ServerHost;
 impl Authorizer for ServerHost {
     fn authorize(
         &self,
-        _actor: &Actor,
-        _action: Action,
-        _resource: &Resource,
+        actor: &Actor,
+        action: Action,
+        resource: &Resource,
     ) -> tezgah::Result<Permit> {
-        Ok(Permit::granted())
+        match actor {
+            // The back office. Which of the five actions a person may take is
+            // decided at the door instead, against the `Action` the route
+            // table declares — `http::admin`'s `refuse_by_role`. Deciding it
+            // twice, in two places that could disagree, is worse than once.
+            Actor::Staff { .. } => Ok(Permit::granted()),
+
+            // Scheduled work and provider callbacks. `docs/hosting.md` is
+            // explicit that denying this stops every renewal a shop has.
+            Actor::System => Ok(Permit::granted()),
+
+            Actor::Customer { id } => shopper_may(*id, action, resource),
+
+            // A guest holds a cart id and nothing else, and this binary reads
+            // that id from the same path it is then asked about — so there is
+            // nothing here to compare that would refuse anything. The cart id
+            // is the credential, which is what a guest cart is.
+            Actor::Guest { .. } => Ok(Permit::granted()),
+        }
+    }
+}
+
+/// What somebody signed in to the storefront may do.
+///
+/// Every kind of resource that has an owner carries it, so this needs no
+/// lookup: the question is whether the row belongs to whoever is asking.
+///
+/// `None` where an owner could have been is refused rather than granted, and
+/// that is the interesting half. `Resource::Order`'s own doc says `None` also
+/// means "the id did not resolve to a row, and we will not find out unless
+/// you say yes" — so granting it would answer `not_found` for an order that
+/// does not exist and `denied` for one that does, and the pair tells a
+/// stranger which ids are real. Ids here are uuidv7 and carry a timestamp, so
+/// that leaks when a shop trades.
+fn shopper_may(who: Uuid, action: Action, resource: &Resource) -> tezgah::Result<Permit> {
+    let owned_by = |owner: &Option<Uuid>| match owner {
+        Some(owner) if *owner == who => Ok(Permit::granted()),
+        _ => Err(tezgah::Error::denied()),
+    };
+
+    match resource {
+        Resource::Cart { customer, .. } => owned_by(customer),
+        Resource::Order { customer, .. } => owned_by(customer),
+        Resource::Payment { customer, .. } => owned_by(customer),
+        Resource::Credit { customer, .. } => owned_by(customer),
+        Resource::Subscription { customer, .. } => owned_by(customer),
+        Resource::Basket { customer, .. } => owned_by(customer),
+
+        // A customer is the one resource whose id *is* the owner.
+        Resource::Customer { id } => match id {
+            Some(id) if *id == who => Ok(Permit::granted()),
+            _ => Err(tezgah::Error::denied()),
+        },
+
+        // The catalogue and what hangs off it: readable by anybody shopping,
+        // and writable by nobody who is.
+        _ if action == Action::View => Ok(Permit::granted()),
+        _ => Err(tezgah::Error::denied()),
     }
 }
 

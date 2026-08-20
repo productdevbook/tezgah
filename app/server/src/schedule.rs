@@ -64,7 +64,8 @@ async fn sweep(pool: &PgPool, scope: Scope, host: &ServerHost) -> tezgah::Result
     let freed = tezgah::inventory::expire_reservations(&mut tx, &ctx, ctx.now()).await?;
     tx.commit().await?;
 
-    let sessions = identity::drop_expired_sessions(pool).await?;
+    let sessions = identity::drop_expired_sessions(pool).await?
+        + crate::shopper::drop_expired_sessions(pool).await?;
 
     if carts > 0 || freed > 0 || sessions > 0 {
         println!(

@@ -202,7 +202,7 @@ pub async fn count(pool: &PgPool) -> tezgah::Result<i64> {
 
 /// Argon2id with its default parameters — the crate's own recommendation, and
 /// not a number this file is in a position to tune better.
-fn hash_password(password: &str) -> tezgah::Result<String> {
+pub(crate) fn hash_password(password: &str) -> tezgah::Result<String> {
     let salt = SaltString::generate(&mut OsRng);
     Argon2::default()
         .hash_password(password.as_bytes(), &salt)
@@ -210,7 +210,7 @@ fn hash_password(password: &str) -> tezgah::Result<String> {
         .map_err(|_| tezgah::Error::invalid("that password could not be stored"))
 }
 
-fn password_matches(password: &str, stored: &str) -> bool {
+pub(crate) fn password_matches(password: &str, stored: &str) -> bool {
     let Ok(parsed) = PasswordHash::new(stored) else {
         return false;
     };
@@ -222,13 +222,13 @@ fn password_matches(password: &str, stored: &str) -> bool {
 /// Two v4 uuids rather than a `rand` dependency: v4 is `getrandom`, so this is
 /// 244 bits out of the operating system's own generator, which is the only
 /// property a session token needs.
-fn mint_token() -> String {
+pub(crate) fn mint_token() -> String {
     format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple())
 }
 
 /// What is stored. A session table full of usable tokens is a second password
 /// file, so the row holds a digest and the token itself leaves once.
-fn digest(token: &str) -> Vec<u8> {
+pub(crate) fn digest(token: &str) -> Vec<u8> {
     Sha256::digest(token.as_bytes()).to_vec()
 }
 
