@@ -323,8 +323,9 @@ platform's commerce surface is done. What is not done is the layer around it:
 the things that are nobody's problem while tezgah is only a library, and
 become this repository's problem because `app/` ships a shop somebody else
 runs. [`docs/architecture.md`](docs/architecture.md) carries each of these
-with the measurement behind it and the layer that owns the fix; this is the
-list.
+with the measurement behind it and the layer that owns the fix, and
+[`docs/medusa-parity.md`](docs/medusa-parity.md) sets the same gaps against
+what an established platform ships; this is the list.
 
 In the library:
 
