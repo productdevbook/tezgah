@@ -27,11 +27,12 @@ alter table payment_webhook_event
 -- second by inserting one and watching it be accepted.
 call tezgah_fk('payment_webhook_event', 'payment_session_id', 'payment_session', 'set null', true);
 
--- A key with no index behind it is a sequential scan on every delete of the
--- parent, which for a session is every abandoned cart swept.
-create index payment_webhook_event_session
-    on payment_webhook_event (scope, payment_session_id)
-    where payment_session_id is not null;
+-- No index written here: `tezgah_fk` makes `(scope, payment_session_id)`
+-- itself when nothing already covers the pair, which is exactly the index a
+-- key with no index behind it would have wanted — and writing a second one
+-- would take this table's lock for the build, which is what
+-- `tests/migration_lock.rs` refuses in a migration that has not opted out of
+-- its transaction.
 
 -- The six the crate models. `other` is one of them on purpose: a provider
 -- says a great many things, and "recorded, acknowledged, ignored" is an
