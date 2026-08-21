@@ -1,6 +1,6 @@
 //! The number in the documentation is the number the router binds.
 //!
-//! "bound N of 486" appears in six files, hand-copied, and it was wrong more
+//! "bound N of 487" appears in six files, hand-copied, and it was wrong more
 //! than once: the count drifted every time a batch of routes was bound,
 //! because it was arithmetic done in a commit message rather than a thing
 //! anybody could check. The last correction was six off.

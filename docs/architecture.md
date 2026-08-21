@@ -127,13 +127,24 @@ is what authenticates it — and `app/server` mounts it only when a secret was
 configured, checking a signature over the exact bytes before the body is
 believed. A redelivery lands once, against the unique `(provider, event_id)`.
 
-What is left is the second step. Recording is all the route does: capturing,
-moving an order's state, anything that follows from what the provider *said*
-is provider-specific mapping, and `GET /admin/payment-webhooks` hands back
-what has arrived and not been acted on. That split is deliberate — the row is
-durable before anything acts, so a crash between the two resumes rather than
-loses — but until something acts, an asynchronously confirmed payment is
-written down rather than applied.
+**And something acts on it.** `payment::apply_webhook` reads a recorded
+callback and moves what it says moved: a session authorized or failed, a
+payment captured, refunded or cancelled. Every arm *records* rather than asks
+— a provider saying it captured is not a reason to call the provider again,
+which would take the money twice, so this reaches for `capture_only` and
+`refund_only`.
+
+The split stays deliberate. The row is durable before anything acts, so a
+crash between the two resumes from `GET /admin/payment-webhooks` rather than
+losing what was said; an event already processed answers "nothing to do"
+rather than doubling; and a failure keeps its reason on the row so the next
+attempt knows what went wrong last time.
+
+Storing the provider's word, not just its body, is what made that possible.
+`record_webhook` kept only the raw payload beside the event id, so a recorded
+event could never be applied later — reading the payload again would need the
+provider knowledge this crate deliberately does not have. Migration 0123 adds
+the kind, the session, and the amount with its currency.
 
 **A resource whose owner is discovered by loading it is judged after the
 load.** 89 routes answer `not_found` to a caller who would have been denied,
@@ -236,7 +247,7 @@ operator who forgets a password has an owner set them a new one rather than
 asking for a link. Both are one letter each now rather than a missing
 subsystem.
 
-**198 of 486 declared routes are bound.** The panel draws 228. The difference
+**199 of 487 declared routes are bound.** The panel draws 228. The difference
 is not a mistake — each binding is written by hand, deliberately — but it does
 mean the panel and the binary disagree about what the product is, and the
 number will not close by hand at that rate. Either the route table grows a

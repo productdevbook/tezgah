@@ -60,10 +60,10 @@ served them, and nothing drew them. [`examples/shop`](examples/shop) is a shop
 that runs — axum over the route table, all five ports implemented including a
 job worker that actually runs what it enqueues, and a `PaymentProvider` built
 over `dyn kasapay_core::Provider`, which is the first thing outside that
-module's own tests to lean on the mapping. It binds 6 of the 486 operations,
+module's own tests to lean on the mapping. It binds 6 of the 487 operations,
 enough to walk browse → cart → checkout → order, and says so. [`app/client/`](app/client)
 is an admin panel over the same surface, with screens for products, orders and
-inventory — 228 of the 486 operations behind a screen, and every section that
+inventory — 228 of the 487 operations behind a screen, and every section that
 has none saying how many it is not drawing. Neither is in the crate: depending
 on tezgah pulls in no axum and no React.
 
@@ -342,12 +342,12 @@ In the library:
       three lists that filter — products, orders, customers — answer it when
       asked, each from a macro both its queries read so the count cannot drift
       from the page. The rest still say `null`
-- [ ] something that *acts* on a payment provider's callback. There is a
-      route now — `POST /webhooks/payments/{provider}` on its own surface,
-      signed, mounted only with a secret, and a redelivery lands once — but
-      it records and answers. Capturing or moving an order's state from what
-      the provider said is provider-specific mapping, and
-      `GET /admin/payment-webhooks` is where what has arrived waits
+- [x] something that *acts* on a payment provider's callback.
+      `payment::apply_webhook` moves what the callback says moved — a session
+      authorized or failed, a payment captured, refunded or cancelled — by
+      recording rather than asking, so a provider that already captured is not
+      asked to capture again. What is left is a shop deciding when to call it:
+      `POST /admin/payment-webhooks/{id}/apply` is a button, not a worker
 - [ ] the 89 routes that answer `not_found` where they mean `denied`, because
       the owner is only known once the row is loaded (#151, #152)
 
@@ -370,7 +370,7 @@ In `app/`:
       chooses — and a mailer exists, which an operator invitation uses. What
       is left is a shopper's order confirmation and a password reset somebody
       can ask for themselves
-- [ ] the rest of the route table: 198 of 486 bound by hand, 228 drawn by the
+- [ ] the rest of the route table: 199 of 487 bound by hand, 228 drawn by the
       panel. Counted from the other side: of the 77 `/admin/…/{id}/…`
       sub-routes, 70 were drawn by no screen and ten of those were already
       bound — the panel had simply never asked. Those ten are drawn now, and

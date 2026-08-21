@@ -131,7 +131,7 @@ asks, and every one of those paths already refuses an unauthorised caller on
 its own; a description that needed protecting would mean the protection *was*
 the description.
 
-Neither counts against the 486: they describe them.
+Neither counts against the 487: they describe them.
 
 **It is thinner than it looks.** The document declares every operation and, for
 most of them, no request or response body at all — `productdevbook/tezgah#202`
@@ -142,7 +142,7 @@ serving.
 
 Not "the process is running" — a probe can already tell that from the socket
 accepting a connection — but "a query against Postgres still answers". Bound
-unconditionally, unauthenticated, and not one of tezgah's own 486 declared
+unconditionally, unauthenticated, and not one of tezgah's own 487 declared
 routes: it belongs to this binary, not to the crate.
 
 ## Who may reach the back office
@@ -189,7 +189,7 @@ find. Startup says which of the two it found.
 | `POST /admin/operators/{id}/password` | no | sets somebody else's — owner only, and ends every session they hold |
 | `PATCH /admin/operators/{id}` | no | changes a role, disables or re-enables one — owner only, never itself, never the last owner |
 
-None of these is one of tezgah's 486 — the crate declares no route for
+None of these is one of tezgah's 487 — the crate declares no route for
 something it does not do — so the startup tally does not count them, the same
 way it does not count `GET /health`.
 
@@ -427,7 +427,7 @@ a gap, and `docs/architecture.md` counts it as one.
 
 ## Route table
 
-<!-- bound-routes: 198 -->
+<!-- bound-routes: 199 -->
 
 That number is checked rather than remembered: `tests/bound_count.rs` builds
 the fullest router this binary can make without a payment provider, counts
@@ -439,11 +439,11 @@ Configuring checkout adds one more — `POST /store/carts/{id}/complete` — whi
 is why the number is stated without it.
 
 
-`tezgah::api::routes()` names 486 operations. This binary binds a fraction,
+`tezgah::api::routes()` names 487 operations. This binary binds a fraction,
 by hand, and says exactly how many out loud at startup:
 
 ```
-bound 198 of 486 declared routes
+bound 199 of 487 declared routes
   GET    /store/products
   GET    /store/products/{handle}
   POST   /store/carts
@@ -555,7 +555,7 @@ bound 198 of 486 declared routes
   POST   /admin/variants/{id}/digital-content
   DELETE /admin/digital-content/{id}
   GET    /admin/carts
-  plus GET /health, which is this binary's own and not one of the 486
+  plus GET /health, which is this binary's own and not one of the 487
 ```
 
 That is the count with `ADMIN_TOKEN`, `TEZGAH_STOCK_LOCATION_ID` and
@@ -717,7 +717,7 @@ not already offer:
   rather than 34.
 
 Everything else `tezgah::api` offers stays unbound; wiring in more of the
-486 is a matter of adding a handler in `src/http/admin.rs` or
+487 is a matter of adding a handler in `src/http/admin.rs` or
 `src/http/store.rs`, not a limitation of the approach.
 
 Every one of the eight single-row reads the panel's own screens use asks

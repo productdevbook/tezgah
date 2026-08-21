@@ -18,7 +18,7 @@ use axum::{
 };
 use serde_json::Value;
 
-/// Two routes, and neither is one of tezgah's 486 — they describe them.
+/// Two routes, and neither is one of tezgah's 487 — they describe them.
 ///
 /// Generic over the state it is merged into: it holds none of its own, and
 /// the document it answers with comes from the route table rather than from

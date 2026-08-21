@@ -1,0 +1,34 @@
+set lock_timeout = '3s';
+set statement_timeout = '60s';
+
+-- A recorded callback could not be acted on later.
+--
+-- `record_webhook` was handed a `WebhookEvent` carrying what the provider
+-- said — which session, which kind of thing happened, and for how much — and
+-- stored only the raw payload beside the provider's own event id. So an event
+-- that arrived and was not applied in the same breath could never be applied
+-- at all: `unprocessed()` handed back rows nothing knew how to act on, and
+-- reading the payload again would need the provider knowledge tezgah
+-- deliberately does not have.
+--
+-- Nullable, because every row written before this one has no answer for them
+-- and inventing one would be worse than admitting it. `apply_webhook` refuses
+-- a row with no `kind`, and says why.
+alter table payment_webhook_event
+    add column kind               text,
+    add column payment_session_id uuid references payment_session (id) on delete set null,
+    add column amount             numeric(20, 6),
+    add column currency_code      text;
+
+-- The six the crate models. `other` is one of them on purpose: a provider
+-- says a great many things, and "recorded, acknowledged, ignored" is an
+-- answer rather than an omission.
+alter table payment_webhook_event
+    add constraint payment_webhook_event_kind_valid
+    check (kind is null or kind in
+        ('authorized', 'captured', 'refunded', 'canceled', 'failed', 'other'));
+
+-- An amount needs a currency to mean anything, and neither is required.
+alter table payment_webhook_event
+    add constraint payment_webhook_event_amount_needs_currency
+    check ((amount is null) = (currency_code is null));

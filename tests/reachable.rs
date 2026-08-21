@@ -103,7 +103,7 @@ use std::path::{Path, PathBuf};
 
 /// Public functions nothing in the crate calls, each with the reason.
 /// Adding to this is not a fix.
-const TOLERATED: [(&str, &str); 30] = [
+const TOLERATED: [(&str, &str); 29] = [
     (
         "batch::import_workflow",
         "the import workflow a host runs through the runner when a file is large \
@@ -199,13 +199,6 @@ const TOLERATED: [(&str, &str); 30] = [
         "payment::balance",
         "what is still capturable and refundable; the admin payment view sums it \
          its own way",
-    ),
-    (
-        "payment::mark_failed",
-        "the host writes down that acting on a callback failed; nothing acts on \
-         one yet — `POST /webhooks/payments/{provider}` records the delivery \
-         and `GET /admin/payment-webhooks` hands it back, and what happens \
-         next is still the host's to write",
     ),
     (
         "pricing::link_shipping_option",

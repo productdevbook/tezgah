@@ -53,7 +53,7 @@ import {
 /**
  * What the admin surface answers with, as schemas checked at runtime.
  *
- * `tests/snapshots/openapi.json` currently documents 22 of 486 operations'
+ * `tests/snapshots/openapi.json` currently documents 22 of 487 operations'
  * bodies (productdevbook/tezgah#202 is the rest). Where it does, the schema
  * below is generated — `../generated/zod/**`, from `orval.config.ts`'s
  * `zod` project, re-exported here under the name every screen already used.

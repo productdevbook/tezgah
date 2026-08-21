@@ -948,6 +948,11 @@ static BODIES: &[Body] = &[
         response: Some(page_of::<admin_order::PendingCallbackView>),
     },
     Body {
+        operation_id: "postAdminPaymentWebhooksByIdApply",
+        request: None,
+        response: Some(schema_of::<admin_order::AppliedView>),
+    },
+    Body {
         operation_id: "postAdminPaymentWebhooksByIdProcessed",
         request: None,
         response: None,

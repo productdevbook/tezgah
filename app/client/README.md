@@ -155,7 +155,7 @@ appearing untranslated on screen.
 
 ## What it talks to
 
-[`../server`](../server) — the binary beside it, which mounts 198 of the 486
+[`../server`](../server) — the binary beside it, which mounts 199 of the 487
 operations `api::routes()` declares. The crate itself serves no HTTP, so any
 other host that mounts the same table will do; point the panel at whichever
 one is running:
@@ -168,7 +168,7 @@ is most of the 228 this panel draws.
 
 ## Types
 
-`tests/snapshots/openapi.json` declares 486 operations and, today, 22 of them
+`tests/snapshots/openapi.json` declares 487 operations and, today, 22 of them
 carry a schema — request or response — against 34 named schemas
 (productdevbook/tezgah#202 is the rest). Two things are generated from it with
 [Orval](https://orval.dev), by `orval.config.ts`, both reading the same
@@ -234,7 +234,7 @@ The sidebar reads `src/lib/nav.ts`, which carries the number of admin
 operations each section's tag declares. Sixteen sections have screens —
 products, orders, inventory, customers, promotions, subscriptions, store,
 payouts, workflows, baskets, fulfilment, tax, pricing, payments, credit and
-carts — which is 478 of the 486 operations. `digital` is the rest: its eight
+carts — which is 478 of the 487 operations. `digital` is the rest: its eight
 operations exist and work, and `nav.ts`'s `folded` says why there is no
 screen for them yet.
 
