@@ -19,7 +19,7 @@ use crate::id::{
     ShippingOptionId, VariantId,
 };
 use crate::money::{Currency, Money};
-use crate::page::{Cursor, Page, Paging};
+use crate::page::{Cursor, Order, Page, Paging, Search};
 use crate::ports::{Action, AuditEntry, Ctx, Event, Permit, Resource, Tx};
 
 const COLUMNS: &str = "id, customer_id, email, region_id, currency_code, sales_channel_id, \
@@ -390,33 +390,85 @@ pub async fn get(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: CartId) -> Result<Cart> {
     load(tx, ctx, id).await
 }
 
+/// The predicates `list` pages over and counts with, in one place so the two
+/// cannot answer differently.
+const CART_FILTER: &str = "
+         where scope = $1
+           and ($2::uuid is null or customer_id = $2)
+           and ($3::boolean is null or (completed_at is not null) = $3)
+           and ($4::text is null or email ilike $4)
+           and ($5::uuid is null or region_id = $5)
+";
+
+/// What a back office can ask a list of carts.
+///
+/// The one a shop asks most is `completed` — a cart that became an order and
+/// a cart still open are two different things to look at, and this list held
+/// both with nothing to tell them apart.
+#[derive(Debug, Clone, Default)]
+pub struct CartFilter {
+    pub customer: Option<CustomerId>,
+    /// `Some(true)` for carts that became an order, `Some(false)` for the
+    /// ones still open — abandoned ones included, which is what makes this
+    /// list worth having.
+    pub completed: Option<bool>,
+    /// Matched against the e-mail, which is the only thing on a cart a person
+    /// recognises it by. A guest cart has one and no customer.
+    pub search: Option<Search>,
+    pub region: Option<RegionId>,
+    pub order: Order,
+}
+
 pub async fn list(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
-    customer_id: Option<CustomerId>,
+    filter: CartFilter,
     paging: Paging,
 ) -> Result<Page<Cart>> {
     let _: Permit = ctx.permit(Action::View, Resource::Customer { id: None })?;
 
+    let beyond = filter.order.beyond();
+    let direction = filter.order.direction();
+
     let rows = sqlx::query_as::<_, Cart>(&format!(
-        "select {COLUMNS} from cart
-         where scope = $1
-           and ($2::uuid is null or customer_id = $2)
-           and ($3::timestamptz is null or (created_at, id) > ($3, $4))
-         order by created_at, id
-         limit $5"
+        "select {COLUMNS} from cart{CART_FILTER}
+           and ($6::timestamptz is null or (created_at, id) {beyond} ($6, $7))
+         order by created_at {direction}, id {direction}
+         limit $8"
     ))
     .bind(ctx.scope.0)
-    .bind(customer_id.map(CustomerId::as_uuid))
+    .bind(filter.customer.map(CustomerId::as_uuid))
+    .bind(filter.completed)
+    .bind(filter.search.as_ref().map(Search::pattern))
+    .bind(filter.region.map(RegionId::as_uuid))
     .bind(paging.after.as_ref().and_then(Cursor::timestamp))
     .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| {
+    let total = if paging.counts() {
+        let (count,): (i64,) = sqlx::query_as(&format!("select count(*) from cart{CART_FILTER}"))
+            .bind(ctx.scope.0)
+            .bind(filter.customer.map(CustomerId::as_uuid))
+            .bind(filter.completed)
+            .bind(filter.search.as_ref().map(Search::pattern))
+            .bind(filter.region.map(RegionId::as_uuid))
+            .fetch_one(&mut **tx)
+            .await?;
+        Some(count)
+    } else {
+        None
+    };
+
+    let page = Page::build(rows, paging, |row| {
         Cursor::at(row.created_at, row.id.as_uuid())
-    }))
+    });
+
+    Ok(match total {
+        Some(total) => page.counting(total),
+        None => page,
+    })
 }
 
 /// This scope's own carts under one basket — the entry point a host's own

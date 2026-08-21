@@ -885,9 +885,14 @@ async fn another_scope_cannot_reach_the_cart() -> tezgah::Result<()> {
             .is_err()
     );
     assert!(
-        cart::list(&mut theirs, &elsewhere, None, Paging::first(10))
-            .await?
-            .is_empty()
+        cart::list(
+            &mut theirs,
+            &elsewhere,
+            cart::CartFilter::default(),
+            Paging::first(10),
+        )
+        .await?
+        .is_empty()
     );
     theirs.rollback().await.ok();
 
@@ -1480,4 +1485,67 @@ async fn a_write_on_a_cart_that_does_not_exist_is_denied_not_not_found() {
 
     tx.rollback().await.ok();
     shop.close().await;
+}
+
+/// A back office opening Carts wants the abandoned ones, and until this the
+/// list held every cart this shop ever opened with nothing to tell an
+/// abandoned one from a cart that became an order.
+#[tokio::test]
+async fn a_list_of_carts_narrows_and_counts_the_same_rows() -> tezgah::Result<()> {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let open = cart::create(&mut tx, &ctx, NewCart::guest(lira()?)).await?;
+    cart::set_email(&mut tx, &ctx, open.id, "shopper@example.com").await?;
+
+    let other = cart::create(&mut tx, &ctx, NewCart::guest(lira()?)).await?;
+    cart::set_email(&mut tx, &ctx, other.id, "somebody@example.test").await?;
+
+    let searched = cart::list(
+        &mut tx,
+        &ctx,
+        cart::CartFilter {
+            search: tezgah::page::Search::new("shopper@"),
+            ..Default::default()
+        },
+        Paging::first(10).counting(),
+    )
+    .await?;
+
+    assert_eq!(searched.items.len(), 1);
+    assert_eq!(searched.items[0].id, open.id);
+    assert_eq!(searched.total, Some(1), "the count matches the page");
+
+    // Nothing here has been through checkout, so every cart is open — the
+    // predicate is over `completed_at`, and asserting both directions is what
+    // catches it being written the wrong way round.
+    let still_open = cart::list(
+        &mut tx,
+        &ctx,
+        cart::CartFilter {
+            completed: Some(false),
+            ..Default::default()
+        },
+        Paging::first(10).counting(),
+    )
+    .await?;
+    assert_eq!(still_open.total, Some(2));
+
+    let done = cart::list(
+        &mut tx,
+        &ctx,
+        cart::CartFilter {
+            completed: Some(true),
+            ..Default::default()
+        },
+        Paging::first(10).counting(),
+    )
+    .await?;
+    assert_eq!(done.total, Some(0));
+    assert!(done.items.is_empty());
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+    Ok(())
 }

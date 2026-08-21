@@ -4,6 +4,14 @@ import { PageHeading } from "@/components/page-heading"
 import { Badge } from "@/components/ui/badge"
 import { Empty } from "@/components/detail-fields"
 import { usePagedList } from "@/lib/paged"
+import { SearchBox } from "@/components/search-box"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { useT } from "@/panel/i18n"
 
 const columns: Columns<Cart> = [
@@ -49,15 +57,29 @@ const columns: Columns<Cart> = [
  */
 export function Carts({
   after,
+  q,
+  state,
   onAfterChange,
+  onQChange,
+  onStateChange,
 }: {
   after: string | undefined
+  q: string | undefined
+  state: "all" | "open" | "completed"
   onAfterChange: (after: string | undefined) => void
+  onQChange: (q: string | undefined) => void
+  onStateChange: (state: "all" | "open" | "completed") => void
 }) {
   const t = useT()
-  const paged = usePagedList(["carts"], "/admin/carts", cart, {
+  const paged = usePagedList(["carts", q ?? "", state], "/admin/carts", cart, {
     after,
     onAfterChange,
+    query: {
+      q,
+      completed:
+        state === "completed" ? "true" : state === "open" ? "false" : undefined,
+      count: "true",
+    },
   })
 
   return (
@@ -65,13 +87,36 @@ export function Carts({
       <PageHeading
         title={t("screen.carts.title")}
         subtitle={t("screen.carts.subtitle")}
-      />
+      >
+        <SearchBox
+          value={q}
+          onChange={onQChange}
+          placeholder={t("search.carts")}
+        />
+        <Select
+          value={state}
+          onValueChange={(value) =>
+            onStateChange(value as "all" | "open" | "completed")
+          }
+        >
+          <SelectTrigger className="w-40" size="sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("filter.anyCart")}</SelectItem>
+            <SelectItem value="open">{t("filter.stillOpen")}</SelectItem>
+            <SelectItem value="completed">{t("filter.ordered")}</SelectItem>
+          </SelectContent>
+        </Select>
+      </PageHeading>
       <DataTable
         paged={paged}
         columns={columns}
         empty={{
           title: t("screen.carts.empty"),
-          description: t("screen.carts.emptyAny"),
+          description: q
+            ? t("search.nothingMatches", { q })
+            : t("screen.carts.emptyAny"),
         }}
       />
     </div>
