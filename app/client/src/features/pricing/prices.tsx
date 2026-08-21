@@ -18,6 +18,7 @@ import {
 import { usePagedList } from "@/lib/paged"
 import { savePrices, type PriceChange } from "@/features/pricing/grid"
 import { PriceRules } from "@/features/pricing/rules"
+import { useT } from "@/panel/i18n"
 
 const columns: Columns<Price> = [
   {
@@ -69,6 +70,7 @@ export function Prices({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
+  const t = useT()
   const [input, setInput] = useState(priceSetId ?? "")
 
   function submit(event: FormEvent) {
@@ -87,7 +89,7 @@ export function Prices({
               onChange={(e) => setInput(e.target.value)}
               placeholder="price set id"
               className="font-mono text-xs"
-              aria-label="Price set id"
+              aria-label={t("field.priceSetId")}
               autoFocus
             />
             <Button type="submit" variant="outline">

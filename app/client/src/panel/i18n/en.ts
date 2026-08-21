@@ -441,6 +441,34 @@ export const en = {
   "table.chooseEvery": "Choose every row on this page",
   "table.chooseThis": "Choose this row",
   "actions.menu": "Actions",
+
+  "field.priceSetId": "Price set id",
+  "field.orderId": "Order id",
+
+  "section.media": "Media",
+  "section.mediaWhy":
+    "An address — uploaded here if this shop stores files, or wherever it is already served from.",
+  "section.executions": "Executions",
+  "section.executionsWhy": "Every workflow run the runner has driven.",
+  "section.taxRules": "What it applies to",
+  "section.taxRulesWhy":
+    "A rule narrows the rate to one kind of thing. With none, it applies to everything in its region.",
+  "section.variants": "Variants",
+  "section.variantsWhy":
+    "The thing with a price and a count. A product with none cannot be bought.",
+  "section.levels": "What is where",
+  "section.levelsWhy":
+    "Counted per location. Type a count and save them together — one call, so a shelf is counted at once or not at all.",
+  "section.movements": "What moved",
+  "section.movementsWhy":
+    "Every add and every spend. A balance is the sum of these, not a number somebody set.",
+
+  "screen.subscriptions.subtitle":
+    "A contract, not an order. The orders it produces are listed under Orders.",
+  "screen.records.subtitle": "The audit trail and the outbox, newest first.",
+  "screen.operators.subtitle":
+    "An account belongs to a person and can be revoked. The admin token belongs to nobody and cannot.",
+  "screen.baskets.subtitle": "Baskets are reached by id; the crate has no list.",
 } as const
 
 export type TranslationKey = keyof typeof en

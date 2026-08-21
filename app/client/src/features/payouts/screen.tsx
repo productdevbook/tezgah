@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { usePagedList } from "@/lib/paged"
+import { useT } from "@/panel/i18n"
 
 const columns: Columns<Payout> = [
   { header: "Reference", accessorKey: "reference" },
@@ -99,6 +100,7 @@ function BalanceLookup({
   currency: string | undefined
   onCurrencyChange: (currency: string | undefined) => void
 }) {
+  const t = useT()
   const [code, setCode] = useState(currency ?? "")
 
   const query = useQuery({
@@ -131,7 +133,7 @@ function BalanceLookup({
             placeholder="usd"
             maxLength={3}
             className="font-mono uppercase"
-            aria-label="Currency code"
+            aria-label={t("field.currencyCode")}
           />
           <Button type="submit" size="sm" variant="outline">
             Check
@@ -176,6 +178,7 @@ function OrderLinesLookup({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
+  const t = useT()
   const [input, setInput] = useState(orderId ?? "")
 
   function submit(event: FormEvent) {
@@ -196,7 +199,7 @@ function OrderLinesLookup({
             onChange={(e) => setInput(e.target.value)}
             placeholder="order id"
             className="font-mono text-xs"
-            aria-label="Order id"
+            aria-label={t("field.orderId")}
           />
           <Button type="submit" size="sm" variant="outline">
             Look up

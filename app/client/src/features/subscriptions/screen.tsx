@@ -77,8 +77,8 @@ export function Subscriptions({
   return (
     <div className="space-y-4">
       <PageHeading
-        title="Subscriptions"
-        subtitle="A contract, not an order. The orders it produces are listed under Orders."
+        title={t("screen.subscriptions.title")}
+        subtitle={t("screen.subscriptions.subtitle")}
       />
       <DataTable
         paged={paged}

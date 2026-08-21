@@ -41,6 +41,7 @@ import {
   type NewInvitation,
   type Role,
 } from "@/features/operators/api"
+import { useT } from "@/panel/i18n"
 
 /**
  * Inviting somebody instead of making their account and telling them the
@@ -51,6 +52,7 @@ import {
  * other way still works and is the one a shop without SMTP uses.
  */
 export function InviteAction() {
+  const t = useT()
   const [open, setOpen] = useState(false)
   const client = useQueryClient()
 
@@ -103,13 +105,25 @@ export function InviteAction() {
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-3 py-2">
-              <FormField control={form.control} name="email" label="E-mail">
+              <FormField
+                control={form.control}
+                name="email"
+                label={t("field.email")}
+              >
                 {(field) => <Input id={field.name} type="email" {...field} />}
               </FormField>
-              <FormField control={form.control} name="name" label="Name">
+              <FormField
+                control={form.control}
+                name="name"
+                label={t("field.name")}
+              >
                 {(field) => <Input id={field.name} {...field} />}
               </FormField>
-              <FormField control={form.control} name="role" label="Role">
+              <FormField
+                control={form.control}
+                name="role"
+                label={t("field.role")}
+              >
                 {(field) => (
                   <Select
                     value={field.value}

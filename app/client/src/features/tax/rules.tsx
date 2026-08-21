@@ -12,6 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { useT } from "@/panel/i18n"
 
 /**
  * What narrows a rate to some of what is sold.
@@ -26,6 +27,7 @@ import {
  * lookup per row would be this screen deciding what the API did not say.
  */
 export function TaxRateRules({ rateId }: { rateId: string }) {
+  const t = useT()
   const result = useQuery({
     queryKey: ["tax-rate-rules", rateId],
     queryFn: ({ signal }) =>
@@ -40,8 +42,8 @@ export function TaxRateRules({ rateId }: { rateId: string }) {
 
   return (
     <Section
-      title="What it applies to"
-      description="A rule narrows the rate to one kind of thing. With none, it applies to everything in its region."
+      title={t("section.taxRules")}
+      description={t("section.taxRulesWhy")}
     >
       {result.isPending ? (
         <p className="px-6 py-4 text-sm text-muted-foreground">Loading…</p>

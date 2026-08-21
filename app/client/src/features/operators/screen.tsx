@@ -51,6 +51,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { useT } from "@/panel/i18n"
 
 /**
  * Who may reach this back office.
@@ -61,6 +62,7 @@ import {
  * operation somebody drew.
  */
 export function Operators() {
+  const t = useT()
   const query = useQuery({
     queryKey: ["operators"],
     queryFn: ({ signal }) => listOperators(signal),
@@ -71,8 +73,8 @@ export function Operators() {
   return (
     <div className="space-y-4">
       <PageHeading
-        title="Operators"
-        subtitle="An account belongs to a person and can be revoked. The admin token belongs to nobody and cannot."
+        title={t("nav.operators")}
+        subtitle={t("screen.operators.subtitle")}
       >
         <InviteAction />
         <Button

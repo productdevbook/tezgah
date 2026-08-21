@@ -436,4 +436,33 @@ export const tr: Record<TranslationKey, string> = {
   "table.chooseEvery": "Bu sayfadaki her satırı seç",
   "table.chooseThis": "Bu satırı seç",
   "actions.menu": "İşlemler",
+
+  "field.priceSetId": "Fiyat kümesi kimliği",
+  "field.orderId": "Sipariş kimliği",
+
+  "section.media": "Görsel",
+  "section.mediaWhy":
+    "Bir adres — bu dükkân dosya saklıyorsa buradan yüklenir, yoksa hâlihazırda sunulduğu yerden verilir.",
+  "section.executions": "Çalışmalar",
+  "section.executionsWhy": "Çalıştırıcının yürüttüğü her iş akışı koşusu.",
+  "section.taxRules": "Neye uygulanır",
+  "section.taxRulesWhy":
+    "Kural, oranı tek bir tür şeye daraltır. Hiç kural yoksa bölgesindeki her şeye uygulanır.",
+  "section.variants": "Varyantlar",
+  "section.variantsWhy":
+    "Fiyatı ve sayısı olan şey. Varyantı olmayan bir ürün satın alınamaz.",
+  "section.levels": "Nerede ne var",
+  "section.levelsWhy":
+    "Her konum için ayrı sayılır. Sayımı yazıp hepsini birlikte kaydedin — tek çağrı, yani bir raf ya baştan sona sayılır ya hiç.",
+  "section.movements": "Neler oldu",
+  "section.movementsWhy":
+    "Her ekleme ve her harcama. Bakiye bunların toplamıdır, birinin yazdığı bir sayı değil.",
+
+  "screen.subscriptions.subtitle":
+    "Sipariş değil, sözleşme. Ürettiği siparişler Siparişler altında listelenir.",
+  "screen.records.subtitle": "Denetim kaydı ve giden kutusu, en yeniden başlayarak.",
+  "screen.operators.subtitle":
+    "Hesap bir kişiye aittir ve geri alınabilir. Yönetici anahtarı kimseye ait değildir ve geri alınamaz.",
+  "screen.baskets.subtitle":
+    "Sepet grupları kimlikle bulunur; kütüphanede listesi yoktur.",
 }

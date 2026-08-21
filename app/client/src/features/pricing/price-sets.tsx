@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { dateTime, useDetail } from "@/lib/detail"
+import { useT } from "@/panel/i18n"
 
 /**
  * `price_set` (`src/pricing.rs`) has no `GET /admin/price-sets` — only
@@ -20,6 +21,7 @@ export function PriceSets({
   id: string | undefined
   onIdChange: (id: string | undefined) => void
 }) {
+  const t = useT()
   const [input, setInput] = useState(id ?? "")
 
   function submit(event: FormEvent) {
@@ -38,7 +40,7 @@ export function PriceSets({
               onChange={(e) => setInput(e.target.value)}
               placeholder="price set id"
               className="font-mono text-xs"
-              aria-label="Price set id"
+              aria-label={t("field.priceSetId")}
               autoFocus
             />
             <Button type="submit" variant="outline">
@@ -53,6 +55,7 @@ export function PriceSets({
 }
 
 function PriceSetFields({ id }: { id: string }) {
+  const t = useT()
   const result = useDetail(
     ["price-sets"],
     "/admin/price-sets/{id}",
@@ -67,10 +70,12 @@ function PriceSetFields({ id }: { id: string }) {
     >
       {(item) => (
         <FieldGrid>
-          <DetailField label="ID">
+          <DetailField label={t("field.id")}>
             <span className="font-mono text-xs">{item.id}</span>
           </DetailField>
-          <DetailField label="Created">{dateTime(item.created_at)}</DetailField>
+          <DetailField label={t("field.created")}>
+            {dateTime(item.created_at)}
+          </DetailField>
         </FieldGrid>
       )}
     </QueryState>

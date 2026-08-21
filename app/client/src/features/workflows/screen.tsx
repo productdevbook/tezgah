@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select"
 import { usePagedList } from "@/lib/paged"
 import { PageHeading } from "@/components/page-heading"
+import { useT } from "@/panel/i18n"
 
 /**
  * A run's own six states. `done` is the only unambiguous success; `reverted`
@@ -65,6 +66,7 @@ export function Workflows({
   onStateChange: (state: WorkflowRunState | "all") => void
   onAfterChange: (after: string | undefined) => void
 }) {
+  const t = useT()
   const paged = usePagedList(
     ["workflow-runs", state],
     "/admin/workflows-executions",
@@ -79,8 +81,8 @@ export function Workflows({
   return (
     <div className="space-y-4">
       <PageHeading
-        title="Executions"
-        subtitle="Every workflow run the runner has driven."
+        title={t("section.executions")}
+        subtitle={t("section.executionsWhy")}
       >
         <Select
           value={state}
