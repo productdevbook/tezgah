@@ -41,7 +41,7 @@ const HIDDEN: ProductStatus[] = ["draft", "proposed", "rejected", "archived"]
 
 const columns: Columns<Product> = [
   {
-    header: "Title",
+    header: "field.title",
     accessorKey: "title",
     cell: ({ row }) => (
       <div className="min-w-0">
@@ -55,12 +55,12 @@ const columns: Columns<Product> = [
     ),
   },
   {
-    header: "Handle",
+    header: "field.handle",
     accessorKey: "handle",
     meta: { className: "text-muted-foreground font-mono text-xs" },
   },
   {
-    header: "Status",
+    header: "field.status",
     accessorKey: "status",
     cell: ({ row }) => (
       <Badge
@@ -71,7 +71,7 @@ const columns: Columns<Product> = [
     ),
   },
   {
-    header: "Discountable",
+    header: "field.discountable",
     accessorKey: "is_discountable",
     cell: ({ row }) => (row.original.is_discountable ? "yes" : "no"),
     meta: { className: "text-right text-muted-foreground text-xs" },

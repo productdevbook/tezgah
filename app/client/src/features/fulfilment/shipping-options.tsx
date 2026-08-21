@@ -6,21 +6,25 @@ import { Badge } from "@/components/ui/badge"
 import { usePagedList } from "@/lib/paged"
 
 const columns: Columns<ShippingOption> = [
-  { header: "Name", accessorKey: "name", meta: { className: "font-medium" } },
   {
-    header: "Price type",
+    header: "field.name",
+    accessorKey: "name",
+    meta: { className: "font-medium" },
+  },
+  {
+    header: "field.priceType",
     accessorKey: "price_type",
     cell: ({ row }) => (
       <Badge variant="outline">{row.original.price_type}</Badge>
     ),
   },
   {
-    header: "Return",
+    header: "field.return",
     accessorKey: "is_return",
     cell: ({ row }) => (row.original.is_return ? "return" : "outbound"),
   },
   {
-    header: "In store",
+    header: "field.inStore",
     accessorKey: "enabled_in_store",
     cell: ({ row }) => (row.original.enabled_in_store ? "enabled" : "disabled"),
     meta: { className: "text-right" },

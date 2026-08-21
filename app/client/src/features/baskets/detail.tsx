@@ -131,14 +131,14 @@ export function BasketDetail({
 
 const orderColumns: Columns<Order> = [
   {
-    header: "No",
+    header: "field.no",
     accessorKey: "display_id",
     cell: ({ row }) => row.original.display_id ?? "—",
     meta: { className: "w-20 text-muted-foreground font-mono text-xs" },
   },
-  { header: "Status", accessorKey: "status" },
+  { header: "field.status", accessorKey: "status" },
   {
-    header: "Currency",
+    header: "field.currency",
     accessorKey: "currency_code",
     meta: { className: "font-mono text-xs uppercase" },
   },
@@ -182,7 +182,7 @@ function BasketOrders({
 
 const cartColumns: Columns<Cart> = [
   {
-    header: "Email",
+    header: "field.email",
     accessorKey: "email",
     cell: ({ row }) =>
       row.original.email ?? (
@@ -190,12 +190,12 @@ const cartColumns: Columns<Cart> = [
       ),
   },
   {
-    header: "Currency",
+    header: "field.currency",
     accessorKey: "currency_code",
     meta: { className: "font-mono text-xs uppercase" },
   },
   {
-    header: "Completed",
+    header: "field.completed",
     accessorKey: "completed_at",
     cell: ({ row }) =>
       row.original.completed_at ? dateTime(row.original.completed_at) : "—",

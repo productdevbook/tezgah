@@ -11,22 +11,22 @@ import { usePagedList } from "@/lib/paged"
  */
 const columns: Columns<WorkflowDeadLetter> = [
   {
-    header: "Step",
+    header: "field.step",
     accessorKey: "step_name",
     meta: { className: "font-medium" },
   },
   {
-    header: "Failure",
+    header: "field.failure",
     accessorKey: "failure",
     meta: { className: "max-w-md truncate" },
   },
   {
-    header: "Run",
+    header: "field.run",
     accessorKey: "run_id",
     meta: { className: "font-mono text-xs text-muted-foreground" },
   },
   {
-    header: "When",
+    header: "field.when",
     accessorKey: "created_at",
     cell: ({ row }) => new Date(row.original.created_at).toLocaleString(),
     meta: { className: "text-right text-muted-foreground text-xs" },

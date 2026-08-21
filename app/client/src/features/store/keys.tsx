@@ -9,9 +9,13 @@ import { DataTable, type Columns } from "@/components/data-table"
 import { usePagedList } from "@/lib/paged"
 
 const columns: Columns<PublishableKey> = [
-  { header: "Title", accessorKey: "title", meta: { className: "font-medium" } },
   {
-    header: "State",
+    header: "field.title",
+    accessorKey: "title",
+    meta: { className: "font-medium" },
+  },
+  {
+    header: "field.state",
     accessorKey: "revoked_at",
     cell: ({ row }) => (
       <Badge variant={row.original.revoked_at ? "outline" : "default"}>
@@ -20,7 +24,7 @@ const columns: Columns<PublishableKey> = [
     ),
   },
   {
-    header: "Last used",
+    header: "field.lastUsed",
     accessorKey: "last_used_at",
     cell: ({ row }) =>
       row.original.last_used_at ? (
@@ -31,7 +35,7 @@ const columns: Columns<PublishableKey> = [
     meta: { className: "text-muted-foreground text-xs" },
   },
   {
-    header: "Created",
+    header: "field.created",
     accessorKey: "created_at",
     cell: ({ row }) => new Date(row.original.created_at).toLocaleDateString(),
     meta: { className: "text-right text-muted-foreground text-xs" },

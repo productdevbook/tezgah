@@ -6,19 +6,23 @@ import { Badge } from "@/components/ui/badge"
 import { usePagedList } from "@/lib/paged"
 
 const columns: Columns<PriceList> = [
-  { header: "Title", accessorKey: "title", meta: { className: "font-medium" } },
   {
-    header: "Kind",
+    header: "field.title",
+    accessorKey: "title",
+    meta: { className: "font-medium" },
+  },
+  {
+    header: "field.kind",
     accessorKey: "kind",
     cell: ({ row }) => <Badge variant="outline">{row.original.kind}</Badge>,
   },
   {
-    header: "Status",
+    header: "field.status",
     accessorKey: "status",
     cell: ({ row }) => <Badge>{row.original.status}</Badge>,
   },
   {
-    header: "Rules",
+    header: "field.rules",
     accessorKey: "rules_count",
     meta: { className: "text-right font-mono text-xs" },
   },

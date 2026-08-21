@@ -5,7 +5,7 @@ import { usePagedList } from "@/lib/paged"
 
 const columns: Columns<CommissionRule> = [
   {
-    header: "Scope",
+    header: "field.scope",
     accessorKey: "category_id",
     cell: ({ row }) =>
       row.original.category_id ? (
@@ -15,12 +15,12 @@ const columns: Columns<CommissionRule> = [
       ),
   },
   {
-    header: "Kind",
+    header: "field.kind",
     accessorKey: "kind",
     cell: ({ row }) => <Badge variant="outline">{row.original.kind}</Badge>,
   },
   {
-    header: "Value",
+    header: "field.value",
     accessorKey: "value",
     cell: ({ row }) =>
       row.original.kind === "percentage"

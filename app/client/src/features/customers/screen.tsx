@@ -22,7 +22,7 @@ function name(row: Customer): string | null {
 
 const columns: Columns<Customer> = [
   {
-    header: "Name",
+    header: "field.name",
     accessorKey: "first_name",
     cell: ({ row }) =>
       name(row.original) ?? (
@@ -31,14 +31,14 @@ const columns: Columns<Customer> = [
     meta: { className: "font-medium" },
   },
   {
-    header: "Email",
+    header: "field.email",
     accessorKey: "email",
     cell: ({ row }) =>
       row.original.email ?? <span className="text-muted-foreground">none</span>,
     meta: { className: "max-w-72 truncate" },
   },
   {
-    header: "Account",
+    header: "field.account",
     accessorKey: "has_account",
     cell: ({ row }) => (
       <div className="flex items-center gap-1.5">
@@ -53,7 +53,7 @@ const columns: Columns<Customer> = [
     ),
   },
   {
-    header: "Since",
+    header: "field.since",
     accessorKey: "created_at",
     cell: ({ row }) => new Date(row.original.created_at).toLocaleDateString(),
     meta: { className: "text-right text-muted-foreground text-xs" },

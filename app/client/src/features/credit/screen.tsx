@@ -9,20 +9,20 @@ import { useT } from "@/panel/i18n"
 
 const columns: Columns<GiftCard> = [
   {
-    header: "Balance",
+    header: "field.balance",
     accessorKey: "balance",
     cell: ({ row }) =>
       `${row.original.balance} ${row.original.currency_code.toUpperCase()}`,
     meta: { className: "font-mono text-xs" },
   },
   {
-    header: "Initial balance",
+    header: "field.initialBalance",
     accessorKey: "initial_balance",
     cell: ({ row }) => row.original.initial_balance,
     meta: { className: "font-mono text-xs text-muted-foreground" },
   },
   {
-    header: "Status",
+    header: "field.status",
     accessorKey: "disabled_at",
     cell: ({ row }) => (
       <Badge variant={row.original.disabled_at ? "outline" : "default"}>

@@ -7,20 +7,24 @@ import { Empty } from "@/components/detail-fields"
 import { usePagedList } from "@/lib/paged"
 
 const columns: Columns<TaxRate> = [
-  { header: "Name", accessorKey: "name", meta: { className: "font-medium" } },
   {
-    header: "Code",
+    header: "field.name",
+    accessorKey: "name",
+    meta: { className: "font-medium" },
+  },
+  {
+    header: "field.code",
     accessorKey: "code",
     cell: ({ row }) => row.original.code ?? <Empty />,
     meta: { className: "font-mono text-xs" },
   },
   {
-    header: "Rate",
+    header: "field.rate",
     accessorKey: "rate",
     meta: { className: "text-right font-mono text-xs" },
   },
   {
-    header: "Combinable",
+    header: "field.combinable",
     accessorKey: "is_combinable",
     cell: ({ row }) =>
       row.original.is_combinable ? (
@@ -28,7 +32,7 @@ const columns: Columns<TaxRate> = [
       ) : null,
   },
   {
-    header: "Default",
+    header: "field.default",
     accessorKey: "is_default",
     cell: ({ row }) =>
       row.original.is_default ? <Badge>default</Badge> : null,

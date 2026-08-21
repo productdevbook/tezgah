@@ -9,7 +9,7 @@ import { useT } from "@/panel/i18n"
 
 const columns: Columns<Promotion> = [
   {
-    header: "Code",
+    header: "field.code",
     accessorKey: "code",
     cell: ({ row }) => (
       <div className="flex items-center gap-1.5">
@@ -20,9 +20,9 @@ const columns: Columns<Promotion> = [
       </div>
     ),
   },
-  { header: "Kind", accessorKey: "kind", meta: { className: "text-sm" } },
+  { header: "field.kind", accessorKey: "kind", meta: { className: "text-sm" } },
   {
-    header: "Status",
+    header: "field.status",
     accessorKey: "status",
     cell: ({ row }) => (
       <Badge variant={row.original.status === "active" ? "default" : "outline"}>
@@ -31,7 +31,7 @@ const columns: Columns<Promotion> = [
     ),
   },
   {
-    header: "Used",
+    header: "field.used",
     accessorKey: "used",
     // Claimed at checkout, not counted at payment: this is what is spoken for.
     cell: ({ row }) =>

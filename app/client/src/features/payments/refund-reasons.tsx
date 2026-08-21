@@ -5,13 +5,17 @@ import { usePagedList } from "@/lib/paged"
 
 const columns: Columns<RefundReason> = [
   {
-    header: "Code",
+    header: "field.code",
     accessorKey: "code",
     meta: { className: "font-mono text-xs" },
   },
-  { header: "Label", accessorKey: "label", meta: { className: "font-medium" } },
   {
-    header: "Description",
+    header: "field.label",
+    accessorKey: "label",
+    meta: { className: "font-medium" },
+  },
+  {
+    header: "field.description",
     accessorKey: "description",
     cell: ({ row }) => row.original.description ?? <Empty />,
     meta: { className: "max-w-96 truncate" },

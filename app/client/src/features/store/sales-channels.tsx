@@ -9,9 +9,13 @@ import { DataTable, type Columns } from "@/components/data-table"
 import { usePagedList } from "@/lib/paged"
 
 const columns: Columns<SalesChannel> = [
-  { header: "Name", accessorKey: "name", meta: { className: "font-medium" } },
   {
-    header: "Description",
+    header: "field.name",
+    accessorKey: "name",
+    meta: { className: "font-medium" },
+  },
+  {
+    header: "field.description",
     accessorKey: "description",
     cell: ({ row }) =>
       row.original.description ?? (
@@ -20,7 +24,7 @@ const columns: Columns<SalesChannel> = [
     meta: { className: "max-w-96 truncate text-sm" },
   },
   {
-    header: "State",
+    header: "field.state",
     accessorKey: "is_disabled",
     cell: ({ row }) => (
       <Badge variant={row.original.is_disabled ? "outline" : "default"}>

@@ -38,13 +38,13 @@ function tone(status: string): "default" | "outline" | "destructive" {
 
 const columns: Columns<Order> = [
   {
-    header: "No",
+    header: "field.no",
     accessorKey: "display_id",
     cell: ({ row }) => row.original.display_id ?? "—",
     meta: { className: "w-20 text-muted-foreground font-mono text-xs" },
   },
   {
-    header: "Customer",
+    header: "field.customer",
     accessorKey: "email",
     cell: ({ row }) =>
       row.original.email ?? (
@@ -53,7 +53,7 @@ const columns: Columns<Order> = [
     meta: { className: "max-w-56 truncate" },
   },
   {
-    header: "Order",
+    header: "field.order",
     accessorKey: "status",
     cell: ({ row }) => (
       <div className="flex items-center gap-1.5">
@@ -63,7 +63,7 @@ const columns: Columns<Order> = [
     ),
   },
   {
-    header: "Payment",
+    header: "field.payment",
     accessorKey: "payment_status",
     cell: ({ row }) => (
       <Badge variant={tone(row.original.payment_status)}>
@@ -72,7 +72,7 @@ const columns: Columns<Order> = [
     ),
   },
   {
-    header: "Fulfilment",
+    header: "field.fulfilment",
     accessorKey: "fulfillment_status",
     cell: ({ row }) => (
       <Badge variant={tone(row.original.fulfillment_status)}>
@@ -81,7 +81,7 @@ const columns: Columns<Order> = [
     ),
   },
   {
-    header: "Placed",
+    header: "field.placed",
     accessorKey: "created_at",
     cell: ({ row }) => new Date(row.original.created_at).toLocaleDateString(),
     meta: { className: "text-right text-muted-foreground text-xs" },

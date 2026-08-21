@@ -8,17 +8,17 @@ import { useT } from "@/panel/i18n"
 
 const columns: Columns<Cart> = [
   {
-    header: "Email",
+    header: "field.email",
     accessorKey: "email",
     cell: ({ row }) => row.original.email ?? <Empty />,
   },
   {
-    header: "Currency",
+    header: "field.currency",
     accessorKey: "currency_code",
     meta: { className: "font-mono text-xs uppercase" },
   },
   {
-    header: "Region",
+    header: "field.region",
     accessorKey: "region_id",
     cell: ({ row }) =>
       row.original.region_id ? (
@@ -28,7 +28,7 @@ const columns: Columns<Cart> = [
       ),
   },
   {
-    header: "Status",
+    header: "field.status",
     accessorKey: "completed_at",
     cell: ({ row }) => (
       <Badge variant={row.original.completed_at ? "default" : "outline"}>

@@ -34,21 +34,25 @@ function tone(
 }
 
 const columns: Columns<WorkflowRunSummary> = [
-  { header: "Name", accessorKey: "name", meta: { className: "font-medium" } },
   {
-    header: "Transaction key",
+    header: "field.name",
+    accessorKey: "name",
+    meta: { className: "font-medium" },
+  },
+  {
+    header: "field.transactionKey",
     accessorKey: "transaction_key",
     meta: { className: "font-mono text-xs text-muted-foreground" },
   },
   {
-    header: "State",
+    header: "field.state",
     accessorKey: "state",
     cell: ({ row }) => (
       <Badge variant={tone(row.original.state)}>{row.original.state}</Badge>
     ),
   },
   {
-    header: "Started",
+    header: "field.started",
     accessorKey: "created_at",
     cell: ({ row }) => new Date(row.original.created_at).toLocaleString(),
     meta: { className: "text-right text-muted-foreground text-xs" },

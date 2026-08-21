@@ -176,6 +176,31 @@ export const tr: Record<TranslationKey, string> = {
   "detail.product.digitalWhy":
     "Bir dosya tek bir varyanta aittir — yukarıdaki varyantlardan bir kimlik alın ve neyi taşıdığını görün ya da ekleyin.",
 
+  "field.no": "No",
+  "field.default": "Varsayılan",
+  "field.dunning": "Tahsilat denemesi",
+  "field.inStore": "Mağazada",
+  "field.initialBalance": "Açılış bakiyesi",
+  "field.label": "Etiket",
+  "field.lastUsed": "Son kullanım",
+  "field.nextCharge": "Sonraki tahsilat",
+  "field.payout": "Hakediş",
+  "field.placed": "Verildi",
+  "field.priceType": "Fiyat türü",
+  "field.providers": "Sağlayıcılar",
+  "field.quantity": "Adet",
+  "field.reference": "Referans",
+  "field.referenceId": "Referans kimliği",
+  "field.region": "Bölge",
+  "field.return": "İade",
+  "field.run": "Çalışma",
+  "field.scope": "Kapsam",
+  "field.since": "Başlangıç",
+  "field.started": "Başladı",
+  "field.step": "Adım",
+  "field.transactionKey": "İşlem anahtarı",
+  "field.value": "Değer",
+  "field.when": "Zaman",
   "field.number": "Numara",
   "field.currency": "Para birimi",
   "field.version": "Sürüm",
@@ -460,7 +485,8 @@ export const tr: Record<TranslationKey, string> = {
 
   "screen.subscriptions.subtitle":
     "Sipariş değil, sözleşme. Ürettiği siparişler Siparişler altında listelenir.",
-  "screen.records.subtitle": "Denetim kaydı ve giden kutusu, en yeniden başlayarak.",
+  "screen.records.subtitle":
+    "Denetim kaydı ve giden kutusu, en yeniden başlayarak.",
   "screen.operators.subtitle":
     "Hesap bir kişiye aittir ve geri alınabilir. Yönetici anahtarı kimseye ait değildir ve geri alınamaz.",
   "screen.baskets.subtitle":

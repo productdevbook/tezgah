@@ -181,6 +181,31 @@ export const en = {
   "detail.product.digitalWhy":
     "A file belongs to one variant — take an id from the variants above to see or add what it carries.",
 
+  "field.no": "No",
+  "field.default": "Default",
+  "field.dunning": "Dunning",
+  "field.inStore": "In store",
+  "field.initialBalance": "Initial balance",
+  "field.label": "Label",
+  "field.lastUsed": "Last used",
+  "field.nextCharge": "Next charge",
+  "field.payout": "Payout",
+  "field.placed": "Placed",
+  "field.priceType": "Price type",
+  "field.providers": "Providers",
+  "field.quantity": "Quantity",
+  "field.reference": "Reference",
+  "field.referenceId": "Reference id",
+  "field.region": "Region",
+  "field.return": "Return",
+  "field.run": "Run",
+  "field.scope": "Scope",
+  "field.since": "Since",
+  "field.started": "Started",
+  "field.step": "Step",
+  "field.transactionKey": "Transaction key",
+  "field.value": "Value",
+  "field.when": "When",
   "field.number": "Number",
   "field.currency": "Currency",
   "field.version": "Version",
@@ -468,7 +493,8 @@ export const en = {
   "screen.records.subtitle": "The audit trail and the outbox, newest first.",
   "screen.operators.subtitle":
     "An account belongs to a person and can be revoked. The admin token belongs to nobody and cannot.",
-  "screen.baskets.subtitle": "Baskets are reached by id; the crate has no list.",
+  "screen.baskets.subtitle":
+    "Baskets are reached by id; the crate has no list.",
 } as const
 
 export type TranslationKey = keyof typeof en

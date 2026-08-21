@@ -22,14 +22,14 @@ import { useT } from "@/panel/i18n"
 
 const columns: Columns<Price> = [
   {
-    header: "Amount",
+    header: "field.amount",
     accessorKey: "amount",
     cell: ({ row }) =>
       `${row.original.amount} ${row.original.currency_code.toUpperCase()}`,
     meta: { className: "font-mono text-xs" },
   },
   {
-    header: "Quantity",
+    header: "field.quantity",
     accessorKey: "min_quantity",
     cell: ({ row }) =>
       row.original.min_quantity === null &&
@@ -40,12 +40,12 @@ const columns: Columns<Price> = [
       ),
   },
   {
-    header: "Title",
+    header: "field.title",
     accessorKey: "title",
     cell: ({ row }) => row.original.title ?? <Empty />,
   },
   {
-    header: "Rules",
+    header: "field.rules",
     accessorKey: "rules_count",
     cell: ({ row }) => (
       <PriceRules priceId={row.original.id} count={row.original.rules_count} />

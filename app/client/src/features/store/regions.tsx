@@ -9,14 +9,18 @@ import { DataTable, type Columns } from "@/components/data-table"
 import { usePagedList } from "@/lib/paged"
 
 const columns: Columns<Region> = [
-  { header: "Name", accessorKey: "name", meta: { className: "font-medium" } },
   {
-    header: "Currency",
+    header: "field.name",
+    accessorKey: "name",
+    meta: { className: "font-medium" },
+  },
+  {
+    header: "field.currency",
     accessorKey: "currency_code",
     meta: { className: "font-mono text-xs uppercase" },
   },
   {
-    header: "Tax",
+    header: "field.tax",
     accessorKey: "is_tax_inclusive",
     cell: ({ row }) => (
       <div className="flex items-center gap-1.5">
@@ -28,7 +32,7 @@ const columns: Columns<Region> = [
     ),
   },
   {
-    header: "Providers",
+    header: "field.providers",
     accessorKey: "payment_providers",
     cell: ({ row }) =>
       row.original.payment_providers.length ? (

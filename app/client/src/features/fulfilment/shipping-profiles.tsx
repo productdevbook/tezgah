@@ -6,9 +6,13 @@ import { Badge } from "@/components/ui/badge"
 import { usePagedList } from "@/lib/paged"
 
 const columns: Columns<ShippingProfile> = [
-  { header: "Name", accessorKey: "name", meta: { className: "font-medium" } },
   {
-    header: "Kind",
+    header: "field.name",
+    accessorKey: "name",
+    meta: { className: "font-medium" },
+  },
+  {
+    header: "field.kind",
     accessorKey: "kind",
     cell: ({ row }) => <Badge variant="outline">{row.original.kind}</Badge>,
     meta: { className: "text-right" },

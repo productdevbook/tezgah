@@ -18,14 +18,14 @@ import { usePagedList } from "@/lib/paged"
 import { useT } from "@/panel/i18n"
 
 const columns: Columns<Payout> = [
-  { header: "Reference", accessorKey: "reference" },
+  { header: "field.reference", accessorKey: "reference" },
   {
-    header: "Reference id",
+    header: "field.referenceId",
     accessorKey: "reference_id",
     meta: { className: "font-mono text-xs text-muted-foreground" },
   },
   {
-    header: "Amount",
+    header: "field.amount",
     accessorKey: "amount",
     cell: ({ row }) =>
       `${row.original.amount} ${row.original.currency_code.toUpperCase()}`,
@@ -223,9 +223,9 @@ function OrderLinesLookup({
 }
 
 const lineColumns: Columns<PayoutLine> = [
-  { header: "Reference", accessorKey: "reference" },
+  { header: "field.reference", accessorKey: "reference" },
   {
-    header: "Payout",
+    header: "field.payout",
     accessorKey: "payout_id",
     cell: ({ row }) =>
       row.original.payout_id ?? (
@@ -234,7 +234,7 @@ const lineColumns: Columns<PayoutLine> = [
     meta: { className: "font-mono text-xs" },
   },
   {
-    header: "Amount",
+    header: "field.amount",
     accessorKey: "amount",
     cell: ({ row }) =>
       `${row.original.amount} ${row.original.currency_code.toUpperCase()}`,

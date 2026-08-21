@@ -7,24 +7,24 @@ import { usePagedList } from "@/lib/paged"
 
 const columns: Columns<Payment> = [
   {
-    header: "Amount",
+    header: "field.amount",
     accessorKey: "amount",
     cell: ({ row }) =>
       `${row.original.amount.amount} ${row.original.amount.currency.toUpperCase()}`,
     meta: { className: "font-mono text-xs" },
   },
   {
-    header: "Payment collection",
+    header: "field.paymentCollection",
     accessorKey: "payment_collection_id",
     meta: { className: "font-mono text-xs text-muted-foreground" },
   },
   {
-    header: "Captured",
+    header: "field.captured",
     accessorKey: "captured_at",
     cell: ({ row }) => (row.original.captured_at ? "captured" : <Empty />),
   },
   {
-    header: "Canceled",
+    header: "field.canceled",
     accessorKey: "canceled_at",
     cell: ({ row }) => (row.original.canceled_at ? "canceled" : <Empty />),
     meta: { className: "text-right" },

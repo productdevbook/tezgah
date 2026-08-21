@@ -7,12 +7,12 @@ import { usePagedList } from "@/lib/paged"
 
 const columns: Columns<TaxRegion> = [
   {
-    header: "Country",
+    header: "field.country",
     accessorKey: "country_code",
     meta: { className: "font-mono text-xs uppercase" },
   },
   {
-    header: "Province",
+    header: "field.province",
     accessorKey: "province_code",
     cell: ({ row }) =>
       row.original.province_code ? (
@@ -24,7 +24,7 @@ const columns: Columns<TaxRegion> = [
       ),
   },
   {
-    header: "Provider",
+    header: "field.provider",
     accessorKey: "provider",
     cell: ({ row }) => row.original.provider ?? <Empty />,
     meta: { className: "text-right" },
