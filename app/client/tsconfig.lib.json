@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": true,
+    // Named rather than inferred: without it tsc picks the common source
+    // directory itself and refuses to guess, and the `exports` path in
+    // package.json depends on the layout being `dist-lib/types/panel/…`.
+    "rootDir": "src",
+    "outDir": "dist-lib/types",
+    "composite": false,
+    "incremental": false
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
+}

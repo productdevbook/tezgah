@@ -3,9 +3,17 @@
   "private": true,
   "version": "0.0.1",
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist-lib/types/panel/index.d.ts",
+      "import": "./dist-lib/panel.js"
+    },
+    "./panel.css": "./dist-lib/panel.css"
+  },
   "scripts": {
     "dev": "vite",
     "build": "bun run patch && tsc -b && vite build",
+    "build:lib": "bun run patch && vite build --config vite.lib.config.ts && tsc -p tsconfig.lib.json",
     "lint": "eslint .",
     "check:outlets": "node scripts/check-outlets.mjs",
     "check:host": "node scripts/check-host-answers.mjs",

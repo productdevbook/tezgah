@@ -82,6 +82,11 @@ jobs:
       - run: bun run check:outlets
       - run: bun run check:host
       - run: bun run build
+      # The other consumer: an application mounting these screens installs a
+      # package rather than copying a tree. Built here so the seam is checked
+      # rather than described — an import that leaves `panel/index.ts` for a
+      # file a host cannot reach fails on this line.
+      - run: bun run build:lib
       # The panel's types are transcribed from src/api/*.rs by hand because the
       # generated document carries no schemas. Regenerating what it does carry
       # catches a path this panel calls and the crate no longer serves.

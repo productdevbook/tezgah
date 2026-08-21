@@ -333,9 +333,18 @@ the seven files that *are* the standalone host reads `import.meta.env`,
 written: shadcn's sidebar wrote `sidebar_state` at `path=/`, which a panel
 inside an application would have written over that application's own with.
 
-What is left is packaging. There is no library build here yet, so a host
-consumes these screens as source; a published entry point is a build step and
-a version, not a seam.
+And it is packaged. `bun run build:lib` produces `dist-lib/panel.js`,
+`dist-lib/panel.css` and the types beside them, with React external and
+everything else bundled: a host has React — two copies in one page is the
+hooks error nobody can read — and should not have to install TanStack Router
+or Base UI to render one component.
+
+The stylesheet comes out beside the JavaScript rather than injecting itself,
+so a host decides when it loads and can put its own cascade either side.
+
+CI builds it, which is what makes the seam checked rather than described: an
+import that leaves `panel/index.ts` for a file a host cannot reach fails
+there.
 
 **A child route whose parent draws no outlet is a screen nothing can reach,
 and nothing says so.** All five of the panel's "edit a record" screens were

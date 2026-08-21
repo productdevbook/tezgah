@@ -108,9 +108,18 @@ that *are* the standalone host reads `import.meta.env`, `localStorage` or
 sidebar wrote `sidebar_state` at `path=/`, which a panel inside an
 application would have written over that application's own with.
 
-What is left is packaging. There is no library build here, so a host takes
-the source — a published entry point is a build step and a version, not a
-seam.
+Packaged, too:
+
+    bun run build:lib     # dist-lib/panel.js, panel.css, and the types
+
+React is external and everything else is bundled. A host has React — two
+copies in one page is the hooks error nobody can read — and should not have
+to install TanStack Router or Base UI to render one component. The stylesheet
+comes out beside the JavaScript rather than injecting itself, so a host
+decides when it loads.
+
+CI runs that build, which is what makes the seam checked rather than
+described.
 
 [`../../docs/architecture.md`](../../docs/architecture.md) carries all of this
 beside the library and server gaps, with which layer owns each.
