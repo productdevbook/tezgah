@@ -22,14 +22,14 @@ import { useT } from "@/panel/i18n"
 
 const columns: Columns<Price> = [
   {
-    header: "Amount",
+    header: "field.amount",
     accessorKey: "amount",
     cell: ({ row }) =>
       `${row.original.amount} ${row.original.currency_code.toUpperCase()}`,
     meta: { className: "font-mono text-xs" },
   },
   {
-    header: "Quantity",
+    header: "field.quantity",
     accessorKey: "min_quantity",
     cell: ({ row }) =>
       row.original.min_quantity === null &&
@@ -40,12 +40,12 @@ const columns: Columns<Price> = [
       ),
   },
   {
-    header: "Title",
+    header: "field.title",
     accessorKey: "title",
     cell: ({ row }) => row.original.title ?? <Empty />,
   },
   {
-    header: "Rules",
+    header: "field.rules",
     accessorKey: "rules_count",
     cell: ({ row }) => (
       <PriceRules priceId={row.original.id} count={row.original.rules_count} />
@@ -87,7 +87,7 @@ export function Prices({
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="price set id"
+              placeholder={t("placeholder.priceSetId")}
               className="font-mono text-xs"
               aria-label={t("field.priceSetId")}
               autoFocus
@@ -136,6 +136,7 @@ function PricesInSet({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
+  const t = useT()
   const paged = usePagedList(
     ["price-set-prices", priceSetId],
     "/admin/price-sets/{id}/prices",
@@ -150,8 +151,8 @@ function PricesInSet({
         paged={paged}
         columns={columns}
         empty={{
-          title: "No prices",
-          description: "This price set has no prices yet.",
+          title: t("empty.prices"),
+          description: t("empty.pricesWhy"),
         }}
       />
     )
@@ -161,6 +162,7 @@ function PricesInSet({
 }
 
 function Grid({ rows, onSaved }: { rows: Price[]; onSaved: () => void }) {
+  const t = useT()
   // What has been typed, by price id. Absent means untouched — which is what
   // keeps a save to the rows somebody actually changed rather than writing
   // every row back with the value it already had.
@@ -185,9 +187,8 @@ function Grid({ rows, onSaved }: { rows: Price[]; onSaved: () => void }) {
   return (
     <TableFrame
       header={{
-        title: "Prices",
-        description:
-          "Type an amount and save them together. Only the amount is editable — a currency or a quantity band is what makes a price that price.",
+        title: t("frame.prices"),
+        description: t("frame.pricesWhy"),
         actions:
           changed.length > 0 ? (
             <>
@@ -224,11 +225,11 @@ function Grid({ rows, onSaved }: { rows: Price[]; onSaved: () => void }) {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-48">Amount</TableHead>
-            <TableHead>Currency</TableHead>
-            <TableHead>Quantity</TableHead>
-            <TableHead>Title</TableHead>
-            <TableHead className="text-right">Rules</TableHead>
+            <TableHead className="w-48">{t("field.amount")}</TableHead>
+            <TableHead>{t("field.currency")}</TableHead>
+            <TableHead>{t("field.quantity")}</TableHead>
+            <TableHead>{t("field.title")}</TableHead>
+            <TableHead className="text-right">{t("field.rules")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

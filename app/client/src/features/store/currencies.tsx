@@ -3,6 +3,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { Add01Icon } from "@hugeicons/core-free-icons"
 import { Link } from "@tanstack/react-router"
 import { z } from "zod"
+import { useT } from "@/panel/i18n"
 
 import { get } from "@/api/client"
 import { currency, type Currency } from "@/api/schemas"
@@ -24,6 +25,7 @@ import {
  * its own small `useQuery` rather than `usePagedList`.
  */
 export function StoreCurrencies() {
+  const t = useT()
   const query = useQuery({
     queryKey: ["currencies"],
     queryFn: ({ signal }) =>
@@ -35,17 +37,15 @@ export function StoreCurrencies() {
       <QueryState
         query={query}
         empty={{
-          title: "No currencies",
-          description:
-            "Nothing prices or opens a cart until a shop enables one.",
+          title: t("empty.currencies"),
+          description: t("empty.currenciesWhy"),
         }}
       >
         {(currencies: Currency[]) => (
           <TableFrame
             header={{
-              title: "Currencies",
-              description:
-                "The exponent is how a currency is written, not a multiplier — nothing here is stored in minor units.",
+              title: t("frame.currencies"),
+              description: t("frame.currenciesWhy"),
               actions: (
                 <Button
                   size="sm"
@@ -62,10 +62,12 @@ export function StoreCurrencies() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Code</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Symbol</TableHead>
-                  <TableHead className="text-right">Exponent</TableHead>
+                  <TableHead>{t("field.code")}</TableHead>
+                  <TableHead>{t("field.name")}</TableHead>
+                  <TableHead>{t("field.symbol")}</TableHead>
+                  <TableHead className="text-right">
+                    {t("field.exponent")}
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

@@ -88,7 +88,9 @@ function Export() {
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap items-end gap-2">
             <Field className="w-40">
-              <FieldLabel htmlFor="export-currency">Currency</FieldLabel>
+              <FieldLabel htmlFor="export-currency">
+                {t("field.currency")}
+              </FieldLabel>
               <Input
                 id="export-currency"
                 className="uppercase"
@@ -205,7 +207,7 @@ function Import() {
       <SectionBody>
         <div className="flex flex-col gap-4">
           <Field>
-            <FieldLabel htmlFor="import-csv">CSV</FieldLabel>
+            <FieldLabel htmlFor="import-csv">{t("field.csv")}</FieldLabel>
             <Textarea
               id="import-csv"
               rows={10}
@@ -256,6 +258,7 @@ function Import() {
  * import unusable.
  */
 function Outcome({ result }: { result: ImportResult }) {
+  const t = useT()
   const applied =
     result.applied ??
     (result.created ?? 0) + (result.updated ?? 0) + (result.deleted ?? 0)
@@ -278,16 +281,15 @@ function Outcome({ result }: { result: ImportResult }) {
       {result.rejected.length > 0 ? (
         <TableFrame
           header={{
-            title: "Rejected",
-            description:
-              "By row number, counting from the first row under the header.",
+            title: t("frame.rejected"),
+            description: t("frame.rejectedWhy"),
           }}
         >
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-20">Row</TableHead>
-                <TableHead>Reason</TableHead>
+                <TableHead className="w-20">{t("field.row")}</TableHead>
+                <TableHead>{t("field.reason")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

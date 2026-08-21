@@ -115,7 +115,11 @@ function Body() {
             label={t("field.title")}
           >
             {(field) => (
-              <Input id={field.name} {...field} placeholder="Denim jacket" />
+              <Input
+                id={field.name}
+                {...field}
+                placeholder={t("placeholder.productTitle")}
+              />
             )}
           </FormField>
           <FormField
@@ -143,7 +147,7 @@ function Body() {
                 onValueChange={(value) => field.onChange(value)}
               >
                 <SelectTrigger id={field.name}>
-                  <SelectValue placeholder="draft (default)" />
+                  <SelectValue placeholder={t("placeholder.draftDefault")} />
                 </SelectTrigger>
                 <SelectContent>
                   {productStatus.options.map((option) => (

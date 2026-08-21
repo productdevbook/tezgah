@@ -18,14 +18,14 @@ import { usePagedList } from "@/lib/paged"
 import { useT } from "@/panel/i18n"
 
 const columns: Columns<Payout> = [
-  { header: "Reference", accessorKey: "reference" },
+  { header: "field.reference", accessorKey: "reference" },
   {
-    header: "Reference id",
+    header: "field.referenceId",
     accessorKey: "reference_id",
     meta: { className: "font-mono text-xs text-muted-foreground" },
   },
   {
-    header: "Amount",
+    header: "field.amount",
     accessorKey: "amount",
     cell: ({ row }) =>
       `${row.original.amount} ${row.original.currency_code.toUpperCase()}`,
@@ -59,6 +59,7 @@ export function Payouts({
   linesAfter: string | undefined
   onLinesAfterChange: (after: string | undefined) => void
 }) {
+  const t = useT()
   const paged = usePagedList(["payouts"], "/admin/payouts", payout, {
     after,
     onAfterChange,
@@ -79,13 +80,13 @@ export function Payouts({
         />
       </div>
       <div className="space-y-3">
-        <h2 className="text-sm font-medium">Payouts</h2>
+        <h2 className="text-sm font-medium">{t("nav.payouts")}</h2>
         <DataTable
           paged={paged}
           columns={columns}
           empty={{
-            title: "No payouts",
-            description: "Nothing has been recorded as paid out yet.",
+            title: t("empty.payouts"),
+            description: t("empty.payoutsWhy"),
           }}
         />
       </div>
@@ -123,7 +124,7 @@ function BalanceLookup({
   return (
     <Card size="sm">
       <CardHeader>
-        <CardTitle>Balance</CardTitle>
+        <CardTitle>{t("field.balance")}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         <form className="flex gap-2" onSubmit={submit}>
@@ -143,8 +144,8 @@ function BalanceLookup({
           <QueryState
             query={query}
             empty={{
-              title: "No balance",
-              description: "Nothing in this currency.",
+              title: t("empty.balance"),
+              description: t("empty.balanceWhy"),
             }}
           >
             {(balance) => (
@@ -190,14 +191,14 @@ function OrderLinesLookup({
   return (
     <Card size="sm">
       <CardHeader>
-        <CardTitle>Payout lines by order</CardTitle>
+        <CardTitle>{t("frame.payoutLines")}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         <form className="flex gap-2" onSubmit={submit}>
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="order id"
+            placeholder={t("placeholder.orderId")}
             className="font-mono text-xs"
             aria-label={t("field.orderId")}
           />
@@ -223,9 +224,9 @@ function OrderLinesLookup({
 }
 
 const lineColumns: Columns<PayoutLine> = [
-  { header: "Reference", accessorKey: "reference" },
+  { header: "field.reference", accessorKey: "reference" },
   {
-    header: "Payout",
+    header: "field.payout",
     accessorKey: "payout_id",
     cell: ({ row }) =>
       row.original.payout_id ?? (
@@ -234,7 +235,7 @@ const lineColumns: Columns<PayoutLine> = [
     meta: { className: "font-mono text-xs" },
   },
   {
-    header: "Amount",
+    header: "field.amount",
     accessorKey: "amount",
     cell: ({ row }) =>
       `${row.original.amount} ${row.original.currency_code.toUpperCase()}`,
@@ -251,6 +252,7 @@ function OrderLines({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
+  const t = useT()
   const paged = usePagedList(
     ["payout-lines", orderId],
     "/admin/orders/{id}/payout-lines",
@@ -263,8 +265,8 @@ function OrderLines({
       paged={paged}
       columns={lineColumns}
       empty={{
-        title: "No payout lines",
-        description: "Nothing earned on this order yet.",
+        title: t("empty.payoutLines"),
+        description: t("empty.payoutLinesWhy"),
       }}
     />
   )

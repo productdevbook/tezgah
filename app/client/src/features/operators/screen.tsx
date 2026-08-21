@@ -99,27 +99,27 @@ export function Operators() {
       <QueryState
         query={query}
         empty={{
-          title: "No accounts",
-          description:
-            "Only the admin token can reach this back office. Make an account.",
+          title: t("empty.accounts"),
+          description: t("empty.accountsWhy"),
         }}
       >
         {(operators: Operator[]) => (
           <TableFrame
             header={{
-              title: "Accounts",
-              description:
-                "Disabling one ends every session it holds, in the same transaction.",
+              title: t("frame.accounts"),
+              description: t("frame.accountsWhy"),
             }}
           >
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
+                  <TableHead>{t("field.name")}</TableHead>
                   <TableHead>E-mail</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Since</TableHead>
-                  <TableHead className="text-right">State</TableHead>
+                  <TableHead>{t("field.role")}</TableHead>
+                  <TableHead>{t("field.since")}</TableHead>
+                  <TableHead className="text-right">
+                    {t("field.state")}
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -247,6 +247,7 @@ function Toggle({ row, isSelf }: { row: Operator; isSelf: boolean }) {
  * is on its way.
  */
 function ResetPassword({ row }: { row: Operator }) {
+  const t = useT()
   const [password, setPassword] = useState("")
   const [open, setOpen] = useState(false)
 
@@ -280,7 +281,9 @@ function ResetPassword({ row }: { row: Operator }) {
           }}
         >
           <Field>
-            <FieldLabel htmlFor={`password-${row.id}`}>New password</FieldLabel>
+            <FieldLabel htmlFor={`password-${row.id}`}>
+              {t("field.newPassword")}
+            </FieldLabel>
             <Input
               id={`password-${row.id}`}
               type="password"

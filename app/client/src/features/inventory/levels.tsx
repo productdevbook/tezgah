@@ -65,7 +65,9 @@ export function Levels({ itemId }: { itemId: string }) {
   return (
     <Section title={t("section.levels")} description={t("section.levelsWhy")}>
       {levels.isPending ? (
-        <p className="px-6 py-4 text-sm text-muted-foreground">Loading…</p>
+        <p className="px-6 py-4 text-sm text-muted-foreground">
+          {t("general.loading")}
+        </p>
       ) : rows.length === 0 ? (
         <p className="px-6 py-4 text-sm text-muted-foreground">
           No location holds any of this yet. Stock arrives at a location, so
@@ -89,6 +91,7 @@ function Grid({
   named: Map<string, string>
   onSaved: () => void
 }) {
+  const t = useT()
   // By location id, and absent means untouched — which is what keeps a save
   // to the counts somebody actually changed.
   const [counted, setCounted] = useState<Record<string, string>>({})
@@ -164,11 +167,11 @@ function Grid({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Location</TableHead>
-            <TableHead className="w-28">Counted</TableHead>
-            <TableHead className="w-28">Incoming</TableHead>
-            <TableHead className="text-right">Reserved</TableHead>
-            <TableHead className="text-right">Available</TableHead>
+            <TableHead>{t("field.location")}</TableHead>
+            <TableHead className="w-28">{t("field.counted")}</TableHead>
+            <TableHead className="w-28">{t("field.incoming")}</TableHead>
+            <TableHead className="text-right">{t("field.reserved")}</TableHead>
+            <TableHead className="text-right">{t("field.available")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

@@ -58,7 +58,10 @@ export function ProductDetail({
   return (
     <QueryState
       query={result}
-      empty={{ title: "No product", description: "Nothing to show." }}
+      empty={{
+        title: t("empty.product"),
+        description: t("general.nothingToShow"),
+      }}
     >
       {(item) => (
         <div className="flex flex-col gap-4">
@@ -318,7 +321,7 @@ function DigitalContentByVariant({
         <Input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="variant id"
+          placeholder={t("placeholder.variantId")}
           className="font-mono text-xs"
           aria-label={t("field.variantId")}
         />
@@ -329,13 +332,16 @@ function DigitalContentByVariant({
       {variantId ? (
         <DigitalContentList variantId={variantId} />
       ) : (
-        <p className="text-sm text-muted-foreground">Nothing looked up yet.</p>
+        <p className="text-sm text-muted-foreground">
+          {t("empty.notLookedUp")}
+        </p>
       )}
     </div>
   )
 }
 
 function DigitalContentList({ variantId }: { variantId: string }) {
+  const t = useT()
   const client = useQueryClient()
   const query = useQuery({
     queryKey: ["digital-content", variantId],
@@ -356,8 +362,8 @@ function DigitalContentList({ variantId }: { variantId: string }) {
       <QueryState
         query={query}
         empty={{
-          title: "No digital content",
-          description: "This variant carries no files yet.",
+          title: t("empty.digitalContent"),
+          description: t("empty.digitalContentWhy"),
         }}
       >
         {(items: DigitalContent[]) => (
@@ -365,12 +371,14 @@ function DigitalContentList({ variantId }: { variantId: string }) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Key</TableHead>
-                  <TableHead>Downloads</TableHead>
-                  <TableHead>Valid</TableHead>
-                  <TableHead>Auto-grant</TableHead>
-                  <TableHead className="text-right">Added</TableHead>
+                  <TableHead>{t("field.name")}</TableHead>
+                  <TableHead>{t("field.key")}</TableHead>
+                  <TableHead>{t("field.downloads")}</TableHead>
+                  <TableHead>{t("field.valid")}</TableHead>
+                  <TableHead>{t("field.autoGrant")}</TableHead>
+                  <TableHead className="text-right">
+                    {t("field.added")}
+                  </TableHead>
                   <TableHead />
                 </TableRow>
               </TableHeader>
@@ -435,6 +443,7 @@ function NewDigitalContent({
   variantId: string
   onCreated: () => void
 }) {
+  const t = useT()
   const [form, setForm] = useState(EMPTY_CONTENT_FORM)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
@@ -475,11 +484,11 @@ function NewDigitalContent({
 
   return (
     <form className="space-y-3 border-t pt-4" onSubmit={submit}>
-      <h3 className="text-sm font-medium">Add a file</h3>
+      <h3 className="text-sm font-medium">{t("action.addFile")}</h3>
       {mutation.isError ? <FormError error={mutation.error} /> : null}
       <div className="grid gap-3 sm:grid-cols-2">
         <Field data-invalid={!!fieldErrors.name}>
-          <FieldLabel htmlFor="content-name">Name</FieldLabel>
+          <FieldLabel htmlFor="content-name">{t("field.name")}</FieldLabel>
           <Input
             id="content-name"
             value={form.name}
@@ -489,7 +498,7 @@ function NewDigitalContent({
           <FieldError>{fieldErrors.name}</FieldError>
         </Field>
         <Field data-invalid={!!fieldErrors.content_key}>
-          <FieldLabel htmlFor="content-key">Storage key</FieldLabel>
+          <FieldLabel htmlFor="content-key">{t("field.storageKey")}</FieldLabel>
           <Input
             id="content-key"
             value={form.content_key}
@@ -500,7 +509,9 @@ function NewDigitalContent({
           <FieldError>{fieldErrors.content_key}</FieldError>
         </Field>
         <Field data-invalid={!!fieldErrors.max_downloads}>
-          <FieldLabel htmlFor="content-max-downloads">Max downloads</FieldLabel>
+          <FieldLabel htmlFor="content-max-downloads">
+            {t("field.maxDownloads")}
+          </FieldLabel>
           <Input
             id="content-max-downloads"
             inputMode="numeric"
@@ -508,25 +519,27 @@ function NewDigitalContent({
             onChange={(e) =>
               setForm({ ...form, max_downloads: e.target.value })
             }
-            placeholder="unlimited"
+            placeholder={t("placeholder.unlimited")}
             aria-invalid={!!fieldErrors.max_downloads}
           />
           <FieldError>{fieldErrors.max_downloads}</FieldError>
         </Field>
         <Field data-invalid={!!fieldErrors.valid_days}>
-          <FieldLabel htmlFor="content-valid-days">Valid days</FieldLabel>
+          <FieldLabel htmlFor="content-valid-days">
+            {t("field.validDays")}
+          </FieldLabel>
           <Input
             id="content-valid-days"
             inputMode="numeric"
             value={form.valid_days}
             onChange={(e) => setForm({ ...form, valid_days: e.target.value })}
-            placeholder="never expires"
+            placeholder={t("placeholder.neverExpires")}
             aria-invalid={!!fieldErrors.valid_days}
           />
           <FieldError>{fieldErrors.valid_days}</FieldError>
         </Field>
         <Field data-invalid={!!fieldErrors.rank}>
-          <FieldLabel htmlFor="content-rank">Rank</FieldLabel>
+          <FieldLabel htmlFor="content-rank">{t("field.rank")}</FieldLabel>
           <Input
             id="content-rank"
             inputMode="numeric"

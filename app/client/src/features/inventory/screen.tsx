@@ -9,14 +9,14 @@ import { useT } from "@/panel/i18n"
 
 const columns: Columns<InventoryItem> = [
   {
-    header: "SKU",
+    header: "field.sku",
     accessorKey: "sku",
     cell: ({ row }) =>
       row.original.sku ?? <span className="text-muted-foreground">none</span>,
     meta: { className: "font-mono text-xs" },
   },
   {
-    header: "Title",
+    header: "field.title",
     accessorKey: "title",
     cell: ({ row }) =>
       row.original.title ?? (
@@ -25,7 +25,7 @@ const columns: Columns<InventoryItem> = [
     meta: { className: "max-w-96 truncate" },
   },
   {
-    header: "Ships",
+    header: "field.ships",
     accessorKey: "requires_shipping",
     cell: ({ row }) => (
       <Badge variant={row.original.requires_shipping ? "default" : "outline"}>

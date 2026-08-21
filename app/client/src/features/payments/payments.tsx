@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router"
+import { useT } from "@/panel/i18n"
 
 import { payment, type Payment } from "@/api/schemas"
 import { DataTable, type Columns } from "@/components/data-table"
@@ -7,24 +8,24 @@ import { usePagedList } from "@/lib/paged"
 
 const columns: Columns<Payment> = [
   {
-    header: "Amount",
+    header: "field.amount",
     accessorKey: "amount",
     cell: ({ row }) =>
       `${row.original.amount.amount} ${row.original.amount.currency.toUpperCase()}`,
     meta: { className: "font-mono text-xs" },
   },
   {
-    header: "Payment collection",
+    header: "field.paymentCollection",
     accessorKey: "payment_collection_id",
     meta: { className: "font-mono text-xs text-muted-foreground" },
   },
   {
-    header: "Captured",
+    header: "field.captured",
     accessorKey: "captured_at",
     cell: ({ row }) => (row.original.captured_at ? "captured" : <Empty />),
   },
   {
-    header: "Canceled",
+    header: "field.canceled",
     accessorKey: "canceled_at",
     cell: ({ row }) => (row.original.canceled_at ? "canceled" : <Empty />),
     meta: { className: "text-right" },
@@ -38,6 +39,7 @@ export function Payments({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
+  const t = useT()
   const paged = usePagedList(["payments"], "/admin/payments", payment, {
     after,
     onAfterChange,
@@ -46,9 +48,8 @@ export function Payments({
   return (
     <DataTable
       header={{
-        title: "Payments",
-        description:
-          "Authorising and capturing are separate acts, so a payment that exists is not yet money taken.",
+        title: t("frame.payments"),
+        description: t("frame.paymentsWhy"),
       }}
       paged={paged}
       columns={columns}
@@ -61,8 +62,8 @@ export function Payments({
         />
       )}
       empty={{
-        title: "No payments",
-        description: "Nothing has been taken yet.",
+        title: t("empty.payments"),
+        description: t("empty.paymentsWhy"),
       }}
     />
   )

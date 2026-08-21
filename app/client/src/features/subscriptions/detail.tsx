@@ -32,7 +32,10 @@ export function SubscriptionDetail({ id }: { id: string }) {
   return (
     <DetailPage
       query={result}
-      empty={{ title: "No subscription", description: "Nothing to show." }}
+      empty={{
+        title: t("empty.subscription"),
+        description: t("general.nothingToShow"),
+      }}
       back="subscriptions"
       title={(item) => `Subscription — cycle ${item.cycle}`}
       subtitle={(item) => item.customer_id}
@@ -60,10 +63,14 @@ export function SubscriptionDetail({ id }: { id: string }) {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Title</TableHead>
-                    <TableHead>Variant</TableHead>
-                    <TableHead className="text-right">Quantity</TableHead>
-                    <TableHead className="text-right">Unit price</TableHead>
+                    <TableHead>{t("field.title")}</TableHead>
+                    <TableHead>{t("field.variant")}</TableHead>
+                    <TableHead className="text-right">
+                      {t("field.quantity")}
+                    </TableHead>
+                    <TableHead className="text-right">
+                      {t("field.unitPrice")}
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

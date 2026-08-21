@@ -98,7 +98,7 @@ export function InviteAction() {
             )}
           >
             <DialogHeader>
-              <DialogTitle>Invite somebody</DialogTitle>
+              <DialogTitle>{t("action.invite")}</DialogTitle>
               <DialogDescription>
                 They get a link that works once and runs out in seven days. They
                 choose their own password, so nobody else ever knows it.
@@ -159,7 +159,7 @@ export function InviteAction() {
                 variant="outline"
                 onClick={() => setOpen(false)}
               >
-                Cancel
+                {t("actions.cancel")}
               </Button>
               <Button type="submit" disabled={form.formState.isSubmitting}>
                 {form.formState.isSubmitting
@@ -182,6 +182,7 @@ export function InviteAction() {
  * rather than adding a second.
  */
 export function OpenInvitations() {
+  const t = useT()
   const result = useQuery({
     queryKey: ["invitations"],
     queryFn: ({ signal }) => listInvitations(signal),
@@ -196,18 +197,17 @@ export function OpenInvitations() {
   return (
     <TableFrame
       header={{
-        title: "Invited",
-        description:
-          "Sent and not yet accepted. Inviting the same address again replaces the link rather than adding a second.",
+        title: t("frame.invited"),
+        description: t("frame.invitedWhy"),
       }}
     >
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead>E-mail</TableHead>
-            <TableHead>Name</TableHead>
-            <TableHead>Role</TableHead>
-            <TableHead className="text-right">Runs out</TableHead>
+            <TableHead>{t("field.name")}</TableHead>
+            <TableHead>{t("field.role")}</TableHead>
+            <TableHead className="text-right">{t("field.runsOut")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

@@ -83,7 +83,7 @@ export function WorkflowDetail({ id }: { id: string }) {
   return (
     <DetailPage
       query={run}
-      empty={{ title: "No run", description: "Nothing to show." }}
+      empty={{ title: t("empty.run"), description: t("general.nothingToShow") }}
       back="workflows"
       title={(item) => `Run ${item.id}`}
       actions={(item) => (
@@ -121,20 +121,23 @@ export function WorkflowDetail({ id }: { id: string }) {
 }
 
 function StepsTable({ steps }: { steps: UseQueryResult<WorkflowStep[]> }) {
+  const t = useT()
   return (
     <QueryState
       query={steps}
-      empty={{ title: "No steps", description: "This workflow declared none." }}
+      empty={{ title: t("empty.steps"), description: t("empty.stepsWhy") }}
     >
       {(items) => (
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Step</TableHead>
-              <TableHead>State</TableHead>
-              <TableHead className="text-right">Attempts</TableHead>
-              <TableHead>Run after</TableHead>
-              <TableHead>Lease until</TableHead>
+              <TableHead>{t("field.step")}</TableHead>
+              <TableHead>{t("field.state")}</TableHead>
+              <TableHead className="text-right">
+                {t("field.attempts")}
+              </TableHead>
+              <TableHead>{t("field.runAfter")}</TableHead>
+              <TableHead>{t("field.leaseUntil")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

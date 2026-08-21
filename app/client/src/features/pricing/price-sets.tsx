@@ -38,7 +38,7 @@ export function PriceSets({
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="price set id"
+              placeholder={t("placeholder.priceSetId")}
               className="font-mono text-xs"
               aria-label={t("field.priceSetId")}
               autoFocus
@@ -66,7 +66,10 @@ function PriceSetFields({ id }: { id: string }) {
   return (
     <QueryState
       query={result}
-      empty={{ title: "No price set", description: "Nothing to show." }}
+      empty={{
+        title: t("empty.priceSet"),
+        description: t("general.nothingToShow"),
+      }}
     >
       {(item) => (
         <FieldGrid>

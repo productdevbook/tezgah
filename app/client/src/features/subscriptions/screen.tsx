@@ -9,7 +9,7 @@ import { useT } from "@/panel/i18n"
 
 const columns: Columns<Subscription> = [
   {
-    header: "Status",
+    header: "field.status",
     accessorKey: "status",
     cell: ({ row }) => (
       <div className="flex items-center gap-1.5">
@@ -23,12 +23,12 @@ const columns: Columns<Subscription> = [
     ),
   },
   {
-    header: "Cycle",
+    header: "field.cycle",
     accessorKey: "cycle",
     meta: { className: "font-mono text-xs" },
   },
   {
-    header: "Next charge",
+    header: "field.nextCharge",
     accessorKey: "next_billing_at",
     cell: ({ row }) =>
       row.original.ended_at ? (
@@ -38,12 +38,12 @@ const columns: Columns<Subscription> = [
       ),
   },
   {
-    header: "Currency",
+    header: "field.currency",
     accessorKey: "currency_code",
     meta: { className: "font-mono text-xs uppercase" },
   },
   {
-    header: "Dunning",
+    header: "field.dunning",
     accessorKey: "dunning_attempts",
     /* Above zero means a charge failed and is being retried, which is a
        different thing from a cancelled contract. */

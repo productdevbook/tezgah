@@ -39,7 +39,10 @@ export function BasketDetail({
   return (
     <DetailPage
       query={result}
-      empty={{ title: "No basket", description: "Nothing to show." }}
+      empty={{
+        title: t("empty.basket"),
+        description: t("general.nothingToShow"),
+      }}
       back="baskets"
       title={(item) =>
         item.display_id ? `Basket #${item.display_id}` : "Basket"
@@ -131,14 +134,14 @@ export function BasketDetail({
 
 const orderColumns: Columns<Order> = [
   {
-    header: "No",
+    header: "field.no",
     accessorKey: "display_id",
     cell: ({ row }) => row.original.display_id ?? "—",
     meta: { className: "w-20 text-muted-foreground font-mono text-xs" },
   },
-  { header: "Status", accessorKey: "status" },
+  { header: "field.status", accessorKey: "status" },
   {
-    header: "Currency",
+    header: "field.currency",
     accessorKey: "currency_code",
     meta: { className: "font-mono text-xs uppercase" },
   },
@@ -153,6 +156,7 @@ function BasketOrders({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
+  const t = useT()
   const paged = usePagedList(
     ["baskets", basketId, "orders"],
     "/admin/order-baskets/{id}/orders",
@@ -173,8 +177,8 @@ function BasketOrders({
         />
       )}
       empty={{
-        title: "No orders",
-        description: "This basket has not split into an order yet.",
+        title: t("empty.orders"),
+        description: t("empty.ordersWhy"),
       }}
     />
   )
@@ -182,7 +186,7 @@ function BasketOrders({
 
 const cartColumns: Columns<Cart> = [
   {
-    header: "Email",
+    header: "field.email",
     accessorKey: "email",
     cell: ({ row }) =>
       row.original.email ?? (
@@ -190,12 +194,12 @@ const cartColumns: Columns<Cart> = [
       ),
   },
   {
-    header: "Currency",
+    header: "field.currency",
     accessorKey: "currency_code",
     meta: { className: "font-mono text-xs uppercase" },
   },
   {
-    header: "Completed",
+    header: "field.completed",
     accessorKey: "completed_at",
     cell: ({ row }) =>
       row.original.completed_at ? dateTime(row.original.completed_at) : "—",
@@ -212,6 +216,7 @@ function BasketCarts({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
+  const t = useT()
   const paged = usePagedList(
     ["baskets", basketId, "carts"],
     "/admin/order-baskets/{id}/carts",
@@ -224,9 +229,8 @@ function BasketCarts({
       paged={paged}
       columns={cartColumns}
       empty={{
-        title: "No carts",
-        description:
-          "No seller-scope has an open leg of this checkout right now.",
+        title: t("empty.carts"),
+        description: t("empty.cartsWhy"),
       }}
     />
   )

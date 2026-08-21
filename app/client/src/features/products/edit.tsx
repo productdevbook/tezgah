@@ -57,7 +57,10 @@ export function EditProduct({ id }: { id: string }) {
         <RouteDrawer.Body>
           <QueryState
             query={result}
-            empty={{ title: "No product", description: "Nothing to show." }}
+            empty={{
+              title: t("empty.product"),
+              description: t("general.nothingToShow"),
+            }}
           >
             {() => null}
           </QueryState>

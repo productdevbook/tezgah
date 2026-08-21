@@ -47,6 +47,7 @@ export function Records() {
 }
 
 function Audit() {
+  const t = useT()
   const query = useQuery({
     queryKey: ["records", "audit"],
     queryFn: ({ signal }) => listAudit(signal),
@@ -56,24 +57,23 @@ function Audit() {
     <QueryState
       query={query}
       empty={{
-        title: "Nothing written down yet",
-        description: "An audit row is written when something changes.",
+        title: t("empty.audit"),
+        description: t("empty.auditWhy"),
       }}
     >
       {(rows: AuditRow[]) => (
         <TableFrame
           header={{
-            title: "Audit",
-            description:
-              "Who did what to which row. An ADMIN_TOKEN request names nobody, because a shared secret is not a person.",
+            title: t("frame.audit"),
+            description: t("frame.auditWhy"),
           }}
         >
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>When</TableHead>
-                <TableHead>Who</TableHead>
-                <TableHead>Did</TableHead>
+                <TableHead>{t("field.when")}</TableHead>
+                <TableHead>{t("field.who")}</TableHead>
+                <TableHead>{t("field.did")}</TableHead>
                 <TableHead>To</TableHead>
               </TableRow>
             </TableHeader>
@@ -108,6 +108,7 @@ function Audit() {
 }
 
 function Events() {
+  const t = useT()
   const query = useQuery({
     queryKey: ["records", "events"],
     queryFn: ({ signal }) => listEvents(signal),
@@ -117,26 +118,26 @@ function Events() {
     <QueryState
       query={query}
       empty={{
-        title: "Nothing to say yet",
-        description:
-          "An event is written when something worth telling happens.",
+        title: t("empty.events"),
+        description: t("empty.eventsWhy"),
       }}
     >
       {(rows: EventRow[]) => (
         <TableFrame
           header={{
-            title: "Outbox",
-            description:
-              "What the shop has to say. Nothing here delivers them — this server has no mailer and no HTTP client, so they are read rather than pushed.",
+            title: t("frame.outbox"),
+            description: t("frame.outboxWhy"),
           }}
         >
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>When</TableHead>
-                <TableHead>What</TableHead>
-                <TableHead>About</TableHead>
-                <TableHead className="text-right">Delivered</TableHead>
+                <TableHead>{t("field.when")}</TableHead>
+                <TableHead>{t("field.what")}</TableHead>
+                <TableHead>{t("field.about")}</TableHead>
+                <TableHead className="text-right">
+                  {t("field.delivered")}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

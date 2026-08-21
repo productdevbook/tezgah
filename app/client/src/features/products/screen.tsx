@@ -41,7 +41,7 @@ const HIDDEN: ProductStatus[] = ["draft", "proposed", "rejected", "archived"]
 
 const columns: Columns<Product> = [
   {
-    header: "Title",
+    header: "field.title",
     accessorKey: "title",
     cell: ({ row }) => (
       <div className="min-w-0">
@@ -55,12 +55,12 @@ const columns: Columns<Product> = [
     ),
   },
   {
-    header: "Handle",
+    header: "field.handle",
     accessorKey: "handle",
     meta: { className: "text-muted-foreground font-mono text-xs" },
   },
   {
-    header: "Status",
+    header: "field.status",
     accessorKey: "status",
     cell: ({ row }) => (
       <Badge
@@ -71,7 +71,7 @@ const columns: Columns<Product> = [
     ),
   },
   {
-    header: "Discountable",
+    header: "field.discountable",
     accessorKey: "is_discountable",
     cell: ({ row }) => (row.original.is_discountable ? "yes" : "no"),
     meta: { className: "text-right text-muted-foreground text-xs" },
@@ -126,7 +126,7 @@ export function Products({
         <SearchBox
           value={q}
           onChange={onQChange}
-          placeholder="Search title, handle, subtitle"
+          placeholder={t("search.products")}
         />
         <Select
           value={by}
@@ -138,8 +138,8 @@ export function Products({
           <SelectContent>
             {/* Two, because the API offers two. A third option here would be
                 a claim about pages that are not on screen. */}
-            <SelectItem value="created">Newest first</SelectItem>
-            <SelectItem value="title">By title</SelectItem>
+            <SelectItem value="created">{t("sort.newest")}</SelectItem>
+            <SelectItem value="title">{t("sort.byTitle")}</SelectItem>
           </SelectContent>
         </Select>
         <Select
@@ -147,10 +147,10 @@ export function Products({
           onValueChange={(v) => onStatusChange(v as ProductStatus | "all")}
         >
           <SelectTrigger className="w-40" size="sm">
-            <SelectValue placeholder="Any status" />
+            <SelectValue placeholder={t("filter.anyStatus")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Any status</SelectItem>
+            <SelectItem value="all">{t("filter.anyStatus")}</SelectItem>
             {productStatus.options.map((s) => (
               <SelectItem key={s} value={s}>
                 {s}
@@ -217,6 +217,7 @@ function BulkDelete({
   chosen: string[]
   onDone: () => void
 }) {
+  const t = useT()
   const [open, setOpen] = useState(false)
 
   const mutation = useMutation({
@@ -259,7 +260,7 @@ function BulkDelete({
             </p>
           ) : null}
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("actions.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               onClick={() => mutation.mutate()}

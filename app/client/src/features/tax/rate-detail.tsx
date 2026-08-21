@@ -14,7 +14,10 @@ export function TaxRateDetail({ id }: { id: string }) {
   return (
     <DetailPage
       query={result}
-      empty={{ title: "No tax rate", description: "Nothing to show." }}
+      empty={{
+        title: t("empty.taxRate"),
+        description: t("general.nothingToShow"),
+      }}
       back="tax rates"
       title={(item) => item.name}
       actions={(item) => (

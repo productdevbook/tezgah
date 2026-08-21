@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { useState } from "react"
+import { useT } from "@/panel/i18n"
 
 import { get } from "@/api/client"
 import { GetAdminPricesByIdRulesResponse } from "@/api/generated/zod/pricing/pricing"
@@ -39,6 +40,7 @@ export function PriceRules({
   priceId: string
   count: number
 }) {
+  const t = useT()
   const [open, setOpen] = useState(false)
 
   return (
@@ -56,7 +58,7 @@ export function PriceRules({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>What this price applies to</DialogTitle>
+            <DialogTitle>{t("frame.priceRules")}</DialogTitle>
             <DialogDescription>
               Every rule has to hold for the price to be the one used. A price
               with none applies whenever its currency and quantity band do.
@@ -70,6 +72,7 @@ export function PriceRules({
 }
 
 function Rules({ priceId }: { priceId: string }) {
+  const t = useT()
   const result = useQuery({
     queryKey: ["price-rules", priceId],
     queryFn: ({ signal }) =>
@@ -83,21 +86,23 @@ function Rules({ priceId }: { priceId: string }) {
   const rows = result.data ?? []
 
   if (result.isPending) {
-    return <p className="text-sm text-muted-foreground">Loading…</p>
+    return (
+      <p className="text-sm text-muted-foreground">{t("general.loading")}</p>
+    )
   }
 
   if (rows.length === 0) {
-    return <p className="text-sm text-muted-foreground">No rules.</p>
+    return <p className="text-sm text-muted-foreground">{t("empty.rules")}</p>
   }
 
   return (
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Attribute</TableHead>
+          <TableHead>{t("field.attribute")}</TableHead>
           <TableHead>Is</TableHead>
-          <TableHead>Value</TableHead>
-          <TableHead className="text-right">Priority</TableHead>
+          <TableHead>{t("field.value")}</TableHead>
+          <TableHead className="text-right">{t("field.priority")}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>

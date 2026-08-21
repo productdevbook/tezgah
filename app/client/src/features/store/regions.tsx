@@ -1,6 +1,7 @@
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Add01Icon } from "@hugeicons/core-free-icons"
 import { Link } from "@tanstack/react-router"
+import { useT } from "@/panel/i18n"
 
 import { region, type Region } from "@/api/schemas"
 import { Badge } from "@/components/ui/badge"
@@ -9,14 +10,18 @@ import { DataTable, type Columns } from "@/components/data-table"
 import { usePagedList } from "@/lib/paged"
 
 const columns: Columns<Region> = [
-  { header: "Name", accessorKey: "name", meta: { className: "font-medium" } },
   {
-    header: "Currency",
+    header: "field.name",
+    accessorKey: "name",
+    meta: { className: "font-medium" },
+  },
+  {
+    header: "field.currency",
     accessorKey: "currency_code",
     meta: { className: "font-mono text-xs uppercase" },
   },
   {
-    header: "Tax",
+    header: "field.tax",
     accessorKey: "is_tax_inclusive",
     cell: ({ row }) => (
       <div className="flex items-center gap-1.5">
@@ -28,7 +33,7 @@ const columns: Columns<Region> = [
     ),
   },
   {
-    header: "Providers",
+    header: "field.providers",
     accessorKey: "payment_providers",
     cell: ({ row }) =>
       row.original.payment_providers.length ? (
@@ -49,6 +54,7 @@ export function StoreRegions({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
+  const t = useT()
   const paged = usePagedList(["regions"], "/admin/regions", region, {
     after,
     onAfterChange,
@@ -57,9 +63,8 @@ export function StoreRegions({
   return (
     <DataTable
       header={{
-        title: "Regions",
-        description:
-          "A region is a set of countries sold to in one currency, with one answer about tax.",
+        title: t("frame.regions"),
+        description: t("frame.regionsWhy"),
         actions: (
           <Button
             size="sm"
@@ -82,8 +87,8 @@ export function StoreRegions({
         />
       )}
       empty={{
-        title: "No regions",
-        description: "A region decides currency and how tax is shown.",
+        title: t("empty.regions"),
+        description: t("empty.regionsWhy"),
       }}
     />
   )

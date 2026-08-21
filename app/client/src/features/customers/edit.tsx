@@ -49,7 +49,10 @@ export function EditCustomer({ id }: { id: string }) {
         <RouteDrawer.Body>
           <QueryState
             query={result}
-            empty={{ title: "No customer", description: "Nothing to show." }}
+            empty={{
+              title: t("empty.customer"),
+              description: t("general.nothingToShow"),
+            }}
           >
             {() => null}
           </QueryState>

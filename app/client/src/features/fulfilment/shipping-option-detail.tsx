@@ -18,7 +18,10 @@ export function ShippingOptionDetail({ id }: { id: string }) {
   return (
     <DetailPage
       query={result}
-      empty={{ title: "No shipping option", description: "Nothing to show." }}
+      empty={{
+        title: t("empty.shippingOption"),
+        description: t("general.nothingToShow"),
+      }}
       back="shipping options"
       title={(item) => item.name}
       actions={(item) => (

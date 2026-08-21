@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router"
+import { useT } from "@/panel/i18n"
 
 import { shippingOption, type ShippingOption } from "@/api/schemas"
 import { DataTable, type Columns } from "@/components/data-table"
@@ -6,21 +7,25 @@ import { Badge } from "@/components/ui/badge"
 import { usePagedList } from "@/lib/paged"
 
 const columns: Columns<ShippingOption> = [
-  { header: "Name", accessorKey: "name", meta: { className: "font-medium" } },
   {
-    header: "Price type",
+    header: "field.name",
+    accessorKey: "name",
+    meta: { className: "font-medium" },
+  },
+  {
+    header: "field.priceType",
     accessorKey: "price_type",
     cell: ({ row }) => (
       <Badge variant="outline">{row.original.price_type}</Badge>
     ),
   },
   {
-    header: "Return",
+    header: "field.return",
     accessorKey: "is_return",
     cell: ({ row }) => (row.original.is_return ? "return" : "outbound"),
   },
   {
-    header: "In store",
+    header: "field.inStore",
     accessorKey: "enabled_in_store",
     cell: ({ row }) => (row.original.enabled_in_store ? "enabled" : "disabled"),
     meta: { className: "text-right" },
@@ -34,6 +39,7 @@ export function ShippingOptions({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
+  const t = useT()
   const paged = usePagedList(
     ["shipping-options"],
     "/admin/shipping-options",
@@ -47,9 +53,8 @@ export function ShippingOptions({
   return (
     <DataTable
       header={{
-        title: "Shipping options",
-        description:
-          "What a shopper can choose at the till, and what each costs.",
+        title: t("frame.shippingOptions"),
+        description: t("frame.shippingOptionsWhy"),
       }}
       paged={paged}
       columns={columns}
@@ -62,9 +67,8 @@ export function ShippingOptions({
         />
       )}
       empty={{
-        title: "No shipping options",
-        description:
-          "A service zone offers nothing to ship with until one is added.",
+        title: t("empty.shippingOptions"),
+        description: t("empty.shippingOptionsWhy"),
       }}
     />
   )

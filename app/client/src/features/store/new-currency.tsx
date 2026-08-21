@@ -106,7 +106,11 @@ function Body() {
           </FormField>
           <FormField control={form.control} name="name" label={t("field.name")}>
             {(field) => (
-              <Input id={field.name} placeholder="Turkish lira" {...field} />
+              <Input
+                id={field.name}
+                placeholder={t("placeholder.currencyName")}
+                {...field}
+              />
             )}
           </FormField>
           <FormField

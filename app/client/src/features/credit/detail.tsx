@@ -19,7 +19,10 @@ export function GiftCardDetail({ id }: { id: string }) {
   return (
     <DetailPage
       query={result}
-      empty={{ title: "No gift card", description: "Nothing to show." }}
+      empty={{
+        title: t("empty.giftCard"),
+        description: t("general.nothingToShow"),
+      }}
       back="credit"
       title={(item) => `${item.balance} ${item.currency_code.toUpperCase()}`}
       actions={(item) => (

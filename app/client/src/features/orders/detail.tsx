@@ -69,7 +69,10 @@ export function OrderDetail({ id }: { id: string }) {
   return (
     <DetailPage
       query={result}
-      empty={{ title: "No order", description: "Nothing to show." }}
+      empty={{
+        title: t("empty.order"),
+        description: t("general.nothingToShow"),
+      }}
       back="orders"
       title={(item) =>
         item.display_id ? `Order #${item.display_id}` : "Order"
@@ -205,6 +208,7 @@ function Entitlements({
   orderId: string
   orderLabel: string
 }) {
+  const t = useT()
   const client = useQueryClient()
   const query = useQuery({
     queryKey: ["orders", orderId, "entitlements"],
@@ -220,8 +224,8 @@ function Entitlements({
     <QueryState
       query={query}
       empty={{
-        title: "No entitlements",
-        description: "This order carries no digital rights.",
+        title: t("empty.entitlements"),
+        description: t("empty.entitlementsWhy"),
       }}
     >
       {(items: Entitlement[]) => {
@@ -232,11 +236,13 @@ function Entitlements({
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Digital content</TableHead>
-                    <TableHead>Downloads</TableHead>
-                    <TableHead>Granted</TableHead>
-                    <TableHead>Expires</TableHead>
-                    <TableHead className="text-right">Status</TableHead>
+                    <TableHead>{t("detail.product.digital")}</TableHead>
+                    <TableHead>{t("field.downloads")}</TableHead>
+                    <TableHead>{t("field.granted")}</TableHead>
+                    <TableHead>{t("field.expires")}</TableHead>
+                    <TableHead className="text-right">
+                      {t("field.status")}
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -303,6 +309,7 @@ function RevokeEntitlementsAction({
   activeCount: number
   onRevoked: () => void
 }) {
+  const t = useT()
   const [open, setOpen] = useState(false)
   const [reason, setReason] = useState("")
   const [reasonError, setReasonError] = useState<string>()
@@ -350,7 +357,9 @@ function RevokeEntitlementsAction({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <Field data-invalid={!!reasonError}>
-          <FieldLabel htmlFor="revoke-reason">Reason (optional)</FieldLabel>
+          <FieldLabel htmlFor="revoke-reason">
+            {t("field.reasonOptional")}
+          </FieldLabel>
           <Input
             id="revoke-reason"
             value={reason}
@@ -361,7 +370,7 @@ function RevokeEntitlementsAction({
         </Field>
         {mutation.isError ? <FormError error={mutation.error} /> : null}
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>{t("actions.cancel")}</AlertDialogCancel>
           <AlertDialogAction
             variant="destructive"
             disabled={mutation.isPending}

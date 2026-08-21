@@ -18,7 +18,10 @@ export function ShippingProfileDetail({ id }: { id: string }) {
   return (
     <DetailPage
       query={result}
-      empty={{ title: "No shipping profile", description: "Nothing to show." }}
+      empty={{
+        title: t("empty.shippingProfile"),
+        description: t("general.nothingToShow"),
+      }}
       back="shipping profiles"
       title={(item) => item.name}
       actions={(item) => <Badge variant="outline">{item.kind}</Badge>}

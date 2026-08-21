@@ -2,16 +2,21 @@ import { shippingOptionType, type ShippingOptionType } from "@/api/schemas"
 import { DataTable, type Columns } from "@/components/data-table"
 import { Empty } from "@/components/detail-fields"
 import { usePagedList } from "@/lib/paged"
+import { useT } from "@/panel/i18n"
 
 const columns: Columns<ShippingOptionType> = [
   {
-    header: "Code",
+    header: "field.code",
     accessorKey: "code",
     meta: { className: "font-mono text-xs" },
   },
-  { header: "Label", accessorKey: "label", meta: { className: "font-medium" } },
   {
-    header: "Description",
+    header: "field.label",
+    accessorKey: "label",
+    meta: { className: "font-medium" },
+  },
+  {
+    header: "field.description",
     accessorKey: "description",
     cell: ({ row }) => row.original.description ?? <Empty />,
     meta: { className: "max-w-96 truncate" },
@@ -26,6 +31,7 @@ export function ShippingOptionTypes({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
+  const t = useT()
   const paged = usePagedList(
     ["shipping-option-types"],
     "/admin/shipping-option-types",
@@ -36,14 +42,13 @@ export function ShippingOptionTypes({
   return (
     <DataTable
       header={{
-        title: "Option types",
-        description:
-          "The labels a shopper picks between — standard, express — shared across options.",
+        title: t("frame.optionTypes"),
+        description: t("frame.optionTypesWhy"),
       }}
       paged={paged}
       columns={columns}
       empty={{
-        title: "No shipping option types",
+        title: t("empty.shippingOptionTypes"),
         description:
           'A type is a label a shipping option can carry, like "express".',
       }}

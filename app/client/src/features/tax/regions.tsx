@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router"
+import { useT } from "@/panel/i18n"
 
 import { taxRegion, type TaxRegion } from "@/api/schemas"
 import { DataTable, type Columns } from "@/components/data-table"
@@ -7,12 +8,12 @@ import { usePagedList } from "@/lib/paged"
 
 const columns: Columns<TaxRegion> = [
   {
-    header: "Country",
+    header: "field.country",
     accessorKey: "country_code",
     meta: { className: "font-mono text-xs uppercase" },
   },
   {
-    header: "Province",
+    header: "field.province",
     accessorKey: "province_code",
     cell: ({ row }) =>
       row.original.province_code ? (
@@ -24,7 +25,7 @@ const columns: Columns<TaxRegion> = [
       ),
   },
   {
-    header: "Provider",
+    header: "field.provider",
     accessorKey: "provider",
     cell: ({ row }) => row.original.provider ?? <Empty />,
     meta: { className: "text-right" },
@@ -38,6 +39,7 @@ export function TaxRegions({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
+  const t = useT()
   const paged = usePagedList(["tax-regions"], "/admin/tax-regions", taxRegion, {
     after,
     onAfterChange,
@@ -46,8 +48,8 @@ export function TaxRegions({
   return (
     <DataTable
       header={{
-        title: "Tax regions",
-        description: "Nested: a province's rates sit under its country's.",
+        title: t("frame.taxRegions"),
+        description: t("frame.taxRegionsWhy"),
       }}
       paged={paged}
       columns={columns}
@@ -60,9 +62,8 @@ export function TaxRegions({
         />
       )}
       empty={{
-        title: "No tax regions",
-        description:
-          "A country or province with no region here charges no tax.",
+        title: t("empty.taxRegions"),
+        description: t("empty.taxRegionsWhy"),
       }}
     />
   )

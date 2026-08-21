@@ -13,7 +13,10 @@ export function PaymentDetail({ id }: { id: string }) {
   return (
     <DetailPage
       query={result}
-      empty={{ title: "No payment", description: "Nothing to show." }}
+      empty={{
+        title: t("empty.payment"),
+        description: t("general.nothingToShow"),
+      }}
       back="payments"
       title={(item) =>
         `${item.amount.amount} ${item.amount.currency.toUpperCase()}`

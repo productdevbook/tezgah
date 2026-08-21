@@ -16,7 +16,10 @@ export function RegionDetail({ id }: { id: string }) {
   return (
     <DetailPage
       query={result}
-      empty={{ title: "No region", description: "Nothing to show." }}
+      empty={{
+        title: t("empty.region"),
+        description: t("general.nothingToShow"),
+      }}
       back="regions"
       title={(item) => item.name}
       actions={(item) => (

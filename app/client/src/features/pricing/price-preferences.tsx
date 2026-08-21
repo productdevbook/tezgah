@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react"
 import { useQuery } from "@tanstack/react-query"
+import { useT } from "@/panel/i18n"
 
 import { get } from "@/api/client"
 import { pricePreference } from "@/api/schemas"
@@ -26,6 +27,7 @@ export function PricePreferences({
   value: string | undefined
   onValueChange: (value: string | undefined) => void
 }) {
+  const t = useT()
   const [attributeInput, setAttributeInput] = useState(attribute ?? "")
   const [valueInput, setValueInput] = useState(value ?? "")
 
@@ -54,7 +56,9 @@ export function PricePreferences({
         <CardContent className="space-y-4">
           <form className="space-y-4" onSubmit={submit}>
             <Field>
-              <FieldLabel htmlFor="preference-attribute">Attribute</FieldLabel>
+              <FieldLabel htmlFor="preference-attribute">
+                {t("field.attribute")}
+              </FieldLabel>
               <Input
                 id="preference-attribute"
                 value={attributeInput}
@@ -72,7 +76,7 @@ export function PricePreferences({
                 id="preference-value"
                 value={valueInput}
                 onChange={(e) => setValueInput(e.target.value)}
-                placeholder="left out for the attribute's own preference"
+                placeholder={t("placeholder.leftOutPreference")}
                 className="font-mono text-xs"
               />
             </Field>
@@ -84,9 +88,8 @@ export function PricePreferences({
             <QueryState
               query={query}
               empty={{
-                title: "No preference set",
-                description:
-                  "Nothing decides this attribute's tax display yet.",
+                title: t("empty.pricePreference"),
+                description: t("empty.pricePreferenceWhy"),
               }}
             >
               {(preference) =>

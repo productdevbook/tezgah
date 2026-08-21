@@ -18,7 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import type { PagedList } from "@/lib/paged"
-import { useT } from "@/panel/i18n"
+import { useT, type TranslationKey } from "@/panel/i18n"
 
 /**
  * No feature is registered: v9 makes every one of them explicit, and this
@@ -28,11 +28,16 @@ import { useT } from "@/panel/i18n"
  */
 const features = tableFeatures({})
 
-export type Columns<T extends RowData> = ColumnDef<
+/**
+ * A column's `header` is a key, not a word: these are defined at module scope,
+ * where no hook can be called, so a plain string is the one piece of a screen
+ * that cannot translate itself. `Rows` resolves it at render.
+ */
+export type Columns<T extends RowData> = (ColumnDef<
   typeof features,
   T,
   unknown
->[]
+> & { header: TranslationKey })[]
 
 export function DataTable<T extends RowData>({
   paged,
@@ -241,7 +246,14 @@ function Rows<T extends RowData>({
   select?: Selection<T>
 }) {
   const t = useT()
-  const table = useTable({ features, columns, data: items })
+  const table = useTable({
+    features,
+    columns: columns.map((column) => ({
+      ...column,
+      header: t(column.header),
+    })) as ColumnDef<typeof features, T, unknown>[],
+    data: items,
+  })
 
   return (
     <Table>

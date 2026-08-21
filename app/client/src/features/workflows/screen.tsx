@@ -34,21 +34,25 @@ function tone(
 }
 
 const columns: Columns<WorkflowRunSummary> = [
-  { header: "Name", accessorKey: "name", meta: { className: "font-medium" } },
   {
-    header: "Transaction key",
+    header: "field.name",
+    accessorKey: "name",
+    meta: { className: "font-medium" },
+  },
+  {
+    header: "field.transactionKey",
     accessorKey: "transaction_key",
     meta: { className: "font-mono text-xs text-muted-foreground" },
   },
   {
-    header: "State",
+    header: "field.state",
     accessorKey: "state",
     cell: ({ row }) => (
       <Badge variant={tone(row.original.state)}>{row.original.state}</Badge>
     ),
   },
   {
-    header: "Started",
+    header: "field.started",
     accessorKey: "created_at",
     cell: ({ row }) => new Date(row.original.created_at).toLocaleString(),
     meta: { className: "text-right text-muted-foreground text-xs" },
@@ -89,10 +93,10 @@ export function Workflows({
           onValueChange={(v) => onStateChange(v as WorkflowRunState | "all")}
         >
           <SelectTrigger className="w-40" size="sm">
-            <SelectValue placeholder="Any state" />
+            <SelectValue placeholder={t("filter.anyState")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Any state</SelectItem>
+            <SelectItem value="all">{t("filter.anyState")}</SelectItem>
             {workflowRunState.options.map((s) => (
               <SelectItem key={s} value={s}>
                 {s}
@@ -114,7 +118,7 @@ export function Workflows({
           />
         )}
         empty={{
-          title: "No runs",
+          title: t("empty.runs"),
           description:
             state === "all"
               ? "Nothing has run yet."

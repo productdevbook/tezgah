@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router"
+import { useT } from "@/panel/i18n"
 
 import { workflowDeadLetter, type WorkflowDeadLetter } from "@/api/schemas"
 import { DataTable, type Columns } from "@/components/data-table"
@@ -11,22 +12,22 @@ import { usePagedList } from "@/lib/paged"
  */
 const columns: Columns<WorkflowDeadLetter> = [
   {
-    header: "Step",
+    header: "field.step",
     accessorKey: "step_name",
     meta: { className: "font-medium" },
   },
   {
-    header: "Failure",
+    header: "field.failure",
     accessorKey: "failure",
     meta: { className: "max-w-md truncate" },
   },
   {
-    header: "Run",
+    header: "field.run",
     accessorKey: "run_id",
     meta: { className: "font-mono text-xs text-muted-foreground" },
   },
   {
-    header: "When",
+    header: "field.when",
     accessorKey: "created_at",
     cell: ({ row }) => new Date(row.original.created_at).toLocaleString(),
     meta: { className: "text-right text-muted-foreground text-xs" },
@@ -40,6 +41,7 @@ export function DeadLetters({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
+  const t = useT()
   const paged = usePagedList(
     ["workflow-dead-letters"],
     "/admin/workflow-dead-letters",
@@ -50,9 +52,8 @@ export function DeadLetters({
   return (
     <DataTable
       header={{
-        title: "Dead letters",
-        description:
-          "Runs that ran out of retries. Nothing retries these again on its own.",
+        title: t("frame.deadLetters"),
+        description: t("frame.deadLettersWhy"),
       }}
       paged={paged}
       columns={columns}
@@ -65,8 +66,8 @@ export function DeadLetters({
         />
       )}
       empty={{
-        title: "No dead letters",
-        description: "Nothing has run out of retries and been given up on.",
+        title: t("empty.deadLetters"),
+        description: t("empty.deadLettersWhy"),
       }}
     />
   )
