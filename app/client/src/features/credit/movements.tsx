@@ -15,6 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { dateTime } from "@/lib/detail"
+import { useT } from "@/panel/i18n"
 
 /**
  * What moved on a balance, newest last.
@@ -59,6 +60,7 @@ export function Movements({
   /** Inside a section that already has a heading, rather than being one. */
   bare?: boolean
 }) {
+  const t = useT()
   const result = useQuery({
     queryKey: ["credit-movements", path, id],
     queryFn: ({ signal }) =>
@@ -128,8 +130,8 @@ export function Movements({
 
   return (
     <Section
-      title="What moved"
-      description="Every add and every spend. A balance is the sum of these, not a number somebody set."
+      title={t("section.movements")}
+      description={t("section.movementsWhy")}
     >
       {body}
     </Section>

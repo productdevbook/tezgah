@@ -20,6 +20,7 @@ import {
   type AuditRow,
   type EventRow,
 } from "@/features/records/api"
+import { useT } from "@/panel/i18n"
 
 /**
  * What the shop wrote down, and what it has to say.
@@ -32,11 +33,12 @@ import {
  * "what just happened". A longer question wants the database.
  */
 export function Records() {
+  const t = useT()
   return (
     <div className="space-y-4">
       <PageHeading
-        title="What happened"
-        subtitle="The audit trail and the outbox, newest first."
+        title={t("nav.records")}
+        subtitle={t("screen.records.subtitle")}
       />
       <Audit />
       <Events />

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { useT } from "@/panel/i18n"
 
 /**
  * `order_basket` (5 operations) has no `GET /admin/order-baskets` — the
@@ -16,6 +17,7 @@ import { Input } from "@/components/ui/input"
  * way in.
  */
 export function BasketSearch({ onSearch }: { onSearch: (id: string) => void }) {
+  const t = useT()
   const [id, setId] = useState("")
 
   function submit(event: FormEvent) {
@@ -27,8 +29,8 @@ export function BasketSearch({ onSearch }: { onSearch: (id: string) => void }) {
   return (
     <div className="max-w-xl space-y-4">
       <PageHeading
-        title="Baskets"
-        subtitle="Baskets are reached by id; the crate has no list."
+        title={t("nav.baskets")}
+        subtitle={t("screen.baskets.subtitle")}
       />
       <Card>
         <CardContent>

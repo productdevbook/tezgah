@@ -38,11 +38,12 @@ type Fields = z.infer<typeof fields>
  * the upload route is not bound and this falls back to what it always was.
  */
 export function EditMedia({ id }: { id: string }) {
+  const t = useT()
   return (
     <ProductDrawer
       id={id}
-      title="Media"
-      description="An address — uploaded here if this shop stores files, or wherever it is already served from."
+      title={t("section.media")}
+      description={t("section.mediaWhy")}
     >
       {(item) => <Body item={item} />}
     </ProductDrawer>
@@ -92,7 +93,7 @@ function Body({ item }: { item: Product }) {
           <FormField
             control={form.control}
             name="thumbnail_url"
-            label="Thumbnail"
+            label={t("field.thumbnail")}
           >
             {(field) => (
               <Input id={field.name} placeholder="https://…" {...field} />

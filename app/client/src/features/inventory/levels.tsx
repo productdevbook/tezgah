@@ -16,6 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { saveStockLevels, type StockLevelRow } from "@/features/inventory/stock"
+import { useT } from "@/panel/i18n"
 
 /**
  * What is where, and the count changed in place.
@@ -30,6 +31,7 @@ import { saveStockLevels, type StockLevelRow } from "@/features/inventory/stock"
  * anything, it would only make the row disagree with the thing holding it.
  */
 export function Levels({ itemId }: { itemId: string }) {
+  const t = useT()
   const levels = useQuery({
     queryKey: ["inventory-levels", itemId],
     queryFn: ({ signal }) =>
@@ -61,10 +63,7 @@ export function Levels({ itemId }: { itemId: string }) {
   const rows = levels.data?.items ?? []
 
   return (
-    <Section
-      title="What is where"
-      description="Counted per location. Type a count and save them together — one call, so a shelf is counted at once or not at all."
-    >
+    <Section title={t("section.levels")} description={t("section.levelsWhy")}>
       {levels.isPending ? (
         <p className="px-6 py-4 text-sm text-muted-foreground">Loading…</p>
       ) : rows.length === 0 ? (

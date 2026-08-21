@@ -289,15 +289,17 @@ drawer, and the same for a category. The locale is a free string because
 tezgah does not decide what languages a shop sells in — the panel offers its
 own two as a shortcut and not as a limit.
 
-*What the back office is drawn in* is English and Turkish, with the compiler
-enforcing that the two dictionaries match — a locale added without every key
-does not build. It covers the shared chrome, the whole of the navigation
-(`Section.title` is a key rather than a word, so there is no English left in
-`lib/nav.ts` to forget), and the eight list screens a shop opens most.
+*What the back office is drawn in* is English and Turkish, all of it. Not one
+`title=`, `label=`, `description=` or `subtitle=` literal is left in
+`src/features/` or `src/components/` — every screen, drawer, form, section and
+empty state reads a key, and `tr.ts` is `Record<TranslationKey, string>`, so a
+key added in one language and forgotten in the other does not build.
 
-The rest of the screens' own words — detail pages, drawers, the sections
-inside them — are still English in the source. That is the larger part of what
-is left, and it is a key at a time rather than a problem to work out.
+That includes the strings nobody sees: the checkbox that chooses a row, the
+one that chooses a page of them, the actions menu's own label — what a screen
+reader says out loud, which was English on a Turkish panel until it was not.
+
+A third locale is a file of the same shape and nothing else.
 
 **A record's page has one editor, except the product's.** A section that can
 be changed gets its own address and its own drawer, so a save is small enough

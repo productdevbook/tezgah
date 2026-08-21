@@ -13,6 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { useT } from "@/panel/i18n"
 
 /**
  * What a shop actually sells.
@@ -26,6 +27,7 @@ import {
  * bundle and its digital content, both of which have screens of their own.
  */
 export function Variants({ productId }: { productId: string }) {
+  const t = useT()
   const result = useQuery({
     queryKey: ["product-variants", productId],
     queryFn: ({ signal }) =>
@@ -41,8 +43,8 @@ export function Variants({ productId }: { productId: string }) {
 
   return (
     <Section
-      title="Variants"
-      description="The thing with a price and a count. A product with none cannot be bought."
+      title={t("section.variants")}
+      description={t("section.variantsWhy")}
     >
       {result.isPending ? (
         <p className="px-6 py-4 text-sm text-muted-foreground">Loading…</p>
