@@ -356,6 +356,33 @@ export const en = {
   "attached.exemptions": "Exemptions",
   "attached.exemptionsWhy":
     "A certificate that stops tax being charged, in one place and between two dates.",
+
+  "field.state": "State",
+  "field.failure": "Failure",
+  "field.currencyCode": "Currency code",
+  "field.pricesIncludeTax": "Prices include tax",
+  "field.autoTax": "Work tax out automatically",
+
+  "detail.workflow.steps": "Steps",
+  "detail.workflow.stepsWhy":
+    "Each declares how to undo itself, so a failure late in the run walks back through everything before it.",
+  "detail.workflow.run": "The run",
+  "detail.channel.title": "The channel",
+  "detail.shippingProfile.title": "The profile",
+  "detail.shippingProfile.why":
+    "What a shipping option is allowed to carry — goods that travel together, and goods that cannot.",
+
+  "form.region.new": "New region",
+  "form.region.edit": "Edit region",
+  "form.region.why":
+    "A region is a set of countries sold to in one currency, with one answer about tax.",
+  "form.region.currencyWhy":
+    "One of the store's currencies. A shop selling in two currencies prices in both rather than converting.",
+  "form.region.taxWhy":
+    "What a shopper here is shown: a price with tax already in it, or one that gains tax at the till.",
+  "form.product.new": "New product",
+  "form.product.newWhy":
+    "Starts as a draft. Variants, prices and stock go in separately.",
 } as const
 
 export type TranslationKey = keyof typeof en

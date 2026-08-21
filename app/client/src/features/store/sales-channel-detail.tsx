@@ -8,8 +8,10 @@ import { DetailPage } from "@/components/detail-page"
 import { Section, SectionRow, SectionRows } from "@/components/section"
 import { Badge } from "@/components/ui/badge"
 import { dateTime, useDetail } from "@/lib/detail"
+import { useT } from "@/panel/i18n"
 
 export function SalesChannelDetail({ id }: { id: string }) {
+  const t = useT()
   const result = useDetail(
     ["sales-channels"],
     "/admin/sales-channels/{id}",
@@ -39,7 +41,7 @@ export function SalesChannelDetail({ id }: { id: string }) {
       )}
       main={(item) => (
         <Section
-          title="The channel"
+          title={t("detail.channel.title")}
           actions={
             <ActionMenu
               groups={[
@@ -59,20 +61,26 @@ export function SalesChannelDetail({ id }: { id: string }) {
           }
         >
           <SectionRows>
-            <SectionRow label="Name" value={item.name} />
-            <SectionRow label="Description" value={item.description} />
+            <SectionRow label={t("field.name")} value={item.name} />
             <SectionRow
-              label="State"
+              label={t("field.description")}
+              value={item.description}
+            />
+            <SectionRow
+              label={t("field.state")}
               value={item.is_disabled ? "Disabled" : "Selling"}
             />
           </SectionRows>
         </Section>
       )}
       side={(item) => (
-        <Section title="Details">
+        <Section title={t("general.details")}>
           <SectionRows>
-            <SectionRow label="ID" value={<Mono>{item.id}</Mono>} />
-            <SectionRow label="Created" value={dateTime(item.created_at)} />
+            <SectionRow label={t("field.id")} value={<Mono>{item.id}</Mono>} />
+            <SectionRow
+              label={t("field.created")}
+              value={dateTime(item.created_at)}
+            />
           </SectionRows>
         </Section>
       )}

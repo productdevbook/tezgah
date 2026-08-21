@@ -60,13 +60,13 @@ function Body() {
       onSubmit={(values) => mutation.mutateAsync(values)}
     >
       <RouteFocusModal.Header
-        title="New region"
-        description="A region is a set of countries sold to in one currency, with one answer about tax."
+        title={t("form.region.new")}
+        description={t("form.region.why")}
       />
       <RouteFocusModal.Body>
         <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
           {mutation.isError ? <FormError error={mutation.error} /> : null}
-          <FormField control={form.control} name="name" label="Name">
+          <FormField control={form.control} name="name" label={t("field.name")}>
             {(field) => (
               <Input id={field.name} placeholder="Türkiye" {...field} />
             )}
@@ -74,8 +74,8 @@ function Body() {
           <FormField
             control={form.control}
             name="currency_code"
-            label="Currency code"
-            description="One of the store's currencies. A shop selling in two currencies prices in both rather than converting."
+            label={t("field.currencyCode")}
+            description={t("form.region.currencyWhy")}
           >
             {(field) => (
               <Input
@@ -89,7 +89,7 @@ function Body() {
           <FormField
             control={form.control}
             name="is_tax_inclusive"
-            label="Prices include tax"
+            label={t("field.pricesIncludeTax")}
           >
             {(field) => (
               <Switch
@@ -102,7 +102,7 @@ function Body() {
           <FormField
             control={form.control}
             name="has_automatic_taxes"
-            label="Work tax out automatically"
+            label={t("field.autoTax")}
           >
             {(field) => (
               <Switch

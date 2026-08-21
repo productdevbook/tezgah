@@ -23,6 +23,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { dateTime, useDetail } from "@/lib/detail"
+import { useT } from "@/panel/i18n"
 
 function runTone(
   state: WorkflowRunState
@@ -62,6 +63,7 @@ const STEP_MEANING: Record<WorkflowStepState, string> = {
 }
 
 export function WorkflowDetail({ id }: { id: string }) {
+  const t = useT()
   const run = useDetail(
     ["workflow-runs"],
     "/admin/workflows-executions/{id}",
@@ -89,24 +91,27 @@ export function WorkflowDetail({ id }: { id: string }) {
       )}
       main={() => (
         <Section
-          title="Steps"
-          description="Each declares how to undo itself, so a failure late in the run walks back through everything before it."
+          title={t("detail.workflow.steps")}
+          description={t("detail.workflow.stepsWhy")}
         >
           <StepsTable steps={steps} />
         </Section>
       )}
       side={(item) => (
         <>
-          <Section title="The run">
+          <Section title={t("detail.workflow.run")}>
             <SectionRows>
-              <SectionRow label="State" value={item.state} />
-              <SectionRow label="Failure" value={item.failure} />
+              <SectionRow label={t("field.state")} value={item.state} />
+              <SectionRow label={t("field.failure")} value={item.failure} />
             </SectionRows>
           </Section>
 
-          <Section title="Details">
+          <Section title={t("general.details")}>
             <SectionRows>
-              <SectionRow label="ID" value={<Mono>{item.id}</Mono>} />
+              <SectionRow
+                label={t("field.id")}
+                value={<Mono>{item.id}</Mono>}
+              />
             </SectionRows>
           </Section>
         </>

@@ -351,4 +351,31 @@ export const tr: Record<TranslationKey, string> = {
   "attached.exemptions": "Muafiyetler",
   "attached.exemptionsWhy":
     "Verginin alınmasını durduran belge; tek bir yerde ve iki tarih arasında geçerlidir.",
+
+  "field.state": "Durum",
+  "field.failure": "Hata",
+  "field.currencyCode": "Para birimi kodu",
+  "field.pricesIncludeTax": "Fiyatlara vergi dahil",
+  "field.autoTax": "Vergiyi kendiliğinden hesapla",
+
+  "detail.workflow.steps": "Adımlar",
+  "detail.workflow.stepsWhy":
+    "Her adım kendini nasıl geri alacağını bildirir; böylece geç bir hata, kendinden öncekilerin hepsini geri sararak yürür.",
+  "detail.workflow.run": "Çalışma",
+  "detail.channel.title": "Kanal",
+  "detail.shippingProfile.title": "Profil",
+  "detail.shippingProfile.why":
+    "Bir gönderi seçeneğinin neyi taşıyabileceği — birlikte yolculuk eden mallar ve edemeyenler.",
+
+  "form.region.new": "Yeni bölge",
+  "form.region.edit": "Bölgeyi düzenle",
+  "form.region.why":
+    "Bölge, tek para birimiyle satış yapılan ve vergi konusunda tek bir cevabı olan ülkeler kümesidir.",
+  "form.region.currencyWhy":
+    "Mağazanın para birimlerinden biri. İki para birimiyle satan bir dükkân çevirmek yerine ikisinde de fiyat verir.",
+  "form.region.taxWhy":
+    "Buradaki müşteriye gösterilen: vergisi içinde olan bir fiyat mı, kasada vergi eklenen bir fiyat mı.",
+  "form.product.new": "Yeni ürün",
+  "form.product.newWhy":
+    "Taslak olarak başlar. Varyantlar, fiyatlar ve stok ayrıca girilir.",
 }
