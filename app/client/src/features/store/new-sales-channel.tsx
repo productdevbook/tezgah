@@ -76,27 +76,27 @@ function Body() {
       }
     >
       <RouteFocusModal.Header
-        title="New sales channel"
-        description="Where a product is sold: a web shop, an app, a market stall. A product belongs to some of them and not others."
+        title={t("form.channel.new")}
+        description={t("form.channel.why")}
       />
       <RouteFocusModal.Body>
         <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
           {mutation.isError ? <FormError error={mutation.error} /> : null}
-          <FormField control={form.control} name="name" label="Name">
+          <FormField control={form.control} name="name" label={t("field.name")}>
             {(field) => <Input id={field.name} {...field} />}
           </FormField>
           <FormField
             control={form.control}
             name="description"
-            label="Description"
+            label={t("field.description")}
           >
             {(field) => <Textarea id={field.name} {...field} rows={4} />}
           </FormField>
           <FormField
             control={form.control}
             name="is_disabled"
-            label="Disabled"
-            description="A disabled channel keeps its products and stops selling them."
+            label={t("field.disabled2")}
+            description={t("form.channel.disabledWhy")}
           >
             {(field) => (
               <Switch

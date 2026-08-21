@@ -26,6 +26,7 @@ import {
   type ImportResult,
 } from "@/features/batch/api"
 import { fromCsv, toCsv } from "@/features/batch/csv"
+import { useT } from "@/panel/i18n"
 
 /**
  * The way a shop changes four hundred prices.
@@ -40,12 +41,10 @@ import { fromCsv, toCsv } from "@/features/batch/csv"
  * variants asks four times.
  */
 export function Batch() {
+  const t = useT()
   return (
     <div className="space-y-4">
-      <PageHeading
-        title="Import and export"
-        subtitle="A page of variants out as CSV, edited, and back in. Same columns both ways."
-      />
+      <PageHeading title={t("batch.title")} subtitle={t("batch.why")} />
       <Export />
       <Import />
     </div>
@@ -53,6 +52,7 @@ export function Batch() {
 }
 
 function Export() {
+  const t = useT()
   const [currency, setCurrency] = useState("")
   const [after, setAfter] = useState<string | undefined>(undefined)
   const [rows, setRows] = useState<ExportRow[]>([])
@@ -83,10 +83,7 @@ function Export() {
   )
 
   return (
-    <Section
-      title="Export"
-      description="One page of variants, flat. A price needs a currency to be a price, so an export naming none leaves those two columns empty."
-    >
+    <Section title={t("batch.export")} description={t("batch.exportWhy")}>
       <SectionBody>
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap items-end gap-2">
@@ -138,7 +135,7 @@ function Export() {
                 rows={10}
                 className="font-mono text-xs"
                 value={csv}
-                aria-label="The exported rows, as CSV"
+                aria-label={t("batch.exported")}
               />
               <p className="text-xs text-muted-foreground">
                 {rows.length} rows. Copy this into a spreadsheet — there is no
@@ -154,6 +151,7 @@ function Export() {
 }
 
 function Import() {
+  const t = useT()
   const [text, setText] = useState("")
   const [refusal, setRefusal] = useState<string | null>(null)
 
@@ -203,10 +201,7 @@ function Import() {
   }
 
   return (
-    <Section
-      title="Import"
-      description="Every row is a variant. A handle that exists is updated; one that does not is created. Nothing is deleted here — that takes an id, and a spreadsheet is the wrong place to name one."
-    >
+    <Section title={t("batch.import")} description={t("batch.importWhy")}>
       <SectionBody>
         <div className="flex flex-col gap-4">
           <Field>

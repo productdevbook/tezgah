@@ -383,6 +383,46 @@ export const en = {
   "form.product.new": "New product",
   "form.product.newWhy":
     "Starts as a draft. Variants, prices and stock go in separately.",
+
+  "field.locale": "Locale",
+  "field.disabled2": "Disabled",
+
+  "form.translations.title": "Translations",
+  "form.translations.why":
+    "What this product is called in another language. The storefront asks for one and falls back to the shop's own.",
+  "form.customer.edit": "Edit customer",
+  "form.product.edit": "Edit product",
+  "form.channel.new": "New sales channel",
+  "form.channel.edit": "Edit sales channel",
+  "form.channel.why":
+    "Where a product is sold: a web shop, an app, a market stall. A product belongs to some of them and not others.",
+  "form.channel.disabledWhy":
+    "A disabled channel keeps its products and stops selling them.",
+  "form.key.title": "Mint a publishable key",
+  "form.key.why":
+    "A key pins a storefront to the sales channels it may read. The token is shown once, right after this.",
+  "form.key.copyNow": "Copy this key now",
+  "form.key.copyNowWhy":
+    "This will not be shown again. Losing it means minting another.",
+
+  "batch.title": "Import and export",
+  "batch.why":
+    "A page of variants out as CSV, edited, and back in. Same columns both ways.",
+  "batch.export": "Export",
+  "batch.exportWhy":
+    "One page of variants, flat. A price needs a currency to be a price, so an export naming none leaves those two columns empty.",
+  "batch.exported": "The exported rows, as CSV",
+  "batch.import": "Import",
+  "batch.importWhy":
+    "Every row is a variant. A handle that exists is updated; one that does not is created. Nothing is deleted here — that takes an id, and a spreadsheet is the wrong place to name one.",
+
+  "overview.title": "Overview",
+  "overview.why":
+    "tezgah's admin surface, and how much of it this panel covers.",
+  "overview.host": "The host",
+  "overview.hostWhy":
+    "tezgah is a library. Something else has to mount api::routes().",
+  "overview.coverage": "Coverage",
 } as const
 
 export type TranslationKey = keyof typeof en

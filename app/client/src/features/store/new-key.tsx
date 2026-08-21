@@ -74,13 +74,17 @@ function Body() {
       onSubmit={(values) => mutation.mutateAsync(values)}
     >
       <RouteFocusModal.Header
-        title="Mint a publishable key"
-        description="A key pins a storefront to the sales channels it may read. The token is shown once, right after this."
+        title={t("form.key.title")}
+        description={t("form.key.why")}
       />
       <RouteFocusModal.Body>
         <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
           {mutation.isError ? <FormError error={mutation.error} /> : null}
-          <FormField control={form.control} name="title" label="Title">
+          <FormField
+            control={form.control}
+            name="title"
+            label={t("field.title")}
+          >
             {(field) => (
               <Input id={field.name} placeholder="Storefront" {...field} />
             )}
@@ -100,13 +104,14 @@ function Body() {
 }
 
 function Issued({ issued, onDone }: { issued: IssuedKey; onDone: () => void }) {
+  const t = useT()
   const [copied, setCopied] = useState(false)
 
   return (
     <>
       <RouteFocusModal.Header
-        title="Copy this key now"
-        description="This will not be shown again. Losing it means minting another."
+        title={t("form.key.copyNow")}
+        description={t("form.key.copyNowWhy")}
       />
       <RouteFocusModal.Body>
         <div className="mx-auto w-full max-w-xl space-y-2 rounded-md border border-primary/30 bg-primary/5 px-4 py-3">

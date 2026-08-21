@@ -378,4 +378,44 @@ export const tr: Record<TranslationKey, string> = {
   "form.product.new": "Yeni ürün",
   "form.product.newWhy":
     "Taslak olarak başlar. Varyantlar, fiyatlar ve stok ayrıca girilir.",
+
+  "field.locale": "Dil",
+  "field.disabled2": "Kapalı",
+
+  "form.translations.title": "Çeviriler",
+  "form.translations.why":
+    "Bu ürünün başka bir dilde ne diye anıldığı. Mağaza bir dil ister, yoksa dükkânın kendi sözcüklerine döner.",
+  "form.customer.edit": "Müşteriyi düzenle",
+  "form.product.edit": "Ürünü düzenle",
+  "form.channel.new": "Yeni satış kanalı",
+  "form.channel.edit": "Satış kanalını düzenle",
+  "form.channel.why":
+    "Ürünün nerede satıldığı: bir web mağazası, bir uygulama, bir tezgâh. Bir ürün bunların bazılarına aittir, bazılarına değil.",
+  "form.channel.disabledWhy":
+    "Kapatılan bir kanal ürünlerini tutar, satmayı bırakır.",
+  "form.key.title": "Yayımlanabilir anahtar üret",
+  "form.key.why":
+    "Anahtar, bir mağazayı okuyabileceği satış kanallarına bağlar. Belirteç yalnızca bir kez, hemen bundan sonra gösterilir.",
+  "form.key.copyNow": "Bu anahtarı şimdi kopyalayın",
+  "form.key.copyNowWhy":
+    "Bir daha gösterilmeyecek. Kaybederseniz yenisini üretmek gerekir.",
+
+  "batch.title": "İçe ve dışa aktarma",
+  "batch.why":
+    "Bir sayfa varyant CSV olarak dışarı, düzenlenip geri. İki yönde de aynı sütunlar.",
+  "batch.export": "Dışa aktar",
+  "batch.exportWhy":
+    "Tek sayfa varyant, düz. Fiyatın fiyat olabilmesi için para birimi gerekir; para birimi belirtmeyen bir dışa aktarma o iki sütunu boş bırakır.",
+  "batch.exported": "Dışa aktarılan satırlar, CSV olarak",
+  "batch.import": "İçe aktar",
+  "batch.importWhy":
+    "Her satır bir varyanttır. Var olan bir kısa ad güncellenir, olmayan oluşturulur. Burada hiçbir şey silinmez — silmek kimlik ister ve bir hesap tablosu kimlik yazmanın yeri değildir.",
+
+  "overview.title": "Genel bakış",
+  "overview.why":
+    "tezgah'ın yönetim yüzeyi ve bu panelin ne kadarını kapsadığı.",
+  "overview.host": "Sunucu",
+  "overview.hostWhy":
+    "tezgah bir kütüphanedir. api::routes() işlevini başka bir şeyin bağlaması gerekir.",
+  "overview.coverage": "Kapsam",
 }

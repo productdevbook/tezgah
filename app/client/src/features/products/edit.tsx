@@ -38,6 +38,7 @@ import {
  * this route does — so this form does not offer one.
  */
 export function EditProduct({ id }: { id: string }) {
+  const t = useT()
   const navigate = useNavigate()
   const result = useDetail(["products"], "/admin/products/{id}", product, id)
 
@@ -45,7 +46,7 @@ export function EditProduct({ id }: { id: string }) {
     <RouteDrawer
       onClose={() => void navigate({ to: "/products/$id", params: { id } })}
     >
-      <RouteDrawer.Header title="Edit product" />
+      <RouteDrawer.Header title={t("form.product.edit")} />
       {result.data ? (
         // The form is built from what came back, so it cannot be rendered
         // before there is anything to build it from — and its own body and
@@ -115,19 +116,31 @@ function Body({ item }: { item: Product }) {
       <RouteDrawer.Body>
         <div className="flex flex-col gap-6">
           {mutation.isError ? <FormError error={mutation.error} /> : null}
-          <FormField control={form.control} name="handle" label="Handle">
+          <FormField
+            control={form.control}
+            name="handle"
+            label={t("field.handle")}
+          >
             {(field) => <Input id={field.name} {...field} />}
           </FormField>
-          <FormField control={form.control} name="title" label="Title">
+          <FormField
+            control={form.control}
+            name="title"
+            label={t("field.title")}
+          >
             {(field) => <Input id={field.name} {...field} />}
           </FormField>
-          <FormField control={form.control} name="subtitle" label="Subtitle">
+          <FormField
+            control={form.control}
+            name="subtitle"
+            label={t("field.subtitle")}
+          >
             {(field) => <Input id={field.name} {...field} />}
           </FormField>
           <FormField
             control={form.control}
             name="description"
-            label="Description"
+            label={t("field.description")}
           >
             {(field) => <Textarea id={field.name} {...field} rows={5} />}
           </FormField>
