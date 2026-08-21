@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/table"
 import { ApiError } from "@/api/errors"
 import { dateTime } from "@/lib/detail"
+import { useT } from "@/panel/i18n"
 
 /**
  * What hangs off a customer.
@@ -30,6 +31,7 @@ import { dateTime } from "@/lib/detail"
  * a separate route — the customer view carries none of it.
  */
 export function StoreCredit({ customerId }: { customerId: string }) {
+  const t = useT()
   const result = useQuery({
     queryKey: ["customer-store-credit", customerId],
     queryFn: ({ signal }) =>
@@ -48,8 +50,8 @@ export function StoreCredit({ customerId }: { customerId: string }) {
 
   return (
     <Section
-      title="Store credit"
-      description="A balance the shop owes them, spent at checkout before any card is."
+      title={t("attached.storeCredit")}
+      description={t("attached.storeCreditWhy")}
     >
       {result.isPending ? (
         <p className="px-6 py-4 text-sm text-muted-foreground">Loading…</p>
@@ -61,7 +63,7 @@ export function StoreCredit({ customerId }: { customerId: string }) {
         <>
           <SectionRows>
             <SectionRow
-              label="Balance"
+              label={t("field.balance")}
               value={
                 <span className="font-mono">
                   {result.data.balance}{" "}
@@ -70,7 +72,7 @@ export function StoreCredit({ customerId }: { customerId: string }) {
               }
             />
             <SectionRow
-              label="Usable"
+              label={t("field.usable")}
               value={
                 result.data.disabled_at
                   ? `No — disabled ${dateTime(result.data.disabled_at)}`
@@ -90,6 +92,7 @@ export function StoreCredit({ customerId }: { customerId: string }) {
 }
 
 export function TaxIds({ customerId }: { customerId: string }) {
+  const t = useT()
   const result = useQuery({
     queryKey: ["customer-tax-ids", customerId],
     queryFn: ({ signal }) =>
@@ -104,8 +107,8 @@ export function TaxIds({ customerId }: { customerId: string }) {
 
   return (
     <Section
-      title="Tax numbers"
-      description="Checked is what decides anything — an unchecked number is a string somebody typed."
+      title={t("attached.taxNumbers")}
+      description={t("attached.taxNumbersWhy")}
     >
       {result.isPending ? (
         <p className="px-6 py-4 text-sm text-muted-foreground">Loading…</p>
@@ -152,6 +155,7 @@ export function TaxIds({ customerId }: { customerId: string }) {
 }
 
 export function TaxExemptions({ customerId }: { customerId: string }) {
+  const t = useT()
   const result = useQuery({
     queryKey: ["customer-tax-exemptions", customerId],
     queryFn: ({ signal }) =>
@@ -166,8 +170,8 @@ export function TaxExemptions({ customerId }: { customerId: string }) {
 
   return (
     <Section
-      title="Exemptions"
-      description="A certificate that stops tax being charged, in one place and between two dates."
+      title={t("attached.exemptions")}
+      description={t("attached.exemptionsWhy")}
     >
       {result.isPending ? (
         <p className="px-6 py-4 text-sm text-muted-foreground">Loading…</p>

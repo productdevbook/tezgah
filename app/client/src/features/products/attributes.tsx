@@ -49,11 +49,12 @@ type Fields = z.infer<typeof fields>
 const orNull = (value: string) => (value.trim() === "" ? null : value)
 
 export function EditAttributes({ id }: { id: string }) {
+  const t = useT()
   return (
     <ProductDrawer
       id={id}
-      title="Shipping and attributes"
-      description="What a carrier needs to quote for this, and what customs needs to let it through."
+      title={t("form.attributes.title")}
+      description={t("form.attributes.why")}
     >
       {(item) => <Body item={item} />}
     </ProductDrawer>
@@ -113,35 +114,55 @@ function Body({ item }: { item: Product }) {
         <div className="flex flex-col gap-6">
           {mutation.isError ? <FormError error={mutation.error} /> : null}
           <div className="grid grid-cols-2 gap-4">
-            <FormField control={form.control} name="weight" label="Weight">
+            <FormField
+              control={form.control}
+              name="weight"
+              label={t("field.weight")}
+            >
               {(field) => (
                 <Input id={field.name} inputMode="decimal" {...field} />
               )}
             </FormField>
-            <FormField control={form.control} name="length" label="Length">
+            <FormField
+              control={form.control}
+              name="length"
+              label={t("field.length")}
+            >
               {(field) => (
                 <Input id={field.name} inputMode="decimal" {...field} />
               )}
             </FormField>
-            <FormField control={form.control} name="height" label="Height">
+            <FormField
+              control={form.control}
+              name="height"
+              label={t("field.height")}
+            >
               {(field) => (
                 <Input id={field.name} inputMode="decimal" {...field} />
               )}
             </FormField>
-            <FormField control={form.control} name="width" label="Width">
+            <FormField
+              control={form.control}
+              name="width"
+              label={t("field.width")}
+            >
               {(field) => (
                 <Input id={field.name} inputMode="decimal" {...field} />
               )}
             </FormField>
           </div>
-          <FormField control={form.control} name="material" label="Material">
+          <FormField
+            control={form.control}
+            name="material"
+            label={t("field.material")}
+          >
             {(field) => <Input id={field.name} {...field} />}
           </FormField>
           <FormField
             control={form.control}
             name="hs_code"
-            label="HS code"
-            description="What customs calls this kind of thing."
+            label={t("field.hsCode")}
+            description={t("form.attributes.hsWhy")}
           >
             {(field) => (
               <Input id={field.name} className="font-mono text-xs" {...field} />
@@ -150,8 +171,8 @@ function Body({ item }: { item: Product }) {
           <FormField
             control={form.control}
             name="origin_country"
-            label="Origin country"
-            description="Two letters. Where it was made, not where it ships from."
+            label={t("field.originCountry")}
+            description={t("form.attributes.originWhy")}
           >
             {(field) => (
               <Input id={field.name} className="uppercase" {...field} />

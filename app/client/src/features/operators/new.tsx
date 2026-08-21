@@ -60,23 +60,27 @@ function Body() {
       onSubmit={(values) => mutation.mutateAsync(values)}
     >
       <RouteFocusModal.Header
-        title="New operator"
-        description="The password is set here and shown to nobody afterwards. There is no invitation e-mail: this server has no mailer."
+        title={t("form.operator.title")}
+        description={t("form.operator.why")}
       />
       <RouteFocusModal.Body>
         <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
           {mutation.isError ? <FormError error={mutation.error} /> : null}
-          <FormField control={form.control} name="name" label="Name">
+          <FormField control={form.control} name="name" label={t("field.name")}>
             {(field) => <Input id={field.name} {...field} />}
           </FormField>
-          <FormField control={form.control} name="email" label="E-mail">
+          <FormField
+            control={form.control}
+            name="email"
+            label={t("field.email")}
+          >
             {(field) => <Input id={field.name} type="email" {...field} />}
           </FormField>
           <FormField
             control={form.control}
             name="role"
-            label="Role"
-            description="The first account made is the owner whatever this says — a shop whose only account cannot make a second has locked itself out."
+            label={t("field.role")}
+            description={t("form.operator.roleWhy")}
           >
             {(field) => (
               <Select
@@ -99,8 +103,8 @@ function Body() {
           <FormField
             control={form.control}
             name="password"
-            label="Password"
-            description="Twelve characters at least. Tell them out of band — nothing here can send it."
+            label={t("field.password")}
+            description={t("form.operator.passwordWhy")}
           >
             {(field) => (
               <Input

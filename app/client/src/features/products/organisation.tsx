@@ -36,11 +36,12 @@ const fields = z.object({
 type Fields = z.infer<typeof fields>
 
 export function EditOrganisation({ id }: { id: string }) {
+  const t = useT()
   return (
     <ProductDrawer
       id={id}
-      title="Organisation"
-      description="What this product belongs to, and what it is called in whatever system it came from."
+      title={t("detail.product.organisation")}
+      description={t("form.organisation.why")}
     >
       {(item) => <Body item={item} />}
     </ProductDrawer>
@@ -96,8 +97,8 @@ function Body({ item }: { item: Product }) {
           <FormField
             control={form.control}
             name="product_type_id"
-            label="Product type"
-            description="An id. Empty clears it."
+            label={t("field.productType")}
+            description={t("form.organisation.anId")}
           >
             {(field) => (
               <Input id={field.name} className="font-mono text-xs" {...field} />
@@ -106,8 +107,8 @@ function Body({ item }: { item: Product }) {
           <FormField
             control={form.control}
             name="product_collection_id"
-            label="Collection"
-            description="An id. Empty clears it."
+            label={t("field.collection")}
+            description={t("form.organisation.anId")}
           >
             {(field) => (
               <Input id={field.name} className="font-mono text-xs" {...field} />
@@ -116,8 +117,8 @@ function Body({ item }: { item: Product }) {
           <FormField
             control={form.control}
             name="external_id"
-            label="External ID"
-            description="What this product is called wherever it came from."
+            label={t("field.externalId")}
+            description={t("form.organisation.externalWhy")}
           >
             {(field) => <Input id={field.name} {...field} />}
           </FormField>

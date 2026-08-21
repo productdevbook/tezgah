@@ -292,4 +292,63 @@ export const tr: Record<TranslationKey, string> = {
   "detail.payment.where": "Nereye bağlı",
   "detail.giftCard.balance": "Bakiye",
   "detail.giftCard.origin": "Nereden geldiği",
+
+  "field.symbol": "Simge",
+  "field.nativeSymbol": "Yerel simge",
+  "field.exponent": "Ondalık basamak",
+  "field.numericCode": "Sayısal kod",
+  "field.role": "Yetki",
+  "field.password": "Parola",
+  "field.balance": "Bakiye",
+  "field.usable": "Kullanılabilir",
+
+  "form.currency.title": "Yeni para birimi",
+  "form.currency.why":
+    "Ondalık basamak, bu para biriminin kaç haneyle yazıldığıdır — bir yazım bilgisi, çarpan değil: burada hiçbir şey kuruş cinsinden tutulmaz.",
+  "form.currency.nativeWhy":
+    "Bu para biriminin kendi dilinde yazan birinin klavyeye yazdığı simge.",
+  "form.currency.exponentWhy":
+    "0 ile 4 arası. Çoğu için iki; alt birimi olmayan bir para için sıfır.",
+  "form.currency.numericWhy":
+    "ISO 4217'nin bu para için verdiği numara. İsteğe bağlı.",
+
+  "form.attributes.title": "Gönderi ve nitelikler",
+  "form.attributes.why":
+    "Taşıyıcının bunun için fiyat verebilmesi ve gümrüğün geçirebilmesi için gerekenler.",
+  "form.attributes.hsWhy": "Gümrüğün bu tür bir malı ne diye adlandırdığı.",
+  "form.attributes.originWhy":
+    "İki harf. Nereden gönderildiği değil, nerede üretildiği.",
+
+  "form.promotion.title": "Kampanyayı düzenle",
+  "form.promotion.automatic": "Kendiliğinden uygulanır",
+  "form.promotion.automaticWhy":
+    "Kendiliğinden uygulanan bir kampanyada kasada kod yazılmaz.",
+  "form.promotion.usesTotal": "Toplam kullanım",
+  "form.promotion.usesTotalWhy":
+    "Boş bırakılırsa sınır yoktur. Ödemede değil, sipariş verilirken düşülür.",
+  "form.promotion.usesPerCustomer": "Müşteri başına kullanım",
+  "form.promotion.noLimit": "Boş bırakılırsa sınır yoktur.",
+
+  "form.organisation.why":
+    "Bu ürünün neye ait olduğu ve geldiği sistemde ne diye anıldığı.",
+  "form.organisation.anId": "Bir kimlik. Boş bırakmak temizler.",
+  "form.organisation.externalWhy": "Bu ürünün geldiği yerde ne diye anıldığı.",
+
+  "form.operator.title": "Yeni kullanıcı",
+  "form.operator.why":
+    "Parola burada belirlenir ve sonrasında kimseye gösterilmez. Kendi parolasını seçmesini isterseniz davet gönderin — sunucunun posta ayarı varsa gönderir.",
+  "form.operator.roleWhy":
+    "Açılan ilk hesap, burada ne yazarsa yazsın sahiptir — tek hesabı ikincisini açamayan bir dükkân kendini dışarıda bırakmıştır.",
+  "form.operator.passwordWhy":
+    "En az on iki karakter. Kendisine başka bir yoldan söyleyin — buradan parola gönderilmez.",
+
+  "attached.storeCredit": "Mağaza bakiyesi",
+  "attached.storeCreditWhy":
+    "Dükkânın müşteriye borçlu olduğu bakiye; kasada karttan önce buradan düşülür.",
+  "attached.taxNumbers": "Vergi numaraları",
+  "attached.taxNumbersWhy":
+    "Belirleyici olan doğrulanmış olmasıdır — doğrulanmamış bir numara, birinin yazdığı bir metindir.",
+  "attached.exemptions": "Muafiyetler",
+  "attached.exemptionsWhy":
+    "Verginin alınmasını durduran belge; tek bir yerde ve iki tarih arasında geçerlidir.",
 }

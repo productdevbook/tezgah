@@ -88,13 +88,13 @@ function Body() {
       }
     >
       <RouteFocusModal.Header
-        title="New currency"
-        description="The exponent is how many decimal places this currency is written with — a formatting fact, not a multiplier: nothing here is stored in minor units."
+        title={t("form.currency.title")}
+        description={t("form.currency.why")}
       />
       <RouteFocusModal.Body>
         <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
           {mutation.isError ? <FormError error={mutation.error} /> : null}
-          <FormField control={form.control} name="code" label="Code">
+          <FormField control={form.control} name="code" label={t("field.code")}>
             {(field) => (
               <Input
                 id={field.name}
@@ -104,27 +104,31 @@ function Body() {
               />
             )}
           </FormField>
-          <FormField control={form.control} name="name" label="Name">
+          <FormField control={form.control} name="name" label={t("field.name")}>
             {(field) => (
               <Input id={field.name} placeholder="Turkish lira" {...field} />
             )}
           </FormField>
-          <FormField control={form.control} name="symbol" label="Symbol">
+          <FormField
+            control={form.control}
+            name="symbol"
+            label={t("field.symbol")}
+          >
             {(field) => <Input id={field.name} {...field} />}
           </FormField>
           <FormField
             control={form.control}
             name="symbol_native"
-            label="Native symbol"
-            description="What somebody writing in this currency's own language types."
+            label={t("field.nativeSymbol")}
+            description={t("form.currency.nativeWhy")}
           >
             {(field) => <Input id={field.name} {...field} />}
           </FormField>
           <FormField
             control={form.control}
             name="exponent"
-            label="Exponent"
-            description="0 to 4. Two for most; zero for a currency with no subunit."
+            label={t("field.exponent")}
+            description={t("form.currency.exponentWhy")}
           >
             {(field) => (
               <Input id={field.name} inputMode="numeric" {...field} />
@@ -133,8 +137,8 @@ function Body() {
           <FormField
             control={form.control}
             name="numeric_code"
-            label="Numeric code"
-            description="ISO 4217's number for it. Optional."
+            label={t("field.numericCode")}
+            description={t("form.currency.numericWhy")}
           >
             {(field) => (
               <Input id={field.name} inputMode="numeric" {...field} />
