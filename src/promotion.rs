@@ -20,7 +20,7 @@ use crate::id::{
     AdjustmentId, CampaignId, CartId, CustomerId, LineItemId, PromotionId, ShippingMethodId,
 };
 use crate::money::{Currency, Money, allocate};
-use crate::page::{Cursor, Page, Paging};
+use crate::page::{Cursor, Order, Page, Paging, Search};
 use crate::ports::{Action, AuditEntry, Ctx, Event, Permit, Resource, Tx};
 use crate::store;
 
@@ -41,6 +41,23 @@ impl PromotionKind {
             PromotionKind::BuyGet => "buyget",
         }
     }
+}
+
+/// The predicates `promotions` pages over and counts with, in one place so
+/// the two cannot drift — the mistake this codebase has made with one fact
+/// answered twice.
+macro_rules! promotion_filter {
+    () => {
+        "
+         where scope = $1
+           and deleted_at is null
+           and ($2::text is null or status = $2)
+           and ($3::text is null or type = $3)
+           and ($4::uuid is null or campaign_id = $4)
+           and ($5::boolean is null or is_automatic = $5)
+           and ($6::text is null or code ilike $6)
+"
+    };
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -809,29 +826,87 @@ pub async fn promotion(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: PromotionId) -> Resul
     .ok_or_else(|| Error::not_found("promotion"))
 }
 
-pub async fn promotions(tx: &mut Tx<'_>, ctx: &Ctx<'_>, paging: Paging) -> Result<Page<Promotion>> {
+/// What a back office can ask a list of promotions.
+///
+/// Every field is `None` by default, so `PromotionFilter::default()` is the
+/// list this function answered before it took one.
+#[derive(Debug, Clone, Default)]
+pub struct PromotionFilter {
+    pub status: Option<Status>,
+    pub kind: Option<PromotionKind>,
+    pub campaign: Option<CampaignId>,
+    /// Automatic promotions apply themselves; the rest wait for a code. A
+    /// shop looking for "the discount somebody typed" wants one or the other.
+    pub automatic: Option<bool>,
+    /// Matched against the code, which is the only thing a person recognises
+    /// a promotion by — a name it does not have and a description it does not
+    /// carry.
+    pub search: Option<Search>,
+    pub order: Order,
+}
+
+pub async fn promotions(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    filter: PromotionFilter,
+    paging: Paging,
+) -> Result<Page<Promotion>> {
     let _: Permit = ctx.permit(Action::View, Resource::Promotion { id: None })?;
 
-    let rows = sqlx::query_as::<_, Promotion>(
-        "select id, campaign_id, code, type, status, is_automatic, usage_limit, used,
+    let beyond = filter.order.beyond();
+    let direction = filter.order.direction();
+
+    let rows = sqlx::query_as::<_, Promotion>(&format!(
+        concat!(
+            "select id, campaign_id, code, type, status, is_automatic, usage_limit, used,
                 customer_usage_limit, metadata, created_at
-         from promotion
-         where scope = $1
-           and deleted_at is null
-           and ($2::timestamptz is null or (created_at, id) > ($2, $3))
-         order by created_at, id
-         limit $4",
-    )
+         from promotion",
+            promotion_filter!(),
+            "           and ($7::timestamptz is null or (created_at, id) {beyond} ($7, $8))
+         order by created_at {direction}, id {direction}
+         limit $9"
+        ),
+        beyond = beyond,
+        direction = direction,
+    ))
     .bind(ctx.scope.0)
+    .bind(filter.status.map(Status::as_str))
+    .bind(filter.kind.map(PromotionKind::as_str))
+    .bind(filter.campaign.map(CampaignId::as_uuid))
+    .bind(filter.automatic)
+    .bind(filter.search.as_ref().map(Search::pattern))
     .bind(paging.after.as_ref().and_then(Cursor::timestamp))
     .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| {
+    let total = if paging.counts() {
+        let (count,): (i64,) = sqlx::query_as(concat!(
+            "select count(*) from promotion",
+            promotion_filter!()
+        ))
+        .bind(ctx.scope.0)
+        .bind(filter.status.map(Status::as_str))
+        .bind(filter.kind.map(PromotionKind::as_str))
+        .bind(filter.campaign.map(CampaignId::as_uuid))
+        .bind(filter.automatic)
+        .bind(filter.search.as_ref().map(Search::pattern))
+        .fetch_one(&mut **tx)
+        .await?;
+        Some(count)
+    } else {
+        None
+    };
+
+    let page = Page::build(rows, paging, |row| {
         Cursor::at(row.created_at, row.id.as_uuid())
-    }))
+    });
+
+    Ok(match total {
+        Some(total) => page.counting(total),
+        None => page,
+    })
 }
 
 pub async fn set_status(

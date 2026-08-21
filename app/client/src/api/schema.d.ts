@@ -7198,6 +7198,36 @@ export interface components {
             status?: components["schemas"]["ProductStatus"] | null;
             tag?: components["schemas"]["ProductTagId"] | null;
         };
+        /**
+         * @description A promotion's own query type, for the same reason customers have one: a
+         *     list that can be narrowed says so, and `deny_unknown_fields` means the
+         *     twenty-odd sharing [`List`] refuse a `q` they would otherwise ignore.
+         */
+        ListPromotions: {
+            after?: string | null;
+            /**
+             * @description True for the ones that apply themselves, false for the ones waiting
+             *     for a code to be typed.
+             */
+            automatic?: boolean | null;
+            /**
+             * Format: uuid
+             * @description Only the promotions belonging to one campaign.
+             */
+            campaign_id?: string | null;
+            /** @description Asks how many promotions match, as well as this page of them. */
+            count?: boolean | null;
+            /** @description `standard` or `buyget`. */
+            kind?: string | null;
+            /** Format: uint32 */
+            limit?: number | null;
+            /** @description Which end first. Left out, this surface answers newest-first. */
+            order?: components["schemas"]["Order"] | null;
+            /** @description Matched against the code. Blank is not a search. */
+            q?: string | null;
+            /** @description `draft`, `active` or `inactive`. */
+            status?: string | null;
+        };
         ListTaxRates: {
             after?: string | null;
             /** Format: uint32 */
@@ -20612,7 +20642,14 @@ export interface operations {
         parameters: {
             query?: {
                 after?: string | null;
+                automatic?: boolean | null;
+                campaign_id?: string | null;
+                count?: boolean | null;
+                kind?: string | null;
                 limit?: number | null;
+                order?: components["schemas"]["Order"] | null;
+                q?: string | null;
+                status?: string | null;
             };
             header?: never;
             path?: never;

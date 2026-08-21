@@ -440,6 +440,7 @@ export const tr: Record<TranslationKey, string> = {
 
   "search.orders": "E-posta ya da sipariş numarası ara",
   "search.customers": "Ad, e-posta, firma ara",
+  "search.promotions": "Kampanya kodu ara",
   "search.products": "Başlık, kısa ad, alt başlık ara",
   "placeholder.basketId": "birden çok satıcıya yayılan bir ödemenin kimliği",
   "placeholder.priceSetId": "fiyat kümesi kimliği",

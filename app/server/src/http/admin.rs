@@ -1175,7 +1175,7 @@ async fn delete_customer(
 async fn list_promotions(
     State(state): State<AppState>,
     Extension(caller): Extension<Caller>,
-    Query(query): Query<admin_rest::List>,
+    Query(query): Query<admin_rest::ListPromotions>,
 ) -> Result<Json<tezgah::page::Page<admin_rest::PromotionView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
     let ctx = ctx_for(&state, &caller);

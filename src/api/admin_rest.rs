@@ -608,13 +608,82 @@ fn currency(code: Option<String>) -> Result<Option<Currency>> {
     }
 }
 
+/// A promotion's own query type, for the same reason customers have one: a
+/// list that can be narrowed says so, and `deny_unknown_fields` means the
+/// twenty-odd sharing [`List`] refuse a `q` they would otherwise ignore.
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ListPromotions {
+    pub after: Option<String>,
+    pub limit: Option<u32>,
+    /// Matched against the code. Blank is not a search.
+    pub q: Option<String>,
+    /// `draft`, `active` or `inactive`.
+    pub status: Option<String>,
+    /// `standard` or `buyget`.
+    pub kind: Option<String>,
+    /// Only the promotions belonging to one campaign.
+    pub campaign_id: Option<Uuid>,
+    /// True for the ones that apply themselves, false for the ones waiting
+    /// for a code to be typed.
+    pub automatic: Option<bool>,
+    /// Which end first. Left out, this surface answers newest-first.
+    pub order: Option<crate::page::Order>,
+    /// Asks how many promotions match, as well as this page of them.
+    pub count: Option<bool>,
+}
+
+impl ListPromotions {
+    fn listing(&self) -> Result<Paging> {
+        let paging = List {
+            after: self.after.clone(),
+            limit: self.limit,
+        }
+        .paging()?;
+
+        Ok(if self.count.unwrap_or(false) {
+            paging.counting()
+        } else {
+            paging
+        })
+    }
+
+    fn status(&self) -> Result<Option<promotion::Status>> {
+        match self.status.as_deref() {
+            None => Ok(None),
+            Some("draft") => Ok(Some(promotion::Status::Draft)),
+            Some("active") => Ok(Some(promotion::Status::Active)),
+            Some("inactive") => Ok(Some(promotion::Status::Inactive)),
+            Some(other) => Err(Error::invalid(format!("{other:?} is not a status"))),
+        }
+    }
+
+    fn kind(&self) -> Result<Option<promotion::PromotionKind>> {
+        match self.kind.as_deref() {
+            None => Ok(None),
+            Some("standard") => Ok(Some(promotion::PromotionKind::Standard)),
+            Some("buyget") => Ok(Some(promotion::PromotionKind::BuyGet)),
+            Some(other) => Err(Error::invalid(format!("{other:?} is not a promotion kind"))),
+        }
+    }
+}
+
 pub async fn list_promotions(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
-    query: List,
+    query: ListPromotions,
 ) -> Result<Page<PromotionView>> {
+    let filter = promotion::PromotionFilter {
+        status: query.status()?,
+        kind: query.kind()?,
+        campaign: query.campaign_id.map(CampaignId::from_uuid),
+        automatic: query.automatic,
+        search: query.q.as_deref().and_then(crate::page::Search::new),
+        order: query.order.unwrap_or(crate::page::Order::Newest),
+    };
+
     Ok(map(
-        promotion::promotions(tx, ctx, query.paging()?).await?,
+        promotion::promotions(tx, ctx, filter, query.listing()?).await?,
         PromotionView::from,
     ))
 }
@@ -2182,7 +2251,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/promotions",
         action: Action::View,
         domain: "promotion",
-        query: Some(super::query_schema::<super::PagingQuery>),
+        query: Some(super::query_schema::<ListPromotions>),
         summary: "List promotions",
     },
     Route {
