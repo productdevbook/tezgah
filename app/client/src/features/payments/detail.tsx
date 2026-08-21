@@ -4,8 +4,10 @@ import { DetailPage } from "@/components/detail-page"
 import { Section, SectionRow, SectionRows } from "@/components/section"
 import { Badge } from "@/components/ui/badge"
 import { dateTime, useDetail } from "@/lib/detail"
+import { useT } from "@/panel/i18n"
 
 export function PaymentDetail({ id }: { id: string }) {
+  const t = useT()
   const result = useDetail(["payments"], "/admin/payments/{id}", payment, id)
 
   return (
@@ -24,12 +26,12 @@ export function PaymentDetail({ id }: { id: string }) {
       )}
       main={(item) => (
         <Section
-          title="What happened to the money"
-          description="Authorising and capturing are separate acts here, so a payment that exists is not yet a payment that was taken."
+          title={t("detail.payment.what")}
+          description={t("detail.payment.whatWhy")}
         >
           <SectionRows>
             <SectionRow
-              label="Amount"
+              label={t("field.amount")}
               value={
                 <Mono>
                   {item.amount.amount} {item.amount.currency.toUpperCase()}
@@ -37,11 +39,11 @@ export function PaymentDetail({ id }: { id: string }) {
               }
             />
             <SectionRow
-              label="Captured"
+              label={t("field.captured")}
               value={item.captured_at ? dateTime(item.captured_at) : null}
             />
             <SectionRow
-              label="Canceled"
+              label={t("field.canceled")}
               value={item.canceled_at ? dateTime(item.canceled_at) : null}
             />
           </SectionRows>
@@ -49,14 +51,14 @@ export function PaymentDetail({ id }: { id: string }) {
       )}
       side={(item) => (
         <>
-          <Section title="Where it sits">
+          <Section title={t("detail.payment.where")}>
             <SectionRows>
               <SectionRow
-                label="Collection"
+                label={t("field.collection")}
                 value={<Mono>{item.payment_collection_id}</Mono>}
               />
               <SectionRow
-                label="Session"
+                label={t("field.session")}
                 value={
                   item.payment_session_id ? (
                     <Mono>{item.payment_session_id}</Mono>
@@ -66,10 +68,16 @@ export function PaymentDetail({ id }: { id: string }) {
             </SectionRows>
           </Section>
 
-          <Section title="Details">
+          <Section title={t("general.details")}>
             <SectionRows>
-              <SectionRow label="ID" value={<Mono>{item.id}</Mono>} />
-              <SectionRow label="Created" value={dateTime(item.created_at)} />
+              <SectionRow
+                label={t("field.id")}
+                value={<Mono>{item.id}</Mono>}
+              />
+              <SectionRow
+                label={t("field.created")}
+                value={dateTime(item.created_at)}
+              />
             </SectionRows>
           </Section>
         </>

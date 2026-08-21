@@ -240,6 +240,63 @@ export const en = {
   "detail.promotion.left": "How much is left",
   "detail.promotion.leftWhy":
     "Claimed at checkout rather than counted at payment, so this is what is spoken for.",
+
+  "field.name": "Name",
+  "field.rate": "Rate",
+  "field.starts": "Starts",
+  "field.ends": "Ends",
+  "field.rules": "Rules",
+  "field.priced": "Priced",
+  "field.offeredToShoppers": "Offered to shoppers",
+  "field.forReturns": "For returns",
+  "field.serviceZone": "Service zone",
+  "field.shippingProfile": "Shipping profile",
+  "field.optionType": "Option type",
+  "field.tax": "Tax",
+  "field.prices": "Prices",
+  "field.workedOut": "Worked out",
+  "field.allowed": "Allowed",
+  "field.defaultForRegion": "Default for its region",
+  "field.combinable": "Combinable",
+  "field.taxRegion": "Tax region",
+  "field.country": "Country",
+  "field.province": "Province",
+  "field.parentRegion": "Parent region",
+  "field.provider": "Provider",
+  "field.amount": "Amount",
+  "field.captured": "Captured",
+  "field.session": "Session",
+  "field.now": "Now",
+  "field.issuedWith": "Issued with",
+  "field.expires": "Expires",
+  "field.disabled": "Disabled",
+  "field.issuedOnOrder": "Issued on order",
+
+  "detail.priceList.title": "The list",
+  "detail.priceList.why":
+    "A sale list marks the price down and says so; an override replaces it silently.",
+  "detail.priceList.when": "When it applies",
+  "detail.shippingOption.title": "The option",
+  "detail.shippingOption.where": "Where it applies",
+  "detail.shippingOption.whereWhy":
+    "A service zone is the set of addresses this option is offered at; the profile decides which goods it can carry.",
+  "detail.region.title": "The region",
+  "detail.region.taxWhy":
+    "Whether a shown price already contains tax, and who works it out.",
+  "detail.region.providers": "Payment providers",
+  "detail.taxRate.title": "The rate",
+  "detail.taxRate.why":
+    "One region has exactly one default rate; a combinable rate stacks on top of whichever applies.",
+  "detail.taxRegion.where": "Where it applies",
+  "detail.taxRegion.whereWhy":
+    "Tax regions nest: a province's rates sit under its country's.",
+  "detail.taxRegion.who": "Who works the tax out",
+  "detail.payment.what": "What happened to the money",
+  "detail.payment.whatWhy":
+    "Authorising and capturing are separate acts here, so a payment that exists is not yet a payment that was taken.",
+  "detail.payment.where": "Where it sits",
+  "detail.giftCard.balance": "The balance",
+  "detail.giftCard.origin": "Where it came from",
 } as const
 
 export type TranslationKey = keyof typeof en

@@ -4,8 +4,10 @@ import { DetailPage } from "@/components/detail-page"
 import { Section, SectionRow, SectionRows } from "@/components/section"
 import { Badge } from "@/components/ui/badge"
 import { dateTime, useDetail } from "@/lib/detail"
+import { useT } from "@/panel/i18n"
 
 export function ShippingOptionDetail({ id }: { id: string }) {
+  const t = useT()
   const result = useDetail(
     ["shipping-options"],
     "/admin/shipping-options/{id}",
@@ -26,16 +28,16 @@ export function ShippingOptionDetail({ id }: { id: string }) {
         </>
       )}
       main={(item) => (
-        <Section title="The option">
+        <Section title={t("detail.shippingOption.title")}>
           <SectionRows>
-            <SectionRow label="Name" value={item.name} />
-            <SectionRow label="Priced" value={item.price_type} />
+            <SectionRow label={t("field.name")} value={item.name} />
+            <SectionRow label={t("field.priced")} value={item.price_type} />
             <SectionRow
-              label="Offered to shoppers"
+              label={t("field.offeredToShoppers")}
               value={item.enabled_in_store ? "Yes" : "No"}
             />
             <SectionRow
-              label="For returns"
+              label={t("field.forReturns")}
               value={item.is_return ? "Yes" : "No"}
             />
           </SectionRows>
@@ -44,16 +46,16 @@ export function ShippingOptionDetail({ id }: { id: string }) {
       side={(item) => (
         <>
           <Section
-            title="Where it applies"
-            description="A service zone is the set of addresses this option is offered at; the profile decides which goods it can carry."
+            title={t("detail.shippingOption.where")}
+            description={t("detail.shippingOption.whereWhy")}
           >
             <SectionRows>
               <SectionRow
-                label="Service zone"
+                label={t("field.serviceZone")}
                 value={<Mono>{item.service_zone_id}</Mono>}
               />
               <SectionRow
-                label="Shipping profile"
+                label={t("field.shippingProfile")}
                 value={
                   item.shipping_profile_id ? (
                     <Mono>{item.shipping_profile_id}</Mono>
@@ -61,7 +63,7 @@ export function ShippingOptionDetail({ id }: { id: string }) {
                 }
               />
               <SectionRow
-                label="Option type"
+                label={t("field.optionType")}
                 value={
                   item.shipping_option_type_id ? (
                     <Mono>{item.shipping_option_type_id}</Mono>
@@ -71,10 +73,16 @@ export function ShippingOptionDetail({ id }: { id: string }) {
             </SectionRows>
           </Section>
 
-          <Section title="Details">
+          <Section title={t("general.details")}>
             <SectionRows>
-              <SectionRow label="ID" value={<Mono>{item.id}</Mono>} />
-              <SectionRow label="Created" value={dateTime(item.created_at)} />
+              <SectionRow
+                label={t("field.id")}
+                value={<Mono>{item.id}</Mono>}
+              />
+              <SectionRow
+                label={t("field.created")}
+                value={dateTime(item.created_at)}
+              />
             </SectionRows>
           </Section>
         </>

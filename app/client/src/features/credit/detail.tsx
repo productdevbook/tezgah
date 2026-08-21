@@ -5,8 +5,10 @@ import { Section, SectionRow, SectionRows } from "@/components/section"
 import { Badge } from "@/components/ui/badge"
 import { Movements } from "@/features/credit/movements"
 import { dateTime, useDetail } from "@/lib/detail"
+import { useT } from "@/panel/i18n"
 
 export function GiftCardDetail({ id }: { id: string }) {
+  const t = useT()
   const result = useDetail(
     ["gift-cards"],
     "/admin/gift-cards/{id}",
@@ -27,10 +29,10 @@ export function GiftCardDetail({ id }: { id: string }) {
       )}
       main={(item) => (
         <>
-          <Section title="The balance">
+          <Section title={t("detail.giftCard.balance")}>
             <SectionRows>
               <SectionRow
-                label="Now"
+                label={t("field.now")}
                 value={
                   <Mono>
                     {item.balance} {item.currency_code.toUpperCase()}
@@ -38,7 +40,7 @@ export function GiftCardDetail({ id }: { id: string }) {
                 }
               />
               <SectionRow
-                label="Issued with"
+                label={t("field.issuedWith")}
                 value={
                   <Mono>
                     {item.initial_balance} {item.currency_code.toUpperCase()}
@@ -46,11 +48,11 @@ export function GiftCardDetail({ id }: { id: string }) {
                 }
               />
               <SectionRow
-                label="Expires"
+                label={t("field.expires")}
                 value={item.expires_at ? dateTime(item.expires_at) : null}
               />
               <SectionRow
-                label="Disabled"
+                label={t("field.disabled")}
                 value={item.disabled_at ? dateTime(item.disabled_at) : null}
               />
             </SectionRows>
@@ -61,16 +63,16 @@ export function GiftCardDetail({ id }: { id: string }) {
       )}
       side={(item) => (
         <>
-          <Section title="Where it came from">
+          <Section title={t("detail.giftCard.origin")}>
             <SectionRows>
               <SectionRow
-                label="Customer"
+                label={t("field.customer")}
                 value={
                   item.customer_id ? <Mono>{item.customer_id}</Mono> : null
                 }
               />
               <SectionRow
-                label="Issued on order"
+                label={t("field.issuedOnOrder")}
                 value={
                   item.issued_order_id ? (
                     <Mono>{item.issued_order_id}</Mono>
@@ -80,10 +82,16 @@ export function GiftCardDetail({ id }: { id: string }) {
             </SectionRows>
           </Section>
 
-          <Section title="Details">
+          <Section title={t("general.details")}>
             <SectionRows>
-              <SectionRow label="ID" value={<Mono>{item.id}</Mono>} />
-              <SectionRow label="Created" value={dateTime(item.created_at)} />
+              <SectionRow
+                label={t("field.id")}
+                value={<Mono>{item.id}</Mono>}
+              />
+              <SectionRow
+                label={t("field.created")}
+                value={dateTime(item.created_at)}
+              />
             </SectionRows>
           </Section>
         </>

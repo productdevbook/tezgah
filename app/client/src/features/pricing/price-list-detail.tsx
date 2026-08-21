@@ -4,8 +4,10 @@ import { DetailPage } from "@/components/detail-page"
 import { Section, SectionRow, SectionRows } from "@/components/section"
 import { Badge } from "@/components/ui/badge"
 import { dateTime, useDetail } from "@/lib/detail"
+import { useT } from "@/panel/i18n"
 
 export function PriceListDetail({ id }: { id: string }) {
+  const t = useT()
   const result = useDetail(
     ["price-lists"],
     "/admin/price-lists/{id}",
@@ -27,37 +29,46 @@ export function PriceListDetail({ id }: { id: string }) {
       )}
       main={(item) => (
         <Section
-          title="The list"
-          description="A sale list marks the price down and says so; an override replaces it silently."
+          title={t("detail.priceList.title")}
+          description={t("detail.priceList.why")}
         >
           <SectionRows>
-            <SectionRow label="Title" value={item.title} />
-            <SectionRow label="Description" value={item.description} />
-            <SectionRow label="Kind" value={item.kind} />
-            <SectionRow label="Status" value={item.status} />
+            <SectionRow label={t("field.title")} value={item.title} />
+            <SectionRow
+              label={t("field.description")}
+              value={item.description}
+            />
+            <SectionRow label={t("field.kind")} value={item.kind} />
+            <SectionRow label={t("field.status")} value={item.status} />
           </SectionRows>
         </Section>
       )}
       side={(item) => (
         <>
-          <Section title="When it applies">
+          <Section title={t("detail.priceList.when")}>
             <SectionRows>
               <SectionRow
-                label="Starts"
+                label={t("field.starts")}
                 value={item.starts_at ? dateTime(item.starts_at) : null}
               />
               <SectionRow
-                label="Ends"
+                label={t("field.ends")}
                 value={item.ends_at ? dateTime(item.ends_at) : null}
               />
-              <SectionRow label="Rules" value={item.rules_count} />
+              <SectionRow label={t("field.rules")} value={item.rules_count} />
             </SectionRows>
           </Section>
 
-          <Section title="Details">
+          <Section title={t("general.details")}>
             <SectionRows>
-              <SectionRow label="ID" value={<Mono>{item.id}</Mono>} />
-              <SectionRow label="Created" value={dateTime(item.created_at)} />
+              <SectionRow
+                label={t("field.id")}
+                value={<Mono>{item.id}</Mono>}
+              />
+              <SectionRow
+                label={t("field.created")}
+                value={dateTime(item.created_at)}
+              />
             </SectionRows>
           </Section>
         </>

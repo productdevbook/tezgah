@@ -7,8 +7,10 @@ import { DetailPage } from "@/components/detail-page"
 import { Section, SectionRow, SectionRows } from "@/components/section"
 import { Badge } from "@/components/ui/badge"
 import { dateTime, useDetail } from "@/lib/detail"
+import { useT } from "@/panel/i18n"
 
 export function RegionDetail({ id }: { id: string }) {
+  const t = useT()
   const result = useDetail(["regions"], "/admin/regions/{id}", region, id)
 
   return (
@@ -27,7 +29,7 @@ export function RegionDetail({ id }: { id: string }) {
       )}
       main={(item) => (
         <Section
-          title="The region"
+          title={t("detail.region.title")}
           actions={
             <ActionMenu
               groups={[
@@ -47,9 +49,9 @@ export function RegionDetail({ id }: { id: string }) {
           }
         >
           <SectionRows>
-            <SectionRow label="Name" value={item.name} />
+            <SectionRow label={t("field.name")} value={item.name} />
             <SectionRow
-              label="Currency"
+              label={t("field.currency")}
               value={<Mono>{item.currency_code.toUpperCase()}</Mono>}
             />
           </SectionRows>
@@ -58,12 +60,12 @@ export function RegionDetail({ id }: { id: string }) {
       side={(item) => (
         <>
           <Section
-            title="Tax"
-            description="Whether a shown price already contains tax, and who works it out."
+            title={t("field.tax")}
+            description={t("detail.region.taxWhy")}
           >
             <SectionRows>
               <SectionRow
-                label="Prices"
+                label={t("field.prices")}
                 value={
                   item.is_tax_inclusive
                     ? "Include tax"
@@ -71,16 +73,16 @@ export function RegionDetail({ id }: { id: string }) {
                 }
               />
               <SectionRow
-                label="Worked out"
+                label={t("field.workedOut")}
                 value={item.has_automatic_taxes ? "Automatically" : "By hand"}
               />
             </SectionRows>
           </Section>
 
-          <Section title="Payment providers">
+          <Section title={t("detail.region.providers")}>
             <SectionRows>
               <SectionRow
-                label="Allowed"
+                label={t("field.allowed")}
                 value={
                   item.payment_providers.length ? (
                     <Mono>{item.payment_providers.join(", ")}</Mono>
@@ -90,10 +92,16 @@ export function RegionDetail({ id }: { id: string }) {
             </SectionRows>
           </Section>
 
-          <Section title="Details">
+          <Section title={t("general.details")}>
             <SectionRows>
-              <SectionRow label="ID" value={<Mono>{item.id}</Mono>} />
-              <SectionRow label="Created" value={dateTime(item.created_at)} />
+              <SectionRow
+                label={t("field.id")}
+                value={<Mono>{item.id}</Mono>}
+              />
+              <SectionRow
+                label={t("field.created")}
+                value={dateTime(item.created_at)}
+              />
             </SectionRows>
           </Section>
         </>

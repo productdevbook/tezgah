@@ -65,7 +65,9 @@ export function PricePreferences({
               />
             </Field>
             <Field>
-              <FieldLabel htmlFor="preference-value">Value (optional)</FieldLabel>
+              <FieldLabel htmlFor="preference-value">
+                Value (optional)
+              </FieldLabel>
               <Input
                 id="preference-value"
                 value={valueInput}
@@ -83,25 +85,33 @@ export function PricePreferences({
               query={query}
               empty={{
                 title: "No preference set",
-                description: "Nothing decides this attribute's tax display yet.",
+                description:
+                  "Nothing decides this attribute's tax display yet.",
               }}
             >
               {(preference) =>
                 preference === null ? (
-                  <p className="text-muted-foreground text-sm">
+                  <p className="text-sm text-muted-foreground">
                     No preference set for this attribute.
                   </p>
                 ) : (
                   <p className="text-sm">
-                    <span className="font-mono text-xs">{preference.attribute}</span>
+                    <span className="font-mono text-xs">
+                      {preference.attribute}
+                    </span>
                     {preference.value ? (
                       <>
                         {" = "}
-                        <span className="font-mono text-xs">{preference.value}</span>
+                        <span className="font-mono text-xs">
+                          {preference.value}
+                        </span>
                       </>
                     ) : null}{" "}
                     is quoted{" "}
-                    {preference.is_tax_inclusive ? "tax inclusive" : "tax exclusive"}.
+                    {preference.is_tax_inclusive
+                      ? "tax inclusive"
+                      : "tax exclusive"}
+                    .
                   </p>
                 )
               }
