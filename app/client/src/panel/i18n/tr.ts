@@ -176,6 +176,183 @@ export const tr: Record<TranslationKey, string> = {
   "detail.product.digitalWhy":
     "Bir dosya tek bir varyanta aittir — yukarıdaki varyantlardan bir kimlik alın ve neyi taşıdığını görün ya da ekleyin.",
 
+  "general.nothingToShow": "Gösterilecek bir şey yok.",
+  "state.noHost": "Yanıt veren bir sunucu yok",
+  "state.noHostWhy":
+    "tezgah bir kütüphanedir ve kendisi hiçbir şey sunmaz. VITE_TEZGAH_API değerini api::routes() bağlayan bir sunucuya yöneltin ya da örnek dükkânı çalıştırın.",
+  "state.noToken": "Bu panelde anahtar yok",
+  "state.noTokenWhy":
+    "Yönetim yüzeyi bir anahtar ister ve hiçbir şey gönderilmedi. Paneli sunucunun ADMIN_TOKEN değeriyle bağlayın.",
+  "state.refused": "Reddedildi",
+  "state.refusedWhy":
+    "Anahtar gönderildi ve sunucu hayır dedi — yanlış anahtar ya da sunucunun artık tanımadığı bir anahtar. Hangi kayıtların var olduğunu asla söylemez, dolayısıyla bundan çıkarılacak başka bir şey yok.",
+  "state.notHere": "Burada yok",
+  "state.notHereWhy": "Sunucu yanıt verdi ve böyle bir kayıt yok.",
+  "state.refusedRequest": "İstek geçmedi",
+  "state.drifted": "Panel ile sunucu aynı şeyi söylemiyor",
+  "state.driftedWhy":
+    "Sunucu yanıt verdi ama yanıt bu panelin beklediği biçimde değil. Panelin tipleri Rust tarafından elle aktarılır; demek ki sunucu ilerledi, panel ilerlemedi.",
+  "empty.basket": "Sepet grubu yok",
+  "empty.orders": "Sipariş yok",
+  "empty.ordersWhy": "Bu sepet grubu henüz bir siparişe ayrılmadı.",
+  "empty.carts": "Sepet yok",
+  "empty.cartsWhy":
+    "Şu anda hiçbir satıcı kapsamının bu ödemeye ait açık bir bacağı yok.",
+  "frame.rejected": "Reddedilenler",
+  "frame.rejectedWhy":
+    "Başlığın altındaki ilk satırdan başlayarak satır numarasına göre.",
+  "empty.giftCard": "Hediye kartı yok",
+  "empty.customer": "Müşteri yok",
+  "empty.carriers": "Taşıyıcı yok",
+  "empty.carriersWhy": "Bir dükkân taşıyıcı açmadan hiçbir şey gönderilmez.",
+  "frame.carriers": "Taşıyıcılar",
+  "frame.fulfilmentSets": "Gönderim kümeleri",
+  "frame.fulfilmentSetsWhy":
+    "Bir küme, tek bir taşıyıcının hizmet verdiği bölgeleri gruplar.",
+  "empty.fulfilmentSets": "Gönderim kümesi yok",
+  "empty.fulfilmentSetsWhy":
+    "Bir küme, bir deponun ya da mağazanın gönderim yaptığı hizmet bölgelerini gruplar.",
+  "empty.shippingOption": "Gönderim seçeneği yok",
+  "frame.optionTypes": "Seçenek türleri",
+  "frame.optionTypesWhy":
+    "Alıcının arasından seçtiği etiketler — standart, hızlı — seçenekler arasında paylaşılır.",
+  "empty.shippingOptionTypes": "Gönderim seçeneği türü yok",
+  "frame.shippingOptions": "Gönderim seçenekleri",
+  "frame.shippingOptionsWhy":
+    "Alıcının kasada seçebilecekleri ve her birinin bedeli.",
+  "empty.shippingOptions": "Gönderim seçeneği yok",
+  "empty.shippingOptionsWhy":
+    "Bir hizmet bölgesi, seçenek eklenene kadar gönderilecek bir yol sunmaz.",
+  "empty.shippingProfile": "Gönderim profili yok",
+  "frame.shippingProfiles": "Gönderim profilleri",
+  "frame.shippingProfilesWhy":
+    "Bir seçeneğin neyi taşıyabileceği: birlikte yolculuk eden mallar ve edemeyenler.",
+  "empty.shippingProfiles": "Gönderim profili yok",
+  "empty.shippingProfilesWhy":
+    "Bir ürün bir profille gönderilir; profil, hangi seçeneklerin ona uyduğunu belirler.",
+  "frame.invited": "Davet edilenler",
+  "frame.invitedWhy":
+    "Gönderildi ve henüz kabul edilmedi. Aynı adrese yeniden davet göndermek ikinci bir bağlantı eklemez, mevcut bağlantının yerine geçer.",
+  "empty.accounts": "Hesap yok",
+  "empty.accountsWhy":
+    "Bu yönetim paneline yalnızca yönetici anahtarı ulaşabiliyor. Bir hesap açın.",
+  "frame.accounts": "Hesaplar",
+  "frame.accountsWhy":
+    "Bir hesabı kapatmak, aynı işlem içinde o hesabın tüm oturumlarını sonlandırır.",
+  "empty.order": "Sipariş yok",
+  "empty.entitlements": "Dijital hak yok",
+  "empty.entitlementsWhy": "Bu sipariş hiçbir dijital hak taşımıyor.",
+  "empty.payment": "Ödeme yok",
+  "frame.payments": "Ödemeler",
+  "frame.paymentsWhy":
+    "Provizyon almak ile tahsil etmek ayrı işlerdir; var olan bir ödeme henüz alınmış para demek değildir.",
+  "empty.payments": "Ödeme yok",
+  "empty.paymentsWhy": "Henüz hiçbir tahsilat yapılmadı.",
+  "frame.refundReasons": "İade gerekçeleri",
+  "frame.refundReasonsWhy":
+    "Bir iadenin dayandırılabileceği gerekçeler; raporlarda sayılabilsinler diye tutulur.",
+  "empty.refundReasons": "İade gerekçesi yok",
+  "empty.refundReasonsWhy":
+    "Gerekçesiz de iade yapılabilir, ama burada henüz nedenini açıklayan bir şey yok.",
+  "frame.commissionRules": "Komisyon kuralları",
+  "frame.commissionRulesWhy":
+    "Pazar yerinin satıcının satırından ne kadarını, neye göre alıkoyduğu.",
+  "empty.commissionRules": "Komisyon kuralı yok",
+  "empty.commissionRulesWhy":
+    "Kuralı ve varsayılanı olmayan bir kategoriden komisyon alınmaz — bir kural konana kadar hiçbir şey kesilmez.",
+  "empty.payouts": "Hakediş yok",
+  "empty.payoutsWhy": "Henüz ödenmiş olarak kaydedilen bir şey yok.",
+  "empty.balance": "Bakiye yok",
+  "empty.balanceWhy": "Bu para biriminde bir şey yok.",
+  "empty.payoutLines": "Hakediş satırı yok",
+  "empty.payoutLinesWhy": "Bu siparişten henüz bir kazanç doğmadı.",
+  "empty.priceList": "Fiyat listesi yok",
+  "frame.priceLists": "Fiyat listeleri",
+  "frame.priceListsWhy":
+    "Tarihli ya da koşullu fiyatlar — adını koyan bir indirim ya da koymayan bir geçersiz kılma.",
+  "empty.priceLists": "Fiyat listesi yok",
+  "empty.priceListsWhy":
+    "Bir fiyat listesi, eşleştiği kural için fiyat kümesinin kendi fiyatlarının yerine geçer.",
+  "empty.pricePreference": "Tanımlı tercih yok",
+  "empty.pricePreferenceWhy":
+    "Bu niteliğin vergiyi nasıl göstereceğine henüz bir şey karar vermiyor.",
+  "empty.priceSet": "Fiyat kümesi yok",
+  "empty.prices": "Fiyat yok",
+  "empty.pricesWhy": "Bu fiyat kümesinde henüz fiyat yok.",
+  "frame.prices": "Fiyatlar",
+  "frame.pricesWhy":
+    "Bir tutar yazın ve hepsini birlikte kaydedin. Yalnızca tutar değiştirilebilir — bir fiyatı o fiyat yapan şey para birimi ve miktar aralığıdır.",
+  "empty.product": "Ürün yok",
+  "empty.digitalContent": "Dijital içerik yok",
+  "empty.digitalContentWhy": "Bu varyant henüz dosya taşımıyor.",
+  "empty.promotion": "Kampanya yok",
+  "empty.audit": "Henüz yazılmış bir şey yok",
+  "empty.auditWhy": "Bir şey değiştiğinde bir denetim kaydı yazılır.",
+  "frame.audit": "Denetim kaydı",
+  "frame.auditWhy":
+    "Kimin hangi kayda ne yaptığı. ADMIN_TOKEN ile gelen bir istek kimseyi adlandırmaz, çünkü paylaşılan bir sır kişi değildir.",
+  "empty.events": "Henüz söylenecek bir şey yok",
+  "empty.eventsWhy": "Anlatmaya değer bir şey olduğunda bir olay yazılır.",
+  "frame.outbox": "Giden kutusu",
+  "empty.currencies": "Para birimi yok",
+  "empty.currenciesWhy":
+    "Bir dükkân para birimi açmadan ne fiyat verilir ne de sepet açılır.",
+  "frame.currencies": "Para birimleri",
+  "frame.currenciesWhy":
+    "Üs, para biriminin nasıl yazıldığıdır, bir çarpan değil — burada hiçbir şey alt birimde saklanmaz.",
+  "frame.keys": "Yayınlanabilir anahtarlar",
+  "frame.keysWhy":
+    "Bir anahtar, mağaza yüzünü okuyabileceği kanallara sabitler. Değer yalnızca üretildiği anda bir kez gösterilir.",
+  "empty.keys": "Yayınlanabilir anahtar yok",
+  "empty.keysWhy":
+    "Mağaza yüzünün x-publishable-key olarak gönderdiği değer. Üretildiğinde bir kez gösterilir.",
+  "empty.region": "Bölge yok",
+  "frame.regions": "Bölgeler",
+  "frame.regionsWhy":
+    "Bölge, tek para birimiyle satış yapılan ve vergi sorusuna tek yanıt veren ülkeler kümesidir.",
+  "empty.regions": "Bölge yok",
+  "empty.regionsWhy":
+    "Bölge, para birimini ve verginin nasıl gösterileceğini belirler.",
+  "empty.salesChannel": "Satış kanalı yok",
+  "frame.salesChannels": "Satış kanalları",
+  "frame.salesChannelsWhy":
+    "Bir ürünün nerede satıldığı. Ürün bazı kanallara aittir, bazılarına değil.",
+  "empty.salesChannels": "Satış kanalı yok",
+  "empty.salesChannelsWhy":
+    "Kanal, bir mağaza yüzünün hangi ürünleri görebileceğini belirler.",
+  "empty.subscription": "Abonelik yok",
+  "empty.taxRate": "Vergi oranı yok",
+  "frame.taxRates": "Vergi oranları",
+  "frame.taxRatesWhy":
+    "Her bölgede bir varsayılan ve üstüne binen birleşebilir oranlar.",
+  "empty.taxRates": "Vergi oranı yok",
+  "empty.taxRatesWhy": "Bir oran tanımlanana kadar bölge vergi almaz.",
+  "empty.taxRegion": "Vergi bölgesi yok",
+  "frame.taxRegions": "Vergi bölgeleri",
+  "frame.taxRegionsWhy":
+    "İç içedir: bir ilin oranları ülkesinin oranlarının altında durur.",
+  "empty.taxRegions": "Vergi bölgesi yok",
+  "empty.taxRegionsWhy":
+    "Burada bölgesi olmayan bir ülke ya da il vergi almaz.",
+  "empty.registrations": "Kayıt yok",
+  "empty.registrationsWhy":
+    "Dükkân, vergi beyanı için kayıtlı olduğu hiçbir yeri kaydetmemiş.",
+  "frame.registrations": "Vergi kayıtları",
+  "frame.registrationsWhy":
+    "Dükkânın nerede tahsilat için kayıtlı olduğu ve hangi numarayla.",
+  "frame.deadLetters": "Vazgeçilen çalışmalar",
+  "frame.deadLettersWhy":
+    "Yeniden deneme hakkı tükenmiş çalışmalar. Bunları kendiliğinden yeniden deneyen bir şey yok.",
+  "empty.deadLetters": "Vazgeçilen çalışma yok",
+  "empty.deadLettersWhy":
+    "Yeniden deneme hakkı tükenip vazgeçilen bir şey yok.",
+  "empty.run": "Çalışma yok",
+  "empty.steps": "Adım yok",
+  "empty.stepsWhy": "Bu iş akışı hiç adım tanımlamamış.",
+  "empty.runs": "Çalışma yok",
+  "frame.outboxWhy":
+    "Dükkânın söyleyecekleri. Bir hedef tanımlıysa bunlar imzalı isteklerle gönderilir; tanımlı değilse burada okunmak üzere bekler.",
+
   "field.no": "No",
   "field.default": "Varsayılan",
   "field.dunning": "Tahsilat denemesi",

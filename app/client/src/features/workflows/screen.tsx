@@ -118,7 +118,7 @@ export function Workflows({
           />
         )}
         empty={{
-          title: "No runs",
+          title: t("empty.runs"),
           description:
             state === "all"
               ? "Nothing has run yet."

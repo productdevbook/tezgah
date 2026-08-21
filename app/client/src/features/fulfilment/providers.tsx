@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { z } from "zod"
+import { useT } from "@/panel/i18n"
 
 import { get } from "@/api/client"
 import { fulfilmentProvider, type FulfilmentProvider } from "@/api/schemas"
@@ -22,6 +23,7 @@ import {
  * exists, so a row here goes nowhere.
  */
 export function FulfilmentProviders() {
+  const t = useT()
   const query = useQuery({
     queryKey: ["fulfilment-providers"],
     queryFn: ({ signal }) =>
@@ -35,15 +37,15 @@ export function FulfilmentProviders() {
     <QueryState
       query={query}
       empty={{
-        title: "No carriers",
-        description: "Nothing ships until a shop turns a provider on.",
+        title: t("empty.carriers"),
+        description: t("empty.carriersWhy"),
       }}
     >
       {(providers: FulfilmentProvider[]) => (
         <TableFrame
           header={{
-            title: "Carriers",
-            description: "Nothing ships until a shop turns a provider on.",
+            title: t("frame.carriers"),
+            description: t("empty.carriersWhy"),
           }}
         >
           <Table>

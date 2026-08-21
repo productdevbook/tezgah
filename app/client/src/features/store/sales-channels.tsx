@@ -1,6 +1,7 @@
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Add01Icon } from "@hugeicons/core-free-icons"
 import { Link } from "@tanstack/react-router"
+import { useT } from "@/panel/i18n"
 
 import { salesChannel, type SalesChannel } from "@/api/schemas"
 import { Badge } from "@/components/ui/badge"
@@ -42,6 +43,7 @@ export function StoreSalesChannels({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
+  const t = useT()
   const paged = usePagedList(
     ["sales-channels"],
     "/admin/sales-channels",
@@ -52,9 +54,8 @@ export function StoreSalesChannels({
   return (
     <DataTable
       header={{
-        title: "Sales channels",
-        description:
-          "Where a product is sold. A product belongs to some channels and not others.",
+        title: t("frame.salesChannels"),
+        description: t("frame.salesChannelsWhy"),
         actions: (
           <Button
             size="sm"
@@ -77,8 +78,8 @@ export function StoreSalesChannels({
         />
       )}
       empty={{
-        title: "No sales channels",
-        description: "A channel decides which products a storefront can see.",
+        title: t("empty.salesChannels"),
+        description: t("empty.salesChannelsWhy"),
       }}
     />
   )

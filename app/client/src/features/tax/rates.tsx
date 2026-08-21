@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router"
+import { useT } from "@/panel/i18n"
 
 import { taxRate, type TaxRate } from "@/api/schemas"
 import { DataTable, type Columns } from "@/components/data-table"
@@ -47,6 +48,7 @@ export function TaxRates({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
+  const t = useT()
   const paged = usePagedList(["tax-rates"], "/admin/tax-rates", taxRate, {
     after,
     onAfterChange,
@@ -55,9 +57,8 @@ export function TaxRates({
   return (
     <DataTable
       header={{
-        title: "Tax rates",
-        description:
-          "One default per region, and combinable rates that stack on top.",
+        title: t("frame.taxRates"),
+        description: t("frame.taxRatesWhy"),
       }}
       paged={paged}
       columns={columns}
@@ -70,8 +71,8 @@ export function TaxRates({
         />
       )}
       empty={{
-        title: "No tax rates",
-        description: "A region charges nothing until a rate is set.",
+        title: t("empty.taxRates"),
+        description: t("empty.taxRatesWhy"),
       }}
     />
   )

@@ -58,7 +58,10 @@ export function ProductDetail({
   return (
     <QueryState
       query={result}
-      empty={{ title: "No product", description: "Nothing to show." }}
+      empty={{
+        title: t("empty.product"),
+        description: t("general.nothingToShow"),
+      }}
     >
       {(item) => (
         <div className="flex flex-col gap-4">
@@ -336,6 +339,7 @@ function DigitalContentByVariant({
 }
 
 function DigitalContentList({ variantId }: { variantId: string }) {
+  const t = useT()
   const client = useQueryClient()
   const query = useQuery({
     queryKey: ["digital-content", variantId],
@@ -356,8 +360,8 @@ function DigitalContentList({ variantId }: { variantId: string }) {
       <QueryState
         query={query}
         empty={{
-          title: "No digital content",
-          description: "This variant carries no files yet.",
+          title: t("empty.digitalContent"),
+          description: t("empty.digitalContentWhy"),
         }}
       >
         {(items: DigitalContent[]) => (

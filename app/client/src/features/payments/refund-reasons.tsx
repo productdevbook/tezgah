@@ -2,6 +2,7 @@ import { refundReason, type RefundReason } from "@/api/schemas"
 import { DataTable, type Columns } from "@/components/data-table"
 import { Empty } from "@/components/detail-fields"
 import { usePagedList } from "@/lib/paged"
+import { useT } from "@/panel/i18n"
 
 const columns: Columns<RefundReason> = [
   {
@@ -30,6 +31,7 @@ export function RefundReasons({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
+  const t = useT()
   const paged = usePagedList(
     ["refund-reasons"],
     "/admin/refund-reasons",
@@ -43,16 +45,14 @@ export function RefundReasons({
   return (
     <DataTable
       header={{
-        title: "Refund reasons",
-        description:
-          "The reasons a refund can be given against, kept so a report can count them.",
+        title: t("frame.refundReasons"),
+        description: t("frame.refundReasonsWhy"),
       }}
       paged={paged}
       columns={columns}
       empty={{
-        title: "No refund reasons",
-        description:
-          "A refund can be given without one, but nothing here explains why yet.",
+        title: t("empty.refundReasons"),
+        description: t("empty.refundReasonsWhy"),
       }}
     />
   )

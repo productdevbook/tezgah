@@ -64,7 +64,10 @@ export function EditPromotion({ id }: { id: string }) {
         <RouteDrawer.Body>
           <QueryState
             query={result}
-            empty={{ title: "No promotion", description: "Nothing to show." }}
+            empty={{
+              title: t("empty.promotion"),
+              description: t("general.nothingToShow"),
+            }}
           >
             {() => null}
           </QueryState>

@@ -69,7 +69,10 @@ export function OrderDetail({ id }: { id: string }) {
   return (
     <DetailPage
       query={result}
-      empty={{ title: "No order", description: "Nothing to show." }}
+      empty={{
+        title: t("empty.order"),
+        description: t("general.nothingToShow"),
+      }}
       back="orders"
       title={(item) =>
         item.display_id ? `Order #${item.display_id}` : "Order"
@@ -205,6 +208,7 @@ function Entitlements({
   orderId: string
   orderLabel: string
 }) {
+  const t = useT()
   const client = useQueryClient()
   const query = useQuery({
     queryKey: ["orders", orderId, "entitlements"],
@@ -220,8 +224,8 @@ function Entitlements({
     <QueryState
       query={query}
       empty={{
-        title: "No entitlements",
-        description: "This order carries no digital rights.",
+        title: t("empty.entitlements"),
+        description: t("empty.entitlementsWhy"),
       }}
     >
       {(items: Entitlement[]) => {

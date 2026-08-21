@@ -1,5 +1,6 @@
 import { useNavigate } from "@tanstack/react-router"
 import type { ReactNode } from "react"
+import { useT } from "@/panel/i18n"
 
 import { product, type Product } from "@/api/schemas"
 import { RouteDrawer } from "@/components/modals/route-drawer"
@@ -31,6 +32,7 @@ export function ProductDrawer({
   description?: string
   children: (item: Product) => ReactNode
 }) {
+  const t = useT()
   const navigate = useNavigate()
   const result = useDetail(["products"], "/admin/products/{id}", product, id)
 
@@ -45,7 +47,10 @@ export function ProductDrawer({
         <RouteDrawer.Body>
           <QueryState
             query={result}
-            empty={{ title: "No product", description: "Nothing to show." }}
+            empty={{
+              title: t("empty.product"),
+              description: t("general.nothingToShow"),
+            }}
           >
             {() => null}
           </QueryState>

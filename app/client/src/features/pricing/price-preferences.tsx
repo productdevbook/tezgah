@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react"
 import { useQuery } from "@tanstack/react-query"
+import { useT } from "@/panel/i18n"
 
 import { get } from "@/api/client"
 import { pricePreference } from "@/api/schemas"
@@ -26,6 +27,7 @@ export function PricePreferences({
   value: string | undefined
   onValueChange: (value: string | undefined) => void
 }) {
+  const t = useT()
   const [attributeInput, setAttributeInput] = useState(attribute ?? "")
   const [valueInput, setValueInput] = useState(value ?? "")
 
@@ -84,9 +86,8 @@ export function PricePreferences({
             <QueryState
               query={query}
               empty={{
-                title: "No preference set",
-                description:
-                  "Nothing decides this attribute's tax display yet.",
+                title: t("empty.pricePreference"),
+                description: t("empty.pricePreferenceWhy"),
               }}
             >
               {(preference) =>

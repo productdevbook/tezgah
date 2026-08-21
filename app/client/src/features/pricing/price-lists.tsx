@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router"
+import { useT } from "@/panel/i18n"
 
 import { priceList, type PriceList } from "@/api/schemas"
 import { DataTable, type Columns } from "@/components/data-table"
@@ -35,6 +36,7 @@ export function PriceLists({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
+  const t = useT()
   const paged = usePagedList(["price-lists"], "/admin/price-lists", priceList, {
     after,
     onAfterChange,
@@ -43,9 +45,8 @@ export function PriceLists({
   return (
     <DataTable
       header={{
-        title: "Price lists",
-        description:
-          "Dated or conditional prices — a sale that says so, or an override that does not.",
+        title: t("frame.priceLists"),
+        description: t("frame.priceListsWhy"),
       }}
       paged={paged}
       columns={columns}
@@ -58,9 +59,8 @@ export function PriceLists({
         />
       )}
       empty={{
-        title: "No price lists",
-        description:
-          "A price list overrides a price set's own prices for a rule it matches.",
+        title: t("empty.priceLists"),
+        description: t("empty.priceListsWhy"),
       }}
     />
   )

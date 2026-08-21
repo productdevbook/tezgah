@@ -1,6 +1,7 @@
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Add01Icon } from "@hugeicons/core-free-icons"
 import { Link } from "@tanstack/react-router"
+import { useT } from "@/panel/i18n"
 
 import { region, type Region } from "@/api/schemas"
 import { Badge } from "@/components/ui/badge"
@@ -53,6 +54,7 @@ export function StoreRegions({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
+  const t = useT()
   const paged = usePagedList(["regions"], "/admin/regions", region, {
     after,
     onAfterChange,
@@ -61,9 +63,8 @@ export function StoreRegions({
   return (
     <DataTable
       header={{
-        title: "Regions",
-        description:
-          "A region is a set of countries sold to in one currency, with one answer about tax.",
+        title: t("frame.regions"),
+        description: t("frame.regionsWhy"),
         actions: (
           <Button
             size="sm"
@@ -86,8 +87,8 @@ export function StoreRegions({
         />
       )}
       empty={{
-        title: "No regions",
-        description: "A region decides currency and how tax is shown.",
+        title: t("empty.regions"),
+        description: t("empty.regionsWhy"),
       }}
     />
   )

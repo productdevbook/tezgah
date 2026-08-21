@@ -52,7 +52,10 @@ export function EditRegion({ id }: { id: string }) {
         <RouteDrawer.Body>
           <QueryState
             query={result}
-            empty={{ title: "No region", description: "Nothing to show." }}
+            empty={{
+              title: t("empty.region"),
+              description: t("general.nothingToShow"),
+            }}
           >
             {() => null}
           </QueryState>

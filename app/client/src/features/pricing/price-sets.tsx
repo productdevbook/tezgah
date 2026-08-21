@@ -66,7 +66,10 @@ function PriceSetFields({ id }: { id: string }) {
   return (
     <QueryState
       query={result}
-      empty={{ title: "No price set", description: "Nothing to show." }}
+      empty={{
+        title: t("empty.priceSet"),
+        description: t("general.nothingToShow"),
+      }}
     >
       {(item) => (
         <FieldGrid>

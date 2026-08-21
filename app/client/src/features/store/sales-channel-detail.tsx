@@ -22,7 +22,10 @@ export function SalesChannelDetail({ id }: { id: string }) {
   return (
     <DetailPage
       query={result}
-      empty={{ title: "No sales channel", description: "Nothing to show." }}
+      empty={{
+        title: t("empty.salesChannel"),
+        description: t("general.nothingToShow"),
+      }}
       back="sales channels"
       title={(item) => item.name}
       actions={(item) => (

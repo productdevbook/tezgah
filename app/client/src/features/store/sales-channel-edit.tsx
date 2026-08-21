@@ -55,8 +55,8 @@ export function EditSalesChannel({ id }: { id: string }) {
           <QueryState
             query={result}
             empty={{
-              title: "No sales channel",
-              description: "Nothing to show.",
+              title: t("empty.salesChannel"),
+              description: t("general.nothingToShow"),
             }}
           >
             {() => null}

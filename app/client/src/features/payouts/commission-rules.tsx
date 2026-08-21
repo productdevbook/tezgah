@@ -2,6 +2,7 @@ import { commissionRule, type CommissionRule } from "@/api/schemas"
 import { DataTable, type Columns } from "@/components/data-table"
 import { Badge } from "@/components/ui/badge"
 import { usePagedList } from "@/lib/paged"
+import { useT } from "@/panel/i18n"
 
 const columns: Columns<CommissionRule> = [
   {
@@ -37,6 +38,7 @@ export function CommissionRules({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
+  const t = useT()
   const paged = usePagedList(
     ["commission-rules"],
     "/admin/commission-rules",
@@ -50,16 +52,14 @@ export function CommissionRules({
   return (
     <DataTable
       header={{
-        title: "Commission rules",
-        description:
-          "What the marketplace keeps from a seller's line, and on what.",
+        title: t("frame.commissionRules"),
+        description: t("frame.commissionRulesWhy"),
       }}
       paged={paged}
       columns={columns}
       empty={{
-        title: "No commission rules",
-        description:
-          "A category with no rule and no default earns no commission — nothing is taken until one is set.",
+        title: t("empty.commissionRules"),
+        description: t("empty.commissionRulesWhy"),
       }}
     />
   )

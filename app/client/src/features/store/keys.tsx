@@ -1,6 +1,7 @@
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Add01Icon } from "@hugeicons/core-free-icons"
 import { Link } from "@tanstack/react-router"
+import { useT } from "@/panel/i18n"
 
 import { publishableKey, type PublishableKey } from "@/api/schemas"
 import { Badge } from "@/components/ui/badge"
@@ -55,6 +56,7 @@ export function StoreKeys({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
+  const t = useT()
   const paged = usePagedList(
     ["publishable-keys"],
     "/admin/publishable-api-keys",
@@ -65,9 +67,8 @@ export function StoreKeys({
   return (
     <DataTable
       header={{
-        title: "Publishable keys",
-        description:
-          "A key pins a storefront to the channels it may read. The token is shown once, when it is minted.",
+        title: t("frame.keys"),
+        description: t("frame.keysWhy"),
         actions: (
           <Button
             size="sm"
@@ -82,9 +83,8 @@ export function StoreKeys({
       paged={paged}
       columns={columns}
       empty={{
-        title: "No publishable keys",
-        description:
-          "What a storefront sends as x-publishable-key. Shown once when minted.",
+        title: t("empty.keys"),
+        description: t("empty.keysWhy"),
       }}
     />
   )

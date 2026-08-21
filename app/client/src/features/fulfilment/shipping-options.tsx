@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router"
+import { useT } from "@/panel/i18n"
 
 import { shippingOption, type ShippingOption } from "@/api/schemas"
 import { DataTable, type Columns } from "@/components/data-table"
@@ -38,6 +39,7 @@ export function ShippingOptions({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
+  const t = useT()
   const paged = usePagedList(
     ["shipping-options"],
     "/admin/shipping-options",
@@ -51,9 +53,8 @@ export function ShippingOptions({
   return (
     <DataTable
       header={{
-        title: "Shipping options",
-        description:
-          "What a shopper can choose at the till, and what each costs.",
+        title: t("frame.shippingOptions"),
+        description: t("frame.shippingOptionsWhy"),
       }}
       paged={paged}
       columns={columns}
@@ -66,9 +67,8 @@ export function ShippingOptions({
         />
       )}
       empty={{
-        title: "No shipping options",
-        description:
-          "A service zone offers nothing to ship with until one is added.",
+        title: t("empty.shippingOptions"),
+        description: t("empty.shippingOptionsWhy"),
       }}
     />
   )

@@ -1,4 +1,5 @@
 import type { UseQueryResult } from "@tanstack/react-query"
+import { useT } from "@/panel/i18n"
 
 import { ApiError } from "@/api/client"
 import { panelRuntime } from "@/panel/runtime"
@@ -59,36 +60,33 @@ export function QueryState<T>({
 }
 
 function Failure({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  const t = useT()
   const api = error instanceof ApiError ? error : undefined
 
   const said = {
     unreachable: {
-      title: "No host is answering",
-      description:
-        "tezgah is a library and serves nothing itself. Point VITE_TEZGAH_API at whatever mounts api::routes(), or run the example shop.",
+      title: t("state.noHost"),
+      description: t("state.noHostWhy"),
     },
     unauthenticated: {
-      title: "This panel has no token",
-      description:
-        "The admin surface wants one and nothing was sent. Connect the panel with the server's ADMIN_TOKEN.",
+      title: t("state.noToken"),
+      description: t("state.noTokenWhy"),
     },
     denied: {
-      title: "Refused",
-      description:
-        "The token was sent and the server said no — wrong token, or one the server no longer holds. It never says which rows exist, so there is nothing more to read into that.",
+      title: t("state.refused"),
+      description: t("state.refusedWhy"),
     },
     not_found: {
-      title: "Not here",
-      description: "The host answered, and has no such row.",
+      title: t("state.notHere"),
+      description: t("state.notHereWhy"),
     },
     refused: {
-      title: "The request did not go through",
-      description: api?.message ?? "The host answered with an error.",
+      title: t("state.refusedRequest"),
+      description: api?.message ?? t("error.refused"),
     },
     drifted: {
-      title: "The panel and the crate disagree",
-      description:
-        "The host answered, and the answer is not the shape this panel expects. Its types are transcribed from the Rust by hand, so the crate has moved and this has not.",
+      title: t("state.drifted"),
+      description: t("state.driftedWhy"),
     },
   }[api?.kind ?? "refused"]
 

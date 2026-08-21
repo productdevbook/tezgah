@@ -182,6 +182,7 @@ export function InviteAction() {
  * rather than adding a second.
  */
 export function OpenInvitations() {
+  const t = useT()
   const result = useQuery({
     queryKey: ["invitations"],
     queryFn: ({ signal }) => listInvitations(signal),
@@ -196,9 +197,8 @@ export function OpenInvitations() {
   return (
     <TableFrame
       header={{
-        title: "Invited",
-        description:
-          "Sent and not yet accepted. Inviting the same address again replaces the link rather than adding a second.",
+        title: t("frame.invited"),
+        description: t("frame.invitedWhy"),
       }}
     >
       <Table>

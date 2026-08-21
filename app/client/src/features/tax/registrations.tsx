@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { z } from "zod"
+import { useT } from "@/panel/i18n"
 
 import { get } from "@/api/client"
 import { taxRegistration, type TaxRegistration } from "@/api/schemas"
@@ -23,6 +24,7 @@ import {
  * `DELETE` reaches one by id — so a row here goes nowhere.
  */
 export function TaxRegistrations() {
+  const t = useT()
   const query = useQuery({
     queryKey: ["tax-registrations"],
     queryFn: ({ signal }) =>
@@ -36,17 +38,15 @@ export function TaxRegistrations() {
     <QueryState
       query={query}
       empty={{
-        title: "No registrations",
-        description:
-          "The shop has recorded nowhere it is registered to file tax.",
+        title: t("empty.registrations"),
+        description: t("empty.registrationsWhy"),
       }}
     >
       {(registrations: TaxRegistration[]) => (
         <TableFrame
           header={{
-            title: "Registrations",
-            description:
-              "Where the shop is registered to collect, and under which number.",
+            title: t("frame.registrations"),
+            description: t("frame.registrationsWhy"),
           }}
         >
           <Table>

@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router"
+import { useT } from "@/panel/i18n"
 
 import { payment, type Payment } from "@/api/schemas"
 import { DataTable, type Columns } from "@/components/data-table"
@@ -38,6 +39,7 @@ export function Payments({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
+  const t = useT()
   const paged = usePagedList(["payments"], "/admin/payments", payment, {
     after,
     onAfterChange,
@@ -46,9 +48,8 @@ export function Payments({
   return (
     <DataTable
       header={{
-        title: "Payments",
-        description:
-          "Authorising and capturing are separate acts, so a payment that exists is not yet money taken.",
+        title: t("frame.payments"),
+        description: t("frame.paymentsWhy"),
       }}
       paged={paged}
       columns={columns}
@@ -61,8 +62,8 @@ export function Payments({
         />
       )}
       empty={{
-        title: "No payments",
-        description: "Nothing has been taken yet.",
+        title: t("empty.payments"),
+        description: t("empty.paymentsWhy"),
       }}
     />
   )

@@ -17,7 +17,10 @@ export function TaxRegionDetail({ id }: { id: string }) {
   return (
     <DetailPage
       query={result}
-      empty={{ title: "No tax region", description: "Nothing to show." }}
+      empty={{
+        title: t("empty.taxRegion"),
+        description: t("general.nothingToShow"),
+      }}
       back="tax regions"
       title={(item) => item.country_code.toUpperCase()}
       main={(item) => (

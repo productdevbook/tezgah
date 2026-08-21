@@ -136,6 +136,7 @@ function PricesInSet({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
+  const t = useT()
   const paged = usePagedList(
     ["price-set-prices", priceSetId],
     "/admin/price-sets/{id}/prices",
@@ -150,8 +151,8 @@ function PricesInSet({
         paged={paged}
         columns={columns}
         empty={{
-          title: "No prices",
-          description: "This price set has no prices yet.",
+          title: t("empty.prices"),
+          description: t("empty.pricesWhy"),
         }}
       />
     )
@@ -161,6 +162,7 @@ function PricesInSet({
 }
 
 function Grid({ rows, onSaved }: { rows: Price[]; onSaved: () => void }) {
+  const t = useT()
   // What has been typed, by price id. Absent means untouched — which is what
   // keeps a save to the rows somebody actually changed rather than writing
   // every row back with the value it already had.
@@ -185,9 +187,8 @@ function Grid({ rows, onSaved }: { rows: Price[]; onSaved: () => void }) {
   return (
     <TableFrame
       header={{
-        title: "Prices",
-        description:
-          "Type an amount and save them together. Only the amount is editable — a currency or a quantity band is what makes a price that price.",
+        title: t("frame.prices"),
+        description: t("frame.pricesWhy"),
         actions:
           changed.length > 0 ? (
             <>

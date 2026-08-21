@@ -22,7 +22,10 @@ export function PromotionDetail({ id }: { id: string }) {
   return (
     <DetailPage
       query={result}
-      empty={{ title: "No promotion", description: "Nothing to show." }}
+      empty={{
+        title: t("empty.promotion"),
+        description: t("general.nothingToShow"),
+      }}
       back="promotions"
       title={(item) => item.code}
       subtitle={(item) => item.kind}

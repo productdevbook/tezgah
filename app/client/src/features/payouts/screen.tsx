@@ -59,6 +59,7 @@ export function Payouts({
   linesAfter: string | undefined
   onLinesAfterChange: (after: string | undefined) => void
 }) {
+  const t = useT()
   const paged = usePagedList(["payouts"], "/admin/payouts", payout, {
     after,
     onAfterChange,
@@ -84,8 +85,8 @@ export function Payouts({
           paged={paged}
           columns={columns}
           empty={{
-            title: "No payouts",
-            description: "Nothing has been recorded as paid out yet.",
+            title: t("empty.payouts"),
+            description: t("empty.payoutsWhy"),
           }}
         />
       </div>
@@ -143,8 +144,8 @@ function BalanceLookup({
           <QueryState
             query={query}
             empty={{
-              title: "No balance",
-              description: "Nothing in this currency.",
+              title: t("empty.balance"),
+              description: t("empty.balanceWhy"),
             }}
           >
             {(balance) => (
@@ -251,6 +252,7 @@ function OrderLines({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
+  const t = useT()
   const paged = usePagedList(
     ["payout-lines", orderId],
     "/admin/orders/{id}/payout-lines",
@@ -263,8 +265,8 @@ function OrderLines({
       paged={paged}
       columns={lineColumns}
       empty={{
-        title: "No payout lines",
-        description: "Nothing earned on this order yet.",
+        title: t("empty.payoutLines"),
+        description: t("empty.payoutLinesWhy"),
       }}
     />
   )

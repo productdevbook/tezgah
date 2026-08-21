@@ -256,6 +256,7 @@ function Import() {
  * import unusable.
  */
 function Outcome({ result }: { result: ImportResult }) {
+  const t = useT()
   const applied =
     result.applied ??
     (result.created ?? 0) + (result.updated ?? 0) + (result.deleted ?? 0)
@@ -278,9 +279,8 @@ function Outcome({ result }: { result: ImportResult }) {
       {result.rejected.length > 0 ? (
         <TableFrame
           header={{
-            title: "Rejected",
-            description:
-              "By row number, counting from the first row under the header.",
+            title: t("frame.rejected"),
+            description: t("frame.rejectedWhy"),
           }}
         >
           <Table>

@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router"
+import { useT } from "@/panel/i18n"
 
 import { shippingProfile, type ShippingProfile } from "@/api/schemas"
 import { DataTable, type Columns } from "@/components/data-table"
@@ -26,6 +27,7 @@ export function ShippingProfiles({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
+  const t = useT()
   const paged = usePagedList(
     ["shipping-profiles"],
     "/admin/shipping-profiles",
@@ -39,9 +41,8 @@ export function ShippingProfiles({
   return (
     <DataTable
       header={{
-        title: "Shipping profiles",
-        description:
-          "What an option is allowed to carry: goods that travel together, and goods that cannot.",
+        title: t("frame.shippingProfiles"),
+        description: t("frame.shippingProfilesWhy"),
       }}
       paged={paged}
       columns={columns}
@@ -54,9 +55,8 @@ export function ShippingProfiles({
         />
       )}
       empty={{
-        title: "No shipping profiles",
-        description:
-          "A product ships under a profile, which decides which options fit it.",
+        title: t("empty.shippingProfiles"),
+        description: t("empty.shippingProfilesWhy"),
       }}
     />
   )

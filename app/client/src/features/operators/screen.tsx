@@ -99,17 +99,15 @@ export function Operators() {
       <QueryState
         query={query}
         empty={{
-          title: "No accounts",
-          description:
-            "Only the admin token can reach this back office. Make an account.",
+          title: t("empty.accounts"),
+          description: t("empty.accountsWhy"),
         }}
       >
         {(operators: Operator[]) => (
           <TableFrame
             header={{
-              title: "Accounts",
-              description:
-                "Disabling one ends every session it holds, in the same transaction.",
+              title: t("frame.accounts"),
+              description: t("frame.accountsWhy"),
             }}
           >
             <Table>

@@ -32,7 +32,10 @@ export function SubscriptionDetail({ id }: { id: string }) {
   return (
     <DetailPage
       query={result}
-      empty={{ title: "No subscription", description: "Nothing to show." }}
+      empty={{
+        title: t("empty.subscription"),
+        description: t("general.nothingToShow"),
+      }}
       back="subscriptions"
       title={(item) => `Subscription — cycle ${item.cycle}`}
       subtitle={(item) => item.customer_id}

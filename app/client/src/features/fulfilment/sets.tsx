@@ -2,6 +2,7 @@ import { fulfilmentSet, type FulfilmentSet } from "@/api/schemas"
 import { DataTable, type Columns } from "@/components/data-table"
 import { Badge } from "@/components/ui/badge"
 import { usePagedList } from "@/lib/paged"
+import { useT } from "@/panel/i18n"
 
 const columns: Columns<FulfilmentSet> = [
   {
@@ -29,6 +30,7 @@ export function FulfilmentSets({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
+  const t = useT()
   const paged = usePagedList(
     ["fulfilment-sets"],
     "/admin/fulfillment-sets",
@@ -42,15 +44,14 @@ export function FulfilmentSets({
   return (
     <DataTable
       header={{
-        title: "Fulfilment sets",
-        description: "A set groups the service zones one carrier serves.",
+        title: t("frame.fulfilmentSets"),
+        description: t("frame.fulfilmentSetsWhy"),
       }}
       paged={paged}
       columns={columns}
       empty={{
-        title: "No fulfilment sets",
-        description:
-          "A set groups the service zones a location or a store ships through.",
+        title: t("empty.fulfilmentSets"),
+        description: t("empty.fulfilmentSetsWhy"),
       }}
     />
   )

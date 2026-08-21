@@ -18,7 +18,10 @@ export function PriceListDetail({ id }: { id: string }) {
   return (
     <DetailPage
       query={result}
-      empty={{ title: "No price list", description: "Nothing to show." }}
+      empty={{
+        title: t("empty.priceList"),
+        description: t("general.nothingToShow"),
+      }}
       back="price lists"
       title={(item) => item.title}
       actions={(item) => (
