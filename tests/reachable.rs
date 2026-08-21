@@ -103,7 +103,7 @@ use std::path::{Path, PathBuf};
 
 /// Public functions nothing in the crate calls, each with the reason.
 /// Adding to this is not a fix.
-const TOLERATED: [(&str, &str); 29] = [
+const TOLERATED: [(&str, &str); 30] = [
     (
         "batch::import_workflow",
         "the import workflow a host runs through the runner when a file is large \
@@ -199,6 +199,13 @@ const TOLERATED: [(&str, &str); 29] = [
         "payment::balance",
         "what is still capturable and refundable; the admin payment view sums it \
          its own way",
+    ),
+    (
+        "payment::mark_failed",
+        "called by `payment::apply_webhook`, in the same module — this check \
+         counts a caller elsewhere in the crate, and a sibling function is \
+         not that. Reachable, and by a route: \
+         `POST /admin/payment-webhooks/{id}/apply`",
     ),
     (
         "pricing::link_shipping_option",

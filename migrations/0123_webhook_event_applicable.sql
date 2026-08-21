@@ -16,9 +16,22 @@ set statement_timeout = '60s';
 -- a row with no `kind`, and says why.
 alter table payment_webhook_event
     add column kind               text,
-    add column payment_session_id uuid references payment_session (id) on delete set null,
+    add column payment_session_id uuid,
     add column amount             numeric(20, 6),
     add column currency_code      text;
+
+-- Composite, through `tezgah_fk`, and not a plain `references`. Postgres
+-- checks a foreign key with row security bypassed, so a single-column key on
+-- a scoped table would let one shop's callback point at another shop's
+-- session — `tests/schema.rs` and `tests/isolation.rs` both said so, the
+-- second by inserting one and watching it be accepted.
+call tezgah_fk('payment_webhook_event', 'payment_session_id', 'payment_session', 'set null', true);
+
+-- A key with no index behind it is a sequential scan on every delete of the
+-- parent, which for a session is every abandoned cart swept.
+create index payment_webhook_event_session
+    on payment_webhook_event (scope, payment_session_id)
+    where payment_session_id is not null;
 
 -- The six the crate models. `other` is one of them on purpose: a provider
 -- says a great many things, and "recorded, acknowledged, ignored" is an
