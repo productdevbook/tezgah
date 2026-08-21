@@ -344,9 +344,14 @@ async fn one_shops_promotions_are_invisible_to_another() {
     mine.commit().await.expect("to keep them");
 
     let mut theirs = shop.begin_as(shop.elsewhere).await;
-    let seen = promotion::promotions(&mut theirs, &shop.theirs(), tezgah::Paging::first(10))
-        .await
-        .expect("a page");
+    let seen = promotion::promotions(
+        &mut theirs,
+        &shop.theirs(),
+        promotion::PromotionFilter::default(),
+        tezgah::Paging::first(10),
+    )
+    .await
+    .expect("a page");
     assert!(seen.is_empty());
 
     let missing = promotion::apply(&mut theirs, &shop.theirs(), cart)
@@ -1095,5 +1100,102 @@ async fn two_orders_claiming_a_customers_last_unit_of_a_campaign_budget_at_once(
     after.commit().await.expect("to finish reading");
     assert_eq!(used, dec!(1));
 
+    shop.close().await;
+}
+
+/// A back office with four hundred promotions cannot find one by paging to
+/// it. Until this, `/admin/promotions` took a cursor and a limit and nothing
+/// else — so the list narrows now, and the narrowing and the count have to
+/// agree about what matches, because they are two queries over one question.
+#[tokio::test]
+async fn a_list_of_promotions_narrows_and_counts_the_same_rows() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    a_promotion(&mut tx, &ctx, "SUMMER10", None).await;
+    a_promotion(&mut tx, &ctx, "SUMMER20", None).await;
+    let winter = a_promotion(&mut tx, &ctx, "WINTER5", None).await;
+    promotion::set_status(&mut tx, &ctx, winter, Status::Inactive)
+        .await
+        .expect("a status");
+
+    let searched = promotion::promotions(
+        &mut tx,
+        &ctx,
+        promotion::PromotionFilter {
+            search: tezgah::page::Search::new("summer"),
+            ..Default::default()
+        },
+        tezgah::Paging::first(10).counting(),
+    )
+    .await
+    .expect("a page");
+
+    assert_eq!(
+        searched.items.len(),
+        2,
+        "the two summer codes, and no other"
+    );
+    assert_eq!(
+        searched.total,
+        Some(2),
+        "the count answers the same question the page did"
+    );
+
+    let inactive = promotion::promotions(
+        &mut tx,
+        &ctx,
+        promotion::PromotionFilter {
+            status: Some(Status::Inactive),
+            ..Default::default()
+        },
+        tezgah::Paging::first(10).counting(),
+    )
+    .await
+    .expect("a page");
+
+    assert_eq!(inactive.items.len(), 1);
+    assert_eq!(inactive.items[0].code, "WINTER5");
+    assert_eq!(inactive.total, Some(1));
+
+    // Newest first is the back office's default, and the cursor has to know
+    // which way it is walking: a page ordered one way and compared the other
+    // returns the rows it already gave.
+    let newest = promotion::promotions(
+        &mut tx,
+        &ctx,
+        promotion::PromotionFilter {
+            order: tezgah::page::Order::Newest,
+            ..Default::default()
+        },
+        tezgah::Paging::first(2),
+    )
+    .await
+    .expect("a page");
+
+    assert_eq!(newest.items.len(), 2);
+    assert_eq!(newest.items[0].code, "WINTER5", "the last one written");
+
+    let next = promotion::promotions(
+        &mut tx,
+        &ctx,
+        promotion::PromotionFilter {
+            order: tezgah::page::Order::Newest,
+            ..Default::default()
+        },
+        tezgah::Paging::after(
+            tezgah::page::Cursor::decode(&newest.next.clone().expect("another page"))
+                .expect("a cursor"),
+            2,
+        ),
+    )
+    .await
+    .expect("a second page");
+
+    assert_eq!(next.items.len(), 1);
+    assert_eq!(next.items[0].code, "SUMMER10", "the first one written");
+
+    tx.rollback().await.expect("to roll back");
     shop.close().await;
 }

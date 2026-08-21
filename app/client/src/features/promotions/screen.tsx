@@ -5,7 +5,20 @@ import { DataTable, type Columns } from "@/components/data-table"
 import { Badge } from "@/components/ui/badge"
 import { usePagedList } from "@/lib/paged"
 import { PageHeading } from "@/components/page-heading"
+import { SearchBox } from "@/components/search-box"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { useT } from "@/panel/i18n"
+
+import {
+  PROMOTION_STATUS,
+  type PromotionStatus,
+} from "@/features/promotions/status"
 
 const columns: Columns<Promotion> = [
   {
@@ -44,22 +57,64 @@ const columns: Columns<Promotion> = [
 
 export function Promotions({
   after,
+  q,
+  status,
   onAfterChange,
+  onQChange,
+  onStatusChange,
 }: {
   after: string | undefined
+  q: string | undefined
+  status: PromotionStatus | "all"
   onAfterChange: (after: string | undefined) => void
+  onQChange: (q: string | undefined) => void
+  onStatusChange: (status: PromotionStatus | "all") => void
 }) {
   const t = useT()
-  const paged = usePagedList(["promotions"], "/admin/promotions", promotion, {
-    after,
-    onAfterChange,
-  })
+  const paged = usePagedList(
+    ["promotions", q ?? "", status],
+    "/admin/promotions",
+    promotion,
+    {
+      after,
+      onAfterChange,
+      query: {
+        q,
+        status: status === "all" ? undefined : status,
+        count: "true",
+      },
+    }
+  )
   return (
     <div className="space-y-4">
       <PageHeading
         title={t("screen.promotions.title")}
         subtitle={t("screen.promotions.subtitle")}
-      />
+      >
+        <SearchBox
+          value={q}
+          onChange={onQChange}
+          placeholder={t("search.promotions")}
+        />
+        <Select
+          value={status}
+          onValueChange={(value) =>
+            onStatusChange(value as PromotionStatus | "all")
+          }
+        >
+          <SelectTrigger className="w-40" size="sm">
+            <SelectValue placeholder={t("filter.anyStatus")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("filter.anyStatus")}</SelectItem>
+            {PROMOTION_STATUS.map((one) => (
+              <SelectItem key={one} value={one}>
+                {one}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </PageHeading>
       <DataTable
         paged={paged}
         columns={columns}
@@ -73,7 +128,9 @@ export function Promotions({
         )}
         empty={{
           title: t("screen.promotions.empty"),
-          description: t("screen.promotions.emptyAny"),
+          description: q
+            ? t("search.nothingMatches", { q })
+            : t("screen.promotions.emptyAny"),
         }}
       />
     </div>

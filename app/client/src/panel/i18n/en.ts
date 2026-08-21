@@ -445,6 +445,7 @@ export const en = {
 
   "search.orders": "Search e-mail or order number",
   "search.customers": "Search name, e-mail, company",
+  "search.promotions": "Search a promotion code",
   "search.products": "Search title, handle, subtitle",
   "placeholder.basketId":
     "the id of a checkout that spanned more than one seller",
