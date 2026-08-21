@@ -6,8 +6,10 @@ import { Section, SectionRow, SectionRows } from "@/components/section"
 import { Badge } from "@/components/ui/badge"
 import { Levels } from "@/features/inventory/levels"
 import { dateTime, useDetail } from "@/lib/detail"
+import { useT } from "@/panel/i18n"
 
 export function InventoryItemDetail({ id }: { id: string }) {
+  const t = useT()
   const result = useDetail(
     ["inventory-items"],
     "/admin/inventory-items/{id}",
@@ -18,7 +20,10 @@ export function InventoryItemDetail({ id }: { id: string }) {
   return (
     <DetailPage
       query={result}
-      empty={{ title: "No inventory item", description: "Nothing to show." }}
+      empty={{
+        title: t("detail.inventory.empty"),
+        description: t("detail.nothingToShow"),
+      }}
       back="inventory"
       title={(item) => item.title ?? "Untitled item"}
       subtitle={(item) => item.sku ?? undefined}
@@ -42,17 +47,19 @@ export function InventoryItemDetail({ id }: { id: string }) {
       )}
       main={(item) => (
         <>
-          <Section title="The item">
+          <Section title={t("detail.inventory.title")}>
             <SectionRows>
-              <SectionRow label="Title" value={item.title} />
+              <SectionRow label={t("field.title")} value={item.title} />
               <SectionRow
-                label="SKU"
+                label={t("field.sku")}
                 value={item.sku ? <Mono>{item.sku}</Mono> : null}
               />
               <SectionRow
-                label="Ships"
+                label={t("field.ships")}
                 value={
-                  item.requires_shipping ? "Shipped" : "Digital, no shipping"
+                  item.requires_shipping
+                    ? t("value.shipped")
+                    : t("value.digital")
                 }
               />
             </SectionRows>
@@ -61,10 +68,13 @@ export function InventoryItemDetail({ id }: { id: string }) {
         </>
       )}
       side={(item) => (
-        <Section title="Details">
+        <Section title={t("general.details")}>
           <SectionRows>
-            <SectionRow label="ID" value={<Mono>{item.id}</Mono>} />
-            <SectionRow label="Created" value={dateTime(item.created_at)} />
+            <SectionRow label={t("field.id")} value={<Mono>{item.id}</Mono>} />
+            <SectionRow
+              label={t("field.created")}
+              value={dateTime(item.created_at)}
+            />
           </SectionRows>
         </Section>
       )}

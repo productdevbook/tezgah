@@ -124,6 +124,34 @@ export const en = {
   "screen.credit.emptyAny": "None has been issued yet.",
 
   "search.nothingMatches": "Nothing matches {q}.",
+
+  "field.id": "ID",
+  "field.title": "Title",
+  "field.created": "Created",
+  "field.updated": "Updated",
+  "field.email": "Email",
+  "field.firstName": "First name",
+  "field.lastName": "Last name",
+  "field.phone": "Phone",
+  "field.company": "Company",
+  "field.sku": "SKU",
+  "field.account": "Account",
+  "field.erased": "Erased",
+  "field.ships": "Ships",
+
+  "value.yes": "Yes",
+  "value.no": "No",
+  "value.registered": "Registered",
+  "value.guest": "Guest",
+  "value.shipped": "Shipped",
+  "value.digital": "Digital, no shipping",
+
+  "detail.customer.title": "Who they are",
+  "detail.customer.empty": "No customer",
+  "detail.customer.account": "Account",
+  "detail.inventory.title": "The item",
+  "detail.inventory.empty": "No inventory item",
+  "detail.nothingToShow": "Nothing to show.",
 } as const
 
 export type TranslationKey = keyof typeof en

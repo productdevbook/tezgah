@@ -13,6 +13,7 @@ import {
   TaxIds,
 } from "@/features/customers/attached"
 import { dateTime, useDetail } from "@/lib/detail"
+import { useT } from "@/panel/i18n"
 
 function name(row: Customer): string | null {
   const parts = [row.first_name, row.last_name].filter(Boolean)
@@ -20,12 +21,16 @@ function name(row: Customer): string | null {
 }
 
 export function CustomerDetail({ id }: { id: string }) {
+  const t = useT()
   const result = useDetail(["customers"], "/admin/customers/{id}", customer, id)
 
   return (
     <DetailPage
       query={result}
-      empty={{ title: "No customer", description: "Nothing to show." }}
+      empty={{
+        title: t("detail.customer.empty"),
+        description: t("detail.nothingToShow"),
+      }}
       back="customers"
       title={(item) => name(item) ?? "Unnamed customer"}
       subtitle={(item) => item.email ?? undefined}
@@ -48,7 +53,7 @@ export function CustomerDetail({ id }: { id: string }) {
       main={(item) => (
         <>
           <Section
-            title="Who they are"
+            title={t("detail.customer.title")}
             actions={
               <ActionMenu
                 groups={[
@@ -68,11 +73,17 @@ export function CustomerDetail({ id }: { id: string }) {
             }
           >
             <SectionRows>
-              <SectionRow label="Email" value={item.email} />
-              <SectionRow label="First name" value={item.first_name} />
-              <SectionRow label="Last name" value={item.last_name} />
-              <SectionRow label="Phone" value={item.phone} />
-              <SectionRow label="Company" value={item.company_name} />
+              <SectionRow label={t("field.email")} value={item.email} />
+              <SectionRow
+                label={t("field.firstName")}
+                value={item.first_name}
+              />
+              <SectionRow label={t("field.lastName")} value={item.last_name} />
+              <SectionRow label={t("field.phone")} value={item.phone} />
+              <SectionRow
+                label={t("field.company")}
+                value={item.company_name}
+              />
             </SectionRows>
           </Section>
 
@@ -83,26 +94,37 @@ export function CustomerDetail({ id }: { id: string }) {
       )}
       side={(item) => (
         <>
-          <Section title="Account">
+          <Section title={t("detail.customer.account")}>
             <SectionRows>
               <SectionRow
-                label="Account"
-                value={item.has_account ? "Registered" : "Guest"}
+                label={t("field.account")}
+                value={
+                  item.has_account ? t("value.registered") : t("value.guest")
+                }
               />
               <SectionRow
-                label="Erased"
-                value={item.anonymised ? "Yes" : "No"}
+                label={t("field.erased")}
+                value={item.anonymised ? t("value.yes") : t("value.no")}
               />
             </SectionRows>
           </Section>
 
           <MetadataSection value={item.metadata} />
 
-          <Section title="Details">
+          <Section title={t("general.details")}>
             <SectionRows>
-              <SectionRow label="ID" value={<Mono>{item.id}</Mono>} />
-              <SectionRow label="Created" value={dateTime(item.created_at)} />
-              <SectionRow label="Updated" value={dateTime(item.updated_at)} />
+              <SectionRow
+                label={t("field.id")}
+                value={<Mono>{item.id}</Mono>}
+              />
+              <SectionRow
+                label={t("field.created")}
+                value={dateTime(item.created_at)}
+              />
+              <SectionRow
+                label={t("field.updated")}
+                value={dateTime(item.updated_at)}
+              />
             </SectionRows>
           </Section>
         </>
