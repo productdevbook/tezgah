@@ -12,8 +12,9 @@
 
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use uuid::Uuid;
 
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::id::{
     AccountHolderId, CustomerId, OrderId, SellingPlanGroupId, SellingPlanId, SubscriptionId,
     VariantId,
@@ -355,12 +356,68 @@ pub async fn create_subscription(
     ))
 }
 
+/// A contract's own query type. The back office list is the one that needs
+/// narrowing; a shopper's own contracts are few enough to page.
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ListSubscriptions {
+    pub after: Option<String>,
+    pub limit: Option<u32>,
+    /// One customer's contracts.
+    pub customer_id: Option<Uuid>,
+    /// `active`, `past_due`, `cancelled`, `expired` or `paused`.
+    pub status: Option<String>,
+    /// True for the contracts that will not renew — cancelled at the end of
+    /// the period, or already ended.
+    pub ending: Option<bool>,
+    /// Which end first. Left out, this surface answers newest-first.
+    pub order: Option<crate::page::Order>,
+    /// Asks how many contracts match, as well as this page of them.
+    pub count: Option<bool>,
+}
+
+impl ListSubscriptions {
+    fn listing(&self) -> Result<Paging> {
+        let paging = List {
+            after: self.after.clone(),
+            limit: self.limit,
+        }
+        .paging()?;
+
+        Ok(if self.count.unwrap_or(false) {
+            paging.counting()
+        } else {
+            paging
+        })
+    }
+
+    /// Checked against the column's own permitted set rather than against a
+    /// list kept here: an unknown status would match nothing and read as an
+    /// empty shop.
+    fn status(&self) -> Result<Option<String>> {
+        match self.status.as_deref() {
+            None => Ok(None),
+            Some(one) if subscription::STATUSES.contains(&one) => Ok(Some(one.to_owned())),
+            Some(other) => Err(Error::invalid(format!(
+                "{other:?} is not a subscription status"
+            ))),
+        }
+    }
+}
+
 pub async fn list_subscriptions(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
-    query: List,
+    query: ListSubscriptions,
 ) -> Result<Page<SubscriptionView>> {
-    let page = subscription::list(tx, ctx, None, query.paging()?).await?;
+    let filter = subscription::SubscriptionFilter {
+        customer: query.customer_id.map(CustomerId::from_uuid),
+        status: query.status()?,
+        ending: query.ending,
+        order: query.order.unwrap_or(crate::page::Order::Newest),
+    };
+
+    let page = subscription::list(tx, ctx, filter, query.listing()?).await?;
 
     Ok(page.map(SubscriptionView::from))
 }
@@ -660,7 +717,16 @@ pub async fn my_subscriptions(
     query: List,
 ) -> Result<Page<SubscriptionView>> {
     let customer = signed_in(ctx)?;
-    let page = subscription::list(tx, ctx, Some(customer), query.paging()?).await?;
+    let page = subscription::list(
+        tx,
+        ctx,
+        subscription::SubscriptionFilter {
+            customer: Some(customer),
+            ..Default::default()
+        },
+        query.paging()?,
+    )
+    .await?;
 
     Ok(page.map(SubscriptionView::from))
 }
@@ -827,7 +893,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/subscriptions",
         action: Action::View,
         domain: "subscription",
-        query: None,
+        query: Some(super::query_schema::<ListSubscriptions>),
         summary: "List the contracts",
     },
     Route {

@@ -1224,7 +1224,7 @@ async fn delete_promotion(
 async fn list_subscriptions(
     State(state): State<AppState>,
     Extension(caller): Extension<Caller>,
-    Query(query): Query<subscription::List>,
+    Query(query): Query<subscription::ListSubscriptions>,
 ) -> Result<Json<tezgah::page::Page<subscription::SubscriptionView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
     let ctx = ctx_for(&state, &caller);
@@ -4100,7 +4100,7 @@ async fn list_refund_reasons(
 async fn list_gift_cards(
     State(state): State<AppState>,
     Extension(caller): Extension<Caller>,
-    Query(query): Query<credit::List>,
+    Query(query): Query<credit::ListGiftCards>,
 ) -> Result<Json<tezgah::page::Page<credit::GiftCardView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
     let ctx = ctx_for(&state, &caller);

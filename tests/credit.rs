@@ -1102,3 +1102,69 @@ async fn removing_a_cart_credit_that_does_not_exist_is_denied_not_not_found() {
     tx.rollback().await.ok();
     shop.close().await;
 }
+
+/// A shop with a thousand cards issued cannot find the disabled ones by
+/// paging. There is no search here on purpose — a code is stored hashed, so
+/// the row holds nothing a substring could match — but what the row *does*
+/// hold can be asked about, and the page and the count have to agree.
+#[tokio::test]
+async fn a_list_of_gift_cards_narrows_and_counts_the_same_rows() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    let (first, _) = a_card(&mut tx, &ctx, dec!(100)).await;
+    a_card(&mut tx, &ctx, dec!(50)).await;
+    credit::disable_gift_card(&mut tx, &ctx, first)
+        .await
+        .expect("to disable it");
+
+    let stopped = credit::gift_cards(
+        &mut tx,
+        &ctx,
+        credit::GiftCardFilter {
+            disabled: Some(true),
+            ..Default::default()
+        },
+        Paging::first(10).counting(),
+    )
+    .await
+    .expect("a page");
+
+    assert_eq!(stopped.items.len(), 1);
+    assert_eq!(stopped.items[0].id, first);
+    assert_eq!(stopped.total, Some(1), "the count matches the page");
+
+    let live = credit::gift_cards(
+        &mut tx,
+        &ctx,
+        credit::GiftCardFilter {
+            disabled: Some(false),
+            ..Default::default()
+        },
+        Paging::first(10).counting(),
+    )
+    .await
+    .expect("a page");
+
+    assert_eq!(live.items.len(), 1);
+    assert_eq!(live.total, Some(1));
+
+    let elsewhere = credit::gift_cards(
+        &mut tx,
+        &ctx,
+        credit::GiftCardFilter {
+            currency: Some(Currency::parse("USD").expect("a currency code")),
+            ..Default::default()
+        },
+        Paging::first(10).counting(),
+    )
+    .await
+    .expect("a page");
+
+    assert!(elsewhere.items.is_empty(), "both cards are in lira");
+    assert_eq!(elsewhere.total, Some(0));
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}

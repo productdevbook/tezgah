@@ -5,6 +5,17 @@ import { DataTable, type Columns } from "@/components/data-table"
 import { Badge } from "@/components/ui/badge"
 import { usePagedList } from "@/lib/paged"
 import { PageHeading } from "@/components/page-heading"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  SUBSCRIPTION_STATUS,
+  type SubscriptionStatus,
+} from "@/features/subscriptions/status"
 import { useT } from "@/panel/i18n"
 
 const columns: Columns<Subscription> = [
@@ -59,19 +70,33 @@ const columns: Columns<Subscription> = [
 
 export function Subscriptions({
   after,
+  status,
+  ending,
   onAfterChange,
+  onStatusChange,
+  onEndingChange,
 }: {
   after: string | undefined
+  status: SubscriptionStatus | "all"
+  ending: "all" | "ending" | "staying"
   onAfterChange: (after: string | undefined) => void
+  onStatusChange: (status: SubscriptionStatus | "all") => void
+  onEndingChange: (ending: "all" | "ending" | "staying") => void
 }) {
   const t = useT()
   const paged = usePagedList(
-    ["subscriptions"],
+    ["subscriptions", status, ending],
     "/admin/subscriptions",
     subscription,
     {
       after,
       onAfterChange,
+      query: {
+        status: status === "all" ? undefined : status,
+        ending:
+          ending === "all" ? undefined : ending === "ending" ? "true" : "false",
+        count: "true",
+      },
     }
   )
   return (
@@ -79,7 +104,41 @@ export function Subscriptions({
       <PageHeading
         title={t("screen.subscriptions.title")}
         subtitle={t("screen.subscriptions.subtitle")}
-      />
+      >
+        <Select
+          value={status}
+          onValueChange={(value) =>
+            onStatusChange(value as SubscriptionStatus | "all")
+          }
+        >
+          <SelectTrigger className="w-40" size="sm">
+            <SelectValue placeholder={t("filter.anyStatus")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("filter.anyStatus")}</SelectItem>
+            {SUBSCRIPTION_STATUS.map((one) => (
+              <SelectItem key={one} value={one}>
+                {one}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select
+          value={ending}
+          onValueChange={(value) =>
+            onEndingChange(value as "all" | "ending" | "staying")
+          }
+        >
+          <SelectTrigger className="w-44" size="sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("filter.anyRenewal")}</SelectItem>
+            <SelectItem value="ending">{t("filter.ending")}</SelectItem>
+            <SelectItem value="staying">{t("filter.renewing")}</SelectItem>
+          </SelectContent>
+        </Select>
+      </PageHeading>
       <DataTable
         paged={paged}
         columns={columns}

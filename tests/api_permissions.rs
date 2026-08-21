@@ -3627,7 +3627,7 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
     denied!(
         Method::Get,
         "/admin/gift-cards",
-        credit::list_gift_cards(&mut tx, &ctx, credit::List::default())
+        credit::list_gift_cards(&mut tx, &ctx, credit::ListGiftCards::default())
     );
     denied!(
         Method::Post,
@@ -3852,7 +3852,7 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
     denied!(
         Method::Get,
         "/admin/subscriptions",
-        subscription::list_subscriptions(&mut tx, &ctx, subscription::List::default())
+        subscription::list_subscriptions(&mut tx, &ctx, subscription::ListSubscriptions::default())
     );
     denied!(
         Method::Get,

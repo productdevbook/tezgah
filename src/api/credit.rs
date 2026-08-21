@@ -15,6 +15,7 @@
 
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::credit;
 use crate::error::Result;
@@ -232,13 +233,61 @@ pub async fn issue_gift_card(
     })
 }
 
+/// A gift card's own query type. No `q`: the code is stored hashed, so there
+/// is nothing on the row a substring could match.
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ListGiftCards {
+    pub after: Option<String>,
+    pub limit: Option<u32>,
+    /// Cards issued to one customer.
+    pub customer_id: Option<Uuid>,
+    /// A three-letter code.
+    pub currency_code: Option<String>,
+    /// True for cards stopped by hand.
+    pub disabled: Option<bool>,
+    /// True for cards with nothing left on them.
+    pub spent: Option<bool>,
+    /// Which end first. Left out, this surface answers newest-first.
+    pub order: Option<crate::page::Order>,
+    /// Asks how many cards match, as well as this page of them.
+    pub count: Option<bool>,
+}
+
+impl ListGiftCards {
+    fn listing(&self) -> Result<Paging> {
+        let paging = List {
+            after: self.after.clone(),
+            limit: self.limit,
+        }
+        .paging()?;
+
+        Ok(if self.count.unwrap_or(false) {
+            paging.counting()
+        } else {
+            paging
+        })
+    }
+}
+
 pub async fn list_gift_cards(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
-    query: List,
+    query: ListGiftCards,
 ) -> Result<Page<GiftCardView>> {
+    let filter = credit::GiftCardFilter {
+        customer: query.customer_id.map(CustomerId::from_uuid),
+        currency: match query.currency_code.as_deref() {
+            Some(code) => Some(Currency::parse(code)?),
+            None => None,
+        },
+        disabled: query.disabled,
+        spent: query.spent,
+        order: query.order.unwrap_or(crate::page::Order::Newest),
+    };
+
     Ok(map(
-        credit::gift_cards(tx, ctx, query.paging()?).await?,
+        credit::gift_cards(tx, ctx, filter, query.listing()?).await?,
         GiftCardView::from,
     ))
 }
@@ -478,7 +527,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/gift-cards",
         action: Action::View,
         domain: "credit",
-        query: Some(super::query_schema::<super::PagingQuery>),
+        query: Some(super::query_schema::<ListGiftCards>),
         summary: "List gift cards",
     },
     Route {
