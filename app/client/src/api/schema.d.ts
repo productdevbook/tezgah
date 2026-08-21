@@ -7138,6 +7138,30 @@ export interface components {
              */
             q?: string | null;
         };
+        /**
+         * @description A gift card's own query type. No `q`: the code is stored hashed, so there
+         *     is nothing on the row a substring could match.
+         */
+        ListGiftCards: {
+            after?: string | null;
+            /** @description Asks how many cards match, as well as this page of them. */
+            count?: boolean | null;
+            /** @description A three-letter code. */
+            currency_code?: string | null;
+            /**
+             * Format: uuid
+             * @description Cards issued to one customer.
+             */
+            customer_id?: string | null;
+            /** @description True for cards stopped by hand. */
+            disabled?: boolean | null;
+            /** Format: uint32 */
+            limit?: number | null;
+            /** @description Which end first. Left out, this surface answers newest-first. */
+            order?: components["schemas"]["Order"] | null;
+            /** @description True for cards with nothing left on them. */
+            spent?: boolean | null;
+        };
         ListOrders: {
             after?: string | null;
             /** @description Which column. `created` is the default; `email` is the other one. */
@@ -7226,6 +7250,31 @@ export interface components {
             /** @description Matched against the code. Blank is not a search. */
             q?: string | null;
             /** @description `draft`, `active` or `inactive`. */
+            status?: string | null;
+        };
+        /**
+         * @description A contract's own query type. The back office list is the one that needs
+         *     narrowing; a shopper's own contracts are few enough to page.
+         */
+        ListSubscriptions: {
+            after?: string | null;
+            /** @description Asks how many contracts match, as well as this page of them. */
+            count?: boolean | null;
+            /**
+             * Format: uuid
+             * @description One customer's contracts.
+             */
+            customer_id?: string | null;
+            /**
+             * @description True for the contracts that will not renew — cancelled at the end of
+             *     the period, or already ended.
+             */
+            ending?: boolean | null;
+            /** Format: uint32 */
+            limit?: number | null;
+            /** @description Which end first. Left out, this surface answers newest-first. */
+            order?: components["schemas"]["Order"] | null;
+            /** @description `active`, `past_due`, `cancelled`, `expired` or `paused`. */
             status?: string | null;
         };
         ListTaxRates: {
@@ -12684,7 +12733,13 @@ export interface operations {
         parameters: {
             query?: {
                 after?: string | null;
+                count?: boolean | null;
+                currency_code?: string | null;
+                customer_id?: string | null;
+                disabled?: boolean | null;
                 limit?: number | null;
+                order?: components["schemas"]["Order"] | null;
+                spent?: boolean | null;
             };
             header?: never;
             path?: never;
@@ -24599,7 +24654,15 @@ export interface operations {
     };
     getAdminSubscriptions: {
         parameters: {
-            query?: never;
+            query?: {
+                after?: string | null;
+                count?: boolean | null;
+                customer_id?: string | null;
+                ending?: boolean | null;
+                limit?: number | null;
+                order?: components["schemas"]["Order"] | null;
+                status?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
