@@ -79,19 +79,20 @@ a real trade — a cursor is stable while rows are being written and an offset i
 not — but it is a trade the documentation should state rather than one a panel
 discovers.
 
-**4. Nothing is chosen by configuration.** Medusa ships providers for caching
+**4. Little is chosen by configuration.** Medusa ships providers for caching
 (Redis, Memcached), events (Local, Redis), files (Local, S3), locking (Redis,
 Postgres), notification (Local, SendGrid), analytics (Local, PostHog) and the
-workflow engine (In-Memory, Redis), each swapped in a config file. The shipped
-tezgah binary has one demo payment provider that takes no money, a local
-directory for files, an SMTP mailer and an outbox that posts to one URL. It
-wires no tax provider and no carrier at all, though the library has traits for
-both — measured: zero uses of `TaxProvider` or `FulfillmentProvider` in
-`app/server`.
+workflow engine (In-Memory, Redis), each swapped in a config file.
 
-Mostly the app's gap rather than the library's. The library's part is small
-and specific: the traits exist, the binary does not offer a way to say which
-implementation to use.
+Payment is answered now: `TEZGAH_PAYMENT_PROVIDER` picks iyzico or stripe and
+the binary builds the matching kasapay adapter, so the published image can
+take real money rather than only demonstrate a checkout. What is still
+compiled in rather than chosen: files go to a directory, mail goes to one SMTP
+URL, events go to one webhook, and no tax provider or carrier is wired at all
+though the library has traits for both — measured: zero uses of `TaxProvider`
+or `FulfillmentProvider` in `app/server`.
+
+The app's gap rather than the library's, and a smaller one than it was.
 
 **5. No notification port.** The library has no notion of a message to a
 person; the app sends two plain-text letters directly. A shopper gets no order
@@ -140,9 +141,9 @@ searched by a substring. Nothing else can, and there is no index behind it.
 
 ## The order to do them in
 
-For the self-hosted product, (4) comes first: an image whose only payment
-provider takes no money is a demonstration, not a shop, and a real one is a
-release of the payment library away rather than work here. Then (1) and (2),
+For the self-hosted product, the payment half of (4) is done — the image takes
+money through iyzico or stripe now — and what is left of it (a tax provider, a
+carrier, somewhere other than a directory to put files) is smaller. Then (1) and (2),
 which are one piece of work and the largest — a back office is mostly lists.
 (7) is what decides whether a host embeds the panel or replaces it. (5), (6),
 (8) and (9) are all worth doing and none of them stops a shop trading today.

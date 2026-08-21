@@ -25,6 +25,53 @@ const DEFAULT_PORT: u16 = 8080;
 /// `docs/self-hosting.md` for what taking real money instead requires.
 const DEMO_BANK_CONFIRMATION: &str = "i-understand-this-takes-no-money";
 
+/// A real provider, and the credentials it was configured with.
+///
+/// One variant per kasapay adapter this binary is built against. tezgah
+/// writes no provider of its own — `CLAUDE.md` is explicit that a provider
+/// belongs to kasapay — so what is here is a choice between adapters somebody
+/// else maintains, named by `TEZGAH_PAYMENT_PROVIDER`.
+///
+/// Credentials are held as `String` here and turned into `kasapay_core::Secret`
+/// at the moment the provider is built, so nothing in this struct's `Debug`
+/// prints one: `Config` derives `Debug`, and a secret in a startup log is a
+/// secret in a log aggregator for ever.
+#[derive(Clone)]
+pub enum Payment {
+    Iyzico {
+        api_key: String,
+        secret_key: String,
+        /// iyzico's sandbox and production are different hosts with different
+        /// keys; nothing about a key says which it is, so this is asked
+        /// rather than guessed.
+        sandbox: bool,
+    },
+    Stripe {
+        secret_key: String,
+    },
+}
+
+impl Payment {
+    /// What to call this in a log line. Never the credentials.
+    pub fn name(&self) -> &'static str {
+        match self {
+            Payment::Iyzico { .. } => "iyzico",
+            Payment::Stripe { .. } => "stripe",
+        }
+    }
+}
+
+/// Redacted, deliberately: `Config` derives `Debug` and is printed by more
+/// than one thing at startup.
+impl std::fmt::Debug for Payment {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Payment")
+            .field("provider", &self.name())
+            .field("credentials", &"<redacted>")
+            .finish()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Config {
     pub database_url: String,
@@ -41,12 +88,16 @@ pub struct Config {
     pub stock_location_id: Option<StockLocationId>,
     pub currency_exponent: u32,
     /// `true` only when `TEZGAH_DEMO_BANK` is set to exactly
-    /// `DEMO_BANK_CONFIRMATION`. The only payment provider this binary ships
-    /// is `provider::DemoBank`, which authorises every charge and remembers
-    /// nothing — so checkout stays unbound on `false`, the same way it stays
-    /// unbound with no `stock_location_id`. `main.rs` is where the two
-    /// combine.
+    /// `DEMO_BANK_CONFIRMATION`. `provider::DemoBank` authorises every charge
+    /// and remembers nothing, so checkout stays unbound on `false` unless a
+    /// real provider was named instead — `main.rs` is where the two combine.
     pub demo_bank_enabled: bool,
+    /// Which payment provider takes the money, and what it needs to do it.
+    ///
+    /// `None` means none was named, which is what an install that has not
+    /// been told how to take money should look like — the demo bank above is
+    /// the separate, deliberately awkward way to say "take none at all".
+    pub payment: Option<Payment>,
     /// Where an outbox row is sent. `None` leaves the deliverer unstarted and
     /// every event unsent — which is what this binary did before there was a
     /// deliverer at all, and is still the honest default: an event posted to
@@ -92,6 +143,17 @@ impl std::error::Error for ConfigError {}
 
 fn err(message: impl Into<String>) -> ConfigError {
     ConfigError(message.into())
+}
+
+/// A value that has to be there once the thing needing it was asked for.
+fn required(name: &str) -> Result<String, ConfigError> {
+    match std::env::var(name) {
+        Ok(value) if !value.trim().is_empty() => Ok(value),
+        _ => Err(err(format!(
+            "{name} is unset or empty, and the payment provider named in \
+             TEZGAH_PAYMENT_PROVIDER needs it"
+        ))),
+    }
 }
 
 impl Config {
@@ -155,6 +217,40 @@ impl Config {
         let demo_bank_enabled = std::env::var("TEZGAH_DEMO_BANK")
             .map(|value| value == DEMO_BANK_CONFIRMATION)
             .unwrap_or(false);
+
+        let payment = match std::env::var("TEZGAH_PAYMENT_PROVIDER").ok().as_deref() {
+            None | Some("") => None,
+            Some("iyzico") => Some(Payment::Iyzico {
+                api_key: required("TEZGAH_IYZICO_API_KEY")?,
+                secret_key: required("TEZGAH_IYZICO_SECRET_KEY")?,
+                // Production unless the sandbox is asked for by name: a shop
+                // that meant to test and got production is a bad day, and a
+                // shop that meant production and got the sandbox takes no
+                // money at all while believing it does — the second is worse,
+                // and this is the way round that fails loudly.
+                sandbox: std::env::var("TEZGAH_IYZICO_SANDBOX")
+                    .map(|value| value == "1")
+                    .unwrap_or(false),
+            }),
+            Some("stripe") => Some(Payment::Stripe {
+                secret_key: required("TEZGAH_STRIPE_SECRET_KEY")?,
+            }),
+            Some(other) => {
+                return Err(err(format!(
+                    "TEZGAH_PAYMENT_PROVIDER is set to {other:?}; this binary is built \
+                     against iyzico and stripe. Leave it unset to run without a way to \
+                     take money."
+                )));
+            }
+        };
+
+        if payment.is_some() && demo_bank_enabled {
+            return Err(err(
+                "TEZGAH_PAYMENT_PROVIDER and TEZGAH_DEMO_BANK are both set — one shop \
+                 takes money one way, and a binary that picked for you would pick wrong \
+                 eventually",
+            ));
+        }
 
         let event_webhook = match std::env::var("TEZGAH_EVENT_WEBHOOK") {
             Ok(url) if url.trim().is_empty() => {
@@ -241,6 +337,7 @@ impl Config {
             stock_location_id,
             currency_exponent,
             demo_bank_enabled,
+            payment,
             event_webhook,
             event_secret,
             webhook_secret,

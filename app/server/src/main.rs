@@ -18,7 +18,7 @@ use tezgah::checkout::Checkout;
 use tezgah::payment::PaymentProvider;
 use tezgah::ports::Scope;
 use tezgah_server::config::Config;
-use tezgah_server::{deliver, files, host, http, identity, mail, provider, schedule, seed};
+use tezgah_server::{bank, deliver, files, host, http, identity, mail, provider, schedule, seed};
 use tokio::net::TcpListener;
 use uuid::Uuid;
 
@@ -86,24 +86,38 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let host = Arc::new(host::ServerHost);
 
     let checkout = match (config.stock_location_id, config.demo_bank_enabled) {
-        (Some(location_id), true) => {
-            let bank: Arc<dyn kasapay_core::Provider> = Arc::new(provider::DemoBank);
-            let kasapay_provider: Arc<dyn PaymentProvider> = Arc::new(
-                provider::KasapayProvider::new(bank, config.currency_exponent),
-            );
-            Some(Arc::new(Checkout::new(kasapay_provider, location_id)))
+        (Some(location_id), demo) => {
+            // A named provider first, the demo bank second, and nothing
+            // third: `Config::from_env` already refused the case where both
+            // were asked for, so this cannot quietly prefer one over another
+            // an operator also meant.
+            let bank: Option<Arc<dyn kasapay_core::Provider>> = match &config.payment {
+                Some(payment) => {
+                    let built = bank::build(payment)?;
+                    println!("checkout bound: taking money through {}", payment.name());
+                    Some(built)
+                }
+                None if demo => Some(Arc::new(provider::DemoBank)),
+                None => {
+                    println!(
+                        "checkout not bound: no TEZGAH_PAYMENT_PROVIDER, and \
+                         TEZGAH_DEMO_BANK is not set to \
+                         i-understand-this-takes-no-money — the demo takes no real \
+                         money; see docs/self-hosting.md"
+                    );
+                    None
+                }
+            };
+
+            bank.map(|bank| {
+                let kasapay_provider: Arc<dyn PaymentProvider> = Arc::new(
+                    provider::KasapayProvider::new(bank, config.currency_exponent),
+                );
+                Arc::new(Checkout::new(kasapay_provider, location_id))
+            })
         }
         (None, _) => {
             println!("checkout not bound: TEZGAH_STOCK_LOCATION_ID is not set");
-            None
-        }
-        (Some(_), false) => {
-            println!(
-                "checkout not bound: TEZGAH_DEMO_BANK is not set to \
-                 i-understand-this-takes-no-money — the only payment provider this binary \
-                 ships is a demo that authorises every charge and takes no real money; see \
-                 docs/self-hosting.md"
-            );
             None
         }
     };
