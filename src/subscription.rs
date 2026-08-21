@@ -834,14 +834,10 @@ pub async fn list(
     let direction = filter.order.direction();
 
     let rows = sqlx::query_as::<_, Subscription>(&format!(
-        "select {columns} from subscription{filter}
+        "select {SUBSCRIPTION_COLUMNS} from subscription{SUBSCRIPTION_FILTER}
            and ($5::timestamptz is null or (created_at, id) {beyond} ($5, $6))
          order by created_at {direction}, id {direction}
-         limit $7",
-        columns = SUBSCRIPTION_COLUMNS,
-        filter = SUBSCRIPTION_FILTER,
-        beyond = beyond,
-        direction = direction,
+         limit $7"
     ))
     .bind(ctx.scope.0)
     .bind(filter.customer.map(CustomerId::as_uuid))

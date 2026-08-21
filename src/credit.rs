@@ -562,14 +562,10 @@ pub async fn gift_cards(
     let direction = filter.order.direction();
 
     let rows = sqlx::query_as::<_, GiftCard>(&format!(
-        "select {columns} from gift_card{filter}
+        "select {CARD_COLUMNS} from gift_card{CARD_FILTER}
            and ($6::timestamptz is null or (created_at, id) {beyond} ($6, $7))
          order by created_at {direction}, id {direction}
-         limit $8",
-        columns = CARD_COLUMNS,
-        filter = CARD_FILTER,
-        beyond = beyond,
-        direction = direction,
+         limit $8"
     ))
     .bind(ctx.scope.0)
     .bind(filter.customer.map(CustomerId::as_uuid))
