@@ -5,6 +5,7 @@ import { DataTable, type Columns } from "@/components/data-table"
 import { Badge } from "@/components/ui/badge"
 import { usePagedList } from "@/lib/paged"
 import { PageHeading } from "@/components/page-heading"
+import { useT } from "@/panel/i18n"
 
 const columns: Columns<Promotion> = [
   {
@@ -48,6 +49,7 @@ export function Promotions({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
+  const t = useT()
   const paged = usePagedList(["promotions"], "/admin/promotions", promotion, {
     after,
     onAfterChange,
@@ -55,8 +57,8 @@ export function Promotions({
   return (
     <div className="space-y-4">
       <PageHeading
-        title="Promotions"
-        subtitle="A use is claimed when a cart is checked out, not when it is paid for."
+        title={t("screen.promotions.title")}
+        subtitle={t("screen.promotions.subtitle")}
       />
       <DataTable
         paged={paged}
@@ -69,7 +71,10 @@ export function Promotions({
             aria-label={`Open ${row.code}`}
           />
         )}
-        empty={{ title: "No promotions", description: "Nothing is on offer." }}
+        empty={{
+          title: t("screen.promotions.empty"),
+          description: t("screen.promotions.emptyAny"),
+        }}
       />
     </div>
   )

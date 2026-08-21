@@ -5,12 +5,14 @@ import { DataTable, type Columns } from "@/components/data-table"
 import { PageHeading } from "@/components/page-heading"
 import { Badge } from "@/components/ui/badge"
 import { usePagedList } from "@/lib/paged"
+import { useT } from "@/panel/i18n"
 
 const columns: Columns<GiftCard> = [
   {
     header: "Balance",
     accessorKey: "balance",
-    cell: ({ row }) => `${row.original.balance} ${row.original.currency_code.toUpperCase()}`,
+    cell: ({ row }) =>
+      `${row.original.balance} ${row.original.currency_code.toUpperCase()}`,
     meta: { className: "font-mono text-xs" },
   },
   {
@@ -44,6 +46,7 @@ export function GiftCards({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
+  const t = useT()
   const paged = usePagedList(["gift-cards"], "/admin/gift-cards", giftCard, {
     after,
     onAfterChange,
@@ -52,8 +55,8 @@ export function GiftCards({
   return (
     <div className="space-y-4">
       <PageHeading
-        title="Credit"
-        subtitle="Gift cards. What a customer keeps on account is read from their own record."
+        title={t("screen.credit.title")}
+        subtitle={t("screen.credit.subtitle")}
       />
       <DataTable
         paged={paged}
@@ -66,7 +69,10 @@ export function GiftCards({
             aria-label={`Open gift card ${row.id}`}
           />
         )}
-        empty={{ title: "No gift cards", description: "None has been issued yet." }}
+        empty={{
+          title: t("screen.credit.empty"),
+          description: t("screen.credit.emptyAny"),
+        }}
       />
     </div>
   )

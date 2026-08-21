@@ -34,6 +34,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { deleteProducts } from "@/features/batch/api"
+import { useT } from "@/panel/i18n"
 
 /** Four of the five mean "not for sale", for four different reasons. */
 const HIDDEN: ProductStatus[] = ["draft", "proposed", "rejected", "archived"]
@@ -96,6 +97,7 @@ export function Products({
   onQChange: (q: string | undefined) => void
   onByChange: (by: "created" | "title") => void
 }) {
+  const t = useT()
   const paged = usePagedList(
     ["products", status, q ?? "", by],
     "/admin/products",
@@ -118,8 +120,8 @@ export function Products({
   return (
     <div className="space-y-4">
       <PageHeading
-        title="Products"
-        subtitle="This surface sees every status. The storefront sees published only."
+        title={t("screen.products.title")}
+        subtitle={t("screen.products.subtitle")}
       >
         <SearchBox
           value={q}
@@ -190,11 +192,11 @@ export function Products({
           />
         )}
         empty={{
-          title: "No products",
+          title: t("screen.products.empty"),
           description:
             status === "all"
-              ? "Nothing in the catalogue yet."
-              : `Nothing with status ${status}.`,
+              ? t("screen.products.emptyAny")
+              : t("screen.products.emptyStatus", { status }),
         }}
       />
     </div>

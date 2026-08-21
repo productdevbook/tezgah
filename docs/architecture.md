@@ -278,10 +278,15 @@ drawer, and the same for a category. The locale is a free string because
 tezgah does not decide what languages a shop sells in — the panel offers its
 own two as a shortcut and not as a limit.
 
-*What the back office is drawn in* is still English and Turkish over the
-shared chrome only — actions, errors, the unsaved-changes prompt — with the
-compiler enforcing that the two dictionaries match. Every screen's own words
-are still English in the source, and that is the larger of the two jobs.
+*What the back office is drawn in* is English and Turkish, with the compiler
+enforcing that the two dictionaries match — a locale added without every key
+does not build. It covers the shared chrome, the whole of the navigation
+(`Section.title` is a key rather than a word, so there is no English left in
+`lib/nav.ts` to forget), and the eight list screens a shop opens most.
+
+The rest of the screens' own words — detail pages, drawers, the sections
+inside them — are still English in the source. That is the larger part of what
+is left, and it is a key at a time rather than a problem to work out.
 
 **A record's page has one editor, except the product's.** A section that can
 be changed gets its own address and its own drawer, so a save is small enough

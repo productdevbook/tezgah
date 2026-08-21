@@ -21,10 +21,15 @@ export function NotBuilt({ section }: { section: Section }) {
       <PageHeading title={section.title} />
       <Empty>
         <EmptyHeader>
-          <EmptyTitle>{section.folded ? "Not a place of its own" : "No screen yet"}</EmptyTitle>
+          <EmptyTitle>
+            {section.folded ? "Not a place of its own" : "No screen yet"}
+          </EmptyTitle>
           <EmptyDescription>
             {section.folded ? (
-              <>This domain has no address here — its {section.operations} operations are drawn into {section.folded}.</>
+              <>
+                This domain has no address here — its {section.operations}{" "}
+                operations are drawn into {section.folded}.
+              </>
             ) : (
               <>
                 The admin API declares {section.operations} operations tagged{" "}

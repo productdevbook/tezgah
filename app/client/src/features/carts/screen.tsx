@@ -4,6 +4,7 @@ import { PageHeading } from "@/components/page-heading"
 import { Badge } from "@/components/ui/badge"
 import { Empty } from "@/components/detail-fields"
 import { usePagedList } from "@/lib/paged"
+import { useT } from "@/panel/i18n"
 
 const columns: Columns<Cart> = [
   {
@@ -53,18 +54,25 @@ export function Carts({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
-  const paged = usePagedList(["carts"], "/admin/carts", cart, { after, onAfterChange })
+  const t = useT()
+  const paged = usePagedList(["carts"], "/admin/carts", cart, {
+    after,
+    onAfterChange,
+  })
 
   return (
     <div className="space-y-4">
       <PageHeading
-        title="Carts"
-        subtitle="Every cart the store holds, abandoned ones included."
+        title={t("screen.carts.title")}
+        subtitle={t("screen.carts.subtitle")}
       />
       <DataTable
         paged={paged}
         columns={columns}
-        empty={{ title: "No carts", description: "Nobody has started one yet." }}
+        empty={{
+          title: t("screen.carts.empty"),
+          description: t("screen.carts.emptyAny"),
+        }}
       />
     </div>
   )

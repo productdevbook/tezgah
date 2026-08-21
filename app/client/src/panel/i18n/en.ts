@@ -76,6 +76,54 @@ export const en = {
   "table.next": "Next",
   "table.chosen": "{count} chosen",
   "table.showing": "{shown} of {total}",
+
+  "screen.products.title": "Products",
+  "screen.products.subtitle":
+    "This surface sees every status. The storefront sees published only.",
+  "screen.products.empty": "No products",
+  "screen.products.emptyAny": "Nothing in the catalogue yet.",
+  "screen.products.emptyStatus": "Nothing with status {status}.",
+
+  "screen.orders.title": "Orders",
+  "screen.orders.subtitle": "Drafts are listed too, and say so.",
+  "screen.orders.empty": "No orders",
+  "screen.orders.emptyAny": "Nothing has been placed yet.",
+
+  "screen.customers.title": "Customers",
+  "screen.customers.subtitle":
+    "Guests are customers too — a cart makes one before an account does.",
+  "screen.customers.empty": "No customers",
+  "screen.customers.emptyAny": "Nobody has shopped yet.",
+
+  "screen.inventory.title": "Inventory",
+  "screen.inventory.subtitle":
+    "An item is the thing counted. What is on hand is counted per location, one level down.",
+  "screen.inventory.empty": "Nothing stocked",
+  "screen.inventory.emptyAny": "No inventory item exists yet.",
+
+  "screen.carts.title": "Carts",
+  "screen.carts.subtitle":
+    "Every cart the store holds, abandoned ones included.",
+  "screen.carts.empty": "No carts",
+  "screen.carts.emptyAny": "Nobody has started one yet.",
+
+  "screen.promotions.title": "Promotions",
+  "screen.promotions.subtitle":
+    "A use is claimed when a cart is checked out, not when it is paid for.",
+  "screen.promotions.empty": "No promotions",
+  "screen.promotions.emptyAny": "Nothing is on offer.",
+
+  "screen.subscriptions.title": "Subscriptions",
+  "screen.subscriptions.empty": "No subscriptions",
+  "screen.subscriptions.emptyAny": "Nothing recurring is sold.",
+
+  "screen.credit.title": "Credit",
+  "screen.credit.subtitle":
+    "Gift cards. What a customer keeps on account is read from their own record.",
+  "screen.credit.empty": "No gift cards",
+  "screen.credit.emptyAny": "None has been issued yet.",
+
+  "search.nothingMatches": "Nothing matches {q}.",
 } as const
 
 export type TranslationKey = keyof typeof en

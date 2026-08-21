@@ -5,6 +5,7 @@ import { DataTable, type Columns } from "@/components/data-table"
 import { Badge } from "@/components/ui/badge"
 import { usePagedList } from "@/lib/paged"
 import { PageHeading } from "@/components/page-heading"
+import { useT } from "@/panel/i18n"
 
 const columns: Columns<InventoryItem> = [
   {
@@ -18,7 +19,9 @@ const columns: Columns<InventoryItem> = [
     header: "Title",
     accessorKey: "title",
     cell: ({ row }) =>
-      row.original.title ?? <span className="text-muted-foreground">untitled</span>,
+      row.original.title ?? (
+        <span className="text-muted-foreground">untitled</span>
+      ),
     meta: { className: "max-w-96 truncate" },
   },
   {
@@ -40,17 +43,18 @@ export function Inventory({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
+  const t = useT()
   const paged = usePagedList(
     ["inventory-items"],
     "/admin/inventory-items",
     inventoryItem,
-    { after, onAfterChange },
+    { after, onAfterChange }
   )
   return (
     <div className="space-y-4">
       <PageHeading
-        title="Inventory"
-        subtitle="An item is the thing counted. What is on hand is counted per location, one level down."
+        title={t("screen.inventory.title")}
+        subtitle={t("screen.inventory.subtitle")}
       />
       <DataTable
         paged={paged}
@@ -63,7 +67,10 @@ export function Inventory({
             aria-label={`Open ${row.title ?? row.sku ?? "inventory item"}`}
           />
         )}
-        empty={{ title: "Nothing stocked", description: "No inventory item exists yet." }}
+        empty={{
+          title: t("screen.inventory.empty"),
+          description: t("screen.inventory.emptyAny"),
+        }}
       />
     </div>
   )
