@@ -1885,9 +1885,17 @@ async fn a_contract_belongs_to_the_customer_and_the_plan_it_was_opened_on() {
     let mut tx = shop.begin().await;
     let ctx = shop.ctx();
 
-    let mine = subscription::list(&mut tx, &ctx, Some(seeded.customer_id), Paging::first(10))
-        .await
-        .expect("my contracts");
+    let mine = subscription::list(
+        &mut tx,
+        &ctx,
+        subscription::SubscriptionFilter {
+            customer: Some(seeded.customer_id),
+            ..Default::default()
+        },
+        Paging::first(10),
+    )
+    .await
+    .expect("my contracts");
     assert_eq!(mine.len(), 1);
 
     let lines = subscription::lines(&mut tx, &ctx, seeded.id)
@@ -2209,5 +2217,58 @@ async fn a_prepaid_term_ships_a_delivery_without_charging_anything() {
     let after = read(&shop, seeded.id).await;
     assert_eq!(after.delivery_cycle, 1);
 
+    shop.close().await;
+}
+
+/// `GET /admin/subscriptions` answered a cursor and a limit and nothing else,
+/// so a shop wanting the contracts that will not renew had to page every
+/// contract it has ever opened and read the flags itself.
+#[tokio::test]
+async fn a_list_of_contracts_narrows_and_counts_the_same_rows() {
+    let shop = Shop::open().await;
+    let staying = a_contract(&shop, dec!(10), None).await;
+    let leaving = a_contract(&shop, dec!(20), None).await;
+
+    let mut tx = shop.begin().await;
+    let ctx = shop.ctx();
+
+    subscription::cancel(&mut tx, &ctx, leaving.id, true, Some("too dear"))
+        .await
+        .expect("to cancel at the end of the period");
+
+    let ending = subscription::list(
+        &mut tx,
+        &ctx,
+        subscription::SubscriptionFilter {
+            ending: Some(true),
+            ..Default::default()
+        },
+        Paging::first(10).counting(),
+    )
+    .await
+    .expect("a page");
+
+    assert_eq!(ending.items.len(), 1);
+    assert_eq!(ending.items[0].id, leaving.id);
+    assert_eq!(ending.total, Some(1), "the count matches the page");
+
+    let staying_on = subscription::list(
+        &mut tx,
+        &ctx,
+        subscription::SubscriptionFilter {
+            ending: Some(false),
+            status: Some("active".into()),
+            ..Default::default()
+        },
+        Paging::first(10).counting(),
+    )
+    .await
+    .expect("a page");
+
+    assert_eq!(staying_on.items.len(), 1);
+    assert_eq!(staying_on.items[0].id, staying.id);
+    assert_eq!(staying_on.total, Some(1));
+
+    tx.rollback().await.expect("to roll back");
     shop.close().await;
 }

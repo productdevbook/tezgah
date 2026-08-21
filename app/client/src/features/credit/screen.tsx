@@ -3,6 +3,13 @@ import { Link } from "@tanstack/react-router"
 import { giftCard, type GiftCard } from "@/api/schemas"
 import { DataTable, type Columns } from "@/components/data-table"
 import { PageHeading } from "@/components/page-heading"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { usePagedList } from "@/lib/paged"
 import { useT } from "@/panel/i18n"
@@ -41,23 +48,62 @@ const columns: Columns<GiftCard> = [
  */
 export function GiftCards({
   after,
+  state,
   onAfterChange,
+  onStateChange,
 }: {
   after: string | undefined
+  state: "all" | "live" | "disabled" | "spent"
   onAfterChange: (after: string | undefined) => void
+  onStateChange: (state: "all" | "live" | "disabled" | "spent") => void
 }) {
   const t = useT()
-  const paged = usePagedList(["gift-cards"], "/admin/gift-cards", giftCard, {
-    after,
-    onAfterChange,
-  })
+  const paged = usePagedList(
+    ["gift-cards", state],
+    "/admin/gift-cards",
+    giftCard,
+    {
+      after,
+      onAfterChange,
+      query: {
+        // Three narrowings over two columns, because that is what the row
+        // holds: a card is stopped by hand or it is not, and it has money left
+        // or it has not. There is no search — the code is stored hashed.
+        disabled:
+          state === "disabled"
+            ? "true"
+            : state === "live"
+              ? "false"
+              : undefined,
+        spent: state === "spent" ? "true" : undefined,
+        count: "true",
+      },
+    }
+  )
 
   return (
     <div className="space-y-4">
       <PageHeading
         title={t("screen.credit.title")}
         subtitle={t("screen.credit.subtitle")}
-      />
+      >
+        <Select
+          value={state}
+          onValueChange={(value) =>
+            onStateChange(value as "all" | "live" | "disabled" | "spent")
+          }
+        >
+          <SelectTrigger className="w-40" size="sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("filter.anyCard")}</SelectItem>
+            <SelectItem value="live">{t("filter.spendable")}</SelectItem>
+            <SelectItem value="disabled">{t("filter.stopped")}</SelectItem>
+            <SelectItem value="spent">{t("filter.spent")}</SelectItem>
+          </SelectContent>
+        </Select>
+      </PageHeading>
       <DataTable
         paged={paged}
         columns={columns}

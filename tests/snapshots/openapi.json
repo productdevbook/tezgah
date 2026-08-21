@@ -2844,6 +2844,74 @@
         },
         "type": "object"
       },
+      "ListGiftCards": {
+        "additionalProperties": false,
+        "description": "A gift card's own query type. No `q`: the code is stored hashed, so there\nis nothing on the row a substring could match.",
+        "properties": {
+          "after": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "count": {
+            "description": "Asks how many cards match, as well as this page of them.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "currency_code": {
+            "description": "A three-letter code.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "customer_id": {
+            "description": "Cards issued to one customer.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "disabled": {
+            "description": "True for cards stopped by hand.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "limit": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "order": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Order"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which end first. Left out, this surface answers newest-first."
+          },
+          "spent": {
+            "description": "True for cards with nothing left on them.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "ListOrders": {
         "additionalProperties": false,
         "properties": {
@@ -3084,6 +3152,67 @@
           },
           "status": {
             "description": "`draft`, `active` or `inactive`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "ListSubscriptions": {
+        "additionalProperties": false,
+        "description": "A contract's own query type. The back office list is the one that needs\nnarrowing; a shopper's own contracts are few enough to page.",
+        "properties": {
+          "after": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "count": {
+            "description": "Asks how many contracts match, as well as this page of them.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "customer_id": {
+            "description": "One customer's contracts.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ending": {
+            "description": "True for the contracts that will not renew — cancelled at the end of\nthe period, or already ended.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "limit": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "order": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Order"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which end first. Left out, this surface answers newest-first."
+          },
+          "status": {
+            "description": "`active`, `past_due`, `cancelled`, `expired` or `paused`.",
             "type": [
               "string",
               "null"
@@ -11701,9 +11830,57 @@
             "name": "after",
             "required": false,
             "schema": {
-              "description": "The cursor the previous page ended on. Absent means the first page.",
               "type": [
                 "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "count",
+            "required": false,
+            "schema": {
+              "description": "Asks how many cards match, as well as this page of them.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "currency_code",
+            "required": false,
+            "schema": {
+              "description": "A three-letter code.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "customer_id",
+            "required": false,
+            "schema": {
+              "description": "Cards issued to one customer.",
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "disabled",
+            "required": false,
+            "schema": {
+              "description": "True for cards stopped by hand.",
+              "type": [
+                "boolean",
                 "null"
               ]
             }
@@ -11713,11 +11890,38 @@
             "name": "limit",
             "required": false,
             "schema": {
-              "description": "Clamped rather than refused — `page::MAX_LIMIT` is the ceiling, and a\ncaller asking for more gets it rather than an error.",
               "format": "uint32",
               "minimum": 0,
               "type": [
                 "integer",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Order"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Which end first. Left out, this surface answers newest-first."
+            }
+          },
+          {
+            "in": "query",
+            "name": "spent",
+            "required": false,
+            "schema": {
+              "description": "True for cards with nothing left on them.",
+              "type": [
+                "boolean",
                 "null"
               ]
             }
@@ -24546,7 +24750,97 @@
     "/admin/subscriptions": {
       "get": {
         "operationId": "getAdminSubscriptions",
-        "parameters": [],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "count",
+            "required": false,
+            "schema": {
+              "description": "Asks how many contracts match, as well as this page of them.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "customer_id",
+            "required": false,
+            "schema": {
+              "description": "One customer's contracts.",
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "ending",
+            "required": false,
+            "schema": {
+              "description": "True for the contracts that will not renew — cancelled at the end of\nthe period, or already ended.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Order"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Which end first. Left out, this surface answers newest-first."
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "description": "`active`, `past_due`, `cancelled`, `expired` or `paused`.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {

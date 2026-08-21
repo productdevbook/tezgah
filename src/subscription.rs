@@ -68,7 +68,7 @@ use crate::id::{
 };
 use crate::money::{Currency, Money};
 use crate::order::{self, NewOrder, NewOrderLine, NewTaxLine, OrderAddress, TaxSnapshot};
-use crate::page::{Cursor, Page, Paging};
+use crate::page::{Cursor, Order, Page, Paging};
 use crate::payment::{
     self, Authorization, AuthorizationStatus, Authorized, NewCollection, NewSession,
     RecurringProvider, StoredChargeRequest,
@@ -782,40 +782,96 @@ pub async fn get(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: SubscriptionId) -> Result<S
     Ok(found)
 }
 
-/// Every contract, newest last, optionally one customer's.
+/// The predicates `list` pages over and counts with, in one place so the two
+/// cannot answer differently.
+const SUBSCRIPTION_FILTER: &str = "
+         where scope = $1
+           and ($2::uuid is null or customer_id = $2)
+           and ($3::text is null or status = $3)
+           and ($4::boolean is null
+                or (cancel_at_period_end or ended_at is not null) = $4)
+";
+
+/// The five a contract's status column permits, as the check constraint on it
+/// writes them.
+///
+/// A list rather than an enum on purpose: `Subscription::status` is a
+/// `String` everywhere in this module, and a type that existed only so a
+/// filter could name one would be a second name for one fact — which is on
+/// this codebase's list of mistakes made more than once. What a caller needs
+/// is somewhere to check a string against, and this is it.
+pub const STATUSES: [&str; 5] = ["active", "past_due", "cancelled", "expired", "paused"];
+
+/// What a back office can ask a list of contracts.
+#[derive(Debug, Clone, Default)]
+pub struct SubscriptionFilter {
+    pub customer: Option<CustomerId>,
+    /// One of [`STATUSES`]. An unknown one matches nothing rather than
+    /// erroring — the API layer refuses it before it reaches here.
+    pub status: Option<String>,
+    /// Contracts that will not renew: cancelled at the end of the period, or
+    /// already ended.
+    pub ending: Option<bool>,
+    pub order: Order,
+}
+
+/// Every contract, optionally narrowed.
 pub async fn list(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
-    customer: Option<CustomerId>,
+    filter: SubscriptionFilter,
     paging: Paging,
 ) -> Result<Page<Subscription>> {
     let _: Permit = ctx.permit(
         Action::View,
         Resource::Subscription {
             id: None,
-            customer: customer.map(CustomerId::as_uuid),
+            customer: filter.customer.map(CustomerId::as_uuid),
         },
     )?;
 
+    let beyond = filter.order.beyond();
+    let direction = filter.order.direction();
+
     let rows = sqlx::query_as::<_, Subscription>(&format!(
-        "select {SUBSCRIPTION_COLUMNS} from subscription
-         where scope = $1
-           and ($2::uuid is null or customer_id = $2)
-           and ($3::timestamptz is null or (created_at, id) > ($3, $4))
-         order by created_at, id
-         limit $5"
+        "select {SUBSCRIPTION_COLUMNS} from subscription{SUBSCRIPTION_FILTER}
+           and ($5::timestamptz is null or (created_at, id) {beyond} ($5, $6))
+         order by created_at {direction}, id {direction}
+         limit $7"
     ))
     .bind(ctx.scope.0)
-    .bind(customer.map(CustomerId::as_uuid))
+    .bind(filter.customer.map(CustomerId::as_uuid))
+    .bind(filter.status.as_deref())
+    .bind(filter.ending)
     .bind(paging.after.as_ref().and_then(Cursor::timestamp))
     .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| {
+    let total = if paging.counts() {
+        let (count,): (i64,) = sqlx::query_as(&format!(
+            "select count(*) from subscription{SUBSCRIPTION_FILTER}"
+        ))
+        .bind(ctx.scope.0)
+        .bind(filter.customer.map(CustomerId::as_uuid))
+        .bind(filter.status.as_deref())
+        .bind(filter.ending)
+        .fetch_one(&mut **tx)
+        .await?;
+        Some(count)
+    } else {
+        None
+    };
+
+    let page = Page::build(rows, paging, |row| {
         Cursor::at(row.created_at, row.id.as_uuid())
-    }))
+    });
+
+    Ok(match total {
+        Some(total) => page.counting(total),
+        None => page,
+    })
 }
 
 /// The contracts owed a renewal at `at`, oldest first.

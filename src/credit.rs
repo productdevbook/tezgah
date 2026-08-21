@@ -46,7 +46,7 @@ use crate::id::{
     PaymentCollectionId, StoreCreditId, StoreCreditTransactionId,
 };
 use crate::money::{Currency, Money};
-use crate::page::{Cursor, Page, Paging};
+use crate::page::{Cursor, Order, Page, Paging};
 use crate::ports::{Action, Actor, AuditEntry, Ctx, Event, Permit, Resource, Tx};
 
 /// Most instruments one cart may put against one order. A basket paid with a
@@ -517,32 +517,90 @@ pub async fn gift_card_by_code(tx: &mut Tx<'_>, ctx: &Ctx<'_>, code: &str) -> Re
     .ok_or_else(|| Error::not_found("gift card"))
 }
 
-pub async fn gift_cards(tx: &mut Tx<'_>, ctx: &Ctx<'_>, paging: Paging) -> Result<Page<GiftCard>> {
+/// The predicates `gift_cards` pages over and counts with, in one place so the
+/// two cannot answer differently.
+const CARD_FILTER: &str = "
+         where scope = $1
+           and ($2::uuid is null or customer_id = $2)
+           and ($3::char(3) is null or currency_code = $3)
+           and ($4::boolean is null or (disabled_at is not null) = $4)
+           and ($5::boolean is null or (balance = 0) = $5)
+";
+
+/// What a back office can ask a list of gift cards.
+///
+/// There is no search: a card's code is stored hashed, so the only way to
+/// find one by what is printed on it is to hash what was typed and look it
+/// up exactly — which `redeem` already does and a list cannot.
+#[derive(Debug, Clone, Default)]
+pub struct GiftCardFilter {
+    pub customer: Option<CustomerId>,
+    pub currency: Option<Currency>,
+    /// Cards stopped by hand. A disabled card keeps its ledger; nothing is
+    /// deleted.
+    pub disabled: Option<bool>,
+    /// Cards with nothing left on them.
+    pub spent: Option<bool>,
+    pub order: Order,
+}
+
+pub async fn gift_cards(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    filter: GiftCardFilter,
+    paging: Paging,
+) -> Result<Page<GiftCard>> {
     let _: Permit = ctx.permit(
         Action::View,
         Resource::Credit {
             id: None,
-            customer: None,
+            customer: filter.customer.map(CustomerId::as_uuid),
         },
     )?;
 
+    let beyond = filter.order.beyond();
+    let direction = filter.order.direction();
+
     let rows = sqlx::query_as::<_, GiftCard>(&format!(
-        "select {CARD_COLUMNS} from gift_card
-         where scope = $1
-           and ($2::timestamptz is null or (created_at, id) > ($2, $3))
-         order by created_at, id
-         limit $4"
+        "select {CARD_COLUMNS} from gift_card{CARD_FILTER}
+           and ($6::timestamptz is null or (created_at, id) {beyond} ($6, $7))
+         order by created_at {direction}, id {direction}
+         limit $8"
     ))
     .bind(ctx.scope.0)
+    .bind(filter.customer.map(CustomerId::as_uuid))
+    .bind(filter.currency.map(|one| one.to_string()))
+    .bind(filter.disabled)
+    .bind(filter.spent)
     .bind(paging.after.as_ref().and_then(Cursor::timestamp))
     .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |card| {
+    let total = if paging.counts() {
+        let (count,): (i64,) =
+            sqlx::query_as(&format!("select count(*) from gift_card{CARD_FILTER}"))
+                .bind(ctx.scope.0)
+                .bind(filter.customer.map(CustomerId::as_uuid))
+                .bind(filter.currency.map(|one| one.to_string()))
+                .bind(filter.disabled)
+                .bind(filter.spent)
+                .fetch_one(&mut **tx)
+                .await?;
+        Some(count)
+    } else {
+        None
+    };
+
+    let page = Page::build(rows, paging, |card| {
         Cursor::at(card.created_at, card.id.as_uuid())
-    }))
+    });
+
+    Ok(match total {
+        Some(total) => page.counting(total),
+        None => page,
+    })
 }
 
 /// Stops a card being spent without destroying what it did. A lost card is

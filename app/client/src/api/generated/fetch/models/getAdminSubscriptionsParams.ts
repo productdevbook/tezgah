@@ -7,31 +7,27 @@
  */
 import type { Order } from './order';
 
-export type GetAdminGiftCardsParams = {
+export type GetAdminSubscriptionsParams = {
 /**
  * @nullable
  */
 after?: string | null;
 /**
- * Asks how many cards match, as well as this page of them.
+ * Asks how many contracts match, as well as this page of them.
  * @nullable
  */
 count?: boolean | null;
 /**
- * A three-letter code.
- * @nullable
- */
-currency_code?: string | null;
-/**
- * Cards issued to one customer.
+ * One customer's contracts.
  * @nullable
  */
 customer_id?: string | null;
 /**
- * True for cards stopped by hand.
+ * True for the contracts that will not renew — cancelled at the end of
+ * the period, or already ended.
  * @nullable
  */
-disabled?: boolean | null;
+ending?: boolean | null;
 /**
  * @minimum 0
  * @nullable
@@ -42,8 +38,8 @@ limit?: number | null;
  */
 order?: Order | null;
 /**
- * True for cards with nothing left on them.
+ * `active`, `past_due`, `cancelled`, `expired` or `paused`.
  * @nullable
  */
-spent?: boolean | null;
+status?: string | null;
 };

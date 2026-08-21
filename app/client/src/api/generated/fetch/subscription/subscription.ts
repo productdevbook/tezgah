@@ -7,6 +7,7 @@
  */
 import type {
   GetAdminSubscriptions200,
+  GetAdminSubscriptionsParams,
   SubscriptionView
 } from '../models';
 
@@ -353,20 +354,27 @@ export type getAdminSubscriptionsResponseError = (getAdminSubscriptionsResponse4
 
 export type getAdminSubscriptionsResponse = (getAdminSubscriptionsResponseSuccess | getAdminSubscriptionsResponseError)
 
-export const getGetAdminSubscriptionsUrl = () => {
+export const getGetAdminSubscriptionsUrl = (params?: GetAdminSubscriptionsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/admin/subscriptions`
+  return stringifiedParams.length > 0 ? `/admin/subscriptions?${stringifiedParams}` : `/admin/subscriptions`
 }
 
 /**
  * @summary List the contracts
  */
-export const getAdminSubscriptions = async ( options?: Parameters<typeof apiMutator>[1]): Promise<getAdminSubscriptionsResponse> => {
+export const getAdminSubscriptions = async (params?: GetAdminSubscriptionsParams, options?: Parameters<typeof apiMutator>[1]): Promise<getAdminSubscriptionsResponse> => {
 
-  return apiMutator<getAdminSubscriptionsResponse>(getGetAdminSubscriptionsUrl(),
+  return apiMutator<getAdminSubscriptionsResponse>(getGetAdminSubscriptionsUrl(params),
   {
     ...options,
     method: 'GET'
