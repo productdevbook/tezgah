@@ -35,6 +35,7 @@ import {
 import { StatusActions } from "@/features/products/status"
 import { Variants } from "@/features/products/variants"
 import { dateTime, useDetail } from "@/lib/detail"
+import { useT } from "@/panel/i18n"
 
 /**
  * A product's page: a stack of sections rather than one card of twenty
@@ -51,6 +52,7 @@ export function ProductDetail({
   variantId: string | undefined
   onVariantIdChange: (id: string | undefined) => void
 }) {
+  const t = useT()
   const result = useDetail(["products"], "/admin/products/{id}", product, id)
 
   return (
@@ -84,7 +86,7 @@ export function ProductDetail({
             main={
               <>
                 <Section
-                  title="General"
+                  title={t("detail.product.general")}
                   actions={
                     <ActionMenu
                       groups={[
@@ -113,21 +115,27 @@ export function ProductDetail({
                   }
                 >
                   <SectionRows>
-                    <SectionRow label="Title" value={item.title} />
-                    <SectionRow label="Subtitle" value={item.subtitle} />
+                    <SectionRow label={t("field.title")} value={item.title} />
                     <SectionRow
-                      label="Handle"
+                      label={t("field.subtitle")}
+                      value={item.subtitle}
+                    />
+                    <SectionRow
+                      label={t("field.handle")}
                       value={
                         <span className="font-mono text-xs">{item.handle}</span>
                       }
                     />
-                    <SectionRow label="Description" value={item.description} />
                     <SectionRow
-                      label="Discountable"
+                      label={t("field.description")}
+                      value={item.description}
+                    />
+                    <SectionRow
+                      label={t("field.discountable")}
                       value={item.is_discountable ? "Yes" : "No"}
                     />
                     <SectionRow
-                      label="Rejected reason"
+                      label={t("field.rejectedReason")}
                       value={item.rejected_reason}
                     />
                   </SectionRows>
@@ -136,8 +144,8 @@ export function ProductDetail({
                 <Variants productId={item.id} />
 
                 <Section
-                  title="Digital content"
-                  description="A file belongs to one variant — take an id from the variants above to see or add what it carries."
+                  title={t("detail.product.digital")}
+                  description={t("detail.product.digitalWhy")}
                 >
                   <div className="px-6 py-4">
                     <DigitalContentByVariant
@@ -151,7 +159,7 @@ export function ProductDetail({
             side={
               <>
                 <Section
-                  title="Organisation"
+                  title={t("detail.product.organisation")}
                   actions={
                     <ActionMenu
                       groups={[
@@ -172,19 +180,22 @@ export function ProductDetail({
                 >
                   <SectionRows>
                     <SectionRow
-                      label="Product type"
+                      label={t("field.productType")}
                       value={item.product_type_id}
                     />
                     <SectionRow
-                      label="Collection"
+                      label={t("field.collection")}
                       value={item.product_collection_id}
                     />
-                    <SectionRow label="External ID" value={item.external_id} />
+                    <SectionRow
+                      label={t("field.externalId")}
+                      value={item.external_id}
+                    />
                   </SectionRows>
                 </Section>
 
                 <Section
-                  title="Media"
+                  title={t("detail.product.media")}
                   actions={
                     <ActionMenu
                       groups={[
@@ -204,13 +215,16 @@ export function ProductDetail({
                   }
                 >
                   <SectionRows>
-                    <SectionRow label="Thumbnail" value={item.thumbnail_url} />
+                    <SectionRow
+                      label={t("field.thumbnail")}
+                      value={item.thumbnail_url}
+                    />
                   </SectionRows>
                 </Section>
 
                 <Section
-                  title="Shipping"
-                  description="What a carrier needs to quote, and what customs needs to let it through."
+                  title={t("detail.product.shipping")}
+                  description={t("detail.product.shippingWhy")}
                   actions={
                     <ActionMenu
                       groups={[
@@ -230,39 +244,45 @@ export function ProductDetail({
                   }
                 >
                   <SectionRows>
-                    <SectionRow label="Weight" value={item.weight} />
-                    <SectionRow label="Length" value={item.length} />
-                    <SectionRow label="Height" value={item.height} />
-                    <SectionRow label="Width" value={item.width} />
-                    <SectionRow label="Material" value={item.material} />
-                    <SectionRow label="HS code" value={item.hs_code} />
+                    <SectionRow label={t("field.weight")} value={item.weight} />
+                    <SectionRow label={t("field.length")} value={item.length} />
+                    <SectionRow label={t("field.height")} value={item.height} />
+                    <SectionRow label={t("field.width")} value={item.width} />
                     <SectionRow
-                      label="Origin country"
+                      label={t("field.material")}
+                      value={item.material}
+                    />
+                    <SectionRow
+                      label={t("field.hsCode")}
+                      value={item.hs_code}
+                    />
+                    <SectionRow
+                      label={t("field.originCountry")}
                       value={item.origin_country}
                     />
                   </SectionRows>
                 </Section>
 
-                <Section title="Metadata">
+                <Section title={t("general.metadata")}>
                   <div className="px-6 py-4">
                     <Metadata value={item.metadata} />
                   </div>
                 </Section>
 
-                <Section title="Details">
+                <Section title={t("general.details")}>
                   <SectionRows>
                     <SectionRow
-                      label="ID"
+                      label={t("field.id")}
                       value={
                         <span className="font-mono text-xs">{item.id}</span>
                       }
                     />
                     <SectionRow
-                      label="Created"
+                      label={t("field.created")}
                       value={dateTime(item.created_at)}
                     />
                     <SectionRow
-                      label="Updated"
+                      label={t("field.updated")}
                       value={dateTime(item.updated_at)}
                     />
                   </SectionRows>
@@ -283,6 +303,7 @@ function DigitalContentByVariant({
   variantId: string | undefined
   onVariantIdChange: (id: string | undefined) => void
 }) {
+  const t = useT()
   const [input, setInput] = useState(variantId ?? "")
 
   function submit(event: FormEvent) {
@@ -299,7 +320,7 @@ function DigitalContentByVariant({
           onChange={(e) => setInput(e.target.value)}
           placeholder="variant id"
           className="font-mono text-xs"
-          aria-label="Variant id"
+          aria-label={t("field.variantId")}
         />
         <Button type="submit" variant="outline">
           Look up
