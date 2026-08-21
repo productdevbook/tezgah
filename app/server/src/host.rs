@@ -176,11 +176,11 @@ impl EventSink for ServerHost {
     /// an event that mattered is still there when nobody was tailing the log,
     /// and an event whose change rolled back was never written at all.
     ///
-    /// `delivered_at` is the half this binary does not do. Nothing sends
-    /// these anywhere: there is no mailer and no HTTP client here, so the
-    /// column stays null and the rows are read rather than pushed. That is a
-    /// gap named in `docs/architecture.md`, and it is a smaller one than a
-    /// line on stdout.
+    /// `delivered_at` is `crate::deliver`'s to set: it posts each undelivered
+    /// row to the configured destination, signed, and retries with backoff
+    /// until it gives up. With no destination configured nothing is posted and
+    /// the rows sit here to be read — which is still an outbox, not a line on
+    /// stdout.
     async fn emit(&self, tx: &mut Tx<'_>, event: Event) -> tezgah::Result<()> {
         sqlx::query(
             "insert into server_event (id, name, entity_id, payload)

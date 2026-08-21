@@ -427,7 +427,7 @@ a gap, and `docs/architecture.md` counts it as one.
 
 ## Route table
 
-<!-- bound-routes: 253 -->
+<!-- bound-routes: 266 -->
 
 That number is checked rather than remembered: `tests/bound_count.rs` builds
 the fullest router this binary can make without a payment provider, counts
@@ -438,300 +438,344 @@ wrong on at least two of them.
 Configuring checkout adds one more — `POST /store/carts/{id}/complete` — which
 is why the number is stated without it.
 
+`tezgah::api::routes()` names 487 operations. This binary binds them by hand,
+says how many out loud at startup, and here is every one:
 
-`tezgah::api::routes()` names 487 operations. This binary binds a fraction,
-by hand, and says exactly how many out loud at startup:
+<!-- routes:begin -->
 
 ```
-bound 253 of 487 declared routes
-  GET    /store/products
-  GET    /store/products/{handle}
-  POST   /store/carts
-  GET    /store/carts/{id}
-  POST   /store/carts/{id}/line-items
-  GET    /store/carts/{id}/line-items
-  POST   /store/carts/{id}/complete
-  GET    /admin/products
-  GET    /admin/products/{id}
-  PATCH  /admin/products/{id}
-  DELETE /admin/products/{id}
-  GET    /admin/orders
-  GET    /admin/orders/{id}
-  GET    /admin/inventory-items
-  GET    /admin/inventory-items/{id}
-  DELETE /admin/inventory-items/{id}
-  GET    /admin/customers
-  GET    /admin/customers/{id}
-  PATCH  /admin/customers/{id}
-  DELETE /admin/customers/{id}
-  GET    /admin/promotions
-  GET    /admin/promotions/{id}
-  PATCH  /admin/promotions/{id}
-  DELETE /admin/promotions/{id}
-  GET    /admin/subscriptions
-  GET    /admin/subscriptions/{id}
-  GET    /admin/regions
-  GET    /admin/regions/{id}
-  PATCH  /admin/regions/{id}
-  GET    /admin/sales-channels
-  GET    /admin/sales-channels/{id}
-  PATCH  /admin/sales-channels/{id}
-  DELETE /admin/sales-channels/{id}
-  GET    /admin/currencies
-  GET    /admin/publishable-api-keys
-  GET    /admin/stock-locations
-  PATCH  /admin/stock-locations/{id}
-  DELETE /admin/stock-locations/{id}
-  POST   /admin/currencies
-  POST   /admin/regions
-  POST   /admin/sales-channels
-  POST   /admin/publishable-api-keys
-  POST   /admin/stock-locations
-  POST   /admin/products
-  POST   /admin/products/{id}/variants
-  POST   /admin/price-sets
-  POST   /admin/product-variants/{id}/price-set
-  POST   /admin/prices
-  POST   /admin/inventory-items
-  POST   /admin/inventory-items/{id}/location-levels
-  GET    /admin/order-baskets/{id}
-  GET    /admin/order-baskets/{id}/orders
-  GET    /admin/order-baskets/{id}/carts
-  GET    /admin/workflows-executions
-  GET    /admin/workflows-executions/{id}
-  GET    /admin/workflows-executions/{id}/steps
-  GET    /admin/workflow-dead-letters
-  GET    /admin/commission-rules
-  GET    /admin/orders/{id}/payout-lines
-  GET    /admin/payouts
-  GET    /admin/payout-balance/{currency_code}
-  GET    /admin/orders/{id}/fulfillments
-  GET    /admin/orders/{id}/shipping-options
-  GET    /admin/orders/{id}/returns/shipping-options
-  GET    /admin/orders/{id}/fulfillments/{fulfillment_id}
-  GET    /admin/fulfillment-sets
-  GET    /admin/fulfillment-sets/{id}/service-zones
-  GET    /admin/fulfillment-providers
-  GET    /admin/shipping-options
-  GET    /admin/shipping-options/{id}
-  GET    /admin/shipping-options/{id}/translations
-  GET    /admin/shipping-options/{id}/translations/{locale}
-  GET    /admin/shipping-profiles
-  GET    /admin/shipping-profiles/{id}
-  GET    /admin/shipping-option-types
-  GET    /store/shipping-options
-  GET    /admin/tax-regions
-  GET    /admin/tax-regions/{id}
-  GET    /admin/tax-rates
-  GET    /admin/tax-rates/{id}
-  GET    /admin/tax-rates/{id}/rules
-  GET    /admin/tax-registrations
-  GET    /admin/customers/{id}/tax-ids
-  GET    /admin/customers/{id}/tax-exemptions
-  GET    /admin/price-sets/{id}
-  GET    /admin/price-sets/{id}/prices
-  GET    /admin/product-variants/{id}/bundle/components
-  GET    /admin/product-variants/{id}/bundle/price
-  GET    /admin/prices/{id}/rules
-  GET    /admin/price-lists
-  GET    /admin/price-lists/{id}
-  GET    /admin/price-preferences
-  GET    /admin/payments
-  GET    /admin/payments/{id}
-  GET    /admin/payments/payment-providers
-  GET    /admin/payment-collections/{id}
-  GET    /admin/payment-collections/{id}/payment-sessions
-  GET    /admin/refund-reasons
-  GET    /store/payment-providers
-  GET    /admin/gift-cards
-  GET    /admin/gift-cards/{id}
-  GET    /admin/gift-cards/{id}/transactions
-  GET    /admin/customers/{id}/store-credit
-  GET    /admin/store-credits/{id}/transactions
-  GET    /store/carts/{id}/credits
-  GET    /admin/orders/{id}/entitlements
-  POST   /admin/orders/{id}/entitlements/revoke
-  GET    /admin/variants/{id}/digital-content
-  POST   /admin/variants/{id}/digital-content
-  DELETE /admin/digital-content/{id}
-  GET    /admin/carts
-  plus GET /health, which is this binary's own and not one of the 487
+GET    /store/products
+GET    /store/products/{handle}
+POST   /store/carts
+GET    /store/carts/{id}
+POST   /store/carts/{id}/line-items
+GET    /store/shipping-options
+GET    /store/payment-providers
+GET    /store/carts/{id}/credits
+GET    /store/carts/{id}/line-items
+GET    /store/customers/me
+GET    /store/customers/me/addresses
+GET    /store/orders
+POST   /webhooks/payments/{provider}
+GET    /admin/products
+GET    /admin/products/{id}
+PATCH  /admin/products/{id}
+DELETE /admin/products/{id}
+GET    /admin/orders
+GET    /admin/orders/{id}
+GET    /admin/inventory-items
+GET    /admin/inventory-items/{id}
+DELETE /admin/inventory-items/{id}
+GET    /admin/products/export
+POST   /admin/products/batch
+POST   /admin/prices/batch
+POST   /admin/inventory-items/batch
+GET    /admin/customers
+GET    /admin/customers/{id}
+PATCH  /admin/customers/{id}
+DELETE /admin/customers/{id}
+GET    /admin/promotions
+GET    /admin/promotions/{id}
+PATCH  /admin/promotions/{id}
+DELETE /admin/promotions/{id}
+GET    /admin/subscriptions
+GET    /admin/orders/{id}/invoices
+POST   /admin/orders/{id}/invoices
+GET    /admin/orders/{id}/agreements
+GET    /admin/orders/{id}/withdrawal
+POST   /admin/promotions/{id}/status
+POST   /admin/promotions/{id}/application-method
+GET    /admin/customers/{id}/addresses
+POST   /admin/customers/{id}/addresses
+POST   /admin/customers/{id}/erase
+POST   /admin/gift-cards/{id}/adjust
+POST   /admin/gift-cards/{id}/disable
+POST   /admin/publishable-api-keys/{id}/revoke
+GET    /admin/regions/{id}/countries
+POST   /admin/regions/{id}/countries
+GET    /admin/stock-locations/{id}/address
+POST   /admin/stock-locations/{id}/address
+POST   /admin/tax-exemptions/{id}/revoke
+GET    /admin/subscriptions/{id}
+GET    /admin/subscriptions/{id}/events
+POST   /admin/subscriptions/{id}/cancel
+POST   /admin/subscriptions/{id}/pause
+POST   /admin/subscriptions/{id}/resume
+POST   /admin/subscriptions/{id}/skip
+POST   /admin/subscriptions/{id}/swap
+POST   /admin/subscriptions/{id}/deliver
+GET    /admin/regions
+GET    /admin/regions/{id}
+PATCH  /admin/regions/{id}
+GET    /admin/sales-channels
+GET    /admin/sales-channels/{id}
+PATCH  /admin/sales-channels/{id}
+DELETE /admin/sales-channels/{id}
+GET    /admin/currencies
+GET    /admin/publishable-api-keys
+GET    /admin/stock-locations
+PATCH  /admin/stock-locations/{id}
+DELETE /admin/stock-locations/{id}
+POST   /admin/currencies
+POST   /admin/regions
+POST   /admin/sales-channels
+POST   /admin/publishable-api-keys
+POST   /admin/stock-locations
+POST   /admin/products
+POST   /admin/products/{id}/publish
+POST   /admin/products/{id}/archive
+POST   /admin/products/{id}/submit
+POST   /admin/products/{id}/approve
+POST   /admin/products/{id}/reject
+GET    /admin/products/{id}/tags
+POST   /admin/products/{id}/tags
+DELETE /admin/products/{id}/tags/{tag_id}
+GET    /admin/products/{id}/categories
+POST   /admin/products/{id}/categories
+DELETE /admin/products/{id}/categories/{category_id}
+GET    /admin/products/{id}/channels
+POST   /admin/products/{id}/channels
+DELETE /admin/products/{id}/channels/{sales_channel_id}
+POST   /admin/campaigns/{id}/budget
+POST   /admin/campaigns/{id}/promotions
+GET    /admin/customer-groups/{id}/customers
+POST   /admin/customer-groups/{id}/customers
+GET    /admin/customers/{id}/export
+POST   /admin/inventory-items/{id}/transfers
+GET    /admin/inventory-items/{id}/transfers
+POST   /admin/price-lists/{id}/rules
+GET    /admin/products/{id}/translations
+POST   /admin/products/{id}/translations
+GET    /admin/product-categories/{id}/translations
+POST   /admin/product-categories/{id}/translations
+POST   /admin/product-variants/{id}/bundle
+GET    /admin/product-variants/{id}/inventory-items
+POST   /admin/product-variants/{id}/inventory-items
+GET    /admin/publishable-api-keys/{id}/sales-channels
+POST   /admin/publishable-api-keys/{id}/sales-channels
+POST   /admin/reservations/{id}/fulfil
+GET    /admin/draft-orders
+POST   /admin/draft-orders
+GET    /admin/draft-orders/{id}
+DELETE /admin/draft-orders/{id}
+POST   /admin/draft-orders/{id}/convert-to-order
+GET    /admin/draft-orders/{id}/edit
+POST   /admin/draft-orders/{id}/edit
+DELETE /admin/draft-orders/{id}/edit
+POST   /admin/draft-orders/{id}/edit/confirm
+POST   /admin/draft-orders/{id}/edit/items
+DELETE /admin/draft-orders/{id}/edit/items/{action_id}
+POST   /admin/draft-orders/{id}/edit/shipping-methods
+DELETE /admin/draft-orders/{id}/edit/shipping-methods/{action_id}
+GET    /admin/exchanges
+POST   /admin/exchanges
+GET    /admin/exchanges/{id}
+GET    /admin/exchanges/{id}/items
+POST   /admin/exchanges/{id}/cancel
+POST   /admin/exchanges/{id}/request
+POST   /admin/exchanges/{id}/inbound/items
+DELETE /admin/exchanges/{id}/inbound/items/{action_id}
+POST   /admin/exchanges/{id}/inbound/shipping-method
+POST   /admin/exchanges/{id}/outbound/items
+DELETE /admin/exchanges/{id}/outbound/items/{action_id}
+POST   /admin/exchanges/{id}/outbound/shipping-method
+GET    /admin/order-edits/{id}
+DELETE /admin/order-edits/{id}
+POST   /admin/order-edits/{id}/confirm
+POST   /admin/order-edits/{id}/items
+DELETE /admin/order-edits/{id}/items/{action_id}
+POST   /admin/order-edits/{id}/shipping-method
+DELETE /admin/order-edits/{id}/shipping-method/{action_id}
+GET    /admin/claims
+POST   /admin/claims
+GET    /admin/claims/{id}
+GET    /admin/claims/{id}/items
+GET    /admin/claims/{id}/lines
+POST   /admin/claims/{id}/cancel
+POST   /admin/claims/{id}/request
+POST   /admin/claims/{id}/claim-items
+DELETE /admin/claims/{id}/claim-items/{action_id}
+POST   /admin/claims/{id}/inbound/items
+DELETE /admin/claims/{id}/inbound/items/{action_id}
+POST   /admin/claims/{id}/inbound/shipping-method
+POST   /admin/claims/{id}/outbound/items
+DELETE /admin/claims/{id}/outbound/items/{action_id}
+POST   /admin/claims/{id}/outbound/shipping-method
+GET    /admin/returns
+POST   /admin/returns
+GET    /admin/returns/{id}
+GET    /admin/returns/{id}/items
+POST   /admin/returns/{id}/receive
+POST   /admin/returns/{id}/dismiss-items
+POST   /admin/returns/{id}/cancel
+POST   /admin/returns/{id}/request
+POST   /admin/returns/{id}/request-items
+DELETE /admin/returns/{id}/request-items/{action_id}
+POST   /admin/returns/{id}/receive-items
+DELETE /admin/returns/{id}/receive-items/{action_id}
+POST   /admin/returns/{id}/shipping-method
+DELETE /admin/returns/{id}/shipping-method/{action_id}
+GET    /admin/return-reasons
+POST   /admin/return-reasons
+GET    /admin/return-reasons/{id}/translations
+POST   /admin/return-reasons/{id}/translations
+GET    /admin/return-reasons/{id}/translations/{locale}
+DELETE /admin/return-reasons/{id}/translations/{locale}
+POST   /admin/returns/{id}/withdrawal
+POST   /admin/selling-plan-groups/{id}/plans
+GET    /admin/selling-plan-groups/{id}/plans
+POST   /admin/selling-plans/{id}/variants
+GET    /admin/products/{id}/images
+POST   /admin/products/{id}/images
+GET    /admin/products/{id}/options
+POST   /admin/products/{id}/options
+GET    /admin/product-variants/{id}/images
+POST   /admin/product-variants/{id}/images
+GET    /admin/product-variants/{id}/options
+POST   /admin/product-variants/{id}/options
+POST   /admin/product-options/{id}/values
+GET    /admin/product-categories/{id}/subtree
+POST   /admin/product-categories/{id}/move
+PATCH  /admin/inventory-items/{id}/tracking
+GET    /admin/inventory-items/{id}/lots
+POST   /admin/inventory-items/{id}/lots
+GET    /admin/inventory-lots/{id}/orders
+POST   /admin/inventory-lots/{id}/reservations
+GET    /admin/products/{id}/variants
+POST   /admin/products/{id}/variants
+POST   /admin/price-sets
+POST   /admin/product-variants/{id}/price-set
+POST   /admin/prices
+POST   /admin/inventory-items
+GET    /admin/inventory-items/{id}/location-levels
+POST   /admin/inventory-items/{id}/location-levels
+GET    /admin/order-baskets/{id}
+GET    /admin/order-baskets/{id}/orders
+GET    /admin/order-baskets/{id}/carts
+GET    /admin/workflows-executions
+GET    /admin/workflows-executions/{id}
+GET    /admin/workflows-executions/{id}/steps
+GET    /admin/workflow-dead-letters
+GET    /admin/commission-rules
+GET    /admin/orders/{id}/payout-lines
+GET    /admin/payouts
+GET    /admin/payout-balance/{currency_code}
+GET    /admin/orders/{id}/fulfillments
+GET    /admin/orders/{id}/shipping-options
+GET    /admin/orders/{id}/returns/shipping-options
+GET    /admin/orders/{id}/fulfillments/{fulfillment_id}
+GET    /admin/fulfillment-sets
+GET    /admin/fulfillment-sets/{id}/service-zones
+GET    /admin/fulfillment-providers
+GET    /admin/shipping-options
+GET    /admin/shipping-options/{id}
+GET    /admin/shipping-options/{id}/translations
+GET    /admin/shipping-options/{id}/translations/{locale}
+GET    /admin/shipping-profiles
+GET    /admin/shipping-profiles/{id}
+GET    /admin/shipping-option-types
+GET    /admin/tax-regions
+GET    /admin/tax-regions/{id}
+GET    /admin/tax-rates
+GET    /admin/tax-rates/{id}
+GET    /admin/tax-rates/{id}/rules
+GET    /admin/tax-registrations
+GET    /admin/customers/{id}/tax-ids
+GET    /admin/customers/{id}/tax-exemptions
+GET    /admin/price-sets/{id}
+GET    /admin/price-sets/{id}/prices
+GET    /admin/product-variants/{id}/bundle/components
+GET    /admin/product-variants/{id}/bundle/price
+GET    /admin/prices/{id}/rules
+GET    /admin/price-lists
+GET    /admin/price-lists/{id}
+GET    /admin/price-preferences
+GET    /admin/payments
+GET    /admin/payments/{id}
+GET    /admin/payments/payment-providers
+GET    /admin/payment-webhooks
+POST   /admin/payment-webhooks/{id}/apply
+POST   /admin/payment-webhooks/{id}/processed
+GET    /admin/payment-collections/{id}
+GET    /admin/payment-collections/{id}/payment-sessions
+GET    /admin/refund-reasons
+GET    /admin/gift-cards
+GET    /admin/gift-cards/{id}
+GET    /admin/gift-cards/{id}/transactions
+GET    /admin/customers/{id}/store-credit
+GET    /admin/store-credits/{id}/transactions
+GET    /admin/orders/{id}/entitlements
+POST   /admin/orders/{id}/entitlements/revoke
+GET    /admin/variants/{id}/digital-content
+POST   /admin/variants/{id}/digital-content
+DELETE /admin/digital-content/{id}
+GET    /admin/carts
 ```
 
-That is the count with `ADMIN_TOKEN`, `TEZGAH_STOCK_LOCATION_ID` and
-`TEZGAH_DEMO_BANK` all set. Without any one of them, the corresponding rows
-above are not bound and the startup count drops accordingly — the log line
-is always the true count for that run, never a number copied from here.
+<!-- routes:end -->
 
-**Store — the shopping flow.** The same walk `../../examples/shop` makes as plain
-calls: browse the catalogue with a publishable key
-(`x-publishable-key` header), open a cart, add a line, check out.
+That list is the router's rather than a transcription of it:
+`tests/bound_count.rs` builds the same fullest router, renders what it
+mounted the same way, and fails on any line that differs. It used to be a
+paste of one run's startup log, and by the time anybody noticed it named 112
+of the 253 routes bound and described a panel with seven screens.
 
-**Admin — one list per screen, the single read behind each row, plus what
-fills a shop.** [`client/`](../client) is the admin panel this repository
-ships, and it draws seven screens: products, orders, inventory, customers,
-promotions, subscriptions, and store (which reads two lists of its own,
-regions and sales channels, plus the currencies list its overview reads).
-Eleven of the thirty-one admin routes are list endpoints — the original nine,
-plus `GET /admin/publishable-api-keys` and `GET /admin/stock-locations`,
-which the panel needed and this binary did not yet bind: without the first,
-an operator who loses a publishable key can only mint another, never see
-whether one already exists. Eight more are the single-row read behind a
-click on one of those lists' rows — `GET /admin/{products,orders,
-inventory-items,customers,promotions,regions,sales-channels,subscriptions}/
-{id}` — so a screen's detail view has somewhere to fetch from instead of
-nowhere. The other twelve are #214's list: enabling a currency, opening a
-region, a sales channel and a stock location, minting a publishable key, and
-creating a product, its variants, a price set, a price and a stocked
-inventory level — the smallest set that gets a fresh install to something a
-storefront can check out from. `tezgah-server seed` (above) does the first
-five of those in one command; the rest — a real catalogue — go in through
-these routes, by hand or by whatever the panel or a script does with them.
+**What decides whether a surface is there at all.** Store is always mounted.
+The webhook is mounted only with `TEZGAH_WEBHOOK_SECRET` set, because a
+callback endpoint with no secret is one anybody can post to. Admin is mounted
+when `ADMIN_TOKEN` is set or an operator account exists — a shop with neither
+has no door rather than a door that refuses everybody. `/health`,
+`/openapi.json`, `/docs` and the two file routes are this binary's own, not
+`tezgah::api::routes()`'s, and are logged and counted apart.
 
-**Editing and deleting a row, wherever `tezgah::api` has the function for
-it.** None of the seven screens could change or remove what they list before
-this: `PATCH /admin/products/{id}` (`admin_catalogue::update_product`),
-`/admin/customers/{id}` (`admin_rest::update_customer`),
-`/admin/promotions/{id}` (`update_promotion`), `/admin/regions/{id}`
-(`update_region`) and `/admin/sales-channels/{id}` (`update_sales_channel`)
-all ask `Action::Write`; `/admin/stock-locations/{id}`
-(`admin_catalogue::rename_stock_location`, also `Action::Write`) is narrower
-— a stock location's only editable field past its address is its name.
-`DELETE` follows the same five domains but regions
-(`admin_catalogue::delete_product`, `delete_stock_location`,
-`admin_rest::delete_sales_channel`, `delete_promotion`, `delete_customer`),
-plus inventory items, which has a delete and no update
-(`admin_catalogue::delete_inventory_item`) — all `Action::Delete`, and all
-soft: `delete_product`, `delete_inventory_item` and `delete_customer` set
-`deleted_at` and leave the row and what points at it in place;
-`delete_promotion` is a withdrawal, so the discounts it already granted stay
-on the orders that used them; `delete_sales_channel` refuses a shop's default
-channel; `delete_stock_location` refuses a location that still counts stock.
+**Store — the shopping flow, and a shopper's own record.** Browse the
+catalogue with a publishable key (`x-publishable-key`), open a cart, add a
+line. Registering, signing in and out are bound too, and behind that session
+the `Shopper` extractor turns a bearer token into `Actor::Customer` for the
+three routes that read what is yours: your record, your addresses, your
+orders. `POST /store/carts/{id}/complete` is bound only once checkout is
+configured — that needs a payment provider and a warehouse — which is why it
+is not in the list above and the count is stated without it.
 
-Two of the seven have neither. Currencies have no writer past
-`create_currency` — nothing in `src/api/` updates or removes one once
-enabled. Publishable API keys have `POST /admin/publishable-api-keys/{id}/
-revoke`, which withdraws a key without forgetting it, but that route asks
-`Action::Write` on a `POST`, not `Action::Delete` on a `DELETE`, so it is not
-what this table is counting — and there is no update for a key's title
-either. Regions get the update above but no delete: `tezgah::api` has a route
-to take a country out of a region, never one to remove the region itself.
-Inventory items get the delete above but no update: the only write past
-creation is to the stock a location holds of an item, already bound at
-`POST /admin/inventory-items/{id}/location-levels`.
+**Admin — every list, the read behind each row, and the writes each domain
+actually offers.** No route here was invented: a handler exists where
+`tezgah::api` has the function, and a domain that offers no update has no
+`PATCH`. Deletes are soft where the domain makes them soft — `delete_product`,
+`delete_inventory_item` and `delete_customer` set `deleted_at` and leave what
+points at the row in place; `delete_promotion` is a withdrawal, so discounts
+already granted stay on the orders that used them; `delete_sales_channel`
+refuses a shop's default channel and `delete_stock_location` a location that
+still counts stock.
 
-**Past the panel: reads with no screen yet.** Ten domains had list-and-
-single-read functions sitting in `src/api/` with nothing in this binary
-calling them — reachable from a test, not from a request. Each is bound as
-its functions allow, never inventing a list or a single read a domain does
-not already offer:
+**What is deliberately not bound.** 221 of the 487 remain, and all but three
+are simply not reached yet — binding is by hand, a batch at a time. The three
+are held back on purpose:
 
-- **order_basket** — a basket's own record and the two scope-local lists
-  under it (`order_basket::get_basket`, `basket_orders`, `basket_carts`).
-  There is no `list` across baskets in the crate; only these three.
-- **workflow** — a run's list, single read and steps
-  (`admin_rest::list_workflow_runs`, `get_workflow_run`,
-  `list_workflow_run_steps`), plus the scope-wide dead-letter list
-  (`list_workflow_dead_letters`).
-- **payout** — a seller scope's own commission rules, one order's payout
-  lines, its payout history and its balance in one currency
-  (`payout::commission_rules`, `order_payout_lines`, `payouts`, `balance`).
-- **fulfilment** — a parcel's list and single read on one order, the
-  shipping options that reach an order's address and a return's,
-  fulfilment sets and their service zones, which carriers are on, shipping
-  options and their translations, shipping profiles, and shipping option
-  types (`admin_order::order_fulfillments`, `get_fulfillment`,
-  `order_shipping_options`, `return_shipping_options`,
-  `list_fulfillment_sets`, `service_zones`, `fulfillment_providers`,
-  `list_shipping_options`, `get_shipping_option`,
-  `list_shipping_option_translations`, `localised_shipping_option`,
-  `list_shipping_profiles`, `get_shipping_profile`,
-  `list_shipping_option_types`), plus the storefront's own
-  `GET /store/shipping-options` (`store::list_shipping_options`), which
-  prices delivery for a cart rather than reading a back office's
-  configuration.
-- **tax** — tax regions and rates, list and single read on both, and the
-  rules on one rate (`admin_rest::list_tax_regions`, `get_tax_region`,
-  `list_tax_rates`, `get_tax_rate`, `list_tax_rate_rules`), plus where the
-  shop is registered and what it files under, a customer's tax numbers and
-  their exemption certificates, from `src/api/tax_identity.rs`
-  (`list_registrations`, `list_tax_ids`, `list_exemptions`). None of the
-  three in `tax_identity` has a single-row read by id in the crate — a
-  registration, a tax number and a certificate are read as their owner's
-  whole list, never one at a time.
-- **pricing** — one price set and the page of prices under it, a bundle's
-  components and what it prices at right now, the rules on one price, price
-  lists with a list and single read on both, and a price preference found
-  by attribute rather than by id (`admin_catalogue::get_price_set`,
-  `list_prices`, `list_bundle_components`, `bundle_price`,
-  `list_price_rules`, `list_price_lists`, `get_price_list`,
-  `get_price_preference`). The last answers `null` rather than a 404: no
-  preference set for an attribute is the common case, not a missing row.
-- **payment** — payments with a list and single read, which carriers a
-  shop accepts, a payment collection's single read and the sessions under
-  it, and refund reasons (`admin_order::list_payments`, `get_payment`,
-  `payment_providers`, `get_payment_collection`, `payment_sessions`,
-  `list_refund_reasons`), plus the storefront's own
-  `GET /store/payment-providers` (`store::list_payment_providers`), narrowed
-  to a cart's region the same way `GET /store/shipping-options` narrows to
-  its address. `CollectionView`'s four running totals — the collection's
-  amount, and what has been authorized, captured and refunded against it —
-  are the payment domain's own raw-`Decimal` money fields, so
-  `money_crosses_the_wire_as_a_string_not_a_number` grows four more
-  pointers for them.
-- **credit** — gift cards with a list, single read and their transactions,
-  and a customer's store-credit balance in one currency with its own
-  transactions (`credit::list_gift_cards`, `get_gift_card`,
-  `gift_card_movements`, `get_store_credit`, `store_credit_movements`),
-  plus what a cart currently means to pay with,
-  `GET /store/carts/{id}/credits` (`list_cart_credits`).
-  `GET /store/customers/me/store-credit` (`my_store_credit`) is not among
-  these: it calls `signed_in(ctx)`, which only ever succeeds for
-  `Actor::Customer`, and this binary has no customer sign-in anywhere —
-  every storefront route it binds runs as `Actor::Guest`. Binding it would
-  mean a route that answers `denied` to every caller, which is worse than
-  leaving it unbound; giving this binary a customer identity is a separate
-  decision, the same shape as #214.
-- **digital** — what an order's money bought the right to, a list and a
-  hand revocation, and a variant's own files, list, write and delete
-  (`digital::list_order_entitlements`, `revoke_entitlements`,
-  `list_content`, `put_content`, `delete_content`). Writes are bound here,
-  past this round's read-only rule for the other nine domains, because the
-  domain had no route at all — a shop with digital products could not
-  reach any of it. The storefront half —
-  `GET /store/entitlements`, `POST /store/entitlements/{id}/token`,
-  `POST /store/downloads` (`my_entitlements`, `create_token`, `redeem`) —
-  is not bound for the same reason `GET /store/customers/me/store-credit`
-  above is not: all three call `signed_in(ctx)` before anything else, and
-  answer `denied` to the `Actor::Guest` every storefront route in this
-  binary runs as. Binding a route that refuses its every caller would be
-  worse than the gap it replaces.
-- **cart** — a cart's own line items, `GET /store/carts/{id}/line-items`
-  (`store::list_line_items`), and every cart this scope holds, abandoned
-  ones included, `GET /admin/carts` (`order_basket::list_carts`, so named
-  because that file already imports `crate::cart` and reaches for
-  `CartView` on every other route in it). The second did not exist as a
-  route at all until now: `cart::list` sat in `tests/reachable.rs`'s
-  `TOLERATED` list with the reason "the back office has no cart screen" —
-  no longer true, so the entry left with it, and the list is 33 long
-  rather than 34.
+- `POST /admin/store-credits/{id}/adjust` — the path names a store credit and
+  `credit::adjust_store_credit` takes a customer id. One of the two is wrong,
+  and a handler that picks a winner would settle it in the wrong place.
+- `POST /admin/subscriptions/{id}/renew` and `POST /admin/subscriptions/{id}/card` —
+  both need a `RecurringProvider`, and kasapay cannot yet name a saved card
+  (productdevbook/kasapay#225). Neither is a manual way around the dunning
+  gap: the same missing trait blocks both.
 
-Everything else `tezgah::api` offers stays unbound; wiring in more of the
-487 is a matter of adding a handler in `src/http/admin.rs` or
-`src/http/store.rs`, not a limitation of the approach.
+The storefront's signed-in long tail — `GET /store/customers/me/store-credit`,
+`GET /store/entitlements`, `POST /store/entitlements/{id}/token`,
+`POST /store/downloads` — is unbound for no reason beyond the batch it belongs
+to. Each calls `signed_in(ctx)`, which the `Shopper` extractor above now
+satisfies; before customer accounts existed they would have answered `denied`
+to every caller, and this file said so for as long as that was true.
 
-Every one of the eight single-row reads the panel's own screens use asks
-`ctx.permit(..)` before it looks
-for the row, not after: `tests/api_permissions.rs` calls each of
-`admin_catalogue::get_product`, `admin_order::get_order`,
-`admin_catalogue::get_inventory_item`, `admin_rest::get_customer`,
-`admin_rest::get_promotion`, `admin_rest::get_region`,
-`admin_rest::get_sales_channel` and `subscription::get_subscription` with a
-random id and a host that refuses everything, and asserts `denied` rather
-than `not_found` — none of the eight is in that test's `TOLERATED` list, so
-none of them is the leak `CLAUDE.md` describes, where a missing row answers
-`not_found` without asking and an existing-but-not-yours row asks and answers
-`denied`, together telling a caller which ids exist.
+A single-row read asks `ctx.permit(..)` before it looks for the row, never
+after. `tests/api_permissions.rs` calls each with a random id and a host that
+refuses everything and asserts `denied` rather than `not_found` — including
+all eight the panel's detail screens use (`admin_catalogue::get_product`,
+`admin_order::get_order`, `admin_catalogue::get_inventory_item`,
+`admin_rest::get_customer`, `get_promotion`, `get_region`,
+`get_sales_channel`, `subscription::get_subscription`), none of which is in
+that test's `TOLERATED` list. The list is not empty, though: the routes still
+in it answer `not_found` without asking, and a pair of answers that differ
+tells a stranger which ids exist.
 
 ## Docker
 
