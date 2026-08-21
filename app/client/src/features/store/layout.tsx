@@ -1,5 +1,6 @@
 import { StoreTabs } from "@/components/store-tabs"
 import { PageHeading } from "@/components/page-heading"
+import { useT } from "@/panel/i18n"
 
 /**
  * Chrome shared by every `/store/*` tab. `routes/store.tsx` renders this
@@ -8,12 +9,10 @@ import { PageHeading } from "@/components/page-heading"
  * screen (`currencies.tsx`, `regions.tsx`, ...) only owns what is in it.
  */
 export function StoreLayout({ children }: { children: React.ReactNode }) {
+  const t = useT()
   return (
     <div className="space-y-4">
-      <PageHeading
-        title="Store"
-        subtitle="Where the shop sells, and through what."
-      />
+      <PageHeading title={t("nav.store")} subtitle={t("layout.store.why")} />
       <StoreTabs />
       <div className="pt-3">{children}</div>
     </div>

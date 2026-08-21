@@ -4,7 +4,11 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 const TABS = [
   { value: "payments", label: "Payments", to: "/payments" },
-  { value: "refund-reasons", label: "Refund reasons", to: "/payments/refund-reasons" },
+  {
+    value: "refund-reasons",
+    label: "Refund reasons",
+    to: "/payments/refund-reasons",
+  },
 ] as const
 
 /** Same shape as `components/payouts-tabs.tsx`: each tab is a real route. */

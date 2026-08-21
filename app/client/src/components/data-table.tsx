@@ -240,6 +240,7 @@ function Rows<T extends RowData>({
   rowLink?: (row: T) => ReactNode
   select?: Selection<T>
 }) {
+  const t = useT()
   const table = useTable({ features, columns, data: items })
 
   return (
@@ -250,7 +251,7 @@ function Rows<T extends RowData>({
             {select ? (
               <TableHead className="w-10">
                 <Checkbox
-                  aria-label="Choose every row on this page"
+                  aria-label={t("table.chooseEvery")}
                   checked={
                     select.chosen.length > 0 &&
                     select.chosen.length === items.length
@@ -285,7 +286,7 @@ function Rows<T extends RowData>({
               // choose a row would open it instead.
               <TableCell className="w-10">
                 <Checkbox
-                  aria-label="Choose this row"
+                  aria-label={t("table.chooseThis")}
                   checked={select.chosen.includes(select.id(row.original))}
                   onCheckedChange={() => select.toggle(select.id(row.original))}
                 />

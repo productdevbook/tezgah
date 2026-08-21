@@ -1,5 +1,6 @@
 import { PayoutsTabs } from "@/components/payouts-tabs"
 import { PageHeading } from "@/components/page-heading"
+import { useT } from "@/panel/i18n"
 
 /**
  * Chrome shared by `/payouts` and `/payouts/commission-rules`, the same way
@@ -9,11 +10,12 @@ import { PageHeading } from "@/components/page-heading"
  * widgets on the payouts tab instead (`features/payouts/screen.tsx`).
  */
 export function PayoutsLayout({ children }: { children: React.ReactNode }) {
+  const t = useT()
   return (
     <div className="space-y-4">
       <PageHeading
-        title="Payouts"
-        subtitle="What a seller-scope is owed, and the commission that decides it."
+        title={t("nav.payouts")}
+        subtitle={t("layout.payouts.why")}
       />
       <PayoutsTabs />
       <div className="pt-3">{children}</div>

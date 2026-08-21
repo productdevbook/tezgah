@@ -4,7 +4,11 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 const TABS = [
   { value: "executions", label: "Executions", to: "/workflows" },
-  { value: "dead-letters", label: "Dead letters", to: "/workflows/dead-letters" },
+  {
+    value: "dead-letters",
+    label: "Dead letters",
+    to: "/workflows/dead-letters",
+  },
 ] as const
 
 /** Same shape as `components/store-tabs.tsx`: each tab is a real route. */
