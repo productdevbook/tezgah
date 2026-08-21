@@ -8,6 +8,7 @@ import {
   CommandList,
 } from "@/components/ui/command"
 import { GROUPS } from "@/lib/nav"
+import { useT } from "@/panel/i18n"
 import { useSectionNavigate } from "@/lib/section-navigate"
 
 /**
@@ -27,27 +28,28 @@ export function CommandPalette({
   onOpenChange: (open: boolean) => void
 }) {
   const goTo = useSectionNavigate()
+  const t = useT()
 
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange}>
       <Command>
-        <CommandInput placeholder="Go to…" />
+        <CommandInput placeholder={t("nav.goTo")} />
         <CommandList>
-          <CommandEmpty>Nothing by that name.</CommandEmpty>
+          <CommandEmpty>{t("general.empty")}</CommandEmpty>
           {GROUPS.map((group) => (
-            <CommandGroup key={group.title} heading={group.title}>
+            <CommandGroup key={group.title} heading={t(group.title)}>
               {group.sections
                 .filter((section) => !section.folded)
                 .map((section) => (
                   <CommandItem
                     key={section.slug}
-                    value={`${group.title} ${section.title} ${section.slug}`}
+                    value={`${t(group.title)} ${t(section.title)} ${section.slug}`}
                     onSelect={() => {
                       onOpenChange(false)
                       goTo(section.slug)
                     }}
                   >
-                    <span>{section.title}</span>
+                    <span>{t(section.title)}</span>
                     {!section.built ? (
                       <span className="ml-auto text-xs text-muted-foreground">
                         soon

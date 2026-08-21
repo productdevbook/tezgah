@@ -23,6 +23,7 @@ import { SectionLink } from "@/components/section-link"
 import { useCommandPalette } from "@/lib/command-palette"
 import { COVERAGE, GROUPS, SERVER_SECTIONS, type Section } from "@/lib/nav"
 import { mayOpen, useWhoAmI } from "@/lib/session"
+import { useT } from "@/panel/i18n"
 import { panelRuntime } from "@/panel/runtime"
 
 /// The host's own screens are not in `routes()` and not in `GROUPS`, so they
@@ -97,6 +98,7 @@ export function AppShell() {
   const matchRoute = useMatchRoute()
   const palette = useCommandPalette()
   const me = useWhoAmI()
+  const t = useT()
 
   return (
     <SidebarProvider>
@@ -118,7 +120,7 @@ export function AppShell() {
         <SidebarContent>
           {GROUPS.map((group) => (
             <SidebarGroup key={group.title}>
-              <SidebarGroupLabel>{group.title}</SidebarGroupLabel>
+              <SidebarGroupLabel>{t(group.title)}</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
                   {group.sections
@@ -127,13 +129,13 @@ export function AppShell() {
                       <SidebarMenuItem key={section.slug}>
                         <SidebarMenuButton
                           isActive={isActiveSection(matchRoute, section)}
-                          tooltip={section.title}
+                          tooltip={t(section.title)}
                           render={<SectionLink slug={section.slug} />}
                         >
-                          <span className="truncate">{section.title}</span>
+                          <span className="truncate">{t(section.title)}</span>
                           {!section.built ? (
                             <span className="ml-auto text-[10px] text-muted-foreground group-data-[collapsible=icon]:hidden">
-                              soon
+                              {t("nav.soon")}
                             </span>
                           ) : null}
                         </SidebarMenuButton>
@@ -144,7 +146,7 @@ export function AppShell() {
             </SidebarGroup>
           ))}
           <SidebarGroup>
-            <SidebarGroupLabel>This server</SidebarGroupLabel>
+            <SidebarGroupLabel>{t("nav.group.thisServer")}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {SERVER_SECTIONS.filter((section) =>
@@ -153,10 +155,10 @@ export function AppShell() {
                   <SidebarMenuItem key={section.slug}>
                     <SidebarMenuButton
                       isActive={isActiveServerSection(matchRoute, section.slug)}
-                      tooltip={section.title}
+                      tooltip={t(section.title)}
                       render={<SectionLink slug={section.slug} />}
                     >
-                      <span className="truncate">{section.title}</span>
+                      <span className="truncate">{t(section.title)}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}
@@ -169,14 +171,16 @@ export function AppShell() {
           <div className="grid gap-1 px-2 py-1 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
             <span className="truncate">
               {me.data === null
-                ? "Admin token — not a person"
+                ? t("nav.adminToken")
                 : me.data
                   ? `${me.data.name} · ${me.data.role}`
                   : ""}
             </span>
             <span>
-              {COVERAGE.covered} of {COVERAGE.operations} admin operations have
-              a screen
+              {t("nav.coverage", {
+                covered: COVERAGE.covered,
+                operations: COVERAGE.operations,
+              })}
             </span>
           </div>
         </SidebarFooter>
@@ -188,7 +192,7 @@ export function AppShell() {
           <SidebarTrigger />
           <Separator orientation="vertical" className="mr-1 h-4" />
           <Link to="/" className="text-sm font-medium">
-            Overview
+            {t("nav.overview")}
           </Link>
           <Button
             variant="outline"
@@ -196,7 +200,7 @@ export function AppShell() {
             className="ml-auto gap-2 font-normal text-muted-foreground"
             onClick={() => palette.setOpen(true)}
           >
-            Go to…
+            {t("nav.goTo")}
             <kbd className="rounded bg-muted px-1 text-[10px]">⌘K</kbd>
           </Button>
           <Button
@@ -205,7 +209,7 @@ export function AppShell() {
             className="text-xs"
             onClick={() => panelRuntime().onUnauthenticated()}
           >
-            Disconnect
+            {t("nav.disconnect")}
           </Button>
         </header>
         <main className="flex-1 p-4 md:p-6">

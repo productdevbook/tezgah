@@ -18,6 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import type { PagedList } from "@/lib/paged"
+import { useT } from "@/panel/i18n"
 
 /**
  * No feature is registered: v9 makes every one of them explicit, and this
@@ -73,6 +74,7 @@ export function DataTable<T extends RowData>({
    */
   rowLink?: (row: T) => ReactNode
 }) {
+  const t = useT()
   const page = paged.result.data
   const [chosen, setChosen] = useState<string[]>([])
 
@@ -138,7 +140,10 @@ export function DataTable<T extends RowData>({
                   total. */}
               {page.total !== undefined && page.total !== null ? (
                 <span className="mr-auto text-sm text-muted-foreground">
-                  {page.items.length} of {page.total.toLocaleString()}
+                  {t("table.showing", {
+                    shown: page.items.length,
+                    total: page.total.toLocaleString(),
+                  })}
                 </span>
               ) : null}
               <Button
@@ -147,7 +152,7 @@ export function DataTable<T extends RowData>({
                 disabled={!paged.hasPrevious}
                 onClick={paged.back}
               >
-                Back
+                {t("table.back")}
               </Button>
               <Button
                 variant="outline"
@@ -155,7 +160,7 @@ export function DataTable<T extends RowData>({
                 disabled={!page.next}
                 onClick={() => page.next && paged.forward(page.next)}
               >
-                Next
+                {t("table.next")}
               </Button>
             </div>
           ) : null}
