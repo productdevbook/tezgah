@@ -62,10 +62,12 @@ export function StoreCurrencies() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Code</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Symbol</TableHead>
-                  <TableHead className="text-right">Exponent</TableHead>
+                  <TableHead>{t("field.code")}</TableHead>
+                  <TableHead>{t("field.name")}</TableHead>
+                  <TableHead>{t("field.symbol")}</TableHead>
+                  <TableHead className="text-right">
+                    {t("field.exponent")}
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

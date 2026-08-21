@@ -101,14 +101,14 @@ export function Customers({
           </SelectTrigger>
           <SelectContent>
             {/* Two, because the crate orders this list two ways. */}
-            <SelectItem value="created">Newest first</SelectItem>
-            <SelectItem value="email">By e-mail</SelectItem>
+            <SelectItem value="created">{t("sort.newest")}</SelectItem>
+            <SelectItem value="email">{t("sort.byEmail")}</SelectItem>
           </SelectContent>
         </Select>
         <SearchBox
           value={q}
           onChange={onQChange}
-          placeholder="Search name, e-mail, company"
+          placeholder={t("search.customers")}
         />
       </PageHeading>
       <DataTable

@@ -87,7 +87,7 @@ export function Prices({
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="price set id"
+              placeholder={t("placeholder.priceSetId")}
               className="font-mono text-xs"
               aria-label={t("field.priceSetId")}
               autoFocus
@@ -225,11 +225,11 @@ function Grid({ rows, onSaved }: { rows: Price[]; onSaved: () => void }) {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-48">Amount</TableHead>
-            <TableHead>Currency</TableHead>
-            <TableHead>Quantity</TableHead>
-            <TableHead>Title</TableHead>
-            <TableHead className="text-right">Rules</TableHead>
+            <TableHead className="w-48">{t("field.amount")}</TableHead>
+            <TableHead>{t("field.currency")}</TableHead>
+            <TableHead>{t("field.quantity")}</TableHead>
+            <TableHead>{t("field.title")}</TableHead>
+            <TableHead className="text-right">{t("field.rules")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

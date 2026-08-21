@@ -131,11 +131,13 @@ function StepsTable({ steps }: { steps: UseQueryResult<WorkflowStep[]> }) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Step</TableHead>
-              <TableHead>State</TableHead>
-              <TableHead className="text-right">Attempts</TableHead>
-              <TableHead>Run after</TableHead>
-              <TableHead>Lease until</TableHead>
+              <TableHead>{t("field.step")}</TableHead>
+              <TableHead>{t("field.state")}</TableHead>
+              <TableHead className="text-right">
+                {t("field.attempts")}
+              </TableHead>
+              <TableHead>{t("field.runAfter")}</TableHead>
+              <TableHead>{t("field.leaseUntil")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

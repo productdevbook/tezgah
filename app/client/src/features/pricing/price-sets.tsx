@@ -38,7 +38,7 @@ export function PriceSets({
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="price set id"
+              placeholder={t("placeholder.priceSetId")}
               className="font-mono text-xs"
               aria-label={t("field.priceSetId")}
               autoFocus

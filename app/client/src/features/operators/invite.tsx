@@ -98,7 +98,7 @@ export function InviteAction() {
             )}
           >
             <DialogHeader>
-              <DialogTitle>Invite somebody</DialogTitle>
+              <DialogTitle>{t("action.invite")}</DialogTitle>
               <DialogDescription>
                 They get a link that works once and runs out in seven days. They
                 choose their own password, so nobody else ever knows it.
@@ -159,7 +159,7 @@ export function InviteAction() {
                 variant="outline"
                 onClick={() => setOpen(false)}
               >
-                Cancel
+                {t("actions.cancel")}
               </Button>
               <Button type="submit" disabled={form.formState.isSubmitting}>
                 {form.formState.isSubmitting
@@ -205,9 +205,9 @@ export function OpenInvitations() {
         <TableHeader>
           <TableRow>
             <TableHead>E-mail</TableHead>
-            <TableHead>Name</TableHead>
-            <TableHead>Role</TableHead>
-            <TableHead className="text-right">Runs out</TableHead>
+            <TableHead>{t("field.name")}</TableHead>
+            <TableHead>{t("field.role")}</TableHead>
+            <TableHead className="text-right">{t("field.runsOut")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

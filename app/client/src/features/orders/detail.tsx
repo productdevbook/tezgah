@@ -236,11 +236,13 @@ function Entitlements({
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Digital content</TableHead>
-                    <TableHead>Downloads</TableHead>
-                    <TableHead>Granted</TableHead>
-                    <TableHead>Expires</TableHead>
-                    <TableHead className="text-right">Status</TableHead>
+                    <TableHead>{t("detail.product.digital")}</TableHead>
+                    <TableHead>{t("field.downloads")}</TableHead>
+                    <TableHead>{t("field.granted")}</TableHead>
+                    <TableHead>{t("field.expires")}</TableHead>
+                    <TableHead className="text-right">
+                      {t("field.status")}
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -307,6 +309,7 @@ function RevokeEntitlementsAction({
   activeCount: number
   onRevoked: () => void
 }) {
+  const t = useT()
   const [open, setOpen] = useState(false)
   const [reason, setReason] = useState("")
   const [reasonError, setReasonError] = useState<string>()
@@ -354,7 +357,9 @@ function RevokeEntitlementsAction({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <Field data-invalid={!!reasonError}>
-          <FieldLabel htmlFor="revoke-reason">Reason (optional)</FieldLabel>
+          <FieldLabel htmlFor="revoke-reason">
+            {t("field.reasonOptional")}
+          </FieldLabel>
           <Input
             id="revoke-reason"
             value={reason}
@@ -365,7 +370,7 @@ function RevokeEntitlementsAction({
         </Field>
         {mutation.isError ? <FormError error={mutation.error} /> : null}
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>{t("actions.cancel")}</AlertDialogCancel>
           <AlertDialogAction
             variant="destructive"
             disabled={mutation.isPending}

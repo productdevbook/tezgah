@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useRouter } from "@tanstack/react-router"
+import { useT } from "@/panel/i18n"
 
 import { del, type ApiPath } from "@/api/client"
 import { FormError } from "@/components/form-error"
@@ -43,6 +44,7 @@ export function DeleteAction({
   name: string
   onDeleted?: () => void
 }) {
+  const t = useT()
   const client = useQueryClient()
   const router = useRouter()
 
@@ -73,7 +75,7 @@ export function DeleteAction({
         </AlertDialogHeader>
         {mutation.isError ? <FormError error={mutation.error} /> : null}
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>{t("actions.cancel")}</AlertDialogCancel>
           <AlertDialogAction
             variant="destructive"
             disabled={mutation.isPending}

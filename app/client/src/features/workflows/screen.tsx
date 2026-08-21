@@ -93,10 +93,10 @@ export function Workflows({
           onValueChange={(v) => onStateChange(v as WorkflowRunState | "all")}
         >
           <SelectTrigger className="w-40" size="sm">
-            <SelectValue placeholder="Any state" />
+            <SelectValue placeholder={t("filter.anyState")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Any state</SelectItem>
+            <SelectItem value="all">{t("filter.anyState")}</SelectItem>
             {workflowRunState.options.map((s) => (
               <SelectItem key={s} value={s}>
                 {s}

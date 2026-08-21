@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
+import { useT } from "@/panel/i18n"
 
 import { apiMutator } from "@/api/mutator"
 import { ActionMenu } from "@/components/action-menu"
@@ -53,6 +54,7 @@ async function move(id: string, path: string, body?: unknown): Promise<void> {
 }
 
 export function StatusActions({ item }: { item: Product }) {
+  const t = useT()
   const client = useQueryClient()
   const [rejecting, setRejecting] = useState(false)
   const [reason, setReason] = useState("")
@@ -89,14 +91,14 @@ export function StatusActions({ item }: { item: Product }) {
       <Dialog open={rejecting} onOpenChange={setRejecting}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reject this product</DialogTitle>
+            <DialogTitle>{t("action.rejectProduct")}</DialogTitle>
             <DialogDescription>
               Whoever submitted it sees the reason, so say what would have to
               change.
             </DialogDescription>
           </DialogHeader>
           <Field>
-            <FieldLabel htmlFor="reject-reason">Reason</FieldLabel>
+            <FieldLabel htmlFor="reject-reason">{t("field.reason")}</FieldLabel>
             <Input
               id="reject-reason"
               value={reason}
@@ -112,7 +114,7 @@ export function StatusActions({ item }: { item: Product }) {
           ) : null}
           <DialogFooter>
             <Button variant="outline" onClick={() => setRejecting(false)}>
-              Cancel
+              {t("actions.cancel")}
             </Button>
             <Button
               variant="destructive"

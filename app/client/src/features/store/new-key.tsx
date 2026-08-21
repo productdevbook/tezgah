@@ -86,7 +86,11 @@ function Body() {
             label={t("field.title")}
           >
             {(field) => (
-              <Input id={field.name} placeholder="Storefront" {...field} />
+              <Input
+                id={field.name}
+                placeholder={t("placeholder.keyTitle")}
+                {...field}
+              />
             )}
           </FormField>
         </div>
@@ -135,7 +139,7 @@ function Issued({ issued, onDone }: { issued: IssuedKey; onDone: () => void }) {
                 icon={copied ? Tick02Icon : Copy01Icon}
                 strokeWidth={2}
               />
-              <span className="sr-only">Copy</span>
+              <span className="sr-only">{t("actions.copy")}</span>
             </Button>
           </div>
         </div>

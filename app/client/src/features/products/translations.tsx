@@ -190,7 +190,7 @@ function Body({ productId }: { productId: string }) {
                   onValueChange={(value) => field.onChange(value)}
                 >
                   <SelectTrigger className="w-28" size="sm">
-                    <SelectValue placeholder="or…" />
+                    <SelectValue placeholder={t("placeholder.or")} />
                   </SelectTrigger>
                   <SelectContent>
                     {Object.keys(LOCALES).map((one) => (
@@ -232,7 +232,7 @@ function Body({ productId }: { productId: string }) {
             {(field) => (
               <Input
                 id={field.name}
-                placeholder="left empty, the shop's own"
+                placeholder={t("placeholder.shopsOwn")}
                 {...field}
               />
             )}

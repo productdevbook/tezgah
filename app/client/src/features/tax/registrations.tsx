@@ -52,10 +52,10 @@ export function TaxRegistrations() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Country</TableHead>
-                <TableHead>Scheme</TableHead>
-                <TableHead>Tax ID</TableHead>
-                <TableHead className="text-right">Home</TableHead>
+                <TableHead>{t("field.country")}</TableHead>
+                <TableHead>{t("field.scheme")}</TableHead>
+                <TableHead>{t("field.taxId")}</TableHead>
+                <TableHead className="text-right">{t("field.home")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

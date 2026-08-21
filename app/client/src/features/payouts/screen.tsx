@@ -80,7 +80,7 @@ export function Payouts({
         />
       </div>
       <div className="space-y-3">
-        <h2 className="text-sm font-medium">Payouts</h2>
+        <h2 className="text-sm font-medium">{t("nav.payouts")}</h2>
         <DataTable
           paged={paged}
           columns={columns}
@@ -124,7 +124,7 @@ function BalanceLookup({
   return (
     <Card size="sm">
       <CardHeader>
-        <CardTitle>Balance</CardTitle>
+        <CardTitle>{t("field.balance")}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         <form className="flex gap-2" onSubmit={submit}>
@@ -191,14 +191,14 @@ function OrderLinesLookup({
   return (
     <Card size="sm">
       <CardHeader>
-        <CardTitle>Payout lines by order</CardTitle>
+        <CardTitle>{t("frame.payoutLines")}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         <form className="flex gap-2" onSubmit={submit}>
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="order id"
+            placeholder={t("placeholder.orderId")}
             className="font-mono text-xs"
             aria-label={t("field.orderId")}
           />

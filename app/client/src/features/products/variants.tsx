@@ -47,7 +47,9 @@ export function Variants({ productId }: { productId: string }) {
       description={t("section.variantsWhy")}
     >
       {result.isPending ? (
-        <p className="px-6 py-4 text-sm text-muted-foreground">Loading…</p>
+        <p className="px-6 py-4 text-sm text-muted-foreground">
+          {t("general.loading")}
+        </p>
       ) : rows.length === 0 ? (
         <p className="px-6 py-4 text-sm text-muted-foreground">
           No variants. Nothing on this product is for sale until one exists.
@@ -56,10 +58,10 @@ export function Variants({ productId }: { productId: string }) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Title</TableHead>
-              <TableHead>SKU</TableHead>
-              <TableHead>Stock</TableHead>
-              <TableHead className="text-right">Rank</TableHead>
+              <TableHead>{t("field.title")}</TableHead>
+              <TableHead>{t("field.sku")}</TableHead>
+              <TableHead>{t("field.stock")}</TableHead>
+              <TableHead className="text-right">{t("field.rank")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

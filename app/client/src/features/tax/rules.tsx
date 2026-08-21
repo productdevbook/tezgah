@@ -46,7 +46,9 @@ export function TaxRateRules({ rateId }: { rateId: string }) {
       description={t("section.taxRulesWhy")}
     >
       {result.isPending ? (
-        <p className="px-6 py-4 text-sm text-muted-foreground">Loading…</p>
+        <p className="px-6 py-4 text-sm text-muted-foreground">
+          {t("general.loading")}
+        </p>
       ) : rows.length === 0 ? (
         <p className="px-6 py-4 text-sm text-muted-foreground">
           No rules. This rate applies to everything in its region.
@@ -55,8 +57,8 @@ export function TaxRateRules({ rateId }: { rateId: string }) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Kind</TableHead>
-              <TableHead>Which one</TableHead>
+              <TableHead>{t("field.kind")}</TableHead>
+              <TableHead>{t("field.whichOne")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

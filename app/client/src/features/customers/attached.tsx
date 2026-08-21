@@ -54,7 +54,9 @@ export function StoreCredit({ customerId }: { customerId: string }) {
       description={t("attached.storeCreditWhy")}
     >
       {result.isPending ? (
-        <p className="px-6 py-4 text-sm text-muted-foreground">Loading…</p>
+        <p className="px-6 py-4 text-sm text-muted-foreground">
+          {t("general.loading")}
+        </p>
       ) : missing || !result.data ? (
         <p className="px-6 py-4 text-sm text-muted-foreground">
           No balance. One appears the first time the shop puts money on it.
@@ -111,17 +113,21 @@ export function TaxIds({ customerId }: { customerId: string }) {
       description={t("attached.taxNumbersWhy")}
     >
       {result.isPending ? (
-        <p className="px-6 py-4 text-sm text-muted-foreground">Loading…</p>
+        <p className="px-6 py-4 text-sm text-muted-foreground">
+          {t("general.loading")}
+        </p>
       ) : rows.length === 0 ? (
-        <p className="px-6 py-4 text-sm text-muted-foreground">None given.</p>
+        <p className="px-6 py-4 text-sm text-muted-foreground">
+          {t("value.noneGiven")}
+        </p>
       ) : (
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Number</TableHead>
-              <TableHead>Kind</TableHead>
-              <TableHead>Country</TableHead>
-              <TableHead>Checked</TableHead>
+              <TableHead>{t("field.number")}</TableHead>
+              <TableHead>{t("field.kind")}</TableHead>
+              <TableHead>{t("field.country")}</TableHead>
+              <TableHead>{t("field.checked")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -174,7 +180,9 @@ export function TaxExemptions({ customerId }: { customerId: string }) {
       description={t("attached.exemptionsWhy")}
     >
       {result.isPending ? (
-        <p className="px-6 py-4 text-sm text-muted-foreground">Loading…</p>
+        <p className="px-6 py-4 text-sm text-muted-foreground">
+          {t("general.loading")}
+        </p>
       ) : rows.length === 0 ? (
         <p className="px-6 py-4 text-sm text-muted-foreground">
           None on file. This customer is charged tax like anybody else.
@@ -183,10 +191,10 @@ export function TaxExemptions({ customerId }: { customerId: string }) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Where</TableHead>
-              <TableHead>Kind</TableHead>
-              <TableHead>Good for</TableHead>
-              <TableHead>Certificate</TableHead>
+              <TableHead>{t("field.where")}</TableHead>
+              <TableHead>{t("field.kind")}</TableHead>
+              <TableHead>{t("field.goodFor")}</TableHead>
+              <TableHead>{t("field.certificate")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

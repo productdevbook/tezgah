@@ -51,8 +51,10 @@ export function FulfilmentProviders() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Code</TableHead>
-                <TableHead className="text-right">Status</TableHead>
+                <TableHead>{t("field.code")}</TableHead>
+                <TableHead className="text-right">
+                  {t("field.status")}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

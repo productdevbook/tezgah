@@ -77,7 +77,9 @@ export function Movements({
   const body = (
     <>
       {result.isPending ? (
-        <p className="px-6 py-4 text-sm text-muted-foreground">Loading…</p>
+        <p className="px-6 py-4 text-sm text-muted-foreground">
+          {t("general.loading")}
+        </p>
       ) : rows.length === 0 ? (
         <p className="px-6 py-4 text-sm text-muted-foreground">
           Nothing has moved yet.
@@ -86,11 +88,11 @@ export function Movements({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>When</TableHead>
-              <TableHead>Kind</TableHead>
-              <TableHead>Order</TableHead>
-              <TableHead>Reason</TableHead>
-              <TableHead className="text-right">Amount</TableHead>
+              <TableHead>{t("field.when")}</TableHead>
+              <TableHead>{t("field.kind")}</TableHead>
+              <TableHead>{t("field.order")}</TableHead>
+              <TableHead>{t("field.reason")}</TableHead>
+              <TableHead className="text-right">{t("field.amount")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

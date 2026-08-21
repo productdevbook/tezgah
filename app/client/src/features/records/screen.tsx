@@ -71,9 +71,9 @@ function Audit() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>When</TableHead>
-                <TableHead>Who</TableHead>
-                <TableHead>Did</TableHead>
+                <TableHead>{t("field.when")}</TableHead>
+                <TableHead>{t("field.who")}</TableHead>
+                <TableHead>{t("field.did")}</TableHead>
                 <TableHead>To</TableHead>
               </TableRow>
             </TableHeader>
@@ -132,10 +132,12 @@ function Events() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>When</TableHead>
-                <TableHead>What</TableHead>
-                <TableHead>About</TableHead>
-                <TableHead className="text-right">Delivered</TableHead>
+                <TableHead>{t("field.when")}</TableHead>
+                <TableHead>{t("field.what")}</TableHead>
+                <TableHead>{t("field.about")}</TableHead>
+                <TableHead className="text-right">
+                  {t("field.delivered")}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

@@ -36,12 +36,12 @@ export function BasketSearch({ onSearch }: { onSearch: (id: string) => void }) {
         <CardContent>
           <form className="space-y-4" onSubmit={submit}>
             <Field>
-              <FieldLabel htmlFor="basket-id">Basket ID</FieldLabel>
+              <FieldLabel htmlFor="basket-id">{t("field.basketId")}</FieldLabel>
               <Input
                 id="basket-id"
                 value={id}
                 onChange={(e) => setId(e.target.value)}
-                placeholder="the id of a checkout that spanned more than one seller"
+                placeholder={t("placeholder.basketId")}
                 className="font-mono text-xs"
                 autoFocus
               />

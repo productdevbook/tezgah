@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
+import { useT } from "@/panel/i18n"
 
 import { apiMutator } from "@/api/mutator"
 import { ActionMenu } from "@/components/action-menu"
@@ -62,6 +63,7 @@ async function act(id: string, path: string, body?: unknown): Promise<void> {
 }
 
 export function SubscriptionActions({ item }: { item: Subscription }) {
+  const t = useT()
   const client = useQueryClient()
   const [cancelling, setCancelling] = useState(false)
   const [immediately, setImmediately] = useState(false)
@@ -98,7 +100,7 @@ export function SubscriptionActions({ item }: { item: Subscription }) {
       <Dialog open={cancelling} onOpenChange={setCancelling}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Cancel this subscription</DialogTitle>
+            <DialogTitle>{t("action.cancelSubscription")}</DialogTitle>
             <DialogDescription>
               Left as it is, the contract stops at the end of the period the
               customer has already paid for — which is what they are owed.
@@ -111,15 +113,19 @@ export function SubscriptionActions({ item }: { item: Subscription }) {
                 checked={immediately}
                 onCheckedChange={setImmediately}
               />
-              <FieldLabel htmlFor="immediately">Stop it now instead</FieldLabel>
+              <FieldLabel htmlFor="immediately">
+                {t("action.stopNow")}
+              </FieldLabel>
             </Field>
             <Field>
-              <FieldLabel htmlFor="cancel-reason">Reason</FieldLabel>
+              <FieldLabel htmlFor="cancel-reason">
+                {t("field.reason")}
+              </FieldLabel>
               <Input
                 id="cancel-reason"
                 value={reason}
                 onChange={(event) => setReason(event.target.value)}
-                placeholder="kept with the contract"
+                placeholder={t("placeholder.keptWithContract")}
               />
             </Field>
             {mutation.isError ? (

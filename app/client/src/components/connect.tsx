@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { acceptInvitation } from "@/features/operators/api"
 import { hold } from "@/lib/token"
+import { useT } from "@/panel/i18n"
 
 /**
  * Two ways in, because the server has two.
@@ -38,6 +39,7 @@ export function Connect({
    */
   invitation?: string
 }) {
+  const t = useT()
   // An invitation is not a third tab. Somebody arriving on that link has no
   // account and no token, so offering them two ways to sign in with neither
   // is offering them nothing.
@@ -46,11 +48,8 @@ export function Connect({
       <div className="flex min-h-svh items-center justify-center p-6">
         <Card className="w-full max-w-md">
           <CardHeader>
-            <CardTitle>Choose a password</CardTitle>
-            <CardDescription>
-              This link works once. After that, sign in with the address it was
-              sent to.
-            </CardDescription>
+            <CardTitle>{t("connect.choosePassword")}</CardTitle>
+            <CardDescription>{t("connect.choosePasswordWhy")}</CardDescription>
           </CardHeader>
           <CardContent>
             <Accept token={invitation} onConnected={onConnected} />
@@ -64,16 +63,14 @@ export function Connect({
     <div className="flex min-h-svh items-center justify-center p-6">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle>Sign in</CardTitle>
-          <CardDescription>
-            An account, or the token the server was started with.
-          </CardDescription>
+          <CardTitle>{t("connect.signIn")}</CardTitle>
+          <CardDescription>{t("connect.signInWhy")}</CardDescription>
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="account">
             <TabsList className="mb-4">
-              <TabsTrigger value="account">Account</TabsTrigger>
-              <TabsTrigger value="token">Admin token</TabsTrigger>
+              <TabsTrigger value="account">{t("connect.account")}</TabsTrigger>
+              <TabsTrigger value="token">{t("connect.adminToken")}</TabsTrigger>
             </TabsList>
             <TabsContent value="account">
               <WithPassword onConnected={onConnected} />
@@ -95,6 +92,7 @@ function Accept({
   token: string
   onConnected: () => void
 }) {
+  const t = useT()
   const [password, setPassword] = useState("")
   const [again, setAgain] = useState("")
   const [refused, setRefused] = useState<string | null>(null)
@@ -117,8 +115,8 @@ function Accept({
     } catch (error) {
       setRefused(
         error instanceof ApiError && error.kind === "unreachable"
-          ? "No host answered."
-          : "That invitation has been used already, or it has run out."
+          ? t("connect.noHostAnswered")
+          : t("connect.invitationSpent")
       )
     } finally {
       setSending(false)
@@ -128,7 +126,7 @@ function Accept({
   return (
     <form className="space-y-3" onSubmit={submit}>
       <Field>
-        <FieldLabel htmlFor="new-password">Password</FieldLabel>
+        <FieldLabel htmlFor="new-password">{t("connect.password")}</FieldLabel>
         <Input
           id="new-password"
           type="password"
@@ -138,13 +136,11 @@ function Accept({
           aria-invalid={short}
         />
         {short ? (
-          <p className="text-xs text-destructive">
-            At least twelve characters.
-          </p>
+          <p className="text-xs text-destructive">{t("connect.tooShort")}</p>
         ) : null}
       </Field>
       <Field>
-        <FieldLabel htmlFor="again">Again</FieldLabel>
+        <FieldLabel htmlFor="again">{t("connect.again")}</FieldLabel>
         <Input
           id="again"
           type="password"
@@ -154,7 +150,7 @@ function Accept({
           aria-invalid={differs}
         />
         {differs ? (
-          <p className="text-xs text-destructive">These two do not match.</p>
+          <p className="text-xs text-destructive">{t("connect.doNotMatch")}</p>
         ) : null}
       </Field>
       {refused ? <p className="text-sm text-destructive">{refused}</p> : null}
@@ -163,13 +159,14 @@ function Accept({
         className="w-full"
         disabled={sending || short || differs || password.length < 12 || !again}
       >
-        {sending ? "Setting…" : "Set it and sign in"}
+        {sending ? t("connect.setting") : t("connect.setAndSignIn")}
       </Button>
     </form>
   )
 }
 
 function WithPassword({ onConnected }: { onConnected: () => void }) {
+  const t = useT()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [refused, setRefused] = useState<string | null>(null)
@@ -195,8 +192,8 @@ function WithPassword({ onConnected }: { onConnected: () => void }) {
       // password that is wrong, on purpose. So does this.
       setRefused(
         error instanceof ApiError && error.kind === "unreachable"
-          ? "No host answered."
-          : "That e-mail and password do not match an account."
+          ? t("connect.noHostAnswered")
+          : t("connect.wrongPassword")
       )
     } finally {
       setSending(false)
@@ -206,7 +203,7 @@ function WithPassword({ onConnected }: { onConnected: () => void }) {
   return (
     <form className="space-y-3" onSubmit={submit}>
       <Field>
-        <FieldLabel htmlFor="email">E-mail</FieldLabel>
+        <FieldLabel htmlFor="email">{t("connect.email")}</FieldLabel>
         <Input
           id="email"
           type="email"
@@ -216,7 +213,7 @@ function WithPassword({ onConnected }: { onConnected: () => void }) {
         />
       </Field>
       <Field>
-        <FieldLabel htmlFor="password">Password</FieldLabel>
+        <FieldLabel htmlFor="password">{t("connect.password")}</FieldLabel>
         <Input
           id="password"
           type="password"
@@ -231,18 +228,17 @@ function WithPassword({ onConnected }: { onConnected: () => void }) {
         className="w-full"
         disabled={sending || !email || !password}
       >
-        {sending ? "Signing in…" : "Sign in"}
+        {sending ? t("connect.signingIn") : t("connect.signIn")}
       </Button>
       <p className="text-xs text-muted-foreground">
-        There is no reset e-mail: this server has no mailer, and a link it
-        cannot send would be worse than one it never offered. The admin token is
-        the way back in.
+        {t("connect.noSelfReset")}
       </p>
     </form>
   )
 }
 
 function WithToken({ onConnected }: { onConnected: () => void }) {
+  const t = useT()
   const [token, setToken] = useState("")
 
   return (
@@ -256,7 +252,7 @@ function WithToken({ onConnected }: { onConnected: () => void }) {
       }}
     >
       <Field>
-        <FieldLabel htmlFor="token">Admin token</FieldLabel>
+        <FieldLabel htmlFor="token">{t("connect.adminToken")}</FieldLabel>
         <Input
           id="token"
           type="password"
@@ -264,18 +260,13 @@ function WithToken({ onConnected }: { onConnected: () => void }) {
           spellCheck={false}
           value={token}
           onChange={(event) => setToken(event.target.value)}
-          placeholder="the value of ADMIN_TOKEN"
+          placeholder={t("connect.tokenPlaceholder")}
         />
       </Field>
       <Button type="submit" className="w-full" disabled={!token.trim()}>
-        Connect
+        {t("connect.connect")}
       </Button>
-      <p className="text-xs text-muted-foreground">
-        A shared secret, not a person — nothing it changes can be attributed to
-        anybody. Use it to make an account at Operators, then sign in with that.
-        Started with neither a token nor an account and the server serves no
-        admin surface at all.
-      </p>
+      <p className="text-xs text-muted-foreground">{t("connect.tokenWhy")}</p>
     </form>
   )
 }
