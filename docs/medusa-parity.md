@@ -105,14 +105,18 @@ files to a directory. Moving to object storage is a bucket behind the same
 path rather than an interface. Deliberate for now; it stops being deliberate
 the moment a second thing needs to store a file.
 
-**7. The panel has no extension points.** Medusa's dashboard takes widgets
-into named injection zones and whole pages from `src/admin/routes`, each able
-to put itself in the sidebar. tezgah's panel is mountable — `<Panel/>` behind
-`PanelProvider`, taking its API base, token, locale and basepath from a
-runtime — but a host that mounts it cannot add a screen to it, or a card to a
-screen it already has. For a host embedding the panel beside its own
-application, that is the difference between adding commerce to a back office
-and running two.
+**7. The panel's extension points are four zones and a page.** Medusa's
+dashboard takes widgets into named injection zones and whole pages from
+`src/admin/routes`, each able to put itself in the sidebar, and a plugin can
+register zones of its own. tezgah's panel now takes both through
+`PanelProvider`'s `extensions`: widgets into four named zones — the
+dashboard, and the side column of a product, an order and a customer — and
+host screens that answer at `<basepath>/<slug>` and appear in the sidebar.
+
+What is still missing next to Medusa is breadth rather than shape: four zones
+against dozens, no settings-page convention, no nested routes, and no way for
+a host to declare a zone of its own for another host to fill. The seam is
+there; the surface is small, and grows a zone at a time as screens place one.
 
 **8. One job kind cannot run, and it is the one the crate enqueues.** The
 sweeps and the queue both work: `app/server/src/schedule.rs` calls
@@ -143,9 +147,10 @@ searched by a substring. Nothing else can, and there is no index behind it.
 
 For the self-hosted product, the payment half of (4) is done — the image takes
 money through iyzico or stripe now — and what is left of it (a tax provider, a
-carrier, somewhere other than a directory to put files) is smaller. Then (1) and (2),
-which are one piece of work and the largest — a back office is mostly lists.
-(7) is what decides whether a host embeds the panel or replaces it. (5), (6),
+carrier, somewhere other than a directory to put files) is smaller. (7) has a
+seam now and a small surface; it widens a zone at a time. What is left and
+largest is (1) and (2), which are one piece of work: a back office is mostly
+lists, and three of the twelve that could not be narrowed now can. (5), (6),
 (8) and (9) are all worth doing and none of them stops a shop trading today.
 
 `architecture.md` carries the same gaps against the layer that owns each, and

@@ -15,3 +15,11 @@ export { Panel, type PanelProps } from "@/panel/mount"
 export { PanelProvider, type PanelProviderProps } from "@/panel/panel-provider"
 export { configurePanel, panelRuntime, type PanelConfig } from "@/panel/runtime"
 export { LOCALES, type Locale } from "@/panel/i18n"
+export {
+  type PanelExtensions,
+  type PanelScreen,
+  type PanelWidget,
+  type WidgetContext,
+  type WidgetZone,
+} from "@/panel/extensions"
+export { Zone } from "@/panel/zone"

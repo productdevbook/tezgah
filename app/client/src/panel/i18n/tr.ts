@@ -36,6 +36,7 @@ export const tr: Record<TranslationKey, string> = {
   "nav.group.gettingItThere": "Teslimat",
   "nav.group.money": "Para",
   "nav.group.theShop": "Mağaza",
+  "nav.group.host": "Ayrıca burada",
   "nav.group.thisServer": "Bu sunucu",
 
   "nav.products": "Ürünler",
@@ -59,6 +60,8 @@ export const tr: Record<TranslationKey, string> = {
   "nav.batch": "İçe ve dışa aktarma",
   "nav.records": "Neler oldu",
 
+  "nav.operations": "{n} işlem",
+  "nav.built": "hazır",
   "nav.soon": "yakında",
   "nav.overview": "Genel bakış",
   "nav.goTo": "Git…",

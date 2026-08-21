@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
 import { z } from "zod"
+import { Zone } from "@/panel/zone"
 
 import { get, post } from "@/api/client"
 import {
@@ -290,6 +291,8 @@ export function ProductDetail({
                     />
                   </SectionRows>
                 </Section>
+
+                <Zone name="product.detail" id={item.id} />
               </>
             }
           />
