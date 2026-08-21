@@ -60,9 +60,10 @@ use tezgah::id::{
     CampaignId, CategoryId, CustomerGroupId, CustomerId, DigitalContentId, FulfillmentId,
     FulfillmentSetId, GiftCardId, InventoryItemId, InventoryLotId, OptionId, OrderBasketId,
     OrderId, PaymentCollectionId, PaymentId, PaymentWebhookEventId, PriceId, PriceListId,
-    PriceSetId, ProductId, ProductTagId, PromotionId, PublishableKeyId, RegionId, SalesChannelId,
-    ShippingOptionId, ShippingProfileId, StockLocationId, StoreCreditId, SubscriptionId, TaxRateId,
-    TaxRegionId, VariantId, WorkflowRunId,
+    PriceSetId, ProductId, ProductTagId, PromotionId, PublishableKeyId, RegionId, ReservationId,
+    ReturnId, SalesChannelId, SellingPlanGroupId, SellingPlanId, ShippingOptionId,
+    ShippingProfileId, StockLocationId, StoreCreditId, SubscriptionId, TaxRateId, TaxRegionId,
+    VariantId, WorkflowRunId,
 };
 use tezgah::ports::{Action, Actor, Ctx, Host};
 
