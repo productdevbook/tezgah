@@ -270,10 +270,18 @@ own shape entirely. The one that did — inviting somebody — validated an
 e-mail with a regex beside a zod schema that already said the same thing, and
 the two could disagree.
 
-**Translation exists and covers almost nothing.** English and Turkish, with
-the compiler enforcing that the two dictionaries match, over the shared
-chrome — actions, errors, the unsaved-changes prompt. Every screen's own
-words are still English in the source.
+**Two kinds of translation, and they are not the same problem.**
+
+*What the shop sells* is translated now: a product's title, subtitle,
+description and handle in any locale a shop names, written from its own
+drawer, and the same for a category. The locale is a free string because
+tezgah does not decide what languages a shop sells in — the panel offers its
+own two as a shortcut and not as a limit.
+
+*What the back office is drawn in* is still English and Turkish over the
+shared chrome only — actions, errors, the unsaved-changes prompt — with the
+compiler enforcing that the two dictionaries match. Every screen's own words
+are still English in the source, and that is the larger of the two jobs.
 
 **A record's page has one editor, except the product's.** A section that can
 be changed gets its own address and its own drawer, so a save is small enough

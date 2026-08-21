@@ -76,6 +76,7 @@ import { Route as ProductsIdAttributesRouteImport } from './routes/products_.$id
 import { Route as ProductsIdEditRouteImport } from './routes/products_.$id.edit'
 import { Route as ProductsIdMediaRouteImport } from './routes/products_.$id.media'
 import { Route as ProductsIdOrganisationRouteImport } from './routes/products_.$id.organisation'
+import { Route as ProductsIdTranslationsRouteImport } from './routes/products_.$id.translations'
 import { Route as PromotionsIdEditRouteImport } from './routes/promotions_.$id.edit'
 import { Route as StoreCurrenciesNewRouteImport } from './routes/store.currencies.new'
 import { Route as StoreKeysNewRouteImport } from './routes/store.keys.new'
@@ -428,6 +429,11 @@ const ProductsIdOrganisationRoute = ProductsIdOrganisationRouteImport.update({
   path: '/organisation',
   getParentRoute: () => ProductsIdRoute,
 } as any)
+const ProductsIdTranslationsRoute = ProductsIdTranslationsRouteImport.update({
+  id: '/translations',
+  path: '/translations',
+  getParentRoute: () => ProductsIdRoute,
+} as any)
 const PromotionsIdEditRoute = PromotionsIdEditRouteImport.update({
   id: '/edit',
   path: '/edit',
@@ -553,6 +559,7 @@ export interface FileRoutesByFullPath {
   '/products/$id/edit': typeof ProductsIdEditRoute
   '/products/$id/media': typeof ProductsIdMediaRoute
   '/products/$id/organisation': typeof ProductsIdOrganisationRoute
+  '/products/$id/translations': typeof ProductsIdTranslationsRoute
   '/promotions/$id/edit': typeof PromotionsIdEditRoute
   '/store/currencies/new': typeof StoreCurrenciesNewRoute
   '/store/keys/new': typeof StoreKeysNewRoute
@@ -626,6 +633,7 @@ export interface FileRoutesByTo {
   '/products/$id/edit': typeof ProductsIdEditRoute
   '/products/$id/media': typeof ProductsIdMediaRoute
   '/products/$id/organisation': typeof ProductsIdOrganisationRoute
+  '/products/$id/translations': typeof ProductsIdTranslationsRoute
   '/promotions/$id/edit': typeof PromotionsIdEditRoute
   '/store/currencies/new': typeof StoreCurrenciesNewRoute
   '/store/keys/new': typeof StoreKeysNewRoute
@@ -707,6 +715,7 @@ export interface FileRoutesById {
   '/products_/$id/edit': typeof ProductsIdEditRoute
   '/products_/$id/media': typeof ProductsIdMediaRoute
   '/products_/$id/organisation': typeof ProductsIdOrganisationRoute
+  '/products_/$id/translations': typeof ProductsIdTranslationsRoute
   '/promotions_/$id/edit': typeof PromotionsIdEditRoute
   '/store/currencies/new': typeof StoreCurrenciesNewRoute
   '/store/keys/new': typeof StoreKeysNewRoute
@@ -789,6 +798,7 @@ export interface FileRouteTypes {
     | '/products/$id/edit'
     | '/products/$id/media'
     | '/products/$id/organisation'
+    | '/products/$id/translations'
     | '/promotions/$id/edit'
     | '/store/currencies/new'
     | '/store/keys/new'
@@ -862,6 +872,7 @@ export interface FileRouteTypes {
     | '/products/$id/edit'
     | '/products/$id/media'
     | '/products/$id/organisation'
+    | '/products/$id/translations'
     | '/promotions/$id/edit'
     | '/store/currencies/new'
     | '/store/keys/new'
@@ -942,6 +953,7 @@ export interface FileRouteTypes {
     | '/products_/$id/edit'
     | '/products_/$id/media'
     | '/products_/$id/organisation'
+    | '/products_/$id/translations'
     | '/promotions_/$id/edit'
     | '/store/currencies/new'
     | '/store/keys/new'
@@ -1467,6 +1479,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProductsIdOrganisationRouteImport
       parentRoute: typeof ProductsIdRoute
     }
+    '/products_/$id/translations': {
+      id: '/products_/$id/translations'
+      path: '/translations'
+      fullPath: '/products/$id/translations'
+      preLoaderRoute: typeof ProductsIdTranslationsRouteImport
+      parentRoute: typeof ProductsIdRoute
+    }
     '/promotions_/$id/edit': {
       id: '/promotions_/$id/edit'
       path: '/edit'
@@ -1751,6 +1770,7 @@ interface ProductsIdRouteChildren {
   ProductsIdEditRoute: typeof ProductsIdEditRoute
   ProductsIdMediaRoute: typeof ProductsIdMediaRoute
   ProductsIdOrganisationRoute: typeof ProductsIdOrganisationRoute
+  ProductsIdTranslationsRoute: typeof ProductsIdTranslationsRoute
 }
 
 const ProductsIdRouteChildren: ProductsIdRouteChildren = {
@@ -1758,6 +1778,7 @@ const ProductsIdRouteChildren: ProductsIdRouteChildren = {
   ProductsIdEditRoute: ProductsIdEditRoute,
   ProductsIdMediaRoute: ProductsIdMediaRoute,
   ProductsIdOrganisationRoute: ProductsIdOrganisationRoute,
+  ProductsIdTranslationsRoute: ProductsIdTranslationsRoute,
 }
 
 const ProductsIdRouteWithChildren = ProductsIdRoute._addFileChildren(

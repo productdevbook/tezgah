@@ -98,6 +98,15 @@ export function ProductDetail({
                               />
                             ),
                           },
+                          {
+                            label: "Translations",
+                            render: (
+                              <Link
+                                to="/products/$id/translations"
+                                params={{ id: item.id }}
+                              />
+                            ),
+                          },
                         ],
                       ]}
                     />
