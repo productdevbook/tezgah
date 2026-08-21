@@ -200,4 +200,39 @@ export const tr: Record<TranslationKey, string> = {
   "detail.order.entitlements": "Verilen haklar",
   "detail.order.entitlementsWhy":
     "Bu siparişin hangi hakkı verdiği ve o hakkın hâlâ geçerli olup olmadığı.",
+
+  "field.status": "Durum",
+  "field.customer": "Müşteri",
+  "field.cycle": "Dönem",
+  "field.nextBilling": "Sonraki tahsilat",
+  "field.currentPeriod": "Bu dönem",
+  "field.endsThisPeriod": "Bu dönem sonunda biter",
+  "field.ended": "Bitti",
+  "field.dunningAttempts": "Tahsilat denemeleri",
+  "field.sellingPlan": "Satış planı",
+  "field.code": "Kod",
+  "field.kind": "Tür",
+  "field.applied": "Uygulanan",
+  "field.used": "Kullanıldı",
+  "field.perCustomer": "Müşteri başına",
+  "field.campaign": "Kampanya dönemi",
+
+  "detail.subscription.billed": "Neyin tahsil edildiği",
+  "detail.subscription.cycle": "Dönem",
+  "detail.subscription.dunningWhy":
+    "Sıfırın üstü, bir tahsilatın başarısız olduğu ve yeniden denendiği anlamına gelir — iptal edilmiş bir sözleşmeden farklıdır, onu durum söyler.",
+  "detail.subscription.who": "Kim ve ne",
+
+  "detail.basket.orders": "Siparişler",
+  "detail.basket.ordersWhy":
+    "Bir sepet grubu, her satıcı için bir siparişe dönüşür — ödeme tektir, gönderim değildir.",
+  "detail.basket.carts": "Sepetler",
+  "detail.basket.cartsWhy":
+    "Satıcının ödeme akışındaki kendi ayağı, siparişe dönüşmeden önce.",
+  "detail.basket.payment": "Ödeme",
+
+  "detail.promotion.title": "Kampanya",
+  "detail.promotion.left": "Ne kadar kaldı",
+  "detail.promotion.leftWhy":
+    "Ödemede değil, sipariş verilirken düşülür — yani bu, üzerine söz verilmiş olandır.",
 }

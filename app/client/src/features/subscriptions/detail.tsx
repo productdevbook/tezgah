@@ -18,8 +18,10 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { dateTime, useDetail } from "@/lib/detail"
+import { useT } from "@/panel/i18n"
 
 export function SubscriptionDetail({ id }: { id: string }) {
+  const t = useT()
   const result = useDetail(
     ["subscriptions"],
     "/admin/subscriptions/{id}",
@@ -47,7 +49,7 @@ export function SubscriptionDetail({ id }: { id: string }) {
       )}
       main={(item) => (
         <>
-          <Section title="What is being billed">
+          <Section title={t("detail.subscription.billed")}>
             {item.lines.length === 0 ? (
               <SectionBody>
                 <p className="text-sm text-muted-foreground">
@@ -86,25 +88,25 @@ export function SubscriptionDetail({ id }: { id: string }) {
             )}
           </Section>
 
-          <Section title="The cycle">
+          <Section title={t("detail.subscription.cycle")}>
             <SectionRows>
-              <SectionRow label="Cycle" value={item.cycle} />
+              <SectionRow label={t("field.cycle")} value={item.cycle} />
               <SectionRow
-                label="Next billing"
+                label={t("field.nextBilling")}
                 value={dateTime(item.next_billing_at)}
               />
               <SectionRow
-                label="Current period"
+                label={t("field.currentPeriod")}
                 value={`${dateTime(item.current_period_start)} – ${dateTime(
                   item.current_period_end
                 )}`}
               />
               <SectionRow
-                label="Ends this period"
+                label={t("field.endsThisPeriod")}
                 value={item.cancel_at_period_end ? "Yes" : "No"}
               />
               <SectionRow
-                label="Ended"
+                label={t("field.ended")}
                 value={item.ended_at ? dateTime(item.ended_at) : null}
               />
             </SectionRows>
@@ -114,13 +116,13 @@ export function SubscriptionDetail({ id }: { id: string }) {
       side={(item) => (
         <>
           <Section
-            title="Collection"
-            description="Above zero means a charge failed and is being retried — a different thing from a cancelled contract, which the status says instead."
+            title={t("field.collection")}
+            description={t("detail.subscription.dunningWhy")}
           >
             <SectionRows>
-              <SectionRow label="Status" value={item.status} />
+              <SectionRow label={t("field.status")} value={item.status} />
               <SectionRow
-                label="Dunning attempts"
+                label={t("field.dunningAttempts")}
                 value={
                   item.dunning_attempts > 0 ? (
                     <Badge variant="destructive">{item.dunning_attempts}</Badge>
@@ -130,26 +132,29 @@ export function SubscriptionDetail({ id }: { id: string }) {
             </SectionRows>
           </Section>
 
-          <Section title="Who and what">
+          <Section title={t("detail.subscription.who")}>
             <SectionRows>
               <SectionRow
-                label="Customer"
+                label={t("field.customer")}
                 value={<Mono>{item.customer_id}</Mono>}
               />
               <SectionRow
-                label="Selling plan"
+                label={t("field.sellingPlan")}
                 value={<Mono>{item.selling_plan_id}</Mono>}
               />
               <SectionRow
-                label="Currency"
+                label={t("field.currency")}
                 value={<Mono>{item.currency_code.toUpperCase()}</Mono>}
               />
             </SectionRows>
           </Section>
 
-          <Section title="Details">
+          <Section title={t("general.details")}>
             <SectionRows>
-              <SectionRow label="ID" value={<Mono>{item.id}</Mono>} />
+              <SectionRow
+                label={t("field.id")}
+                value={<Mono>{item.id}</Mono>}
+              />
             </SectionRows>
           </Section>
         </>
