@@ -60,6 +60,9 @@ application embedding this answers the same questions with what it already
 owns. [`docs/architecture.md`](docs/architecture.md) is the long version —
 which layer owns what, and, measured rather than asserted, where the
 arrangement is not finished yet.
+[`docs/medusa-parity.md`](docs/medusa-parity.md) answers the other question
+people ask — what is missing next to the platform most of them have already
+seen — with the same rule: both halves counted, neither remembered.
 
 ## What it does
 

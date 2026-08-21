@@ -2,7 +2,9 @@
 
 `README.md` says what tezgah does. This says how it is arranged, which layer
 is allowed to know about which, and — measured rather than asserted — where
-the arrangement is not finished yet.
+the arrangement is not finished yet. [`medusa-parity.md`](medusa-parity.md)
+takes the same gaps and sets them against what an established platform ships,
+for anyone who arrives asking what is missing rather than how it is built.
 
 ## Three shapes, one engine
 

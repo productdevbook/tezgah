@@ -38,7 +38,9 @@ failure this codebase has written down the most times.
 
 When something is missing here because the library will not give it, that is a
 gap in the library and belongs in an issue against it. The list of them, and
-which layer owns each, is [`docs/architecture.md`](../docs/architecture.md).
+which layer owns each, is [`docs/architecture.md`](../docs/architecture.md);
+[`docs/medusa-parity.md`](../docs/medusa-parity.md) is the same list measured
+against what an established platform ships.
 
 ## What it is not, yet
 
