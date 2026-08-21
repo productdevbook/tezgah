@@ -4,8 +4,10 @@ import { DetailPage } from "@/components/detail-page"
 import { Section, SectionRow, SectionRows } from "@/components/section"
 import { Badge } from "@/components/ui/badge"
 import { dateTime, useDetail } from "@/lib/detail"
+import { useT } from "@/panel/i18n"
 
 export function ShippingProfileDetail({ id }: { id: string }) {
+  const t = useT()
   const result = useDetail(
     ["shipping-profiles"],
     "/admin/shipping-profiles/{id}",
@@ -22,20 +24,23 @@ export function ShippingProfileDetail({ id }: { id: string }) {
       actions={(item) => <Badge variant="outline">{item.kind}</Badge>}
       main={(item) => (
         <Section
-          title="The profile"
-          description="What a shipping option is allowed to carry — goods that travel together, and goods that cannot."
+          title={t("detail.shippingProfile.title")}
+          description={t("detail.shippingProfile.why")}
         >
           <SectionRows>
-            <SectionRow label="Name" value={item.name} />
-            <SectionRow label="Kind" value={item.kind} />
+            <SectionRow label={t("field.name")} value={item.name} />
+            <SectionRow label={t("field.kind")} value={item.kind} />
           </SectionRows>
         </Section>
       )}
       side={(item) => (
-        <Section title="Details">
+        <Section title={t("general.details")}>
           <SectionRows>
-            <SectionRow label="ID" value={<Mono>{item.id}</Mono>} />
-            <SectionRow label="Created" value={dateTime(item.created_at)} />
+            <SectionRow label={t("field.id")} value={<Mono>{item.id}</Mono>} />
+            <SectionRow
+              label={t("field.created")}
+              value={dateTime(item.created_at)}
+            />
           </SectionRows>
         </Section>
       )}

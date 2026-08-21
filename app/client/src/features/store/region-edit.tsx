@@ -35,6 +35,7 @@ type Fields = z.infer<typeof fields>
  * out of it — so this screen, unlike the other four, offers no delete.
  */
 export function EditRegion({ id }: { id: string }) {
+  const t = useT()
   const navigate = useNavigate()
   const result = useDetail(["regions"], "/admin/regions/{id}", region, id)
 
@@ -44,7 +45,7 @@ export function EditRegion({ id }: { id: string }) {
         void navigate({ to: "/store/regions/$id", params: { id } })
       }
     >
-      <RouteDrawer.Header title="Edit region" />
+      <RouteDrawer.Header title={t("form.region.edit")} />
       {result.data ? (
         <Body item={result.data} />
       ) : (
@@ -97,13 +98,13 @@ function Body({ item }: { item: Region }) {
       <RouteDrawer.Body>
         <div className="flex flex-col gap-6">
           {mutation.isError ? <FormError error={mutation.error} /> : null}
-          <FormField control={form.control} name="name" label="Name">
+          <FormField control={form.control} name="name" label={t("field.name")}>
             {(field) => <Input id={field.name} {...field} />}
           </FormField>
           <FormField
             control={form.control}
             name="currency_code"
-            label="Currency code"
+            label={t("field.currencyCode")}
           >
             {(field) => (
               <Input id={field.name} className="uppercase" {...field} />
@@ -112,8 +113,8 @@ function Body({ item }: { item: Region }) {
           <FormField
             control={form.control}
             name="is_tax_inclusive"
-            label="Prices include tax"
-            description="What a shopper here is shown: a price with tax already in it, or one that gains tax at the till."
+            label={t("field.pricesIncludeTax")}
+            description={t("form.region.taxWhy")}
           >
             {(field) => (
               <Switch
@@ -126,7 +127,7 @@ function Body({ item }: { item: Region }) {
           <FormField
             control={form.control}
             name="has_automatic_taxes"
-            label="Work tax out automatically"
+            label={t("field.autoTax")}
           >
             {(field) => (
               <Switch

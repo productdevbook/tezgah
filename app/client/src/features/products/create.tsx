@@ -94,33 +94,49 @@ function Body() {
       }
     >
       <RouteFocusModal.Header
-        title="New product"
-        description="Starts as a draft. Variants, prices and stock go in separately."
+        title={t("form.product.new")}
+        description={t("form.product.newWhy")}
       />
       <RouteFocusModal.Body>
         <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
           {mutation.isError ? <FormError error={mutation.error} /> : null}
-          <FormField control={form.control} name="handle" label="Handle">
+          <FormField
+            control={form.control}
+            name="handle"
+            label={t("field.handle")}
+          >
             {(field) => (
               <Input id={field.name} {...field} placeholder="denim-jacket" />
             )}
           </FormField>
-          <FormField control={form.control} name="title" label="Title">
+          <FormField
+            control={form.control}
+            name="title"
+            label={t("field.title")}
+          >
             {(field) => (
               <Input id={field.name} {...field} placeholder="Denim jacket" />
             )}
           </FormField>
-          <FormField control={form.control} name="subtitle" label="Subtitle">
+          <FormField
+            control={form.control}
+            name="subtitle"
+            label={t("field.subtitle")}
+          >
             {(field) => <Input id={field.name} {...field} />}
           </FormField>
           <FormField
             control={form.control}
             name="description"
-            label="Description"
+            label={t("field.description")}
           >
             {(field) => <Textarea id={field.name} {...field} rows={5} />}
           </FormField>
-          <FormField control={form.control} name="status" label="Status">
+          <FormField
+            control={form.control}
+            name="status"
+            label={t("field.status")}
+          >
             {(field) => (
               <Select
                 value={field.value || undefined}
