@@ -2461,6 +2461,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/payment-webhooks/{id}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Act on a received callback */
+        post: operations["postAdminPaymentWebhooksByIdApply"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/payment-webhooks/{id}/processed": {
         parameters: {
             query?: never;
@@ -6388,6 +6405,15 @@ export interface components {
             id: components["schemas"]["AgreementVersionId"];
             kind: string;
             locale: string;
+        };
+        AppliedView: {
+            /**
+             * @description `true` when something moved: a session authorized, a payment captured,
+             *     refunded or cancelled. `false` when the provider said something this
+             *     crate does not model, or something that was already true — both are
+             *     finished rather than failures.
+             */
+            changed: boolean;
         };
         AttachPaymentCollection: {
             payment_collection_id: components["schemas"]["PaymentCollectionId"];
@@ -16412,6 +16438,49 @@ export interface operations {
                     "application/json": components["schemas"]["Page"] & {
                         items?: components["schemas"]["PendingCallbackView"][];
                     };
+                };
+            };
+            /** @description The request was not well formed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The host's authorizer refused. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such thing, or none this caller may see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postAdminPaymentWebhooksByIdApply: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The call succeeded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppliedView"];
                 };
             };
             /** @description The request was not well formed. */

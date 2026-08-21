@@ -241,6 +241,7 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         ("GET", "/admin/payments/{id}"),
         ("GET", "/admin/payments/payment-providers"),
         ("GET", "/admin/payment-webhooks"),
+        ("POST", "/admin/payment-webhooks/{id}/apply"),
         ("POST", "/admin/payment-webhooks/{id}/processed"),
         ("GET", "/admin/payment-collections/{id}"),
         ("GET", "/admin/payment-collections/{id}/payment-sessions"),
@@ -569,6 +570,7 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         .route("/admin/payments/{id}", get(get_payment))
         .route("/admin/payments/payment-providers", get(payment_providers))
         .route("/admin/payment-webhooks", get(pending_callbacks))
+        .route("/admin/payment-webhooks/{id}/apply", post(apply_callback))
         .route(
             "/admin/payment-webhooks/{id}/processed",
             post(callback_processed),
@@ -688,7 +690,7 @@ pub async fn require_operator(
 /// What the route table already says this route asks for, looked up by the
 /// pattern axum matched.
 ///
-/// Built once. `tezgah::api::routes()` allocates 486 `Route`s and nothing
+/// Built once. `tezgah::api::routes()` allocates 487 `Route`s and nothing
 /// wants that per request.
 fn declared_actions() -> &'static HashMap<(&'static str, &'static str), Action> {
     static ACTIONS: OnceLock<HashMap<(&'static str, &'static str), Action>> = OnceLock::new();
@@ -2908,6 +2910,19 @@ async fn pending_callbacks(
     let page = admin_order::pending_callbacks(&mut tx, &ctx, query).await?;
     tx.commit().await?;
     Ok(Json(page))
+}
+
+/// Acts on what a provider already did, against a row that is durable.
+async fn apply_callback(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<PaymentWebhookEventId>,
+) -> Result<Json<admin_order::AppliedView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::apply_callback(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(view))
 }
 
 async fn callback_processed(

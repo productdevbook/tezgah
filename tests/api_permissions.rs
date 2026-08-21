@@ -2126,6 +2126,11 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
     );
     denied!(
         Method::Post,
+        "/admin/payment-webhooks/{id}/apply",
+        admin_order::apply_callback(&mut tx, &ctx, PaymentWebhookEventId::new())
+    );
+    denied!(
+        Method::Post,
         "/admin/payment-webhooks/{id}/processed",
         admin_order::callback_processed(&mut tx, &ctx, PaymentWebhookEventId::new())
     );

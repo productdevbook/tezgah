@@ -95,6 +95,17 @@ export const GetAdminPaymentWebhooksResponse = zod.object({
 }))
 
 /**
+ * @summary Act on a received callback
+ */
+export const PostAdminPaymentWebhooksByIdApplyParams = zod.object({
+  "id": zod.string()
+})
+
+export const PostAdminPaymentWebhooksByIdApplyResponse = zod.object({
+  "changed": zod.boolean().describe('`true` when something moved: a session authorized, a payment captured,\nrefunded or cancelled. `false` when the provider said something this\ncrate does not model, or something that was already true — both are\nfinished rather than failures.')
+})
+
+/**
  * @summary Say a received callback has been acted on
  */
 export const PostAdminPaymentWebhooksByIdProcessedParams = zod.object({

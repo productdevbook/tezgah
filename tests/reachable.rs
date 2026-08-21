@@ -202,10 +202,10 @@ const TOLERATED: [(&str, &str); 30] = [
     ),
     (
         "payment::mark_failed",
-        "the host writes down that acting on a callback failed; nothing acts on \
-         one yet — `POST /webhooks/payments/{provider}` records the delivery \
-         and `GET /admin/payment-webhooks` hands it back, and what happens \
-         next is still the host's to write",
+        "called by `payment::apply_webhook`, in the same module — this check \
+         counts a caller elsewhere in the crate, and a sibling function is \
+         not that. Reachable, and by a route: \
+         `POST /admin/payment-webhooks/{id}/apply`",
     ),
     (
         "pricing::link_shipping_option",

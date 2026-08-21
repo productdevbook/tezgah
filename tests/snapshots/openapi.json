@@ -263,6 +263,18 @@
         ],
         "type": "object"
       },
+      "AppliedView": {
+        "properties": {
+          "changed": {
+            "description": "`true` when something moved: a session authorized, a payment captured,\nrefunded or cancelled. `false` when the provider said something this\ncrate does not model, or something that was already true — both are\nfinished rather than failures.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "changed"
+        ],
+        "type": "object"
+      },
       "AttachPaymentCollection": {
         "additionalProperties": false,
         "properties": {
@@ -15921,6 +15933,52 @@
           "payment"
         ],
         "x-tezgah-permission": "view"
+      }
+    },
+    "/admin/payment-webhooks/{id}/apply": {
+      "post": {
+        "operationId": "postAdminPaymentWebhooksByIdApply",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppliedView"
+                }
+              }
+            },
+            "description": "The call succeeded."
+          },
+          "400": {
+            "description": "The request was not well formed."
+          },
+          "403": {
+            "description": "The host's authorizer refused."
+          },
+          "404": {
+            "description": "No such thing, or none this caller may see."
+          }
+        },
+        "security": [
+          {
+            "adminBearer": []
+          }
+        ],
+        "summary": "Act on a received callback",
+        "tags": [
+          "payment"
+        ],
+        "x-tezgah-permission": "settle"
       }
     },
     "/admin/payment-webhooks/{id}/processed": {

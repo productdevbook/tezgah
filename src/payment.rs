@@ -692,6 +692,34 @@ pub enum WebhookKind {
     Other,
 }
 
+impl WebhookKind {
+    /// The stored spelling, which the table's own check constraint names.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            WebhookKind::Authorized => "authorized",
+            WebhookKind::Captured => "captured",
+            WebhookKind::Refunded => "refunded",
+            WebhookKind::Canceled => "canceled",
+            WebhookKind::Failed => "failed",
+            WebhookKind::Other => "other",
+        }
+    }
+
+    /// The other direction, for a row read back. `None` for anything else,
+    /// including a row written before the column existed.
+    pub fn parse(text: &str) -> Option<Self> {
+        match text {
+            "authorized" => Some(WebhookKind::Authorized),
+            "captured" => Some(WebhookKind::Captured),
+            "refunded" => Some(WebhookKind::Refunded),
+            "canceled" => Some(WebhookKind::Canceled),
+            "failed" => Some(WebhookKind::Failed),
+            "other" => Some(WebhookKind::Other),
+            _ => None,
+        }
+    }
+}
+
 /// Whether this delivery is the first one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WebhookOutcome {
@@ -2145,6 +2173,212 @@ pub async fn unprocessed(
     Ok(Page::build(rows, paging, |row| {
         Cursor::at(row.received_at, row.id.as_uuid())
     }))
+}
+
+/// What acting on a recorded callback did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Applied {
+    /// A session was authorized, or a payment captured, refunded or cancelled.
+    Changed,
+    /// The provider said something this crate does not model, or something
+    /// that was already true. Marked processed either way: an event nothing
+    /// has to do about is finished, and leaving it unprocessed would hand it
+    /// back for ever.
+    NothingToDo,
+}
+
+/// Acts on what a provider already did.
+///
+/// This is the second half of a callback and the reason the first half writes
+/// a row: the provider's word is durable before anything moves money, so a
+/// crash between the two resumes from [`unprocessed`] rather than losing what
+/// was said.
+///
+/// Every arm records rather than asks. A provider telling you it captured is
+/// not a reason to call `capture` — that would take the money twice — so this
+/// reaches for `capture_only` and `refund_only`, which write down what
+/// happened without a second provider call.
+///
+/// Marked processed on success and failed with a reason otherwise, both in
+/// the caller's transaction. A row already processed is left alone and
+/// answers [`Applied::NothingToDo`]: a provider redelivering after the first
+/// delivery was acted on must not double anything, and the unique
+/// `(scope, provider, event_id)` is only half of that — this is the other.
+pub async fn apply_webhook(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: PaymentWebhookEventId,
+) -> Result<Applied> {
+    let _: Permit = ctx.permit(Action::Settle, payment_resource(id.as_uuid(), None))?;
+
+    type Row = (
+        Option<String>,
+        Option<Uuid>,
+        Option<Decimal>,
+        Option<String>,
+        Option<chrono::DateTime<chrono::Utc>>,
+    );
+
+    let found: Option<Row> = sqlx::query_as(
+        "select kind, payment_session_id, amount, currency_code, processed_at
+         from payment_webhook_event
+         where scope = $1 and id = $2",
+    )
+    .bind(ctx.scope.0)
+    .bind(id.as_uuid())
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    let Some((kind, session_id, amount, currency, processed_at)) = found else {
+        return Err(Error::not_found("payment webhook event"));
+    };
+
+    if processed_at.is_some() {
+        return Ok(Applied::NothingToDo);
+    }
+
+    let Some(kind) = kind.as_deref().and_then(WebhookKind::parse) else {
+        // A row written before the columns existed, or a kind this crate has
+        // since stopped modelling. Left unprocessed on purpose: it is a thing
+        // that happened and nobody can say what, which is a person's problem
+        // rather than a retry's.
+        return Err(Error::invalid(
+            "this callback was recorded without what it takes to act on it",
+        ));
+    };
+
+    let money = match (amount, currency) {
+        (Some(amount), Some(code)) => Some(Money::new(amount, Currency::parse(&code)?)),
+        _ => None,
+    };
+
+    let outcome = apply_kind(
+        tx,
+        ctx,
+        kind,
+        session_id.map(PaymentSessionId::from_uuid),
+        money,
+    )
+    .await;
+
+    match outcome {
+        Ok(applied) => {
+            mark_processed(tx, ctx, id).await?;
+            Ok(applied)
+        }
+        Err(err) => {
+            // The reason is kept and the attempt counted, so `unprocessed`
+            // hands it back with what went wrong last time rather than
+            // silently again.
+            mark_failed(tx, ctx, id, &err.to_string()).await?;
+            Err(err)
+        }
+    }
+}
+
+async fn apply_kind(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    kind: WebhookKind,
+    session_id: Option<PaymentSessionId>,
+    money: Option<Money>,
+) -> Result<Applied> {
+    // Nothing here is worth doing without knowing which session it happened
+    // to. A provider that does not say is a provider whose adapter has to,
+    // and saying so is better than guessing at the only open session.
+    let needs_session = || {
+        session_id.ok_or_else(|| Error::invalid("this callback names no payment session to act on"))
+    };
+
+    match kind {
+        WebhookKind::Other => Ok(Applied::NothingToDo),
+
+        WebhookKind::Authorized => {
+            let session = needs_session()?;
+            match authorize(
+                tx,
+                ctx,
+                session,
+                Authorization {
+                    status: AuthorizationStatus::Authorized,
+                    amount: money,
+                    data: serde_json::json!({ "from": "webhook" }),
+                    redirect: None,
+                    message: None,
+                    installment: None,
+                },
+            )
+            .await
+            {
+                Ok(_) => Ok(Applied::Changed),
+                // Already authorized by the shopper's own return, most
+                // likely: `authorize` hands back the payment it made rather
+                // than making a second, so this is only reached when the
+                // session has since closed.
+                Err(err) if err.is_conflict() => Ok(Applied::NothingToDo),
+                Err(err) => Err(err),
+            }
+        }
+
+        WebhookKind::Failed => {
+            let session = needs_session()?;
+            authorize(
+                tx,
+                ctx,
+                session,
+                Authorization {
+                    status: AuthorizationStatus::Error,
+                    amount: money,
+                    data: serde_json::json!({ "from": "webhook" }),
+                    redirect: None,
+                    message: Some("the provider said this failed".into()),
+                    installment: None,
+                },
+            )
+            .await?;
+            Ok(Applied::Changed)
+        }
+
+        WebhookKind::Captured => {
+            let session = needs_session()?;
+            let Some(payment) = payment_for_session(tx, ctx, session).await? else {
+                return Err(Error::conflict(
+                    "the provider says it captured a session nothing was authorized against",
+                ));
+            };
+            let taken = money
+                .ok_or_else(|| Error::invalid("a capture from a provider has to say how much"))?;
+            capture_only(tx, ctx, payment.id, taken, None).await?;
+            Ok(Applied::Changed)
+        }
+
+        WebhookKind::Refunded => {
+            let session = needs_session()?;
+            let Some(payment) = payment_for_session(tx, ctx, session).await? else {
+                return Err(Error::conflict(
+                    "the provider says it refunded a session nothing was authorized against",
+                ));
+            };
+            let given = money
+                .ok_or_else(|| Error::invalid("a refund from a provider has to say how much"))?;
+            refund_only(tx, ctx, payment.id, given, None, None).await?;
+            Ok(Applied::Changed)
+        }
+
+        WebhookKind::Canceled => {
+            let session = needs_session()?;
+            match payment_for_session(tx, ctx, session).await? {
+                Some(payment) => {
+                    cancel(tx, ctx, payment.id).await?;
+                    Ok(Applied::Changed)
+                }
+                // Cancelled before anything was authorized against it, which
+                // is an ordinary thing for a shopper to do and nothing to
+                // undo.
+                None => Ok(Applied::NothingToDo),
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

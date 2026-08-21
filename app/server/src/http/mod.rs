@@ -1,7 +1,7 @@
 //! Route assembly.
 //!
 //! `tests/reachable.rs` in the crate root keeps every domain function honest
-//! about having *a* route; `tezgah::api::routes()` names 486 of them. This
+//! about having *a* route; `tezgah::api::routes()` names 487 of them. This
 //! binary binds a fraction, by hand, and says so out loud at startup rather
 //! than leaving the rest to be discovered by a 404: see [`router`]'s doc
 //! comment for exactly which, and why those.
@@ -99,7 +99,7 @@ impl Bound {
             println!("  {method:<6} {path}   (this binary's own, not one of the table's)");
         }
         if self.health {
-            println!("  plus GET /health, which is this binary's own and not one of the 486");
+            println!("  plus GET /health, which is this binary's own and not one of the 487");
             let (paths, schemas) = docs::described();
             println!(
                 "  plus GET /openapi.json and GET /docs, describing {paths} paths \

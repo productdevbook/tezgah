@@ -2841,6 +2841,34 @@ pub async fn pending_callbacks(
     Ok(page.map(PendingCallbackView::from))
 }
 
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
+pub struct AppliedView {
+    /// `true` when something moved: a session authorized, a payment captured,
+    /// refunded or cancelled. `false` when the provider said something this
+    /// crate does not model, or something that was already true — both are
+    /// finished rather than failures.
+    pub changed: bool,
+}
+
+/// Acts on what a provider already did.
+///
+/// The route that receives a callback records it; this is the second step,
+/// against a row that is now durable. Every arm records rather than asks — a
+/// provider saying it captured is not a reason to call the provider again,
+/// which would take the money twice.
+pub async fn apply_callback(
+    tx: &mut Tx<'_>,
+    ctx: &Ctx<'_>,
+    id: PaymentWebhookEventId,
+) -> Result<AppliedView> {
+    Ok(AppliedView {
+        changed: matches!(
+            payment::apply_webhook(tx, ctx, id).await?,
+            payment::Applied::Changed
+        ),
+    })
+}
+
 /// Says one has been acted on, so it stops coming back.
 pub async fn callback_processed(
     tx: &mut Tx<'_>,
@@ -4738,6 +4766,13 @@ pub(super) static ROUTES: &[Route] = &[
         "/admin/payment-webhooks",
         "payment",
         "List callbacks received and not yet acted on"
+    ),
+    route!(
+        Post,
+        "/admin/payment-webhooks/{id}/apply",
+        Settle,
+        "payment",
+        "Act on a received callback"
     ),
     route!(
         Post,
