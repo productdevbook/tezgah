@@ -175,4 +175,29 @@ export const tr: Record<TranslationKey, string> = {
   "detail.product.digital": "Dijital içerik",
   "detail.product.digitalWhy":
     "Bir dosya tek bir varyanta aittir — yukarıdaki varyantlardan bir kimlik alın ve neyi taşıdığını görün ya da ekleyin.",
+
+  "field.number": "Numara",
+  "field.currency": "Para birimi",
+  "field.version": "Sürüm",
+  "field.order": "Sipariş",
+  "field.payment": "Ödeme",
+  "field.fulfilment": "Gönderim",
+  "field.draft": "Taslak",
+  "field.canceled": "İptal edildi",
+  "field.completed": "Tamamlandı",
+  "field.basket": "Sepet grubu",
+  "field.paymentCollection": "Ödeme kaydı",
+
+  "detail.order.whereItStands": "Durumu",
+  "detail.order.whereItStandsWhy":
+    "Birbirinden bağımsız üç durum — siparişin kendisi, parası ve kolileri — hiçbiri diğerinin içine katlanmaz.",
+  "detail.order.whoFor": "Kimin için",
+  "detail.order.attachedTo": "Neye bağlı",
+  "detail.order.basketWhy":
+    "Sepet grubu bir pazaryeri ödemesidir: birkaç satıcıya tek ödeme, her birine ayrı sipariş.",
+  "detail.order.versionWhy":
+    "Her düzenlemede sürüm artar; önceki sürümler siparişin o anki halini saklar.",
+  "detail.order.entitlements": "Verilen haklar",
+  "detail.order.entitlementsWhy":
+    "Bu siparişin hangi hakkı verdiği ve o hakkın hâlâ geçerli olup olmadığı.",
 }

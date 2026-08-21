@@ -180,6 +180,31 @@ export const en = {
   "detail.product.digital": "Digital content",
   "detail.product.digitalWhy":
     "A file belongs to one variant — take an id from the variants above to see or add what it carries.",
+
+  "field.number": "Number",
+  "field.currency": "Currency",
+  "field.version": "Version",
+  "field.order": "Order",
+  "field.payment": "Payment",
+  "field.fulfilment": "Fulfilment",
+  "field.draft": "Draft",
+  "field.canceled": "Canceled",
+  "field.completed": "Completed",
+  "field.basket": "Basket",
+  "field.paymentCollection": "Payment collection",
+
+  "detail.order.whereItStands": "Where it stands",
+  "detail.order.whereItStandsWhy":
+    "Three statuses that move independently — the order, its money and its parcels — so none of them is folded into the others.",
+  "detail.order.whoFor": "Who it is for",
+  "detail.order.attachedTo": "What it is attached to",
+  "detail.order.basketWhy":
+    "A basket is a marketplace checkout: one payment across several sellers, one order each.",
+  "detail.order.versionWhy":
+    "The version rises with every edit; earlier versions keep what the order looked like then.",
+  "detail.order.entitlements": "Entitlements",
+  "detail.order.entitlementsWhy":
+    "What this order granted a right to, and whether that right still stands.",
 } as const
 
 export type TranslationKey = keyof typeof en

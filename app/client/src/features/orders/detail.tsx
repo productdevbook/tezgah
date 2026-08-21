@@ -44,6 +44,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { dateTime, useDetail } from "@/lib/detail"
+import { useT } from "@/panel/i18n"
 
 const SETTLED = [
   "captured",
@@ -62,6 +63,7 @@ function tone(status: string): "default" | "outline" | "destructive" {
 }
 
 export function OrderDetail({ id }: { id: string }) {
+  const t = useT()
   const result = useDetail(["orders"], "/admin/orders/{id}", order, id)
 
   return (
@@ -82,16 +84,16 @@ export function OrderDetail({ id }: { id: string }) {
       main={(item) => (
         <>
           <Section
-            title="Where it stands"
-            description="Three statuses that move independently — the order, its money and its parcels — so none of them is folded into the others."
+            title={t("detail.order.whereItStands")}
+            description={t("detail.order.whereItStandsWhy")}
           >
             <SectionRows>
               <SectionRow
-                label="Order"
+                label={t("field.order")}
                 value={<Badge variant={tone(item.status)}>{item.status}</Badge>}
               />
               <SectionRow
-                label="Payment"
+                label={t("field.payment")}
                 value={
                   <Badge variant={tone(item.payment_status)}>
                     {item.payment_status}
@@ -99,7 +101,7 @@ export function OrderDetail({ id }: { id: string }) {
                 }
               />
               <SectionRow
-                label="Fulfilment"
+                label={t("field.fulfilment")}
                 value={
                   <Badge variant={tone(item.fulfillment_status)}>
                     {item.fulfillment_status}
@@ -110,8 +112,8 @@ export function OrderDetail({ id }: { id: string }) {
           </Section>
 
           <Section
-            title="Entitlements"
-            description="What this order granted a right to, and whether that right still stands."
+            title={t("detail.order.entitlements")}
+            description={t("detail.order.entitlementsWhy")}
           >
             <SectionBody>
               <Entitlements
@@ -126,23 +128,23 @@ export function OrderDetail({ id }: { id: string }) {
       )}
       side={(item) => (
         <>
-          <Section title="Who it is for">
+          <Section title={t("detail.order.whoFor")}>
             <SectionRows>
-              <SectionRow label="Email" value={item.email} />
+              <SectionRow label={t("field.email")} value={item.email} />
               <SectionRow
-                label="Currency"
+                label={t("field.currency")}
                 value={<Mono>{item.currency_code.toUpperCase()}</Mono>}
               />
             </SectionRows>
           </Section>
 
           <Section
-            title="What it is attached to"
-            description="A basket is a marketplace checkout: one payment across several sellers, one order each."
+            title={t("detail.order.attachedTo")}
+            description={t("detail.order.basketWhy")}
           >
             <SectionRows>
               <SectionRow
-                label="Payment collection"
+                label={t("field.paymentCollection")}
                 value={
                   item.payment_collection_id ? (
                     <Mono>{item.payment_collection_id}</Mono>
@@ -150,28 +152,37 @@ export function OrderDetail({ id }: { id: string }) {
                 }
               />
               <SectionRow
-                label="Basket"
+                label={t("field.basket")}
                 value={item.basket_id ? <Mono>{item.basket_id}</Mono> : null}
               />
             </SectionRows>
           </Section>
 
           <Section
-            title="Details"
-            description="The version rises with every edit; earlier versions keep what the order looked like then."
+            title={t("general.details")}
+            description={t("detail.order.versionWhy")}
           >
             <SectionRows>
-              <SectionRow label="ID" value={<Mono>{item.id}</Mono>} />
-              <SectionRow label="Number" value={item.display_id} />
-              <SectionRow label="Version" value={item.version} />
-              <SectionRow label="Draft" value={item.is_draft ? "Yes" : "No"} />
-              <SectionRow label="Created" value={dateTime(item.created_at)} />
               <SectionRow
-                label="Completed"
+                label={t("field.id")}
+                value={<Mono>{item.id}</Mono>}
+              />
+              <SectionRow label={t("field.number")} value={item.display_id} />
+              <SectionRow label={t("field.version")} value={item.version} />
+              <SectionRow
+                label={t("field.draft")}
+                value={item.is_draft ? "Yes" : "No"}
+              />
+              <SectionRow
+                label={t("field.created")}
+                value={dateTime(item.created_at)}
+              />
+              <SectionRow
+                label={t("field.completed")}
                 value={item.completed_at ? dateTime(item.completed_at) : null}
               />
               <SectionRow
-                label="Canceled"
+                label={t("field.canceled")}
                 value={item.canceled_at ? dateTime(item.canceled_at) : null}
               />
             </SectionRows>
