@@ -44,6 +44,7 @@ const orNoLimit = (value: string) =>
   value.trim() === "" ? null : Number(value)
 
 export function EditPromotion({ id }: { id: string }) {
+  const t = useT()
   const navigate = useNavigate()
   const result = useDetail(
     ["promotions"],
@@ -56,7 +57,7 @@ export function EditPromotion({ id }: { id: string }) {
     <RouteDrawer
       onClose={() => void navigate({ to: "/promotions/$id", params: { id } })}
     >
-      <RouteDrawer.Header title="Edit promotion" />
+      <RouteDrawer.Header title={t("form.promotion.title")} />
       {result.data ? (
         <Body item={result.data} />
       ) : (
@@ -119,14 +120,14 @@ function Body({ item }: { item: Promotion }) {
       <RouteDrawer.Body>
         <div className="flex flex-col gap-6">
           {mutation.isError ? <FormError error={mutation.error} /> : null}
-          <FormField control={form.control} name="code" label="Code">
+          <FormField control={form.control} name="code" label={t("field.code")}>
             {(field) => <Input id={field.name} {...field} />}
           </FormField>
           <FormField
             control={form.control}
             name="is_automatic"
-            label="Applied automatically"
-            description="An automatic promotion needs no code typed at the till."
+            label={t("form.promotion.automatic")}
+            description={t("form.promotion.automaticWhy")}
           >
             {(field) => (
               <Switch
@@ -139,8 +140,8 @@ function Body({ item }: { item: Promotion }) {
           <FormField
             control={form.control}
             name="usage_limit"
-            label="Uses in total"
-            description="Left empty, there is no limit. Claimed at checkout, not counted at payment."
+            label={t("form.promotion.usesTotal")}
+            description={t("form.promotion.usesTotalWhy")}
           >
             {(field) => (
               <Input id={field.name} inputMode="numeric" {...field} />
@@ -149,8 +150,8 @@ function Body({ item }: { item: Promotion }) {
           <FormField
             control={form.control}
             name="customer_usage_limit"
-            label="Uses per customer"
-            description="Left empty, there is no limit."
+            label={t("form.promotion.usesPerCustomer")}
+            description={t("form.promotion.noLimit")}
           >
             {(field) => (
               <Input id={field.name} inputMode="numeric" {...field} />

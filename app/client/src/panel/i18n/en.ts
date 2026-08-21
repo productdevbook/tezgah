@@ -297,6 +297,65 @@ export const en = {
   "detail.payment.where": "Where it sits",
   "detail.giftCard.balance": "The balance",
   "detail.giftCard.origin": "Where it came from",
+
+  "field.symbol": "Symbol",
+  "field.nativeSymbol": "Native symbol",
+  "field.exponent": "Exponent",
+  "field.numericCode": "Numeric code",
+  "field.role": "Role",
+  "field.password": "Password",
+  "field.balance": "Balance",
+  "field.usable": "Usable",
+
+  "form.currency.title": "New currency",
+  "form.currency.why":
+    "The exponent is how many decimal places this currency is written with — a formatting fact, not a multiplier: nothing here is stored in minor units.",
+  "form.currency.nativeWhy":
+    "What somebody writing in this currency's own language types.",
+  "form.currency.exponentWhy":
+    "0 to 4. Two for most; zero for a currency with no subunit.",
+  "form.currency.numericWhy": "ISO 4217's number for it. Optional.",
+
+  "form.attributes.title": "Shipping and attributes",
+  "form.attributes.why":
+    "What a carrier needs to quote for this, and what customs needs to let it through.",
+  "form.attributes.hsWhy": "What customs calls this kind of thing.",
+  "form.attributes.originWhy":
+    "Two letters. Where it was made, not where it ships from.",
+
+  "form.promotion.title": "Edit promotion",
+  "form.promotion.automatic": "Applied automatically",
+  "form.promotion.automaticWhy":
+    "An automatic promotion needs no code typed at the till.",
+  "form.promotion.usesTotal": "Uses in total",
+  "form.promotion.usesTotalWhy":
+    "Left empty, there is no limit. Claimed at checkout, not counted at payment.",
+  "form.promotion.usesPerCustomer": "Uses per customer",
+  "form.promotion.noLimit": "Left empty, there is no limit.",
+
+  "form.organisation.why":
+    "What this product belongs to, and what it is called in whatever system it came from.",
+  "form.organisation.anId": "An id. Empty clears it.",
+  "form.organisation.externalWhy":
+    "What this product is called wherever it came from.",
+
+  "form.operator.title": "New operator",
+  "form.operator.why":
+    "The password is set here and shown to nobody afterwards. To let somebody choose their own, invite them instead — this server sends one when it has a mailer.",
+  "form.operator.roleWhy":
+    "The first account made is the owner whatever this says — a shop whose only account cannot make a second has locked itself out.",
+  "form.operator.passwordWhy":
+    "Twelve characters at least. Tell them out of band — nothing here sends a password.",
+
+  "attached.storeCredit": "Store credit",
+  "attached.storeCreditWhy":
+    "A balance the shop owes them, spent at checkout before any card is.",
+  "attached.taxNumbers": "Tax numbers",
+  "attached.taxNumbersWhy":
+    "Checked is what decides anything — an unchecked number is a string somebody typed.",
+  "attached.exemptions": "Exemptions",
+  "attached.exemptionsWhy":
+    "A certificate that stops tax being charged, in one place and between two dates.",
 } as const
 
 export type TranslationKey = keyof typeof en
