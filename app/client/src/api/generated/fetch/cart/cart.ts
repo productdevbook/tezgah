@@ -7,6 +7,7 @@
  */
 import type {
   GetAdminCarts200,
+  GetAdminCartsParams,
   StoreLineItemView
 } from '../models';
 
@@ -41,20 +42,27 @@ export type getAdminCartsResponseError = (getAdminCartsResponse400 | getAdminCar
 
 export type getAdminCartsResponse = (getAdminCartsResponseSuccess | getAdminCartsResponseError)
 
-export const getGetAdminCartsUrl = () => {
+export const getGetAdminCartsUrl = (params?: GetAdminCartsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/admin/carts`
+  return stringifiedParams.length > 0 ? `/admin/carts?${stringifiedParams}` : `/admin/carts`
 }
 
 /**
  * @summary List carts, abandoned ones included
  */
-export const getAdminCarts = async ( options?: Parameters<typeof apiMutator>[1]): Promise<getAdminCartsResponse> => {
+export const getAdminCarts = async (params?: GetAdminCartsParams, options?: Parameters<typeof apiMutator>[1]): Promise<getAdminCartsResponse> => {
 
-  return apiMutator<getAdminCartsResponse>(getGetAdminCartsUrl(),
+  return apiMutator<getAdminCartsResponse>(getGetAdminCartsUrl(params),
   {
     ...options,
     method: 'GET'

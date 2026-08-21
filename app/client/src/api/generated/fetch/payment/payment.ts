@@ -12,6 +12,7 @@ import type {
   GetAdminPaymentCollectionsByIdPaymentSessions200,
   GetAdminPaymentWebhooks200,
   GetAdminPayments200,
+  GetAdminPaymentsParams,
   GetAdminRefundReasons200,
   PaymentProviderView,
   PaymentView,
@@ -414,20 +415,27 @@ export type getAdminPaymentsResponseError = (getAdminPaymentsResponse400 | getAd
 
 export type getAdminPaymentsResponse = (getAdminPaymentsResponseSuccess | getAdminPaymentsResponseError)
 
-export const getGetAdminPaymentsUrl = () => {
+export const getGetAdminPaymentsUrl = (params?: GetAdminPaymentsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/admin/payments`
+  return stringifiedParams.length > 0 ? `/admin/payments?${stringifiedParams}` : `/admin/payments`
 }
 
 /**
  * @summary List payments
  */
-export const getAdminPayments = async ( options?: Parameters<typeof apiMutator>[1]): Promise<getAdminPaymentsResponse> => {
+export const getAdminPayments = async (params?: GetAdminPaymentsParams, options?: Parameters<typeof apiMutator>[1]): Promise<getAdminPaymentsResponse> => {
 
-  return apiMutator<getAdminPaymentsResponse>(getGetAdminPaymentsUrl(),
+  return apiMutator<getAdminPaymentsResponse>(getGetAdminPaymentsUrl(params),
   {
     ...options,
     method: 'GET'

@@ -2787,6 +2787,78 @@
         ],
         "type": "object"
       },
+      "ListCarts": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "completed": {
+            "description": "True for the carts that became an order, false for the ones still\nopen — abandoned ones included, which is what this list is for.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "count": {
+            "description": "Asks how many carts match, as well as this page of them.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "customer_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CustomerId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "limit": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "order": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Order"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which end first. Left out, this surface answers newest-first."
+          },
+          "q": {
+            "description": "Matched against the e-mail. A guest cart has one and no customer, so\nit is the only thing on the row a person recognises it by.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "region_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RegionId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
       "ListCustomers": {
         "additionalProperties": false,
         "description": "Customers have a search box and the other twenty-odd lists sharing [`List`]\ndo not, so they get a query type of their own rather than a `q` those\ntwenty-odd would accept and silently ignore — `deny_unknown_fields` is what\nmakes refusing it the honest answer there.",
@@ -2970,6 +3042,67 @@
           },
           "q": {
             "description": "What a back office typed into its search box, matched against the\ne-mail on an order and its display number. Blank is not a search.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "ListPayments": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "count": {
+            "description": "Asks how many payments match, as well as this page of them.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "currency_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "order": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Order"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which end first. Left out, this surface answers newest-first."
+          },
+          "payment_collection_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaymentCollectionId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "description": "`captured`, `canceled` or `authorized` — the three a payment row can\nbe in, and they are columns rather than a status field: a capture and\na cancellation each stamp their own timestamp, and the constraint on\nthe table says only one of them can be set.",
             "type": [
               "string",
               "null"
@@ -7807,7 +7940,114 @@
     "/admin/carts": {
       "get": {
         "operationId": "getAdminCarts",
-        "parameters": [],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "completed",
+            "required": false,
+            "schema": {
+              "description": "True for the carts that became an order, false for the ones still\nopen — abandoned ones included, which is what this list is for.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "count",
+            "required": false,
+            "schema": {
+              "description": "Asks how many carts match, as well as this page of them.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "customer_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CustomerId"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Order"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Which end first. Left out, this surface answers newest-first."
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "description": "Matched against the e-mail. A guest cart has one and no customer, so\nit is the only thing on the row a person recognises it by.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "region_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RegionId"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -16303,7 +16543,98 @@
     "/admin/payments": {
       "get": {
         "operationId": "getAdminPayments",
-        "parameters": [],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "count",
+            "required": false,
+            "schema": {
+              "description": "Asks how many payments match, as well as this page of them.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "currency_code",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Order"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Which end first. Left out, this surface answers newest-first."
+            }
+          },
+          {
+            "in": "query",
+            "name": "payment_collection_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PaymentCollectionId"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "description": "`captured`, `canceled` or `authorized` — the three a payment row can\nbe in, and they are columns rather than a status field: a capture and\na cancellation each stamp their own timestamp, and the constraint on\nthe table says only one of them can be set.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {

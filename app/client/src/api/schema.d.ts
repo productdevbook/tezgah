@@ -7113,6 +7113,27 @@ export interface components {
         LinkPriceSet: {
             price_set_id: components["schemas"]["PriceSetId"];
         };
+        ListCarts: {
+            after?: string | null;
+            /**
+             * @description True for the carts that became an order, false for the ones still
+             *     open — abandoned ones included, which is what this list is for.
+             */
+            completed?: boolean | null;
+            /** @description Asks how many carts match, as well as this page of them. */
+            count?: boolean | null;
+            customer_id?: components["schemas"]["CustomerId"] | null;
+            /** Format: uint32 */
+            limit?: number | null;
+            /** @description Which end first. Left out, this surface answers newest-first. */
+            order?: components["schemas"]["Order"] | null;
+            /**
+             * @description Matched against the e-mail. A guest cart has one and no customer, so
+             *     it is the only thing on the row a person recognises it by.
+             */
+            q?: string | null;
+            region_id?: components["schemas"]["RegionId"] | null;
+        };
         /**
          * @description Customers have a search box and the other twenty-odd lists sharing [`List`]
          *     do not, so they get a query type of their own rather than a `q` those
@@ -7184,6 +7205,24 @@ export interface components {
              *     e-mail on an order and its display number. Blank is not a search.
              */
             q?: string | null;
+        };
+        ListPayments: {
+            after?: string | null;
+            /** @description Asks how many payments match, as well as this page of them. */
+            count?: boolean | null;
+            currency_code?: string | null;
+            /** Format: uint32 */
+            limit?: number | null;
+            /** @description Which end first. Left out, this surface answers newest-first. */
+            order?: components["schemas"]["Order"] | null;
+            payment_collection_id?: components["schemas"]["PaymentCollectionId"] | null;
+            /**
+             * @description `captured`, `canceled` or `authorized` — the three a payment row can
+             *     be in, and they are columns rather than a status field: a capture and
+             *     a cancellation each stamp their own timestamp, and the constraint on
+             *     the table says only one of them can be set.
+             */
+            state?: string | null;
         };
         ListProducts: {
             after?: string | null;
@@ -9032,7 +9071,16 @@ export interface operations {
     };
     getAdminCarts: {
         parameters: {
-            query?: never;
+            query?: {
+                after?: string | null;
+                completed?: boolean | null;
+                count?: boolean | null;
+                customer_id?: components["schemas"]["CustomerId"] | null;
+                limit?: number | null;
+                order?: components["schemas"]["Order"] | null;
+                q?: string | null;
+                region_id?: components["schemas"]["RegionId"] | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -16638,7 +16686,15 @@ export interface operations {
     };
     getAdminPayments: {
         parameters: {
-            query?: never;
+            query?: {
+                after?: string | null;
+                count?: boolean | null;
+                currency_code?: string | null;
+                limit?: number | null;
+                order?: components["schemas"]["Order"] | null;
+                payment_collection_id?: components["schemas"]["PaymentCollectionId"] | null;
+                state?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
