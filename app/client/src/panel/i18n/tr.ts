@@ -119,4 +119,32 @@ export const tr: Record<TranslationKey, string> = {
   "screen.credit.emptyAny": "Henüz kart çıkarılmadı.",
 
   "search.nothingMatches": "{q} ile eşleşen bir şey yok.",
+
+  "field.id": "Kimlik",
+  "field.title": "Başlık",
+  "field.created": "Oluşturuldu",
+  "field.updated": "Güncellendi",
+  "field.email": "E-posta",
+  "field.firstName": "Ad",
+  "field.lastName": "Soyad",
+  "field.phone": "Telefon",
+  "field.company": "Firma",
+  "field.sku": "Stok kodu",
+  "field.account": "Hesap",
+  "field.erased": "Silindi",
+  "field.ships": "Gönderim",
+
+  "value.yes": "Evet",
+  "value.no": "Hayır",
+  "value.registered": "Kayıtlı",
+  "value.guest": "Misafir",
+  "value.shipped": "Kargolanır",
+  "value.digital": "Dijital, kargo yok",
+
+  "detail.customer.title": "Kim olduğu",
+  "detail.customer.empty": "Müşteri yok",
+  "detail.customer.account": "Hesap",
+  "detail.inventory.title": "Kalem",
+  "detail.inventory.empty": "Stok kalemi yok",
+  "detail.nothingToShow": "Gösterilecek bir şey yok.",
 }
