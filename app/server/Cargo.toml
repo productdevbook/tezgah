@@ -23,6 +23,8 @@ axum = { version = "0.8", features = ["multipart"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 hmac = "0.12"
 kasapay-core = "0.0.5"
+kasapay-iyzico = "0.0.5"
+kasapay-stripe = "0.0.5"
 lettre = { version = "0.11", default-features = false, features = [
     "smtp-transport",
     "tokio1-rustls-tls",

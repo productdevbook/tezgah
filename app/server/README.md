@@ -41,7 +41,8 @@ naming what is wrong, rather than on the first request that needed a pool.
 | `TEZGAH_SKIP_MIGRATIONS` | no | unset | set to `1` to skip `tezgah::MIGRATIONS` — the database already has them |
 | `ADMIN_TOKEN` | no | unset | the shared secret that makes the first operator account and gets back in when a password is lost — see "Who may reach the back office" |
 | `TEZGAH_STOCK_LOCATION_ID` | no | unset | the one warehouse checkout reserves and ships from — see below |
-| `TEZGAH_DEMO_BANK` | no | unset | set to exactly `i-understand-this-takes-no-money` to run checkout against the demo payment provider — see below |
+| `TEZGAH_PAYMENT_PROVIDER` | no | unset | `iyzico` or `stripe`, with that provider's credentials beside it — see below |
+| `TEZGAH_DEMO_BANK` | no | unset | set to exactly `i-understand-this-takes-no-money` to run checkout against the demo payment provider instead — see below |
 | `TEZGAH_CURRENCY_EXPONENT` | no | `2` | this shop's one currency's decimal places, for the payment provider wrapper |
 | `TEZGAH_EVENT_WEBHOOK` | no | unset | where an outbox row is posted; unset leaves every event written and unsent — see "Events leave the building" |
 | `TEZGAH_EVENT_SECRET` | with the above | unset | signs the body. Startup fails if a webhook is set without one |
@@ -102,22 +103,24 @@ already exists. Without it, `POST /store/carts/{id}/complete` is not bound at
 all — see the route table below — rather than bound and answering every call
 with a configuration error.
 
-Checkout also needs a payment provider, and ships with a stand-in only:
-`src/provider.rs`'s `DemoBank` authorises every charge immediately and
-remembers nothing. `CLAUDE.md` is explicit that a provider is
-[kasapay](https://github.com/productdevbook/kasapay)'s to write, not
-tezgah's, and no adapter crate for a real bank or gateway lives in this
-public repository — taking real money means depending on one and passing it
-to `KasapayProvider::new` in `src/main.rs` in place of `DemoBank`.
+Checkout also needs a payment provider. `TEZGAH_PAYMENT_PROVIDER` names one —
+`iyzico` or `stripe` — and `src/bank.rs` builds the matching
+[kasapay](https://github.com/productdevbook/kasapay) adapter from the
+credentials beside it. tezgah writes no payment provider itself: `CLAUDE.md`
+is explicit that a provider is kasapay's, and that file is the whole of what
+this binary does about it — a `match` from a name onto an adapter crate,
+wrapped in `KasapayProvider` so tezgah sees only its own `PaymentProvider`
+trait. A name it was not built against is a startup error listing the ones it
+was, never a fallback.
 
-Because `DemoBank` is the only provider this binary can build checkout with,
-and it takes no real money, `TEZGAH_STOCK_LOCATION_ID` alone does not turn
-checkout on. `TEZGAH_DEMO_BANK` also has to be set, to exactly
-`i-understand-this-takes-no-money` — anything else, including unset or
-empty, leaves `POST /store/carts/{id}/complete` unbound, and startup says
-which of the two is missing. See
-[`docs/self-hosting.md`](../docs/self-hosting.md#taking-real-money) for what
-taking real money instead requires.
+With no provider named, `TEZGAH_STOCK_LOCATION_ID` alone does not turn
+checkout on. `src/provider.rs`'s `DemoBank` — which authorises every charge
+and remembers nothing — is the deliberate way to run a checkout that takes no
+money, and it needs `TEZGAH_DEMO_BANK` set to exactly
+`i-understand-this-takes-no-money`; anything else, including unset or empty,
+leaves `POST /store/carts/{id}/complete` unbound, and startup says which of
+the two is missing. Setting both a provider and the demo is refused. See
+[`docs/self-hosting.md`](../docs/self-hosting.md#taking-real-money).
 
 ## `GET /docs` and `GET /openapi.json`
 

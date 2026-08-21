@@ -2,6 +2,7 @@
 //! these modules, split out so `tests/` can build a router and drive it
 //! with a request in-process, without a live process or a database.
 
+pub mod bank;
 pub mod config;
 pub mod deliver;
 pub mod files;

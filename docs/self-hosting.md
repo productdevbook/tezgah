@@ -61,7 +61,11 @@ directly rather than through the panel's own `/api/` proxy.
 | `POSTGRES_PASSWORD` | postgres, and built into `DATABASE_URL` | — required | change this before the first `up` — Postgres sets it once, from the empty volume, and ignores a later change to `.env` |
 | `POSTGRES_DB` | postgres, and built into `DATABASE_URL` | `tezgah` | the database name |
 | `ADMIN_TOKEN` | tezgah-server | — unset | the shared secret that makes the first operator account, and the way back in when a password is lost. It is not a person: an audit row written under it names nobody. With neither a token nor an operator account, tezgah-server does not serve `/admin/*` at all |
-| `TEZGAH_DEMO_BANK` | tezgah-server | — unset | set to exactly `i-understand-this-takes-no-money` to run checkout against the one payment provider this binary ships — a demo that authorises every charge and takes no real money. Unset (or any other value), and `POST /store/carts/{id}/complete` is not bound at all. See [Taking real money](#taking-real-money) below |
+| `TEZGAH_PAYMENT_PROVIDER` | tezgah-server | — unset | `iyzico` or `stripe` — which bank takes the money. Unset means this install cannot take any. See [Taking real money](#taking-real-money) below |
+| `TEZGAH_IYZICO_API_KEY`, `TEZGAH_IYZICO_SECRET_KEY` | tezgah-server | — required with `iyzico` | the merchant key pair |
+| `TEZGAH_IYZICO_SANDBOX` | tezgah-server | — unset | `1` points at iyzico's sandbox. Unset is production, because a shop that meant production and got the sandbox takes no money while believing it does |
+| `TEZGAH_STRIPE_SECRET_KEY` | tezgah-server | — required with `stripe` | the Stripe secret key |
+| `TEZGAH_DEMO_BANK` | tezgah-server | — unset | set to exactly `i-understand-this-takes-no-money` to run checkout against a demo that authorises every charge and takes no real money. Refused if `TEZGAH_PAYMENT_PROVIDER` is also set. Without either, `POST /store/carts/{id}/complete` is not bound at all |
 | `SERVER_PORT` | tezgah-server, and tezgah-panel's upstream | `8080` | the port tezgah-server listens on inside its own container |
 | `SERVER_HTTP_PORT` | Compose only | `8081` | the host port tezgah-server is published on |
 | `PANEL_HTTP_PORT` | Compose only | `8080` | the host port the panel is published on |
@@ -98,30 +102,40 @@ gunzip -c tezgah-2024-01-01.sql.gz | \
 
 ## Taking real money
 
-The published `tezgah-server` image ships exactly one payment provider:
-`DemoBank`, in `app/server/src/provider.rs`. It authorises every charge it is
-asked for and remembers nothing — it exists so checkout has something to run
-against, not so checkout has something to take money with. Setting
-`TEZGAH_STOCK_LOCATION_ID` alone does not turn it on: `TEZGAH_DEMO_BANK` also
-has to be set, to exactly `i-understand-this-takes-no-money`, or
-`POST /store/carts/{id}/complete` is not bound at all and startup says which
-of the two is missing. Unset, empty or any other value all mean the same
-thing — closed — because a phrase that has to be typed out cannot be set by
-habit the way `1` or `true` can.
+Set `TEZGAH_PAYMENT_PROVIDER` to `iyzico` or `stripe`, give it the credentials
+that provider needs, and set `TEZGAH_STOCK_LOCATION_ID` — checkout binds and
+the startup log names which bank it is talking to. Both adapters are
+[kasapay](https://github.com/productdevbook/kasapay)'s: tezgah writes no
+payment provider, and `app/server/src/bank.rs` is the whole of what this
+binary does about that — a `match` from a name in the environment onto an
+adapter crate, wrapped so tezgah sees only its own `PaymentProvider` trait.
 
-That default is closed on purpose. `tezgah` is public, its published images
-are what a first self-host runs, and the only thing standing between a fresh
-install and "every checkout succeeds and no money moved" used to be a
-comment. It no longer is — but it also means there is no environment
-variable that makes this image take real money. `CLAUDE.md` explains why:
-payment providers are [kasapay](https://github.com/productdevbook/kasapay)'s
-to write, not tezgah's, and this repository carries no adapter for a real
-bank or gateway. Taking real payments means building `tezgah-server` (or your
-own binary over the `tezgah` library) against a real `kasapay_core::Provider`
-— an adapter crate from the kasapay project — and passing that to
-`KasapayProvider::new` in `app/server/src/main.rs` in place of `DemoBank`. The
-published image cannot do this for you; it is a starting point for a binary
-you build, not a drop-in payment gateway.
+    TEZGAH_PAYMENT_PROVIDER=iyzico
+    TEZGAH_IYZICO_API_KEY=...
+    TEZGAH_IYZICO_SECRET_KEY=...
+    TEZGAH_IYZICO_SANDBOX=1        # unset means production
+
+    TEZGAH_PAYMENT_PROVIDER=stripe
+    TEZGAH_STRIPE_SECRET_KEY=...
+
+A provider this binary was not built against is a startup error naming the
+ones it was, not a silent fallback: an install that asked for one bank and
+got another would take money it could not refund through the same provider.
+
+**Without any of that, this image takes no money.** That default is closed on
+purpose — `tezgah` is public, its published images are what a first self-host
+runs, and "every checkout succeeds and no money moved" is the worst thing a
+commerce backend can do quietly. `DemoBank` in `app/server/src/provider.rs` is
+the deliberate way to say you want exactly that: it authorises every charge
+and remembers nothing, and it turns on only when `TEZGAH_DEMO_BANK` is set to
+exactly `i-understand-this-takes-no-money`. A phrase that has to be typed out
+cannot be set by habit the way `1` or `true` can. Setting it alongside
+`TEZGAH_PAYMENT_PROVIDER` is refused rather than resolved — one shop takes
+money one way.
+
+A provider neither adapter covers means building your own binary over the
+`tezgah` library against whichever `kasapay_core::Provider` you need; ask for
+a missing provider on kasapay rather than here.
 
 ## What this does not do
 
