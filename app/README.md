@@ -44,11 +44,13 @@ which layer owns each, is [`docs/architecture.md`](../docs/architecture.md).
 
 Read that document before assuming this is a finished product. In short:
 there is authentication and no authorization — every operator can do
-everything; nothing can send a letter, so there is no invitation and no
-password reset; the job worker dispatches nothing, so a declined subscription
-renewal is retried never; events and audit entries go to stdout; a product
-image can only be a URL somebody else hosts; and 253 of the library's 487
-declared routes are bound.
+everything; an owner can invite somebody by e-mail, but nobody can ask for a
+password reset themselves; the job worker dispatches nothing, so a declined
+subscription renewal is retried never; audit entries and events are rows a
+screen reads back, and an event leaves the building only if a destination was
+configured; a product image is a file this binary stores or a URL somebody
+else hosts, never a bucket; and 266 of the library's 487 declared routes are
+bound.
 
 Each of those is written down rather than discovered, and each says which side
 of the seam it belongs to.

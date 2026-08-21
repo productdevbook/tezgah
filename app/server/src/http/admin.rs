@@ -168,6 +168,22 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         ("GET", "/admin/publishable-api-keys/{id}/sales-channels"),
         ("POST", "/admin/publishable-api-keys/{id}/sales-channels"),
         ("POST", "/admin/reservations/{id}/fulfil"),
+        ("GET", "/admin/draft-orders"),
+        ("POST", "/admin/draft-orders"),
+        ("GET", "/admin/draft-orders/{id}"),
+        ("DELETE", "/admin/draft-orders/{id}"),
+        ("POST", "/admin/draft-orders/{id}/convert-to-order"),
+        ("GET", "/admin/draft-orders/{id}/edit"),
+        ("POST", "/admin/draft-orders/{id}/edit"),
+        ("DELETE", "/admin/draft-orders/{id}/edit"),
+        ("POST", "/admin/draft-orders/{id}/edit/confirm"),
+        ("POST", "/admin/draft-orders/{id}/edit/items"),
+        ("DELETE", "/admin/draft-orders/{id}/edit/items/{action_id}"),
+        ("POST", "/admin/draft-orders/{id}/edit/shipping-methods"),
+        (
+            "DELETE",
+            "/admin/draft-orders/{id}/edit/shipping-methods/{action_id}",
+        ),
         ("GET", "/admin/exchanges"),
         ("POST", "/admin/exchanges"),
         ("GET", "/admin/exchanges/{id}"),
@@ -491,6 +507,44 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
             get(list_key_sales_channels).post(link_key_sales_channel),
         )
         .route("/admin/reservations/{id}/fulfil", post(fulfil_reservation))
+        .route(
+            "/admin/draft-orders",
+            get(list_draft_orders).post(create_draft_order),
+        )
+        .route(
+            "/admin/draft-orders/{id}",
+            get(get_draft_order).delete(cancel_draft_order),
+        )
+        .route(
+            "/admin/draft-orders/{id}/convert-to-order",
+            post(convert_draft_order),
+        )
+        .route(
+            "/admin/draft-orders/{id}/edit",
+            get(get_draft_edit)
+                .post(open_draft_edit)
+                .delete(decline_draft_edit),
+        )
+        .route(
+            "/admin/draft-orders/{id}/edit/confirm",
+            post(confirm_draft_edit),
+        )
+        .route(
+            "/admin/draft-orders/{id}/edit/items",
+            post(add_draft_edit_item),
+        )
+        .route(
+            "/admin/draft-orders/{id}/edit/items/{action_id}",
+            delete(remove_draft_edit_item),
+        )
+        .route(
+            "/admin/draft-orders/{id}/edit/shipping-methods",
+            post(add_draft_edit_shipping),
+        )
+        .route(
+            "/admin/draft-orders/{id}/edit/shipping-methods/{action_id}",
+            delete(remove_draft_edit_shipping),
+        )
         .route(
             "/admin/exchanges",
             get(list_exchanges).post(request_exchange),
@@ -1521,6 +1575,172 @@ async fn create_inventory_item(
     let item = admin_catalogue::create_inventory_item(&mut tx, &ctx, body).await?;
     tx.commit().await?;
     Ok(Json(item))
+}
+
+/// A draft order: a quote a shop writes for somebody, edited until it is
+/// agreed and then converted into an order. Thirteen routes, declared and
+/// bound by nothing — so this binary could take an order a shopper placed and
+/// not one a salesperson wrote.
+async fn list_draft_orders(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Query(query): Query<admin_order::ListOrders>,
+) -> Result<Json<tezgah::page::Page<admin_order::OrderView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::list_draft_orders(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn create_draft_order(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Json(body): Json<admin_order::CreateOrder>,
+) -> Result<Json<admin_order::OrderView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::create_draft_order(&mut tx, &ctx, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn get_draft_order(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<OrderId>,
+) -> Result<Json<admin_order::OrderView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::get_draft_order(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn cancel_draft_order(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<OrderId>,
+) -> Result<Json<admin_order::OrderView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::cancel_draft_order(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn convert_draft_order(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<OrderId>,
+    Json(body): Json<admin_order::ConvertDraft>,
+) -> Result<Json<admin_order::OrderView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::convert_draft_order(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn get_draft_edit(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<OrderId>,
+) -> Result<Json<admin_order::ChangeDetailView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::get_draft_edit(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn open_draft_edit(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<OrderId>,
+    Json(body): Json<admin_order::OpenEdit>,
+) -> Result<Json<admin_order::ChangeView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::open_draft_edit(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn decline_draft_edit(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<OrderId>,
+    body: Option<Json<admin_order::DeclineChange>>,
+) -> Result<Json<admin_order::ChangeView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let given = body.map(|Json(body)| body).unwrap_or_default();
+    let view = admin_order::decline_draft_edit(&mut tx, &ctx, id, given).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn confirm_draft_edit(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<OrderId>,
+) -> Result<Json<admin_order::OrderView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::confirm_draft_edit(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn add_draft_edit_item(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<OrderId>,
+    Json(body): Json<admin_order::AddItemAction>,
+) -> Result<Json<admin_order::ChangeActionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::add_draft_edit_item(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn remove_draft_edit_item(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path((id, action_id)): Path<(OrderId, uuid::Uuid)>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    admin_order::remove_draft_edit_item(&mut tx, &ctx, id, action_id).await?;
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "removed": true })))
+}
+
+async fn add_draft_edit_shipping(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<OrderId>,
+    Json(body): Json<admin_order::AddShippingAction>,
+) -> Result<Json<admin_order::ChangeActionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::add_draft_edit_shipping(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn remove_draft_edit_shipping(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path((id, action_id)): Path<(OrderId, uuid::Uuid)>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    admin_order::remove_draft_edit_shipping(&mut tx, &ctx, id, action_id).await?;
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "removed": true })))
 }
 
 /// An exchange: the same two legs a claim has, for a different reason — the

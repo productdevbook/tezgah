@@ -123,3 +123,43 @@ async fn nothing_is_counted_twice() {
 
     assert!(doubled.is_empty(), "counted more than once: {doubled:?}");
 }
+
+/// And the README's list is the router's list, line for line.
+///
+/// It was a paste of one run's startup log, and it rotted the way a paste
+/// does: by the time this was written it named 112 of the 253 routes the
+/// binary bound, and the repository's own README said it listed every one.
+/// Rendering it from `bound.paths` here makes the paste impossible to leave
+/// behind — `cargo nextest run -p tezgah-server bound_count` prints the block
+/// to put back.
+#[tokio::test]
+async fn the_readme_lists_every_route_the_router_binds() {
+    let bound = fullest();
+    let rendered: Vec<String> = bound
+        .paths
+        .iter()
+        .map(|(method, path)| format!("{method:<6} {path}"))
+        .collect();
+
+    let readme = include_str!("../README.md");
+    let block = readme
+        .split("<!-- routes:begin -->")
+        .nth(1)
+        .and_then(|rest| rest.split("<!-- routes:end -->").next())
+        .expect("README.md to carry a `<!-- routes:begin -->` … `<!-- routes:end -->` block");
+
+    let listed: Vec<String> = block
+        .lines()
+        .map(str::trim_end)
+        .filter(|line| !line.is_empty() && !line.starts_with("```"))
+        .map(str::to_owned)
+        .collect();
+
+    assert_eq!(
+        listed,
+        rendered,
+        "the route list in README.md is not what the router binds. Put this \
+         between the markers:\n\n```\n{}\n```\n",
+        rendered.join("\n")
+    );
+}

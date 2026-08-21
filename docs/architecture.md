@@ -247,7 +247,7 @@ operator who forgets a password has an owner set them a new one rather than
 asking for a link. Both are one letter each now rather than a missing
 subsystem.
 
-**253 of 487 declared routes are bound.** The panel draws 228. The difference
+**266 of 487 declared routes are bound.** The panel draws 228. The difference
 is not a mistake — each binding is written by hand, deliberately — but it does
 mean the panel and the binary disagree about what the product is, and the
 number will not close by hand at that rate. Either the route table grows a
