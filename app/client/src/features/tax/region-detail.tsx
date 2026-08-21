@@ -3,8 +3,10 @@ import { Mono } from "@/components/detail-fields"
 import { DetailPage } from "@/components/detail-page"
 import { Section, SectionRow, SectionRows } from "@/components/section"
 import { dateTime, useDetail } from "@/lib/detail"
+import { useT } from "@/panel/i18n"
 
 export function TaxRegionDetail({ id }: { id: string }) {
+  const t = useT()
   const result = useDetail(
     ["tax-regions"],
     "/admin/tax-regions/{id}",
@@ -20,16 +22,16 @@ export function TaxRegionDetail({ id }: { id: string }) {
       title={(item) => item.country_code.toUpperCase()}
       main={(item) => (
         <Section
-          title="Where it applies"
-          description="Tax regions nest: a province's rates sit under its country's."
+          title={t("detail.shippingOption.where")}
+          description={t("detail.taxRegion.whereWhy")}
         >
           <SectionRows>
             <SectionRow
-              label="Country"
+              label={t("field.country")}
               value={<Mono>{item.country_code.toUpperCase()}</Mono>}
             />
             <SectionRow
-              label="Province"
+              label={t("field.province")}
               value={
                 item.province_code ? (
                   <Mono>{item.province_code.toUpperCase()}</Mono>
@@ -37,7 +39,7 @@ export function TaxRegionDetail({ id }: { id: string }) {
               }
             />
             <SectionRow
-              label="Parent region"
+              label={t("field.parentRegion")}
               value={item.parent_id ? <Mono>{item.parent_id}</Mono> : null}
             />
           </SectionRows>
@@ -45,16 +47,22 @@ export function TaxRegionDetail({ id }: { id: string }) {
       )}
       side={(item) => (
         <>
-          <Section title="Who works the tax out">
+          <Section title={t("detail.taxRegion.who")}>
             <SectionRows>
-              <SectionRow label="Provider" value={item.provider} />
+              <SectionRow label={t("field.provider")} value={item.provider} />
             </SectionRows>
           </Section>
 
-          <Section title="Details">
+          <Section title={t("general.details")}>
             <SectionRows>
-              <SectionRow label="ID" value={<Mono>{item.id}</Mono>} />
-              <SectionRow label="Created" value={dateTime(item.created_at)} />
+              <SectionRow
+                label={t("field.id")}
+                value={<Mono>{item.id}</Mono>}
+              />
+              <SectionRow
+                label={t("field.created")}
+                value={dateTime(item.created_at)}
+              />
             </SectionRows>
           </Section>
         </>

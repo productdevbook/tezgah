@@ -53,10 +53,18 @@ export function PriceSets({
 }
 
 function PriceSetFields({ id }: { id: string }) {
-  const result = useDetail(["price-sets"], "/admin/price-sets/{id}", priceSet, id)
+  const result = useDetail(
+    ["price-sets"],
+    "/admin/price-sets/{id}",
+    priceSet,
+    id
+  )
 
   return (
-    <QueryState query={result} empty={{ title: "No price set", description: "Nothing to show." }}>
+    <QueryState
+      query={result}
+      empty={{ title: "No price set", description: "Nothing to show." }}
+    >
       {(item) => (
         <FieldGrid>
           <DetailField label="ID">

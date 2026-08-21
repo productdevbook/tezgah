@@ -10,7 +10,10 @@ import { PageHeading } from "@/components/page-heading"
 export function StoreLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="space-y-4">
-      <PageHeading title="Store" subtitle="Where the shop sells, and through what." />
+      <PageHeading
+        title="Store"
+        subtitle="Where the shop sells, and through what."
+      />
       <StoreTabs />
       <div className="pt-3">{children}</div>
     </div>
