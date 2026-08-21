@@ -5,18 +5,51 @@
  * A commerce engine for Rust: products, carts, orders, payments, inventory, and a workflow runner that unwinds what it started.
  * OpenAPI spec version: 0.0.0
  */
+import type { Order } from './order';
 
 export type GetAdminPromotionsParams = {
 /**
- * The cursor the previous page ended on. Absent means the first page.
  * @nullable
  */
 after?: string | null;
 /**
- * Clamped rather than refused — `page::MAX_LIMIT` is the ceiling, and a
- * caller asking for more gets it rather than an error.
+ * True for the ones that apply themselves, false for the ones waiting
+ * for a code to be typed.
+ * @nullable
+ */
+automatic?: boolean | null;
+/**
+ * Only the promotions belonging to one campaign.
+ * @nullable
+ */
+campaign_id?: string | null;
+/**
+ * Asks how many promotions match, as well as this page of them.
+ * @nullable
+ */
+count?: boolean | null;
+/**
+ * `standard` or `buyget`.
+ * @nullable
+ */
+kind?: string | null;
+/**
  * @minimum 0
  * @nullable
  */
 limit?: number | null;
+/**
+ * Which end first. Left out, this surface answers newest-first.
+ */
+order?: Order | null;
+/**
+ * Matched against the code. Blank is not a search.
+ * @nullable
+ */
+q?: string | null;
+/**
+ * `draft`, `active` or `inactive`.
+ * @nullable
+ */
+status?: string | null;
 };

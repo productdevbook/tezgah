@@ -164,6 +164,7 @@ export * from './linkPriceSet';
 export * from './listCustomers';
 export * from './listOrders';
 export * from './listProducts';
+export * from './listPromotions';
 export * from './listTaxRates';
 export * from './listWorkflowRuns';
 export * from './localisedReturnReasonView';

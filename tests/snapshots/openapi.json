@@ -3017,6 +3017,81 @@
         },
         "type": "object"
       },
+      "ListPromotions": {
+        "additionalProperties": false,
+        "description": "A promotion's own query type, for the same reason customers have one: a\nlist that can be narrowed says so, and `deny_unknown_fields` means the\ntwenty-odd sharing [`List`] refuse a `q` they would otherwise ignore.",
+        "properties": {
+          "after": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "automatic": {
+            "description": "True for the ones that apply themselves, false for the ones waiting\nfor a code to be typed.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "campaign_id": {
+            "description": "Only the promotions belonging to one campaign.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "count": {
+            "description": "Asks how many promotions match, as well as this page of them.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "kind": {
+            "description": "`standard` or `buyget`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "order": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Order"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which end first. Left out, this surface answers newest-first."
+          },
+          "q": {
+            "description": "Matched against the code. Blank is not a search.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "description": "`draft`, `active` or `inactive`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "ListTaxRates": {
         "additionalProperties": false,
         "properties": {
@@ -20234,7 +20309,55 @@
             "name": "after",
             "required": false,
             "schema": {
-              "description": "The cursor the previous page ended on. Absent means the first page.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "automatic",
+            "required": false,
+            "schema": {
+              "description": "True for the ones that apply themselves, false for the ones waiting\nfor a code to be typed.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "campaign_id",
+            "required": false,
+            "schema": {
+              "description": "Only the promotions belonging to one campaign.",
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "count",
+            "required": false,
+            "schema": {
+              "description": "Asks how many promotions match, as well as this page of them.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "description": "`standard` or `buyget`.",
               "type": [
                 "string",
                 "null"
@@ -20246,11 +20369,50 @@
             "name": "limit",
             "required": false,
             "schema": {
-              "description": "Clamped rather than refused — `page::MAX_LIMIT` is the ceiling, and a\ncaller asking for more gets it rather than an error.",
               "format": "uint32",
               "minimum": 0,
               "type": [
                 "integer",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Order"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Which end first. Left out, this surface answers newest-first."
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "description": "Matched against the code. Blank is not a search.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "description": "`draft`, `active` or `inactive`.",
+              "type": [
+                "string",
                 "null"
               ]
             }
