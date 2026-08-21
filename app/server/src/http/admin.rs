@@ -168,6 +168,26 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         ("GET", "/admin/publishable-api-keys/{id}/sales-channels"),
         ("POST", "/admin/publishable-api-keys/{id}/sales-channels"),
         ("POST", "/admin/reservations/{id}/fulfil"),
+        ("GET", "/admin/returns"),
+        ("POST", "/admin/returns"),
+        ("GET", "/admin/returns/{id}"),
+        ("GET", "/admin/returns/{id}/items"),
+        ("POST", "/admin/returns/{id}/receive"),
+        ("POST", "/admin/returns/{id}/dismiss-items"),
+        ("POST", "/admin/returns/{id}/cancel"),
+        ("POST", "/admin/returns/{id}/request"),
+        ("POST", "/admin/returns/{id}/request-items"),
+        ("DELETE", "/admin/returns/{id}/request-items/{action_id}"),
+        ("POST", "/admin/returns/{id}/receive-items"),
+        ("DELETE", "/admin/returns/{id}/receive-items/{action_id}"),
+        ("POST", "/admin/returns/{id}/shipping-method"),
+        ("DELETE", "/admin/returns/{id}/shipping-method/{action_id}"),
+        ("GET", "/admin/return-reasons"),
+        ("POST", "/admin/return-reasons"),
+        ("GET", "/admin/return-reasons/{id}/translations"),
+        ("POST", "/admin/return-reasons/{id}/translations"),
+        ("GET", "/admin/return-reasons/{id}/translations/{locale}"),
+        ("DELETE", "/admin/return-reasons/{id}/translations/{locale}"),
         ("POST", "/admin/returns/{id}/withdrawal"),
         ("POST", "/admin/selling-plan-groups/{id}/plans"),
         ("GET", "/admin/selling-plan-groups/{id}/plans"),
@@ -434,6 +454,52 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
             get(list_key_sales_channels).post(link_key_sales_channel),
         )
         .route("/admin/reservations/{id}/fulfil", post(fulfil_reservation))
+        .route("/admin/returns", get(list_returns).post(request_return))
+        .route("/admin/returns/{id}", get(get_return))
+        .route("/admin/returns/{id}/items", get(return_items))
+        .route("/admin/returns/{id}/receive", post(receive_return))
+        .route(
+            "/admin/returns/{id}/dismiss-items",
+            post(dismiss_return_items),
+        )
+        .route("/admin/returns/{id}/cancel", post(cancel_return))
+        .route("/admin/returns/{id}/request", post(confirm_return_request))
+        .route(
+            "/admin/returns/{id}/request-items",
+            post(add_return_request_item),
+        )
+        .route(
+            "/admin/returns/{id}/request-items/{action_id}",
+            delete(remove_return_request_item),
+        )
+        .route(
+            "/admin/returns/{id}/receive-items",
+            post(add_return_receive_item),
+        )
+        .route(
+            "/admin/returns/{id}/receive-items/{action_id}",
+            delete(remove_return_receive_item),
+        )
+        .route(
+            "/admin/returns/{id}/shipping-method",
+            post(add_return_shipping),
+        )
+        .route(
+            "/admin/returns/{id}/shipping-method/{action_id}",
+            delete(remove_return_shipping),
+        )
+        .route(
+            "/admin/return-reasons",
+            get(list_return_reasons).post(create_return_reason),
+        )
+        .route(
+            "/admin/return-reasons/{id}/translations",
+            get(list_return_reason_translations).post(put_return_reason_translation),
+        )
+        .route(
+            "/admin/return-reasons/{id}/translations/{locale}",
+            get(localised_return_reason).delete(remove_return_reason_translation),
+        )
         .route("/admin/returns/{id}/withdrawal", post(notify_withdrawal))
         .route(
             "/admin/selling-plan-groups/{id}/plans",
@@ -1330,6 +1396,262 @@ async fn create_inventory_item(
     let item = admin_catalogue::create_inventory_item(&mut tx, &ctx, body).await?;
     tx.commit().await?;
     Ok(Json(item))
+}
+
+/// A return, from the request to the parcel arriving.
+///
+/// Twenty routes, all declared since the order domain was written and bound
+/// by nothing — so a shop could take an order and had no way to take one
+/// back, which is the half of commerce nobody advertises and everybody needs.
+async fn list_returns(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Query(query): Query<admin_order::Listing>,
+) -> Result<Json<tezgah::page::Page<admin_order::ReturnView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let page = admin_order::list_returns(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn request_return(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Json(body): Json<admin_order::RequestReturn>,
+) -> Result<Json<admin_order::ReturnView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::request_return(&mut tx, &ctx, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn get_return(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ReturnId>,
+) -> Result<Json<admin_order::ReturnView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::get_return(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn return_items(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ReturnId>,
+) -> Result<Json<Vec<admin_order::ReturnItemView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let rows = admin_order::return_items(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+async fn receive_return(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ReturnId>,
+    Json(body): Json<admin_order::ReceiveReturn>,
+) -> Result<Json<admin_order::ReturnView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::receive_return(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+/// What came back damaged or wrong. Its own route rather than a flag on
+/// receiving, because dismissing an item is a decision somebody makes about
+/// goods in front of them.
+async fn dismiss_return_items(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ReturnId>,
+    Json(body): Json<admin_order::ReceiveReturn>,
+) -> Result<Json<admin_order::ReturnView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::dismiss_return_items(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn cancel_return(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ReturnId>,
+) -> Result<Json<admin_order::ReturnView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::cancel_return(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn confirm_return_request(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ReturnId>,
+) -> Result<Json<admin_order::ReturnView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::confirm_return_request(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn add_return_request_item(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ReturnId>,
+    Json(body): Json<admin_order::LineQuantity>,
+) -> Result<Json<admin_order::ChangeActionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::add_return_request_item(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn remove_return_request_item(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path((id, action_id)): Path<(ReturnId, uuid::Uuid)>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    admin_order::remove_return_request_item(&mut tx, &ctx, id, action_id).await?;
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "removed": true })))
+}
+
+async fn add_return_receive_item(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ReturnId>,
+    Json(body): Json<admin_order::LineQuantity>,
+) -> Result<Json<admin_order::ChangeActionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::add_return_receive_item(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn remove_return_receive_item(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path((id, action_id)): Path<(ReturnId, uuid::Uuid)>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    admin_order::remove_return_receive_item(&mut tx, &ctx, id, action_id).await?;
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "removed": true })))
+}
+
+async fn add_return_shipping(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ReturnId>,
+    Json(body): Json<admin_order::AddShippingAction>,
+) -> Result<Json<admin_order::ChangeActionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::add_return_shipping(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn remove_return_shipping(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path((id, action_id)): Path<(ReturnId, uuid::Uuid)>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    admin_order::remove_return_shipping(&mut tx, &ctx, id, action_id).await?;
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "removed": true })))
+}
+
+async fn list_return_reasons(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Query(query): Query<admin_order::Listing>,
+) -> Result<Json<tezgah::page::Page<admin_order::ReasonView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let page = admin_order::list_return_reasons(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(page))
+}
+
+async fn create_return_reason(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Json(body): Json<admin_order::NewReason>,
+) -> Result<Json<admin_order::ReasonView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::create_return_reason(&mut tx, &ctx, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn list_return_reason_translations(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<uuid::Uuid>,
+) -> Result<Json<Vec<admin_order::ReturnReasonTranslationView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let rows = admin_order::list_return_reason_translations(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+async fn put_return_reason_translation(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<uuid::Uuid>,
+    Json(body): Json<admin_order::PutReturnReasonTranslation>,
+) -> Result<Json<admin_order::ReturnReasonTranslationView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::put_return_reason_translation(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+/// A shopper is told why they may send something back in their own language,
+/// so the reason a shop writes has one text per locale.
+async fn localised_return_reason(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path((id, locale)): Path<(uuid::Uuid, String)>,
+) -> Result<Json<admin_order::LocalisedReturnReasonView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::localised_return_reason(&mut tx, &ctx, id, &locale).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn remove_return_reason_translation(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path((id, locale)): Path<(uuid::Uuid, String)>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    admin_order::remove_return_reason_translation(&mut tx, &ctx, id, &locale).await?;
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "removed": true })))
 }
 
 /// The last of the sub-routes that had a function waiting and no path to it:
