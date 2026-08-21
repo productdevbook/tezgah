@@ -152,6 +152,34 @@ export const en = {
   "detail.inventory.title": "The item",
   "detail.inventory.empty": "No inventory item",
   "detail.nothingToShow": "Nothing to show.",
+
+  "field.handle": "Handle",
+  "field.subtitle": "Subtitle",
+  "field.description": "Description",
+  "field.discountable": "Discountable",
+  "field.rejectedReason": "Rejected reason",
+  "field.productType": "Product type",
+  "field.collection": "Collection",
+  "field.externalId": "External ID",
+  "field.thumbnail": "Thumbnail",
+  "field.weight": "Weight",
+  "field.length": "Length",
+  "field.height": "Height",
+  "field.width": "Width",
+  "field.material": "Material",
+  "field.hsCode": "HS code",
+  "field.originCountry": "Origin country",
+  "field.variantId": "Variant id",
+
+  "detail.product.general": "General",
+  "detail.product.organisation": "Organisation",
+  "detail.product.media": "Media",
+  "detail.product.shipping": "Shipping",
+  "detail.product.shippingWhy":
+    "What a carrier needs to quote, and what customs needs to let it through.",
+  "detail.product.digital": "Digital content",
+  "detail.product.digitalWhy":
+    "A file belongs to one variant — take an id from the variants above to see or add what it carries.",
 } as const
 
 export type TranslationKey = keyof typeof en

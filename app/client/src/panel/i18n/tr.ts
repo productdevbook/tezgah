@@ -147,4 +147,32 @@ export const tr: Record<TranslationKey, string> = {
   "detail.inventory.title": "Kalem",
   "detail.inventory.empty": "Stok kalemi yok",
   "detail.nothingToShow": "Gösterilecek bir şey yok.",
+
+  "field.handle": "Kısa ad",
+  "field.subtitle": "Alt başlık",
+  "field.description": "Açıklama",
+  "field.discountable": "İndirime girer",
+  "field.rejectedReason": "Ret gerekçesi",
+  "field.productType": "Ürün tipi",
+  "field.collection": "Koleksiyon",
+  "field.externalId": "Dış kimlik",
+  "field.thumbnail": "Küçük görsel",
+  "field.weight": "Ağırlık",
+  "field.length": "Uzunluk",
+  "field.height": "Yükseklik",
+  "field.width": "Genişlik",
+  "field.material": "Malzeme",
+  "field.hsCode": "GTİP kodu",
+  "field.originCountry": "Menşe ülke",
+  "field.variantId": "Varyant kimliği",
+
+  "detail.product.general": "Genel",
+  "detail.product.organisation": "Sınıflandırma",
+  "detail.product.media": "Görsel",
+  "detail.product.shipping": "Gönderi bilgileri",
+  "detail.product.shippingWhy":
+    "Taşıyıcının fiyat verebilmesi ve gümrüğün geçirebilmesi için gerekenler.",
+  "detail.product.digital": "Dijital içerik",
+  "detail.product.digitalWhy":
+    "Bir dosya tek bir varyanta aittir — yukarıdaki varyantlardan bir kimlik alın ve neyi taşıdığını görün ya da ekleyin.",
 }
