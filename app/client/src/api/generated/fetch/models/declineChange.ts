@@ -6,6 +6,10 @@
  * OpenAPI spec version: 0.0.0
  */
 
+/**
+ * `Default` because declining is a `DELETE`: a caller sending no body at all
+ * is declining without giving a reason, which is the ordinary case.
+ */
 export interface DeclineChange {
   /** @nullable */
   reason?: string | null;

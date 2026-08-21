@@ -1775,6 +1775,7 @@
       },
       "DeclineChange": {
         "additionalProperties": false,
+        "description": "`Default` because declining is a `DELETE`: a caller sending no body at all\nis declining without giving a reason, which is the ordinary case.",
         "properties": {
           "reason": {
             "type": [
