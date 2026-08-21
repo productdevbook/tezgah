@@ -13,6 +13,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { dateTime, useDetail } from "@/lib/detail"
 import { usePagedList } from "@/lib/paged"
+import { useT } from "@/panel/i18n"
 
 export function BasketDetail({
   id,
@@ -27,6 +28,7 @@ export function BasketDetail({
   onCartsAfterChange: (after: string | undefined) => void
   onOrdersAfterChange: (after: string | undefined) => void
 }) {
+  const t = useT()
   const result = useDetail(
     ["baskets"],
     "/admin/order-baskets/{id}",
@@ -51,8 +53,8 @@ export function BasketDetail({
       main={() => (
         <>
           <Section
-            title="Orders"
-            description="One basket becomes one order per seller — the payment is single, the fulfilment is not."
+            title={t("detail.basket.orders")}
+            description={t("detail.basket.ordersWhy")}
           >
             <SectionBody>
               <BasketOrders
@@ -64,8 +66,8 @@ export function BasketDetail({
           </Section>
 
           <Section
-            title="Carts"
-            description="A seller's own leg of the checkout, before it became an order."
+            title={t("detail.basket.carts")}
+            description={t("detail.basket.cartsWhy")}
           >
             <SectionBody>
               <BasketCarts
@@ -79,26 +81,26 @@ export function BasketDetail({
       )}
       side={(item) => (
         <>
-          <Section title="Who it is for">
+          <Section title={t("detail.order.whoFor")}>
             <SectionRows>
-              <SectionRow label="Email" value={item.email} />
+              <SectionRow label={t("field.email")} value={item.email} />
               <SectionRow
-                label="Customer"
+                label={t("field.customer")}
                 value={
                   item.customer_id ? <Mono>{item.customer_id}</Mono> : null
                 }
               />
               <SectionRow
-                label="Currency"
+                label={t("field.currency")}
                 value={<Mono>{item.currency_code.toUpperCase()}</Mono>}
               />
             </SectionRows>
           </Section>
 
-          <Section title="The payment">
+          <Section title={t("detail.basket.payment")}>
             <SectionRows>
               <SectionRow
-                label="Collection"
+                label={t("field.collection")}
                 value={
                   item.payment_collection_id ? (
                     <Mono>{item.payment_collection_id}</Mono>
@@ -106,16 +108,19 @@ export function BasketDetail({
                 }
               />
               <SectionRow
-                label="Completed"
+                label={t("field.completed")}
                 value={item.completed_at ? dateTime(item.completed_at) : null}
               />
             </SectionRows>
           </Section>
 
-          <Section title="Details">
+          <Section title={t("general.details")}>
             <SectionRows>
-              <SectionRow label="ID" value={<Mono>{item.id}</Mono>} />
-              <SectionRow label="Number" value={item.display_id} />
+              <SectionRow
+                label={t("field.id")}
+                value={<Mono>{item.id}</Mono>}
+              />
+              <SectionRow label={t("field.number")} value={item.display_id} />
             </SectionRows>
           </Section>
         </>

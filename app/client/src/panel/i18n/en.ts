@@ -205,6 +205,41 @@ export const en = {
   "detail.order.entitlements": "Entitlements",
   "detail.order.entitlementsWhy":
     "What this order granted a right to, and whether that right still stands.",
+
+  "field.status": "Status",
+  "field.customer": "Customer",
+  "field.cycle": "Cycle",
+  "field.nextBilling": "Next billing",
+  "field.currentPeriod": "Current period",
+  "field.endsThisPeriod": "Ends this period",
+  "field.ended": "Ended",
+  "field.dunningAttempts": "Dunning attempts",
+  "field.sellingPlan": "Selling plan",
+  "field.code": "Code",
+  "field.kind": "Kind",
+  "field.applied": "Applied",
+  "field.used": "Used",
+  "field.perCustomer": "Per customer",
+  "field.campaign": "Campaign",
+
+  "detail.subscription.billed": "What is being billed",
+  "detail.subscription.cycle": "The cycle",
+  "detail.subscription.dunningWhy":
+    "Above zero means a charge failed and is being retried — a different thing from a cancelled contract, which the status says instead.",
+  "detail.subscription.who": "Who and what",
+
+  "detail.basket.orders": "Orders",
+  "detail.basket.ordersWhy":
+    "One basket becomes one order per seller — the payment is single, the fulfilment is not.",
+  "detail.basket.carts": "Carts",
+  "detail.basket.cartsWhy":
+    "A seller's own leg of the checkout, before it became an order.",
+  "detail.basket.payment": "The payment",
+
+  "detail.promotion.title": "The promotion",
+  "detail.promotion.left": "How much is left",
+  "detail.promotion.leftWhy":
+    "Claimed at checkout rather than counted at payment, so this is what is spoken for.",
 } as const
 
 export type TranslationKey = keyof typeof en
