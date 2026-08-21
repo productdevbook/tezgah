@@ -82,11 +82,12 @@ async function put(productId: string, body: unknown): Promise<void> {
  * drawn in are different questions.
  */
 export function EditTranslations({ id }: { id: string }) {
+  const t = useT()
   return (
     <ProductDrawer
       id={id}
-      title="Translations"
-      description="What this product is called in another language. The storefront asks for one and falls back to the shop's own."
+      title={t("form.translations.title")}
+      description={t("form.translations.why")}
     >
       {() => <Body productId={id} />}
     </ProductDrawer>
@@ -172,7 +173,11 @@ function Body({ productId }: { productId: string }) {
             </p>
           )}
 
-          <FormField control={form.control} name="locale" label="Locale">
+          <FormField
+            control={form.control}
+            name="locale"
+            label={t("field.locale")}
+          >
             {(field) => (
               <div className="flex gap-2">
                 <Input
@@ -198,20 +203,32 @@ function Body({ productId }: { productId: string }) {
               </div>
             )}
           </FormField>
-          <FormField control={form.control} name="title" label="Title">
+          <FormField
+            control={form.control}
+            name="title"
+            label={t("field.title")}
+          >
             {(field) => <Input id={field.name} {...field} />}
           </FormField>
-          <FormField control={form.control} name="subtitle" label="Subtitle">
+          <FormField
+            control={form.control}
+            name="subtitle"
+            label={t("field.subtitle")}
+          >
             {(field) => <Input id={field.name} {...field} />}
           </FormField>
           <FormField
             control={form.control}
             name="description"
-            label="Description"
+            label={t("field.description")}
           >
             {(field) => <Input id={field.name} {...field} />}
           </FormField>
-          <FormField control={form.control} name="handle" label="Handle">
+          <FormField
+            control={form.control}
+            name="handle"
+            label={t("field.handle")}
+          >
             {(field) => (
               <Input
                 id={field.name}

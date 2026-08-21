@@ -34,6 +34,7 @@ type Fields = z.infer<typeof fields>
 const orNull = (value: string) => (value.trim() === "" ? null : value)
 
 export function EditCustomer({ id }: { id: string }) {
+  const t = useT()
   const navigate = useNavigate()
   const result = useDetail(["customers"], "/admin/customers/{id}", customer, id)
 
@@ -41,7 +42,7 @@ export function EditCustomer({ id }: { id: string }) {
     <RouteDrawer
       onClose={() => void navigate({ to: "/customers/$id", params: { id } })}
     >
-      <RouteDrawer.Header title="Edit customer" />
+      <RouteDrawer.Header title={t("form.customer.edit")} />
       {result.data ? (
         <Body item={result.data} />
       ) : (
@@ -103,23 +104,39 @@ function Body({ item }: { item: Customer }) {
       <RouteDrawer.Body>
         <div className="flex flex-col gap-6">
           {mutation.isError ? <FormError error={mutation.error} /> : null}
-          <FormField control={form.control} name="email" label="Email">
+          <FormField
+            control={form.control}
+            name="email"
+            label={t("field.email")}
+          >
             {(field) => <Input id={field.name} type="email" {...field} />}
           </FormField>
           <FormField
             control={form.control}
             name="first_name"
-            label="First name"
+            label={t("field.firstName")}
           >
             {(field) => <Input id={field.name} {...field} />}
           </FormField>
-          <FormField control={form.control} name="last_name" label="Last name">
+          <FormField
+            control={form.control}
+            name="last_name"
+            label={t("field.lastName")}
+          >
             {(field) => <Input id={field.name} {...field} />}
           </FormField>
-          <FormField control={form.control} name="phone" label="Phone">
+          <FormField
+            control={form.control}
+            name="phone"
+            label={t("field.phone")}
+          >
             {(field) => <Input id={field.name} {...field} />}
           </FormField>
-          <FormField control={form.control} name="company_name" label="Company">
+          <FormField
+            control={form.control}
+            name="company_name"
+            label={t("field.company")}
+          >
             {(field) => <Input id={field.name} {...field} />}
           </FormField>
         </div>

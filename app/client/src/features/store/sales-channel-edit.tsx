@@ -32,6 +32,7 @@ const fields = z.object({
 type Fields = z.infer<typeof fields>
 
 export function EditSalesChannel({ id }: { id: string }) {
+  const t = useT()
   const navigate = useNavigate()
   const result = useDetail(
     ["sales-channels"],
@@ -46,7 +47,7 @@ export function EditSalesChannel({ id }: { id: string }) {
         void navigate({ to: "/store/sales-channels/$id", params: { id } })
       }
     >
-      <RouteDrawer.Header title="Edit sales channel" />
+      <RouteDrawer.Header title={t("form.channel.edit")} />
       {result.data ? (
         <Body item={result.data} />
       ) : (
@@ -108,21 +109,21 @@ function Body({ item }: { item: SalesChannel }) {
       <RouteDrawer.Body>
         <div className="flex flex-col gap-6">
           {mutation.isError ? <FormError error={mutation.error} /> : null}
-          <FormField control={form.control} name="name" label="Name">
+          <FormField control={form.control} name="name" label={t("field.name")}>
             {(field) => <Input id={field.name} {...field} />}
           </FormField>
           <FormField
             control={form.control}
             name="description"
-            label="Description"
+            label={t("field.description")}
           >
             {(field) => <Textarea id={field.name} {...field} rows={4} />}
           </FormField>
           <FormField
             control={form.control}
             name="is_disabled"
-            label="Disabled"
-            description="A disabled channel keeps its products and stops selling them."
+            label={t("field.disabled2")}
+            description={t("form.channel.disabledWhy")}
           >
             {(field) => (
               <Switch

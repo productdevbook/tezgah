@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { COVERAGE, GROUPS } from "@/lib/nav"
 import { PageHeading } from "@/components/page-heading"
+import { useT } from "@/panel/i18n"
 
 /**
  * What this panel can and cannot do, said before anything else.
@@ -18,6 +19,7 @@ import { PageHeading } from "@/components/page-heading"
  * worth showing is how much of the declared surface has a screen.
  */
 export function Overview() {
+  const t = useT()
   const host = useQuery({
     queryKey: ["host"],
     // Only whether anybody answers; the shape is deliberately not asserted.
@@ -40,16 +42,10 @@ export function Overview() {
 
   return (
     <div className="space-y-6">
-      <PageHeading
-        title="Overview"
-        subtitle="tezgah's admin surface, and how much of it this panel covers."
-      />
+      <PageHeading title={t("overview.title")} subtitle={t("overview.why")} />
 
       <div className="grid gap-4 md:grid-cols-2">
-        <Section
-          title="The host"
-          description="tezgah is a library. Something else has to mount api::routes()."
-        >
+        <Section title={t("overview.host")} description={t("overview.hostWhy")}>
           <SectionBody>
             {host.isPending ? (
               <Badge variant="outline">asking…</Badge>
@@ -69,7 +65,7 @@ export function Overview() {
         </Section>
 
         <Section
-          title="Coverage"
+          title={t("overview.coverage")}
           description={`${COVERAGE.covered} of ${COVERAGE.operations} declared admin operations sit behind a screen.`}
         >
           <SectionBody>
