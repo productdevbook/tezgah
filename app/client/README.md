@@ -164,7 +164,7 @@ appearing untranslated on screen.
 
 ## What it talks to
 
-[`../server`](../server) — the binary beside it, which mounts 252 of the 487
+[`../server`](../server) — the binary beside it, which mounts 253 of the 487
 operations `api::routes()` declares. The crate itself serves no HTTP, so any
 other host that mounts the same table will do; point the panel at whichever
 one is running:
