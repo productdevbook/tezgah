@@ -120,7 +120,7 @@ async fn an_actor_the_host_refuses_gets_nothing() {
         admin::list_stock_locations(&mut tx, &denied, admin::ListQuery::default()).await;
     assert!(locations.is_err_and(|err| err.is_denied()));
 
-    let lists = admin::list_price_lists(&mut tx, &denied, admin::ListQuery::default()).await;
+    let lists = admin::list_price_lists(&mut tx, &denied, admin::ListPriceLists::default()).await;
     assert!(lists.is_err_and(|err| err.is_denied()));
 
     drop(tx);

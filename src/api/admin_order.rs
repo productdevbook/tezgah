@@ -3741,32 +3741,110 @@ pub async fn enable_fulfillment_provider(
     })
 }
 
+/// The predicates the page and the count share.
+const SHIPPING_OPTION_FILTER: &str = "
+         where scope = $1
+           and ($2::uuid is null or service_zone_id = $2)
+           and ($3::uuid is null or shipping_profile_id = $3)
+           and ($4::boolean is null or is_return = $4)
+           and ($5::boolean is null or enabled_in_store = $5)
+           and ($6::text is null or name ilike $6)
+";
+
+/// What a back office can ask a list of shipping options.
+///
+/// `is_return` is the one that matters most: an option a shopper picks at the
+/// till and an option a return travels back on are both rows here, and the
+/// list held them together with nothing to say which was which.
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ListShippingOptions {
+    pub after: Option<String>,
+    pub limit: Option<u32>,
+    pub service_zone_id: Option<Uuid>,
+    pub shipping_profile_id: Option<Uuid>,
+    /// True for the options a return travels back on.
+    pub is_return: Option<bool>,
+    /// True for the ones a shopper is offered.
+    pub enabled_in_store: Option<bool>,
+    /// Matched against the name.
+    pub q: Option<String>,
+    /// Which end first. Left out, this surface answers newest-first.
+    pub order: Option<crate::page::Order>,
+    /// Asks how many options match, as well as this page of them.
+    pub count: Option<bool>,
+}
+
 pub async fn list_shipping_options(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
-    query: Listing,
+    query: ListShippingOptions,
 ) -> Result<Page<ShippingOptionView>> {
     let _: Permit = ctx.permit(Action::View, config())?;
-    let paging = query.paging()?;
+    let paging = Listing {
+        after: query.after.clone(),
+        limit: query.limit,
+    }
+    .paging()?;
+    let paging = if query.count.unwrap_or(false) {
+        paging.counting()
+    } else {
+        paging
+    };
 
-    let rows = sqlx::query_as::<_, fulfilment::ShippingOption>(
+    let search = query
+        .q
+        .as_deref()
+        .and_then(crate::page::Search::new)
+        .map(|one| one.pattern());
+    let ordering = query.order.unwrap_or(crate::page::Order::Newest);
+    let beyond = ordering.beyond();
+    let direction = ordering.direction();
+
+    let rows = sqlx::query_as::<_, fulfilment::ShippingOption>(&format!(
         "select id, name, price_type, service_zone_id, shipping_profile_id, provider_id,
                 shipping_option_type_id, data, is_return, enabled_in_store, created_at
-         from shipping_option
-         where scope = $1 and ($2::timestamptz is null or (created_at, id) > ($2, $3))
-         order by created_at, id
-         limit $4",
-    )
+         from shipping_option{SHIPPING_OPTION_FILTER}
+           and ($7::timestamptz is null or (created_at, id) {beyond} ($7, $8))
+         order by created_at {direction}, id {direction}
+         limit $9"
+    ))
     .bind(ctx.scope.0)
+    .bind(query.service_zone_id)
+    .bind(query.shipping_profile_id)
+    .bind(query.is_return)
+    .bind(query.enabled_in_store)
+    .bind(search.as_deref())
     .bind(paging.after.as_ref().and_then(Cursor::timestamp))
     .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
+    let total = if paging.counts() {
+        let (count,): (i64,) = sqlx::query_as(&format!(
+            "select count(*) from shipping_option{SHIPPING_OPTION_FILTER}"
+        ))
+        .bind(ctx.scope.0)
+        .bind(query.service_zone_id)
+        .bind(query.shipping_profile_id)
+        .bind(query.is_return)
+        .bind(query.enabled_in_store)
+        .bind(search.as_deref())
+        .fetch_one(&mut **tx)
+        .await?;
+        Some(count)
+    } else {
+        None
+    };
+
     let page = Page::build(rows, paging, |row| {
         Cursor::at(row.created_at, row.id.as_uuid())
     });
+    let page = match total {
+        Some(total) => page.counting(total),
+        None => page,
+    };
 
     Ok(Page {
         items: page
@@ -5066,11 +5144,15 @@ pub(super) static ROUTES: &[Route] = &[
         "fulfilment",
         "Resume offering a dropped carrier"
     ),
-    paged!(
-        "/admin/shipping-options",
-        "fulfilment",
-        "List shipping options"
-    ),
+    Route {
+        surface: Surface::Admin,
+        method: Method::Get,
+        path: "/admin/shipping-options",
+        action: Action::View,
+        domain: "fulfilment",
+        query: Some(super::query_schema::<ListShippingOptions>),
+        summary: "List shipping options",
+    },
     route!(
         Post,
         "/admin/shipping-options",

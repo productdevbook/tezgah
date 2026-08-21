@@ -1605,7 +1605,11 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
     denied!(
         Method::Get,
         "/admin/price-lists",
-        admin_catalogue::list_price_lists(&mut tx, &ctx, admin_catalogue::ListQuery::default())
+        admin_catalogue::list_price_lists(
+            &mut tx,
+            &ctx,
+            admin_catalogue::ListPriceLists::default()
+        )
     );
     denied!(
         Method::Post,
@@ -2404,7 +2408,11 @@ async fn every_route_is_denied_by_a_host_that_refuses_everything() {
     denied!(
         Method::Get,
         "/admin/shipping-options",
-        admin_order::list_shipping_options(&mut tx, &ctx, admin_order::Listing::default())
+        admin_order::list_shipping_options(
+            &mut tx,
+            &ctx,
+            admin_order::ListShippingOptions::default()
+        )
     );
     denied!(
         Method::Post,

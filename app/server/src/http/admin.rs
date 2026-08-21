@@ -3713,7 +3713,7 @@ async fn fulfillment_providers(
 async fn list_shipping_options(
     State(state): State<AppState>,
     Extension(caller): Extension<Caller>,
-    Query(query): Query<admin_order::Listing>,
+    Query(query): Query<admin_order::ListShippingOptions>,
 ) -> Result<Json<tezgah::page::Page<admin_order::ShippingOptionView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
     let ctx = ctx_for(&state, &caller);
@@ -3954,7 +3954,7 @@ async fn list_price_rules(
 async fn list_price_lists(
     State(state): State<AppState>,
     Extension(caller): Extension<Caller>,
-    Query(query): Query<admin_catalogue::ListQuery>,
+    Query(query): Query<admin_catalogue::ListPriceLists>,
 ) -> Result<Json<tezgah::page::Page<admin_catalogue::PriceListView>>, ApiError> {
     let mut tx = begin(&state.pool, state.scope).await?;
     let ctx = ctx_for(&state, &caller);

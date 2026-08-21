@@ -887,9 +887,14 @@ async fn a_taxed_cart_keeps_what_it_was_taxed_with_when_the_rate_moves() {
     .expect("to write the snapshot");
 
     // The shop puts the rate up afterwards, as shops do.
-    let rates = tax::tax_rates(&mut tx, &ctx, None, tezgah::Paging::first(10))
-        .await
-        .expect("the rates");
+    let rates = tax::tax_rates(
+        &mut tx,
+        &ctx,
+        tax::TaxRateFilter::default(),
+        tezgah::Paging::first(10),
+    )
+    .await
+    .expect("the rates");
     tax::update_tax_rate(
         &mut tx,
         &ctx,
@@ -1337,6 +1342,87 @@ async fn a_region_without_automatic_taxes_computes_no_tax_on_reprice() {
     .await
     .expect("the tax line count");
     assert_eq!(counted, 0, "retax never ran, so it wrote nothing");
+
+    tx.rollback().await.expect("to roll back");
+    shop.close().await;
+}
+
+/// A region's default rate and the ones that stack on it are both rows here,
+/// and telling them apart is most of what somebody opens this list for.
+#[tokio::test]
+async fn a_list_of_tax_rates_narrows_and_counts_the_same_rows() {
+    let shop = Shop::open().await;
+    let ctx = shop.ctx();
+    let mut tx = shop.begin().await;
+
+    a_flat_eighteen(&mut tx, &ctx).await;
+    let regions = tax::tax_regions(&mut tx, &ctx, tezgah::Paging::first(10))
+        .await
+        .expect("the regions");
+    let region = regions.items.first().expect("a region").id;
+
+    tax::create_tax_rate(
+        &mut tx,
+        &ctx,
+        NewTaxRate {
+            tax_region_id: region,
+            rate: dec!(2),
+            code: Some("city".into()),
+            name: "City levy".into(),
+            is_default: false,
+            is_combinable: true,
+        },
+    )
+    .await
+    .expect("a second rate");
+
+    let defaults = tax::tax_rates(
+        &mut tx,
+        &ctx,
+        tax::TaxRateFilter {
+            default: Some(true),
+            ..Default::default()
+        },
+        tezgah::Paging::first(10).counting(),
+    )
+    .await
+    .expect("a page");
+
+    assert_eq!(defaults.items.len(), 1);
+    assert_eq!(defaults.items[0].name, "VAT");
+    assert_eq!(defaults.total, Some(1), "the count matches the page");
+
+    let stacking = tax::tax_rates(
+        &mut tx,
+        &ctx,
+        tax::TaxRateFilter {
+            combinable: Some(true),
+            ..Default::default()
+        },
+        tezgah::Paging::first(10).counting(),
+    )
+    .await
+    .expect("a page");
+
+    assert_eq!(stacking.items.len(), 1);
+    assert_eq!(stacking.items[0].name, "City levy");
+    assert_eq!(stacking.total, Some(1));
+
+    // The code, not just the name: a rate is looked for by either.
+    let searched = tax::tax_rates(
+        &mut tx,
+        &ctx,
+        tax::TaxRateFilter {
+            search: tezgah::page::Search::new("cit"),
+            ..Default::default()
+        },
+        tezgah::Paging::first(10).counting(),
+    )
+    .await
+    .expect("a page");
+
+    assert_eq!(searched.total, Some(1));
+    assert_eq!(searched.items[0].name, "City levy");
 
     tx.rollback().await.expect("to roll back");
     shop.close().await;
