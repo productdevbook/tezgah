@@ -1,4 +1,5 @@
 import { Section, SectionBody } from "@/components/section"
+import { useT } from "@/panel/i18n"
 
 /** A record's fields, laid out so every one of them stays visible — nothing here decides what a screen hides. */
 export function FieldGrid({ children }: { children: React.ReactNode }) {
@@ -52,8 +53,9 @@ export function Mono({ children }: { children: React.ReactNode }) {
 
 /** Every record has one and it is always the same section. */
 export function MetadataSection({ value }: { value: unknown }) {
+  const t = useT()
   return (
-    <Section title="Metadata">
+    <Section title={t("general.metadata")}>
       <SectionBody>
         <Metadata value={value} />
       </SectionBody>

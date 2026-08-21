@@ -5,7 +5,11 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 const TABS = [
   { value: "currencies", label: "Currencies", to: "/store/currencies" },
   { value: "regions", label: "Regions", to: "/store/regions" },
-  { value: "sales-channels", label: "Sales channels", to: "/store/sales-channels" },
+  {
+    value: "sales-channels",
+    label: "Sales channels",
+    to: "/store/sales-channels",
+  },
   { value: "keys", label: "Publishable keys", to: "/store/keys" },
 ] as const
 
@@ -17,7 +21,9 @@ const TABS = [
  */
 export function StoreTabs() {
   const matchRoute = useMatchRoute()
-  const active = TABS.find((tab) => matchRoute({ to: tab.to, fuzzy: true }))?.value
+  const active = TABS.find((tab) =>
+    matchRoute({ to: tab.to, fuzzy: true })
+  )?.value
 
   return (
     <Tabs value={active ?? null}>

@@ -12,10 +12,12 @@ export function PageHeading({
       <div className="min-w-0">
         <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
         {subtitle ? (
-          <p className="text-muted-foreground mt-0.5 text-sm">{subtitle}</p>
+          <p className="mt-0.5 text-sm text-muted-foreground">{subtitle}</p>
         ) : null}
       </div>
-      {children ? <div className="flex items-center gap-2">{children}</div> : null}
+      {children ? (
+        <div className="flex items-center gap-2">{children}</div>
+      ) : null}
     </div>
   )
 }

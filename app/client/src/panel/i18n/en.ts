@@ -423,6 +423,24 @@ export const en = {
   "overview.hostWhy":
     "tezgah is a library. Something else has to mount api::routes().",
   "overview.coverage": "Coverage",
+
+  "layout.workflows.why":
+    "Every run the runner has driven, and every step it could not finish.",
+  "layout.tax.why":
+    "What is charged where, and what the shop itself is registered under.",
+  "layout.store.why": "Where the shop sells, and through what.",
+  "layout.pricing.why":
+    "Lists, one preference, and the sets and rows behind a price.",
+  "layout.payouts.why":
+    "What a seller-scope is owed, and the commission that decides it.",
+  "layout.payments.why":
+    "What was taken against an order, and why a refund might be given.",
+  "layout.fulfilment.why":
+    "Who carries it, what it ships in, and what a shop charges to send it.",
+
+  "table.chooseEvery": "Choose every row on this page",
+  "table.chooseThis": "Choose this row",
+  "actions.menu": "Actions",
 } as const
 
 export type TranslationKey = keyof typeof en

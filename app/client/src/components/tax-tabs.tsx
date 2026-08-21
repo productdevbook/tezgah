@@ -11,7 +11,9 @@ const TABS = [
 /** Same shape as `components/store-tabs.tsx`: each tab is a real route. */
 export function TaxTabs() {
   const matchRoute = useMatchRoute()
-  const active = TABS.find((tab) => matchRoute({ to: tab.to, fuzzy: true }))?.value
+  const active = TABS.find((tab) =>
+    matchRoute({ to: tab.to, fuzzy: true })
+  )?.value
 
   return (
     <Tabs value={active ?? null}>

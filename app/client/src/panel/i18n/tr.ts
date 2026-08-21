@@ -418,4 +418,22 @@ export const tr: Record<TranslationKey, string> = {
   "overview.hostWhy":
     "tezgah bir kütüphanedir. api::routes() işlevini başka bir şeyin bağlaması gerekir.",
   "overview.coverage": "Kapsam",
+
+  "layout.workflows.why":
+    "Çalıştırıcının yürüttüğü her koşu ve tamamlayamadığı her adım.",
+  "layout.tax.why":
+    "Nerede ne alındığı ve dükkânın kendisinin neye kayıtlı olduğu.",
+  "layout.store.why": "Dükkânın nerede ve ne üzerinden sattığı.",
+  "layout.pricing.why":
+    "Listeler, tek bir tercih ve bir fiyatın arkasındaki kümeler ile satırlar.",
+  "layout.payouts.why":
+    "Bir satıcıya ne borçlu olunduğu ve bunu belirleyen komisyon.",
+  "layout.payments.why":
+    "Bir siparişten ne alındığı ve neden iade edilebileceği.",
+  "layout.fulfilment.why":
+    "Kimin taşıdığı, neyle gönderildiği ve dükkânın göndermek için ne aldığı.",
+
+  "table.chooseEvery": "Bu sayfadaki her satırı seç",
+  "table.chooseThis": "Bu satırı seç",
+  "actions.menu": "İşlemler",
 }

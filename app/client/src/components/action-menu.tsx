@@ -10,6 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { useT } from "@/panel/i18n"
 
 export type Action = {
   label: string
@@ -28,13 +29,20 @@ export type Action = {
  * always in its own group at the bottom.
  */
 export function ActionMenu({ groups }: { groups: Action[][] }) {
+  const t = useT()
   const visible = groups.filter((group) => group.length > 0)
   if (visible.length === 0) return null
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        render={<Button variant="ghost" size="icon-sm" aria-label="Actions" />}
+        render={
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={t("actions.menu")}
+          />
+        }
       >
         <HugeiconsIcon icon={MoreHorizontalIcon} strokeWidth={2} />
       </DropdownMenuTrigger>
