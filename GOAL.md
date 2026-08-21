@@ -399,7 +399,8 @@ In the panel:
       and gets the whole tree under its own prefix. The router is built per
       mount rather than at module load, and `check:host` fails the build if
       anything outside the standalone host reads a browser global. What is
-      left there is packaging: no library build, so a host takes the source
+      left there is nothing: `bun run build:lib` publishes the entry point,
+      the stylesheet and the types, and CI builds it
 - [x] a test for a child route whose parent draws no outlet — all five "edit
       a record" screens were unreachable that way, silently, from the commit
       that added them. `scripts/check-outlets.mjs`, in CI
