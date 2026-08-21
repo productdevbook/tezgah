@@ -19,7 +19,7 @@ use super::admin_order::OrderView;
 use super::store::CartView;
 use crate::cart;
 use crate::error::Result;
-use crate::id::{CustomerId, OrderBasketId, PaymentCollectionId};
+use crate::id::{CustomerId, OrderBasketId, PaymentCollectionId, RegionId};
 use crate::money::Currency;
 use crate::order_basket::{self, NewOrderBasket};
 use crate::page::{Cursor, Page, Paging};
@@ -138,21 +138,38 @@ pub async fn basket_carts(
     Ok(page.map(CartView::from))
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ListCarts {
     pub after: Option<String>,
     pub limit: Option<u32>,
     pub customer_id: Option<CustomerId>,
+    /// True for the carts that became an order, false for the ones still
+    /// open — abandoned ones included, which is what this list is for.
+    pub completed: Option<bool>,
+    /// Matched against the e-mail. A guest cart has one and no customer, so
+    /// it is the only thing on the row a person recognises it by.
+    pub q: Option<String>,
+    pub region_id: Option<RegionId>,
+    /// Which end first. Left out, this surface answers newest-first.
+    pub order: Option<crate::page::Order>,
+    /// Asks how many carts match, as well as this page of them.
+    pub count: Option<bool>,
 }
 
 impl ListCarts {
     fn paging(&self) -> Result<Paging> {
         let limit = self.limit.unwrap_or(crate::page::DEFAULT_LIMIT);
-        match self.after.as_deref() {
-            Some(text) => Ok(Paging::after(Cursor::decode(text)?, limit)),
-            None => Ok(Paging::first(limit)),
-        }
+        let paging = match self.after.as_deref() {
+            Some(text) => Paging::after(Cursor::decode(text)?, limit),
+            None => Paging::first(limit),
+        };
+
+        Ok(if self.count.unwrap_or(false) {
+            paging.counting()
+        } else {
+            paging
+        })
     }
 }
 
@@ -164,7 +181,15 @@ pub async fn list_carts(
     ctx: &Ctx<'_>,
     query: ListCarts,
 ) -> Result<Page<CartView>> {
-    let page = cart::list(tx, ctx, query.customer_id, query.paging()?).await?;
+    let filter = cart::CartFilter {
+        customer: query.customer_id,
+        completed: query.completed,
+        search: query.q.as_deref().and_then(crate::page::Search::new),
+        region: query.region_id,
+        order: query.order.unwrap_or(crate::page::Order::Newest),
+    };
+
+    let page = cart::list(tx, ctx, filter, query.paging()?).await?;
     Ok(page.map(CartView::from))
 }
 
@@ -220,7 +245,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/carts",
         action: Action::View,
         domain: "cart",
-        query: None,
+        query: Some(super::query_schema::<ListCarts>),
         summary: "List carts, abandoned ones included",
     },
 ];

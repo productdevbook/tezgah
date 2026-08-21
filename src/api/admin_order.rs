@@ -2657,12 +2657,45 @@ pub async fn confirm_claim_request(
 // Payments — the two that move money
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ListPayments {
     pub after: Option<String>,
     pub limit: Option<u32>,
     pub payment_collection_id: Option<PaymentCollectionId>,
+    /// `captured`, `canceled` or `authorized` — the three a payment row can
+    /// be in, and they are columns rather than a status field: a capture and
+    /// a cancellation each stamp their own timestamp, and the constraint on
+    /// the table says only one of them can be set.
+    pub state: Option<String>,
+    pub currency_code: Option<String>,
+    /// Which end first. Left out, this surface answers newest-first.
+    pub order: Option<crate::page::Order>,
+    /// Asks how many payments match, as well as this page of them.
+    pub count: Option<bool>,
+}
+
+/// The predicates the page and the count share.
+const PAYMENT_FILTER: &str = "
+         where scope = $1
+           and ($2::uuid is null or payment_collection_id = $2)
+           and ($3::text is null
+                or ($3 = 'captured' and captured_at is not null)
+                or ($3 = 'canceled' and canceled_at is not null)
+                or ($3 = 'authorized' and captured_at is null and canceled_at is null))
+           and ($4::char(3) is null or currency_code = $4)
+";
+
+impl ListPayments {
+    fn state(&self) -> Result<Option<&str>> {
+        match self.state.as_deref() {
+            None => Ok(None),
+            Some(one @ ("captured" | "canceled" | "authorized")) => Ok(Some(one)),
+            Some(other) => Err(crate::Error::invalid(format!(
+                "{other:?} is not a payment state"
+            ))),
+        }
+    }
 }
 
 pub async fn list_payments(
@@ -2686,14 +2719,26 @@ pub async fn list_payments(
         ),
         None => Paging::first(query.limit.unwrap_or(crate::page::DEFAULT_LIMIT)),
     };
+    let paging = if query.count.unwrap_or(false) {
+        paging.counting()
+    } else {
+        paging
+    };
+
+    let state = query.state()?;
+    let currency = match query.currency_code.as_deref() {
+        Some(code) => Some(crate::money::Currency::parse(code)?.as_str().to_owned()),
+        None => None,
+    };
+    let ordering = query.order.unwrap_or(crate::page::Order::Newest);
+    let beyond = ordering.beyond();
+    let direction = ordering.direction();
 
     let rows = sqlx::query_as::<_, payment::Payment>(&format!(
-        "select {PAYMENT_COLUMNS} from payment
-         where scope = $1
-           and ($2::uuid is null or payment_collection_id = $2)
-           and ($3::timestamptz is null or (created_at, id) > ($3, $4))
-         order by created_at, id
-         limit $5"
+        "select {PAYMENT_COLUMNS} from payment{PAYMENT_FILTER}
+           and ($5::timestamptz is null or (created_at, id) {beyond} ($5, $6))
+         order by created_at {direction}, id {direction}
+         limit $7"
     ))
     .bind(ctx.scope.0)
     .bind(
@@ -2701,15 +2746,40 @@ pub async fn list_payments(
             .payment_collection_id
             .map(PaymentCollectionId::as_uuid),
     )
+    .bind(state)
+    .bind(currency.as_deref())
     .bind(paging.after.as_ref().and_then(Cursor::timestamp))
     .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
+    let total = if paging.counts() {
+        let (count,): (i64,) =
+            sqlx::query_as(&format!("select count(*) from payment{PAYMENT_FILTER}"))
+                .bind(ctx.scope.0)
+                .bind(
+                    query
+                        .payment_collection_id
+                        .map(PaymentCollectionId::as_uuid),
+                )
+                .bind(state)
+                .bind(currency.as_deref())
+                .fetch_one(&mut **tx)
+                .await?;
+        Some(count)
+    } else {
+        None
+    };
+
     let page = Page::build(rows, paging, |row| {
         Cursor::at(row.created_at, row.id.as_uuid())
     });
+
+    let page = match total {
+        Some(total) => page.counting(total),
+        None => page,
+    };
 
     Ok(page.map(PaymentView::from))
 }
@@ -4729,7 +4799,15 @@ pub(super) static ROUTES: &[Route] = &[
         "Settle the claim's open change"
     ),
     // Payments
-    paged!("/admin/payments", "payment", "List payments"),
+    Route {
+        surface: Surface::Admin,
+        method: Method::Get,
+        path: "/admin/payments",
+        action: Action::View,
+        domain: "payment",
+        query: Some(super::query_schema::<ListPayments>),
+        summary: "List payments",
+    },
     route!(
         Get,
         "/admin/payments/{id}",
