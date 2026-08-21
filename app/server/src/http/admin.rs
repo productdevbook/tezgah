@@ -57,7 +57,7 @@ use tezgah::api::{
     order_basket, payout, store as store_api, subscription, tax_identity,
 };
 use tezgah::id::{
-    CampaignId, CategoryId, CustomerGroupId, CustomerId, DigitalContentId, FulfillmentId,
+    CampaignId, CategoryId, ClaimId, CustomerGroupId, CustomerId, DigitalContentId, FulfillmentId,
     FulfillmentSetId, GiftCardId, InventoryItemId, InventoryLotId, OptionId, OrderBasketId,
     OrderId, PaymentCollectionId, PaymentId, PaymentWebhookEventId, PriceId, PriceListId,
     PriceSetId, ProductId, ProductTagId, PromotionId, PublishableKeyId, RegionId, ReservationId,
@@ -168,6 +168,21 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         ("GET", "/admin/publishable-api-keys/{id}/sales-channels"),
         ("POST", "/admin/publishable-api-keys/{id}/sales-channels"),
         ("POST", "/admin/reservations/{id}/fulfil"),
+        ("GET", "/admin/claims"),
+        ("POST", "/admin/claims"),
+        ("GET", "/admin/claims/{id}"),
+        ("GET", "/admin/claims/{id}/items"),
+        ("GET", "/admin/claims/{id}/lines"),
+        ("POST", "/admin/claims/{id}/cancel"),
+        ("POST", "/admin/claims/{id}/request"),
+        ("POST", "/admin/claims/{id}/claim-items"),
+        ("DELETE", "/admin/claims/{id}/claim-items/{action_id}"),
+        ("POST", "/admin/claims/{id}/inbound/items"),
+        ("DELETE", "/admin/claims/{id}/inbound/items/{action_id}"),
+        ("POST", "/admin/claims/{id}/inbound/shipping-method"),
+        ("POST", "/admin/claims/{id}/outbound/items"),
+        ("DELETE", "/admin/claims/{id}/outbound/items/{action_id}"),
+        ("POST", "/admin/claims/{id}/outbound/shipping-method"),
         ("GET", "/admin/returns"),
         ("POST", "/admin/returns"),
         ("GET", "/admin/returns/{id}"),
@@ -454,6 +469,41 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
             get(list_key_sales_channels).post(link_key_sales_channel),
         )
         .route("/admin/reservations/{id}/fulfil", post(fulfil_reservation))
+        .route("/admin/claims", get(list_claims).post(request_claim))
+        .route("/admin/claims/{id}", get(get_claim))
+        .route("/admin/claims/{id}/items", get(claim_actions))
+        .route("/admin/claims/{id}/lines", get(claim_lines))
+        .route("/admin/claims/{id}/cancel", post(cancel_claim))
+        .route("/admin/claims/{id}/request", post(confirm_claim_request))
+        .route("/admin/claims/{id}/claim-items", post(add_claim_item))
+        .route(
+            "/admin/claims/{id}/claim-items/{action_id}",
+            delete(remove_claim_item),
+        )
+        .route(
+            "/admin/claims/{id}/inbound/items",
+            post(add_claim_inbound_item),
+        )
+        .route(
+            "/admin/claims/{id}/inbound/items/{action_id}",
+            delete(remove_claim_inbound_item),
+        )
+        .route(
+            "/admin/claims/{id}/inbound/shipping-method",
+            post(add_claim_inbound_shipping),
+        )
+        .route(
+            "/admin/claims/{id}/outbound/items",
+            post(add_claim_outbound_item),
+        )
+        .route(
+            "/admin/claims/{id}/outbound/items/{action_id}",
+            delete(remove_claim_outbound_item),
+        )
+        .route(
+            "/admin/claims/{id}/outbound/shipping-method",
+            post(add_claim_outbound_shipping),
+        )
         .route("/admin/returns", get(list_returns).post(request_return))
         .route("/admin/returns/{id}", get(get_return))
         .route("/admin/returns/{id}/items", get(return_items))
@@ -1396,6 +1446,194 @@ async fn create_inventory_item(
     let item = admin_catalogue::create_inventory_item(&mut tx, &ctx, body).await?;
     tx.commit().await?;
     Ok(Json(item))
+}
+
+/// A claim: something arrived broken or wrong, and putting it right is two
+/// movements at once — what comes back and what goes out. Fifteen routes,
+/// declared and bound by nothing.
+async fn list_claims(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Query(query): Query<admin_order::Listing>,
+) -> Result<Json<tezgah::page::Page<admin_order::ClaimView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::list_claims(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn request_claim(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Json(body): Json<admin_order::RequestClaim>,
+) -> Result<Json<admin_order::ClaimView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::request_claim(&mut tx, &ctx, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn get_claim(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ClaimId>,
+) -> Result<Json<admin_order::ClaimView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::get_claim(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn claim_actions(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ClaimId>,
+) -> Result<Json<admin_order::ChangeDetailView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::claim_actions(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn claim_lines(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ClaimId>,
+) -> Result<Json<Vec<admin_order::ClaimItemView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::claim_lines(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn cancel_claim(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ClaimId>,
+) -> Result<Json<admin_order::ClaimView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::cancel_claim(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn confirm_claim_request(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ClaimId>,
+) -> Result<Json<admin_order::ClaimView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::confirm_claim_request(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn add_claim_item(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ClaimId>,
+    Json(body): Json<admin_order::LineQuantity>,
+) -> Result<Json<admin_order::ChangeActionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::add_claim_item(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn remove_claim_item(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path((id, action_id)): Path<(ClaimId, uuid::Uuid)>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    admin_order::remove_claim_item(&mut tx, &ctx, id, action_id).await?;
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "removed": true })))
+}
+
+async fn add_claim_inbound_item(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ClaimId>,
+    Json(body): Json<admin_order::LineQuantity>,
+) -> Result<Json<admin_order::ChangeActionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::add_claim_inbound_item(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn remove_claim_inbound_item(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path((id, action_id)): Path<(ClaimId, uuid::Uuid)>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    admin_order::remove_claim_inbound_item(&mut tx, &ctx, id, action_id).await?;
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "removed": true })))
+}
+
+async fn add_claim_inbound_shipping(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ClaimId>,
+    Json(body): Json<admin_order::AddShippingAction>,
+) -> Result<Json<admin_order::ChangeActionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::add_claim_inbound_shipping(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn add_claim_outbound_item(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ClaimId>,
+    Json(body): Json<admin_order::LineQuantity>,
+) -> Result<Json<admin_order::ChangeActionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::add_claim_outbound_item(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn remove_claim_outbound_item(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path((id, action_id)): Path<(ClaimId, uuid::Uuid)>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    admin_order::remove_claim_outbound_item(&mut tx, &ctx, id, action_id).await?;
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "removed": true })))
+}
+
+async fn add_claim_outbound_shipping(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ClaimId>,
+    Json(body): Json<admin_order::AddShippingAction>,
+) -> Result<Json<admin_order::ChangeActionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::add_claim_outbound_shipping(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
 }
 
 /// A return, from the request to the parcel arriving.
