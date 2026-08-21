@@ -13,6 +13,7 @@ export * from './addressIn';
 export * from './addShippingAction';
 export * from './agreementVersionId';
 export * from './agreementVersionView';
+export * from './appliedView';
 export * from './attachPaymentCollection';
 export * from './balanceView';
 export * from './basketView';

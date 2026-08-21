@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.0.0
  */
 import type {
+  AppliedView,
   CallbackView,
   CollectionView,
   GetAdminPaymentCollectionsByIdPaymentSessions200,
@@ -274,6 +275,58 @@ export const getAdminPaymentWebhooks = async ( options?: Parameters<typeof apiMu
   {
     ...options,
     method: 'GET'
+
+
+  }
+);}
+
+
+export type postAdminPaymentWebhooksByIdApplyResponse200 = {
+  data: AppliedView
+  status: 200
+}
+
+export type postAdminPaymentWebhooksByIdApplyResponse400 = {
+  data: void
+  status: 400
+}
+
+export type postAdminPaymentWebhooksByIdApplyResponse403 = {
+  data: void
+  status: 403
+}
+
+export type postAdminPaymentWebhooksByIdApplyResponse404 = {
+  data: void
+  status: 404
+}
+
+export type postAdminPaymentWebhooksByIdApplyResponseSuccess = (postAdminPaymentWebhooksByIdApplyResponse200) & {
+  headers: Headers;
+};
+export type postAdminPaymentWebhooksByIdApplyResponseError = (postAdminPaymentWebhooksByIdApplyResponse400 | postAdminPaymentWebhooksByIdApplyResponse403 | postAdminPaymentWebhooksByIdApplyResponse404) & {
+  headers: Headers;
+};
+
+export type postAdminPaymentWebhooksByIdApplyResponse = (postAdminPaymentWebhooksByIdApplyResponseSuccess | postAdminPaymentWebhooksByIdApplyResponseError)
+
+export const getPostAdminPaymentWebhooksByIdApplyUrl = (id: string,) => {
+
+
+
+
+  return `/admin/payment-webhooks/${id}/apply`
+}
+
+/**
+ * @summary Act on a received callback
+ */
+export const postAdminPaymentWebhooksByIdApply = async (id: string, options?: Parameters<typeof apiMutator>[1]): Promise<postAdminPaymentWebhooksByIdApplyResponse> => {
+
+  return apiMutator<postAdminPaymentWebhooksByIdApplyResponse>(getPostAdminPaymentWebhooksByIdApplyUrl(id),
+  {
+    ...options,
+    method: 'POST'
 
 
   }
