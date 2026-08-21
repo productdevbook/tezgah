@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { COVERAGE, GROUPS } from "@/lib/nav"
 import { PageHeading } from "@/components/page-heading"
+import { Zone } from "@/panel/zone"
 import { useT } from "@/panel/i18n"
 
 /**
@@ -81,7 +82,7 @@ export function Overview() {
         {GROUPS.map((group) => (
           <div key={group.title} className="space-y-2">
             <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-              {group.title}
+              {t(group.title)}
             </h2>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               {group.sections
@@ -96,16 +97,16 @@ export function Overview() {
                   >
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-medium">
-                        {section.title}
+                        {t(section.title)}
                       </span>
                       <span className="block text-xs text-muted-foreground">
-                        {section.operations} operations
+                        {t("nav.operations", { n: section.operations })}
                       </span>
                     </span>
                     {section.built ? (
-                      <Badge>built</Badge>
+                      <Badge>{t("nav.built")}</Badge>
                     ) : (
-                      <Badge variant="outline">soon</Badge>
+                      <Badge variant="outline">{t("nav.soon")}</Badge>
                     )}
                   </SectionLink>
                 ))}
@@ -113,6 +114,8 @@ export function Overview() {
           </div>
         ))}
       </div>
+
+      <Zone name="dashboard" />
     </div>
   )
 }

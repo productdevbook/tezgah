@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { z } from "zod"
+import { Zone } from "@/panel/zone"
 
 import { get, post } from "@/api/client"
 import {
@@ -190,6 +191,8 @@ export function OrderDetail({ id }: { id: string }) {
               />
             </SectionRows>
           </Section>
+
+          <Zone name="order.detail" id={item.id} />
         </>
       )}
     />

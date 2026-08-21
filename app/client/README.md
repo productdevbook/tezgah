@@ -162,6 +162,64 @@ holds every key, `tr.ts` is typed `Record<keyof typeof en, string>`, so a
 string added in one language and not the other fails the build instead of
 appearing untranslated on screen.
 
+## What a host may add
+
+Mountable was half of it. A host that could put every screen under its own
+prefix and could not add a card to one, or a page of its own beside them, is
+a host running two back offices rather than one — so `PanelProvider` takes an
+`extensions` object, and `src/panel/extensions.ts` is the whole of what it
+means.
+
+**Widgets** go in named zones. The names are a closed union — a typo is a
+compile error, not a card that renders nowhere — and every one of them is
+drawn by a screen in this bundle:
+
+| Zone | Where | What it is told |
+|---|---|---|
+| `dashboard` | the overview screen, under the section tiles | nothing |
+| `product.detail` | the product's side column, last | the product's id |
+| `order.detail` | the order's side column, last | the order's id |
+| `customer.detail` | the customer's side column, last | the customer's id |
+
+The list grows when a `<Zone/>` is placed, never before: a zone nothing draws
+is a promise this file cannot keep. A zone with no widgets renders nothing at
+all — no frame, no heading — so a screen looks exactly as it did before a
+host existed.
+
+**Screens** are the host's own pages, and they answer at `<basepath>/<slug>`
+through the same dynamic route that draws a section this panel has not built.
+That is also why a host screen cannot take over a built one: a static route
+always wins the match, so naming a screen `orders` reaches nothing rather
+than replacing Orders. They appear in the sidebar under the host's own group
+title, drawn as given — this panel has no dictionary for a string it did not
+write.
+
+```tsx
+<Panel
+  apiBase="/api/commerce"
+  token={() => session.token}
+  onUnauthenticated={signOut}
+  basepath="/admin/shop"
+  extensions={{
+    groupTitle: "Our things",
+    widgets: [
+      {
+        zone: "order.detail",
+        id: "delivery-window",
+        render: ({ id }) => <DeliveryWindow orderId={id!} />,
+      },
+    ],
+    screens: [
+      { slug: "returns-desk", title: "Returns desk", render: () => <Desk /> },
+    ],
+  }}
+/>
+```
+
+No plugin loader, and there will not be one: a host composes React already,
+so an extension is a component it passes in rather than a bundle this one
+fetches and evaluates.
+
 ## What it talks to
 
 [`../server`](../server) — the binary beside it, which mounts 266 of the 487

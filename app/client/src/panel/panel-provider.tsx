@@ -1,6 +1,8 @@
 import { QueryClientProvider, type QueryClient } from "@tanstack/react-query"
 import { useMemo, type PropsWithChildren } from "react"
 
+import type { PanelExtensions } from "@/panel/extensions"
+import { ExtensionsProvider } from "@/panel/zone"
 import { LocaleContext, type Locale } from "@/panel/i18n"
 import { panelQueryClient } from "@/panel/query-client"
 import { configurePanel, type PanelConfig } from "@/panel/runtime"
@@ -12,6 +14,11 @@ export type PanelProviderProps = PropsWithChildren<
      * cache and its devtools rather than opening a second client beside it.
      */
     queryClient?: QueryClient
+    /**
+     * Cards to put in this panel's screens, and pages of the host's own to
+     * put beside them. Left out, the panel draws exactly what it always did.
+     */
+    extensions?: PanelExtensions
   }
 >
 
@@ -26,6 +33,7 @@ export type PanelProviderProps = PropsWithChildren<
 export function PanelProvider({
   children,
   queryClient,
+  extensions,
   apiBase,
   token,
   onUnauthenticated,
@@ -45,7 +53,11 @@ export function PanelProvider({
 
   return (
     <QueryClientProvider client={client}>
-      <LocaleContext.Provider value={active}>{children}</LocaleContext.Provider>
+      <LocaleContext.Provider value={active}>
+        <ExtensionsProvider extensions={extensions}>
+          {children}
+        </ExtensionsProvider>
+      </LocaleContext.Provider>
     </QueryClientProvider>
   )
 }

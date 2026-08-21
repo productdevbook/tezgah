@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router"
+import { Zone } from "@/panel/zone"
 
 import { customer, type Customer } from "@/api/schemas"
 import { ActionMenu } from "@/components/action-menu"
@@ -127,6 +128,8 @@ export function CustomerDetail({ id }: { id: string }) {
               />
             </SectionRows>
           </Section>
+
+          <Zone name="customer.detail" id={item.id} />
         </>
       )}
     />

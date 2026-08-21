@@ -42,6 +42,7 @@ export const en = {
   "nav.group.gettingItThere": "Getting it there",
   "nav.group.money": "Money",
   "nav.group.theShop": "The shop",
+  "nav.group.host": "Also here",
   "nav.group.thisServer": "This server",
 
   "nav.products": "Products",
@@ -65,6 +66,8 @@ export const en = {
   "nav.batch": "Import and export",
   "nav.records": "What happened",
 
+  "nav.operations": "{n} operations",
+  "nav.built": "built",
   "nav.soon": "soon",
   "nav.overview": "Overview",
   "nav.goTo": "Go to…",

@@ -23,6 +23,7 @@ import { SectionLink } from "@/components/section-link"
 import { useCommandPalette } from "@/lib/command-palette"
 import { COVERAGE, GROUPS, SERVER_SECTIONS, type Section } from "@/lib/nav"
 import { mayOpen, useWhoAmI } from "@/lib/session"
+import { useHostGroupTitle, useHostScreens } from "@/panel/extensions"
 import { useT } from "@/panel/i18n"
 import { panelRuntime } from "@/panel/runtime"
 
@@ -98,6 +99,8 @@ export function AppShell() {
   const matchRoute = useMatchRoute()
   const palette = useCommandPalette()
   const me = useWhoAmI()
+  const hostScreens = useHostScreens()
+  const hostGroupTitle = useHostGroupTitle()
   const t = useT()
 
   return (
@@ -165,6 +168,36 @@ export function AppShell() {
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
+          {hostScreens.length > 0 ? (
+            <SidebarGroup>
+              <SidebarGroupLabel>
+                {hostGroupTitle ?? t("nav.group.host")}
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {hostScreens.map((screen) => (
+                    <SidebarMenuItem key={screen.slug}>
+                      <SidebarMenuButton
+                        isActive={Boolean(
+                          matchRoute({
+                            to: "/$section",
+                            params: { section: screen.slug },
+                            fuzzy: true,
+                          })
+                        )}
+                        tooltip={screen.title}
+                        render={<SectionLink slug={screen.slug} />}
+                      >
+                        {/* The host's own words, drawn as given: this panel
+                            has no dictionary for a string it did not write. */}
+                        <span className="truncate">{screen.title}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          ) : null}
         </SidebarContent>
 
         <SidebarFooter>
