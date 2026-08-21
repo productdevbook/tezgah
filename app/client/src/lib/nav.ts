@@ -1,3 +1,5 @@
+import type { TranslationKey } from "@/panel/i18n"
+
 /**
  * The panel's navigation, and what stands behind each entry.
  *
@@ -7,7 +9,13 @@
  */
 export type Section = {
   slug: string
-  title: string
+  /**
+   * A key, not a word. The sidebar is the one place every screen shows, so an
+   * English title here would be an English word on a Turkish panel however
+   * well the rest was translated — and the dictionary's `Record<TranslationKey,
+   * string>` makes a missing Turkish entry a compile error rather than that.
+   */
+  title: TranslationKey
   /** The OpenAPI tag whose operations this section is built over. */
   tag: string
   operations: number
@@ -27,31 +35,31 @@ export type Section = {
 }
 
 export type Group = {
-  title: string
+  title: TranslationKey
   sections: Section[]
 }
 
 export const GROUPS: Group[] = [
   {
-    title: "Selling",
+    title: "nav.group.selling",
     sections: [
       {
         slug: "products",
-        title: "Products",
+        title: "nav.products",
         tag: "catalogue",
         operations: 79,
         built: true,
       },
       {
         slug: "pricing",
-        title: "Pricing",
+        title: "nav.pricing",
         tag: "pricing",
         operations: 23,
         built: true,
       },
       {
         slug: "promotions",
-        title: "Promotions",
+        title: "nav.promotions",
         tag: "promotion",
         operations: 19,
         built: true,
@@ -59,32 +67,32 @@ export const GROUPS: Group[] = [
     ],
   },
   {
-    title: "Orders",
+    title: "nav.group.orders",
     sections: [
       {
         slug: "orders",
-        title: "Orders",
+        title: "nav.orders",
         tag: "order",
         operations: 112,
         built: true,
       },
       {
         slug: "baskets",
-        title: "Baskets",
+        title: "nav.baskets",
         tag: "order_basket",
         operations: 5,
         built: true,
       },
       {
         slug: "carts",
-        title: "Carts",
+        title: "nav.carts",
         tag: "cart",
         operations: 11,
         built: true,
       },
       {
         slug: "subscriptions",
-        title: "Subscriptions",
+        title: "nav.subscriptions",
         tag: "subscription",
         operations: 26,
         built: true,
@@ -92,18 +100,18 @@ export const GROUPS: Group[] = [
     ],
   },
   {
-    title: "Getting it there",
+    title: "nav.group.gettingItThere",
     sections: [
       {
         slug: "inventory",
-        title: "Inventory",
+        title: "nav.inventory",
         tag: "inventory",
         operations: 37,
         built: true,
       },
       {
         slug: "fulfilment",
-        title: "Fulfilment",
+        title: "nav.fulfilment",
         tag: "fulfilment",
         operations: 35,
         built: true,
@@ -111,52 +119,58 @@ export const GROUPS: Group[] = [
     ],
   },
   {
-    title: "Money",
+    title: "nav.group.money",
     sections: [
       {
         slug: "payments",
-        title: "Payments",
+        title: "nav.payments",
         tag: "payment",
         operations: 19,
         built: true,
       },
       {
         slug: "credit",
-        title: "Credit",
+        title: "nav.credit",
         tag: "credit",
         operations: 17,
         built: true,
       },
       {
         slug: "payouts",
-        title: "Payouts",
+        title: "nav.payouts",
         tag: "payout",
         operations: 7,
         built: true,
       },
-      { slug: "tax", title: "Tax", tag: "tax", operations: 24, built: true },
+      {
+        slug: "tax",
+        title: "nav.tax",
+        tag: "tax",
+        operations: 24,
+        built: true,
+      },
     ],
   },
   {
-    title: "The shop",
+    title: "nav.group.theShop",
     sections: [
       {
         slug: "customers",
-        title: "Customers",
+        title: "nav.customers",
         tag: "customer",
         operations: 25,
         built: true,
       },
       {
         slug: "store",
-        title: "Store",
+        title: "nav.store",
         tag: "store",
         operations: 32,
         built: true,
       },
       {
         slug: "digital",
-        title: "Digital",
+        title: "nav.digital",
         tag: "digital",
         operations: 8,
         built: true,
@@ -164,7 +178,7 @@ export const GROUPS: Group[] = [
       },
       {
         slug: "workflows",
-        title: "Workflows",
+        title: "nav.workflows",
         tag: "workflow",
         operations: 4,
         built: true,
@@ -206,8 +220,8 @@ export const COVERAGE = {
  * is not a domain is the screen — a shop does not think of "the batch
  * endpoints", it thinks of getting its prices out and back in.
  */
-export const SERVER_SECTIONS: { slug: string; title: string }[] = [
-  { slug: "operators", title: "Operators" },
-  { slug: "batch", title: "Import and export" },
-  { slug: "records", title: "What happened" },
+export const SERVER_SECTIONS: { slug: string; title: TranslationKey }[] = [
+  { slug: "operators", title: "nav.operators" },
+  { slug: "batch", title: "nav.batch" },
+  { slug: "records", title: "nav.records" },
 ]
