@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { useT } from "@/panel/i18n"
 
 /**
  * An order carries three statuses that move independently — itself, its money
@@ -102,6 +103,7 @@ export function Orders({
   onQChange: (q: string | undefined) => void
   onByChange: (by: "created" | "email") => void
 }) {
+  const t = useT()
   const paged = usePagedList(["orders", q ?? "", by], "/admin/orders", order, {
     after,
     onAfterChange,
@@ -109,7 +111,10 @@ export function Orders({
   })
   return (
     <div className="space-y-4">
-      <PageHeading title="Orders" subtitle="Drafts are listed too, and say so.">
+      <PageHeading
+        title={t("screen.orders.title")}
+        subtitle={t("screen.orders.subtitle")}
+      >
         <Select
           value={by}
           onValueChange={(value) => onByChange(value as "created" | "email")}
@@ -141,10 +146,10 @@ export function Orders({
           />
         )}
         empty={{
-          title: "No orders",
+          title: t("screen.orders.empty"),
           description: q
-            ? `Nothing matches ${q}.`
-            : "Nothing has been placed yet.",
+            ? t("search.nothingMatches", { q })
+            : t("screen.orders.emptyAny"),
         }}
       />
     </div>

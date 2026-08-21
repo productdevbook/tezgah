@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { useT } from "@/panel/i18n"
 
 function name(row: Customer): string | null {
   const parts = [row.first_name, row.last_name].filter(Boolean)
@@ -74,6 +75,7 @@ export function Customers({
   onQChange: (q: string | undefined) => void
   onByChange: (by: "created" | "email") => void
 }) {
+  const t = useT()
   const paged = usePagedList(
     ["customers", q ?? ""],
     "/admin/customers",
@@ -87,8 +89,8 @@ export function Customers({
   return (
     <div className="space-y-4">
       <PageHeading
-        title="Customers"
-        subtitle="Guests are customers too — a cart makes one before an account does."
+        title={t("screen.customers.title")}
+        subtitle={t("screen.customers.subtitle")}
       >
         <Select
           value={by}
@@ -121,8 +123,10 @@ export function Customers({
           />
         )}
         empty={{
-          title: "No customers",
-          description: q ? `Nothing matches ${q}.` : "Nobody has shopped yet.",
+          title: t("screen.customers.empty"),
+          description: q
+            ? t("search.nothingMatches", { q })
+            : t("screen.customers.emptyAny"),
         }}
       />
     </div>

@@ -71,4 +71,52 @@ export const tr: Record<TranslationKey, string> = {
   "table.next": "İleri",
   "table.chosen": "{count} seçildi",
   "table.showing": "{total} kaydın {shown} tanesi",
+
+  "screen.products.title": "Ürünler",
+  "screen.products.subtitle":
+    "Bu ekran her durumu görür. Mağaza yalnızca yayımlananları görür.",
+  "screen.products.empty": "Ürün yok",
+  "screen.products.emptyAny": "Katalogda henüz bir şey yok.",
+  "screen.products.emptyStatus": "{status} durumunda bir şey yok.",
+
+  "screen.orders.title": "Siparişler",
+  "screen.orders.subtitle":
+    "Taslaklar da listelenir ve öyle olduklarını söyler.",
+  "screen.orders.empty": "Sipariş yok",
+  "screen.orders.emptyAny": "Henüz sipariş verilmedi.",
+
+  "screen.customers.title": "Müşteriler",
+  "screen.customers.subtitle":
+    "Misafirler de müşteridir — hesap açılmadan önce sepet bir müşteri yaratır.",
+  "screen.customers.empty": "Müşteri yok",
+  "screen.customers.emptyAny": "Henüz kimse alışveriş yapmadı.",
+
+  "screen.inventory.title": "Stok",
+  "screen.inventory.subtitle":
+    "Sayılan şey kalemdir. Elde ne olduğu her konum için ayrı sayılır, bir alt kırılımda.",
+  "screen.inventory.empty": "Stokta bir şey yok",
+  "screen.inventory.emptyAny": "Henüz stok kalemi yok.",
+
+  "screen.carts.title": "Sepetler",
+  "screen.carts.subtitle": "Mağazadaki her sepet, terk edilenler dahil.",
+  "screen.carts.empty": "Sepet yok",
+  "screen.carts.emptyAny": "Henüz kimse sepet açmadı.",
+
+  "screen.promotions.title": "Kampanyalar",
+  "screen.promotions.subtitle":
+    "Kullanım, sepet ödendiğinde değil, sipariş verildiğinde sayılır.",
+  "screen.promotions.empty": "Kampanya yok",
+  "screen.promotions.emptyAny": "Sunulan bir şey yok.",
+
+  "screen.subscriptions.title": "Abonelikler",
+  "screen.subscriptions.empty": "Abonelik yok",
+  "screen.subscriptions.emptyAny": "Yinelenen bir satış yok.",
+
+  "screen.credit.title": "Bakiye",
+  "screen.credit.subtitle":
+    "Hediye kartları. Müşterinin hesabındaki bakiye kendi kaydından okunur.",
+  "screen.credit.empty": "Hediye kartı yok",
+  "screen.credit.emptyAny": "Henüz kart çıkarılmadı.",
+
+  "search.nothingMatches": "{q} ile eşleşen bir şey yok.",
 }

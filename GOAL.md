@@ -385,11 +385,12 @@ In the panel:
       zod schema in fourteen files across five domains. What is left carries
       no fields worth validating: a confirmation with a reason, an upload
       button, and the two edit grids
-- [ ] the screens' own words in the dictionary — English and Turkish exist
-      and the compiler keeps them in step, over the shared chrome only. A
-      different thing from what the shop *sells* being translated, which it
-      now is: a product's and a category's own words in any locale, from
-      their own drawers
+- [ ] the screens' own words in the dictionary — the chrome, the whole of the
+      navigation and the eight list screens a shop opens most are done, and
+      the compiler keeps the two dictionaries in step. What is left is the
+      detail pages and their drawers, a key at a time. A different thing from
+      what the shop *sells* being translated, which it now is: a product's and
+      a category's own words in any locale, from their own drawers
 - [x] an edit grid past prices — an inventory item's levels are counted in
       one, for the same reason `/pricing/prices` can be one: the batch route
       takes the rows together. A list whose writes are one row at a time

@@ -5,6 +5,7 @@ import { DataTable, type Columns } from "@/components/data-table"
 import { Badge } from "@/components/ui/badge"
 import { usePagedList } from "@/lib/paged"
 import { PageHeading } from "@/components/page-heading"
+import { useT } from "@/panel/i18n"
 
 const columns: Columns<Subscription> = [
   {
@@ -50,7 +51,7 @@ const columns: Columns<Subscription> = [
       row.original.dunning_attempts > 0 ? (
         <Badge variant="destructive">{row.original.dunning_attempts}</Badge>
       ) : (
-        <span className="text-muted-foreground text-xs">—</span>
+        <span className="text-xs text-muted-foreground">—</span>
       ),
     meta: { className: "text-right" },
   },
@@ -63,10 +64,16 @@ export function Subscriptions({
   after: string | undefined
   onAfterChange: (after: string | undefined) => void
 }) {
-  const paged = usePagedList(["subscriptions"], "/admin/subscriptions", subscription, {
-    after,
-    onAfterChange,
-  })
+  const t = useT()
+  const paged = usePagedList(
+    ["subscriptions"],
+    "/admin/subscriptions",
+    subscription,
+    {
+      after,
+      onAfterChange,
+    }
+  )
   return (
     <div className="space-y-4">
       <PageHeading
@@ -84,7 +91,10 @@ export function Subscriptions({
             aria-label={`Open subscription ${row.id}`}
           />
         )}
-        empty={{ title: "No subscriptions", description: "Nothing recurring is sold." }}
+        empty={{
+          title: t("screen.subscriptions.empty"),
+          description: t("screen.subscriptions.emptyAny"),
+        }}
       />
     </div>
   )

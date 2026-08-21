@@ -23,7 +23,9 @@ import { PageHeading } from "@/components/page-heading"
  * is a run that failed and finished unwinding what it started, not a run
  * that is still failing.
  */
-function tone(state: WorkflowRunState): "default" | "secondary" | "outline" | "destructive" {
+function tone(
+  state: WorkflowRunState
+): "default" | "secondary" | "outline" | "destructive" {
   if (state === "done") return "default"
   if (state === "failed") return "destructive"
   if (state === "running" || state === "compensating") return "secondary"
@@ -40,7 +42,9 @@ const columns: Columns<WorkflowRunSummary> = [
   {
     header: "State",
     accessorKey: "state",
-    cell: ({ row }) => <Badge variant={tone(row.original.state)}>{row.original.state}</Badge>,
+    cell: ({ row }) => (
+      <Badge variant={tone(row.original.state)}>{row.original.state}</Badge>
+    ),
   },
   {
     header: "Started",
@@ -61,16 +65,27 @@ export function Workflows({
   onStateChange: (state: WorkflowRunState | "all") => void
   onAfterChange: (after: string | undefined) => void
 }) {
-  const paged = usePagedList(["workflow-runs", state], "/admin/workflows-executions", workflowRunSummary, {
-    after,
-    onAfterChange,
-    query: { state: state === "all" ? undefined : state },
-  })
+  const paged = usePagedList(
+    ["workflow-runs", state],
+    "/admin/workflows-executions",
+    workflowRunSummary,
+    {
+      after,
+      onAfterChange,
+      query: { state: state === "all" ? undefined : state },
+    }
+  )
 
   return (
     <div className="space-y-4">
-      <PageHeading title="Executions" subtitle="Every workflow run the runner has driven.">
-        <Select value={state} onValueChange={(v) => onStateChange(v as WorkflowRunState | "all")}>
+      <PageHeading
+        title="Executions"
+        subtitle="Every workflow run the runner has driven."
+      >
+        <Select
+          value={state}
+          onValueChange={(v) => onStateChange(v as WorkflowRunState | "all")}
+        >
           <SelectTrigger className="w-40" size="sm">
             <SelectValue placeholder="Any state" />
           </SelectTrigger>
@@ -99,7 +114,9 @@ export function Workflows({
         empty={{
           title: "No runs",
           description:
-            state === "all" ? "Nothing has run yet." : `No runs with state ${state}.`,
+            state === "all"
+              ? "Nothing has run yet."
+              : `No runs with state ${state}.`,
         }}
       />
     </div>

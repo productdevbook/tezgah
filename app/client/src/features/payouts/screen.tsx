@@ -2,7 +2,13 @@ import { useState, type FormEvent } from "react"
 import { useQuery } from "@tanstack/react-query"
 
 import { get } from "@/api/client"
-import { payout, payoutBalance, payoutLine, type Payout, type PayoutLine } from "@/api/schemas"
+import {
+  payout,
+  payoutBalance,
+  payoutLine,
+  type Payout,
+  type PayoutLine,
+} from "@/api/schemas"
 import { DataTable, type Columns } from "@/components/data-table"
 import { QueryState } from "@/components/query-state"
 import { Button } from "@/components/ui/button"
@@ -52,12 +58,18 @@ export function Payouts({
   linesAfter: string | undefined
   onLinesAfterChange: (after: string | undefined) => void
 }) {
-  const paged = usePagedList(["payouts"], "/admin/payouts", payout, { after, onAfterChange })
+  const paged = usePagedList(["payouts"], "/admin/payouts", payout, {
+    after,
+    onAfterChange,
+  })
 
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2">
-        <BalanceLookup currency={currency} onCurrencyChange={onCurrencyChange} />
+        <BalanceLookup
+          currency={currency}
+          onCurrencyChange={onCurrencyChange}
+        />
         <OrderLinesLookup
           orderId={orderId}
           onOrderIdChange={onOrderIdChange}
@@ -128,19 +140,22 @@ function BalanceLookup({
         {currency ? (
           <QueryState
             query={query}
-            empty={{ title: "No balance", description: "Nothing in this currency." }}
+            empty={{
+              title: "No balance",
+              description: "Nothing in this currency.",
+            }}
           >
             {(balance) => (
               <p className="font-mono text-2xl font-semibold">
                 {balance.amount}{" "}
-                <span className="text-muted-foreground text-sm uppercase">
+                <span className="text-sm text-muted-foreground uppercase">
                   {balance.currency_code}
                 </span>
               </p>
             )}
           </QueryState>
         ) : (
-          <p className="text-muted-foreground text-sm">
+          <p className="text-sm text-muted-foreground">
             What this scope is owed right now, in one currency — negative when a
             refund outran what was already paid out.
           </p>
@@ -188,11 +203,15 @@ function OrderLinesLookup({
           </Button>
         </form>
         {orderId ? (
-          <OrderLines orderId={orderId} after={after} onAfterChange={onAfterChange} />
+          <OrderLines
+            orderId={orderId}
+            after={after}
+            onAfterChange={onAfterChange}
+          />
         ) : (
-          <p className="text-muted-foreground text-sm">
-            What an order earned the seller and what the marketplace kept, line by
-            line.
+          <p className="text-sm text-muted-foreground">
+            What an order earned the seller and what the marketplace kept, line
+            by line.
           </p>
         )}
       </CardContent>
@@ -240,7 +259,10 @@ function OrderLines({
     <DataTable
       paged={paged}
       columns={lineColumns}
-      empty={{ title: "No payout lines", description: "Nothing earned on this order yet." }}
+      empty={{
+        title: "No payout lines",
+        description: "Nothing earned on this order yet.",
+      }}
     />
   )
 }
