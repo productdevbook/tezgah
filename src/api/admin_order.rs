@@ -1811,7 +1811,9 @@ pub async fn confirm_order_edit(
     Ok(order::confirm_change(tx, ctx, id).await?.into())
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+/// `Default` because declining is a `DELETE`: a caller sending no body at all
+/// is declining without giving a reason, which is the ordinary case.
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DeclineChange {
     pub reason: Option<String>,

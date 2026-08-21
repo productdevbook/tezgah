@@ -645,7 +645,7 @@ export const DeleteAdminDraftOrdersByIdEditParams = zod.object({
 
 export const DeleteAdminDraftOrdersByIdEditBody = zod.object({
   "reason": zod.string().nullish()
-})
+}).describe('`Default` because declining is a `DELETE`: a caller sending no body at all\nis declining without giving a reason, which is the ordinary case.')
 
 export const DeleteAdminDraftOrdersByIdEditResponse = zod.object({
   "change_type": zod.string(),
@@ -1254,7 +1254,7 @@ export const DeleteAdminOrderEditsByIdParams = zod.object({
 
 export const DeleteAdminOrderEditsByIdBody = zod.object({
   "reason": zod.string().nullish()
-})
+}).describe('`Default` because declining is a `DELETE`: a caller sending no body at all\nis declining without giving a reason, which is the ordinary case.')
 
 export const DeleteAdminOrderEditsByIdResponse = zod.object({
   "change_type": zod.string(),

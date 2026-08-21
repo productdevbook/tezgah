@@ -6807,6 +6807,10 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
+        /**
+         * @description `Default` because declining is a `DELETE`: a caller sending no body at all
+         *     is declining without giving a reason, which is the ordinary case.
+         */
         DeclineChange: {
             reason?: string | null;
         };

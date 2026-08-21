@@ -57,13 +57,13 @@ use tezgah::api::{
     order_basket, payout, store as store_api, subscription, tax_identity,
 };
 use tezgah::id::{
-    CampaignId, CategoryId, ClaimId, CustomerGroupId, CustomerId, DigitalContentId, FulfillmentId,
-    FulfillmentSetId, GiftCardId, InventoryItemId, InventoryLotId, OptionId, OrderBasketId,
-    OrderId, PaymentCollectionId, PaymentId, PaymentWebhookEventId, PriceId, PriceListId,
-    PriceSetId, ProductId, ProductTagId, PromotionId, PublishableKeyId, RegionId, ReservationId,
-    ReturnId, SalesChannelId, SellingPlanGroupId, SellingPlanId, ShippingOptionId,
-    ShippingProfileId, StockLocationId, StoreCreditId, SubscriptionId, TaxRateId, TaxRegionId,
-    VariantId, WorkflowRunId,
+    CampaignId, CategoryId, ClaimId, CustomerGroupId, CustomerId, DigitalContentId, ExchangeId,
+    FulfillmentId, FulfillmentSetId, GiftCardId, InventoryItemId, InventoryLotId, OptionId,
+    OrderBasketId, OrderChangeId, OrderId, PaymentCollectionId, PaymentId, PaymentWebhookEventId,
+    PriceId, PriceListId, PriceSetId, ProductId, ProductTagId, PromotionId, PublishableKeyId,
+    RegionId, ReservationId, ReturnId, SalesChannelId, SellingPlanGroupId, SellingPlanId,
+    ShippingOptionId, ShippingProfileId, StockLocationId, StoreCreditId, SubscriptionId, TaxRateId,
+    TaxRegionId, VariantId, WorkflowRunId,
 };
 use tezgah::ports::{Action, Actor, Ctx, Host};
 
@@ -168,6 +168,28 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
         ("GET", "/admin/publishable-api-keys/{id}/sales-channels"),
         ("POST", "/admin/publishable-api-keys/{id}/sales-channels"),
         ("POST", "/admin/reservations/{id}/fulfil"),
+        ("GET", "/admin/exchanges"),
+        ("POST", "/admin/exchanges"),
+        ("GET", "/admin/exchanges/{id}"),
+        ("GET", "/admin/exchanges/{id}/items"),
+        ("POST", "/admin/exchanges/{id}/cancel"),
+        ("POST", "/admin/exchanges/{id}/request"),
+        ("POST", "/admin/exchanges/{id}/inbound/items"),
+        ("DELETE", "/admin/exchanges/{id}/inbound/items/{action_id}"),
+        ("POST", "/admin/exchanges/{id}/inbound/shipping-method"),
+        ("POST", "/admin/exchanges/{id}/outbound/items"),
+        ("DELETE", "/admin/exchanges/{id}/outbound/items/{action_id}"),
+        ("POST", "/admin/exchanges/{id}/outbound/shipping-method"),
+        ("GET", "/admin/order-edits/{id}"),
+        ("DELETE", "/admin/order-edits/{id}"),
+        ("POST", "/admin/order-edits/{id}/confirm"),
+        ("POST", "/admin/order-edits/{id}/items"),
+        ("DELETE", "/admin/order-edits/{id}/items/{action_id}"),
+        ("POST", "/admin/order-edits/{id}/shipping-method"),
+        (
+            "DELETE",
+            "/admin/order-edits/{id}/shipping-method/{action_id}",
+        ),
         ("GET", "/admin/claims"),
         ("POST", "/admin/claims"),
         ("GET", "/admin/claims/{id}"),
@@ -469,6 +491,59 @@ pub fn router() -> (Router<AppState>, Vec<(&'static str, &'static str)>) {
             get(list_key_sales_channels).post(link_key_sales_channel),
         )
         .route("/admin/reservations/{id}/fulfil", post(fulfil_reservation))
+        .route(
+            "/admin/exchanges",
+            get(list_exchanges).post(request_exchange),
+        )
+        .route("/admin/exchanges/{id}", get(get_exchange))
+        .route("/admin/exchanges/{id}/items", get(exchange_actions))
+        .route("/admin/exchanges/{id}/cancel", post(cancel_exchange))
+        .route(
+            "/admin/exchanges/{id}/request",
+            post(confirm_exchange_request),
+        )
+        .route(
+            "/admin/exchanges/{id}/inbound/items",
+            post(add_exchange_inbound_item),
+        )
+        .route(
+            "/admin/exchanges/{id}/inbound/items/{action_id}",
+            delete(remove_exchange_inbound_item),
+        )
+        .route(
+            "/admin/exchanges/{id}/inbound/shipping-method",
+            post(add_exchange_inbound_shipping),
+        )
+        .route(
+            "/admin/exchanges/{id}/outbound/items",
+            post(add_exchange_outbound_item),
+        )
+        .route(
+            "/admin/exchanges/{id}/outbound/items/{action_id}",
+            delete(remove_exchange_outbound_item),
+        )
+        .route(
+            "/admin/exchanges/{id}/outbound/shipping-method",
+            post(add_exchange_outbound_shipping),
+        )
+        .route(
+            "/admin/order-edits/{id}",
+            get(get_order_edit).delete(decline_order_edit),
+        )
+        .route("/admin/order-edits/{id}/confirm", post(confirm_order_edit))
+        .route("/admin/order-edits/{id}/items", post(add_order_edit_item))
+        .route(
+            "/admin/order-edits/{id}/items/{action_id}",
+            delete(remove_order_edit_item),
+        )
+        .route(
+            "/admin/order-edits/{id}/shipping-method",
+            post(add_order_edit_shipping),
+        )
+        .route(
+            "/admin/order-edits/{id}/shipping-method/{action_id}",
+            delete(remove_order_edit_shipping),
+        )
         .route("/admin/claims", get(list_claims).post(request_claim))
         .route("/admin/claims/{id}", get(get_claim))
         .route("/admin/claims/{id}/items", get(claim_actions))
@@ -1446,6 +1521,251 @@ async fn create_inventory_item(
     let item = admin_catalogue::create_inventory_item(&mut tx, &ctx, body).await?;
     tx.commit().await?;
     Ok(Json(item))
+}
+
+/// An exchange: the same two legs a claim has, for a different reason — the
+/// shopper wants something else rather than something working. And an order
+/// edit, which is the third shape of the same idea: a change proposed against
+/// an order, confirmed or declined as a whole.
+async fn list_exchanges(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Query(query): Query<admin_order::Listing>,
+) -> Result<Json<tezgah::page::Page<admin_order::ExchangeView>>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::list_exchanges(&mut tx, &ctx, query).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn request_exchange(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Json(body): Json<admin_order::RequestExchange>,
+) -> Result<Json<admin_order::ExchangeView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::request_exchange(&mut tx, &ctx, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn get_exchange(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ExchangeId>,
+) -> Result<Json<admin_order::ExchangeView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::get_exchange(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn exchange_actions(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ExchangeId>,
+) -> Result<Json<admin_order::ChangeDetailView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::exchange_actions(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn cancel_exchange(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ExchangeId>,
+) -> Result<Json<admin_order::ExchangeView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::cancel_exchange(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn confirm_exchange_request(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ExchangeId>,
+) -> Result<Json<admin_order::ExchangeView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::confirm_exchange_request(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn add_exchange_inbound_item(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ExchangeId>,
+    Json(body): Json<admin_order::LineQuantity>,
+) -> Result<Json<admin_order::ChangeActionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::add_exchange_inbound_item(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn remove_exchange_inbound_item(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path((id, action_id)): Path<(ExchangeId, uuid::Uuid)>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    admin_order::remove_exchange_inbound_item(&mut tx, &ctx, id, action_id).await?;
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "removed": true })))
+}
+
+async fn add_exchange_inbound_shipping(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ExchangeId>,
+    Json(body): Json<admin_order::AddShippingAction>,
+) -> Result<Json<admin_order::ChangeActionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::add_exchange_inbound_shipping(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn add_exchange_outbound_item(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ExchangeId>,
+    Json(body): Json<admin_order::LineQuantity>,
+) -> Result<Json<admin_order::ChangeActionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::add_exchange_outbound_item(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn remove_exchange_outbound_item(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path((id, action_id)): Path<(ExchangeId, uuid::Uuid)>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    admin_order::remove_exchange_outbound_item(&mut tx, &ctx, id, action_id).await?;
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "removed": true })))
+}
+
+async fn add_exchange_outbound_shipping(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<ExchangeId>,
+    Json(body): Json<admin_order::AddShippingAction>,
+) -> Result<Json<admin_order::ChangeActionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::add_exchange_outbound_shipping(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn get_order_edit(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<OrderChangeId>,
+) -> Result<Json<admin_order::ChangeDetailView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::get_order_edit(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+/// `Option<Json<..>>`, because this is a `DELETE` and most clients send one
+/// with no body at all. `DeclineChange`'s only field is a reason and it is
+/// optional, so a bodyless decline is a decline with no reason given —
+/// requiring a body would refuse the ordinary case to keep the extractor
+/// tidy.
+async fn decline_order_edit(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<OrderChangeId>,
+    body: Option<Json<admin_order::DeclineChange>>,
+) -> Result<Json<admin_order::ChangeView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let given = body.map(|Json(body)| body).unwrap_or_default();
+    let view = admin_order::decline_order_edit(&mut tx, &ctx, id, given).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn confirm_order_edit(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<OrderChangeId>,
+) -> Result<Json<admin_order::OrderView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::confirm_order_edit(&mut tx, &ctx, id).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn add_order_edit_item(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<OrderChangeId>,
+    Json(body): Json<admin_order::AddItemAction>,
+) -> Result<Json<admin_order::ChangeActionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::add_order_edit_item(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn remove_order_edit_item(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path((id, action_id)): Path<(OrderChangeId, uuid::Uuid)>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    admin_order::remove_order_edit_item(&mut tx, &ctx, id, action_id).await?;
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "removed": true })))
+}
+
+async fn add_order_edit_shipping(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<OrderChangeId>,
+    Json(body): Json<admin_order::AddShippingAction>,
+) -> Result<Json<admin_order::ChangeActionView>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    let view = admin_order::add_order_edit_shipping(&mut tx, &ctx, id, body).await?;
+    tx.commit().await?;
+    Ok(Json(view))
+}
+
+async fn remove_order_edit_shipping(
+    State(state): State<AppState>,
+    Extension(caller): Extension<Caller>,
+    Path((id, action_id)): Path<(OrderChangeId, uuid::Uuid)>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let mut tx = begin(&state.pool, state.scope).await?;
+    let ctx = ctx_for(&state, &caller);
+    admin_order::remove_order_edit_shipping(&mut tx, &ctx, id, action_id).await?;
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "removed": true })))
 }
 
 /// A claim: something arrived broken or wrong, and putting it right is two

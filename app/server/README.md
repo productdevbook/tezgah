@@ -427,7 +427,7 @@ a gap, and `docs/architecture.md` counts it as one.
 
 ## Route table
 
-<!-- bound-routes: 234 -->
+<!-- bound-routes: 253 -->
 
 That number is checked rather than remembered: `tests/bound_count.rs` builds
 the fullest router this binary can make without a payment provider, counts
@@ -443,7 +443,7 @@ is why the number is stated without it.
 by hand, and says exactly how many out loud at startup:
 
 ```
-bound 234 of 487 declared routes
+bound 253 of 487 declared routes
   GET    /store/products
   GET    /store/products/{handle}
   POST   /store/carts
