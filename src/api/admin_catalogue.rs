@@ -2116,13 +2116,75 @@ pub async fn remove_price_rule(
 // Price lists
 // ---------------------------------------------------------------------------
 
+/// A price list's own query type: this list can be narrowed, and the
+/// twenty-odd sharing [`ListQuery`] cannot, so they do not offer it.
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ListPriceLists {
+    pub after: Option<String>,
+    pub limit: Option<u32>,
+    /// Matched against the title.
+    pub q: Option<String>,
+    /// `active` or `draft`.
+    pub status: Option<String>,
+    /// `sale` or `override`.
+    pub kind: Option<String>,
+    /// Which end first. Left out, this surface answers newest-first.
+    pub order: Option<crate::page::Order>,
+    /// Asks how many price lists match, as well as this page of them.
+    pub count: Option<bool>,
+}
+
+impl ListPriceLists {
+    fn listing(&self) -> Result<Paging> {
+        let paging = ListQuery {
+            after: self.after.clone(),
+            limit: self.limit,
+        }
+        .paging()?;
+
+        Ok(if self.count.unwrap_or(false) {
+            paging.counting()
+        } else {
+            paging
+        })
+    }
+
+    fn status(&self) -> Result<Option<String>> {
+        match self.status.as_deref() {
+            None => Ok(None),
+            Some(one @ ("active" | "draft")) => Ok(Some(one.to_owned())),
+            Some(other) => Err(Error::invalid(format!(
+                "{other:?} is not a price list status"
+            ))),
+        }
+    }
+
+    fn kind(&self) -> Result<Option<String>> {
+        match self.kind.as_deref() {
+            None => Ok(None),
+            Some(one @ ("sale" | "override")) => Ok(Some(one.to_owned())),
+            Some(other) => Err(Error::invalid(format!(
+                "{other:?} is not a price list kind"
+            ))),
+        }
+    }
+}
+
 pub async fn list_price_lists(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
-    query: ListQuery,
+    query: ListPriceLists,
 ) -> Result<Page<PriceListView>> {
+    let filter = pricing::PriceListFilter {
+        status: query.status()?,
+        kind: query.kind()?,
+        search: query.q.as_deref().and_then(crate::page::Search::new),
+        order: query.order.unwrap_or(crate::page::Order::Newest),
+    };
+
     Ok(map_page(
-        pricing::price_lists(tx, ctx, query.paging()?).await?,
+        pricing::price_lists(tx, ctx, filter, query.listing()?).await?,
     ))
 }
 
@@ -3711,7 +3773,7 @@ pub(super) static ROUTES: &[Route] = &[
         path: "/admin/price-lists",
         action: Action::View,
         domain: PRICING,
-        query: Some(super::query_schema::<super::PagingQuery>),
+        query: Some(super::query_schema::<ListPriceLists>),
         summary: "List price lists",
     },
     Route {

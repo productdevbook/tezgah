@@ -5,6 +5,14 @@ import { shippingOption, type ShippingOption } from "@/api/schemas"
 import { DataTable, type Columns } from "@/components/data-table"
 import { Badge } from "@/components/ui/badge"
 import { usePagedList } from "@/lib/paged"
+import { SearchBox } from "@/components/search-box"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 const columns: Columns<ShippingOption> = [
   {
@@ -34,19 +42,39 @@ const columns: Columns<ShippingOption> = [
 
 export function ShippingOptions({
   after,
+  q,
+  kind,
   onAfterChange,
+  onQChange,
+  onKindChange,
 }: {
   after: string | undefined
+  q: string | undefined
+  kind: "all" | "outbound" | "return"
   onAfterChange: (after: string | undefined) => void
+  onQChange: (q: string | undefined) => void
+  onKindChange: (kind: "all" | "outbound" | "return") => void
 }) {
   const t = useT()
   const paged = usePagedList(
-    ["shipping-options"],
+    ["shipping-options", q ?? "", kind],
     "/admin/shipping-options",
     shippingOption,
     {
       after,
       onAfterChange,
+      query: {
+        q,
+        // An option a shopper picks and an option a return travels back on
+        // are both rows here; `is_return` is what tells them apart.
+        is_return:
+          kind === "return"
+            ? "true"
+            : kind === "outbound"
+              ? "false"
+              : undefined,
+        count: "true",
+      },
     }
   )
 
@@ -55,6 +83,30 @@ export function ShippingOptions({
       header={{
         title: t("frame.shippingOptions"),
         description: t("frame.shippingOptionsWhy"),
+        actions: (
+          <div className="flex items-center gap-2">
+            <SearchBox
+              value={q}
+              onChange={onQChange}
+              placeholder={t("search.shippingOptions")}
+            />
+            <Select
+              value={kind}
+              onValueChange={(value) =>
+                onKindChange(value as "all" | "outbound" | "return")
+              }
+            >
+              <SelectTrigger className="w-40" size="sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("filter.anyOption")}</SelectItem>
+                <SelectItem value="outbound">{t("filter.outbound")}</SelectItem>
+                <SelectItem value="return">{t("filter.forReturns")}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        ),
       }}
       paged={paged}
       columns={columns}

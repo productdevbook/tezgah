@@ -6,6 +6,14 @@ import { DataTable, type Columns } from "@/components/data-table"
 import { Badge } from "@/components/ui/badge"
 import { Empty } from "@/components/detail-fields"
 import { usePagedList } from "@/lib/paged"
+import { SearchBox } from "@/components/search-box"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 const columns: Columns<TaxRate> = [
   {
@@ -43,22 +51,69 @@ const columns: Columns<TaxRate> = [
 
 export function TaxRates({
   after,
+  q,
+  kind,
   onAfterChange,
+  onQChange,
+  onKindChange,
 }: {
   after: string | undefined
+  q: string | undefined
+  kind: "all" | "default" | "combinable"
   onAfterChange: (after: string | undefined) => void
+  onQChange: (q: string | undefined) => void
+  onKindChange: (kind: "all" | "default" | "combinable") => void
 }) {
   const t = useT()
-  const paged = usePagedList(["tax-rates"], "/admin/tax-rates", taxRate, {
-    after,
-    onAfterChange,
-  })
+  const paged = usePagedList(
+    ["tax-rates", q ?? "", kind],
+    "/admin/tax-rates",
+    taxRate,
+    {
+      after,
+      onAfterChange,
+      query: {
+        q,
+        default: kind === "default" ? "true" : undefined,
+        combinable: kind === "combinable" ? "true" : undefined,
+        count: "true",
+      },
+    }
+  )
 
   return (
     <DataTable
       header={{
         title: t("frame.taxRates"),
         description: t("frame.taxRatesWhy"),
+        actions: (
+          <div className="flex items-center gap-2">
+            <SearchBox
+              value={q}
+              onChange={onQChange}
+              placeholder={t("search.taxRates")}
+            />
+            <Select
+              value={kind}
+              onValueChange={(value) =>
+                onKindChange(value as "all" | "default" | "combinable")
+              }
+            >
+              <SelectTrigger className="w-40" size="sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("filter.anyRate")}</SelectItem>
+                <SelectItem value="default">
+                  {t("filter.theDefault")}
+                </SelectItem>
+                <SelectItem value="combinable">
+                  {t("filter.stacking")}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        ),
       }}
       paged={paged}
       columns={columns}

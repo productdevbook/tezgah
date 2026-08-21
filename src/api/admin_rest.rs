@@ -1143,6 +1143,15 @@ pub struct ListTaxRates {
     pub after: Option<String>,
     pub limit: Option<u32>,
     pub tax_region_id: Option<TaxRegionId>,
+    /// Matched against the name and the code.
+    pub q: Option<String>,
+    /// One default per region, and the rest stack on it.
+    pub default: Option<bool>,
+    pub combinable: Option<bool>,
+    /// Which end first. Left out, this surface answers newest-first.
+    pub order: Option<crate::page::Order>,
+    /// Asks how many rates match, as well as this page of them.
+    pub count: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1225,8 +1234,22 @@ pub async fn list_tax_rates(
         limit: query.limit,
     }
     .paging()?;
+    let paging = if query.count.unwrap_or(false) {
+        paging.counting()
+    } else {
+        paging
+    };
+
+    let filter = tax::TaxRateFilter {
+        region: query.tax_region_id,
+        default: query.default,
+        combinable: query.combinable,
+        search: query.q.as_deref().and_then(crate::page::Search::new),
+        order: query.order.unwrap_or(crate::page::Order::Newest),
+    };
+
     Ok(map(
-        tax::tax_rates(tx, ctx, query.tax_region_id, paging).await?,
+        tax::tax_rates(tx, ctx, filter, paging).await?,
         TaxRateView::from,
     ))
 }

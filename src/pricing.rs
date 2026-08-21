@@ -23,7 +23,7 @@ use crate::id::{
     BundleComponentId, PriceId, PriceListId, PriceSetId, RegionId, ShippingOptionId, VariantId,
 };
 use crate::money::{Currency, Money};
-use crate::page::{Cursor, Page, Paging};
+use crate::page::{Cursor, Order, Page, Paging, Search};
 use crate::ports::{Action, AuditEntry, Ctx, Permit, Resource, Tx};
 use crate::store;
 
@@ -869,33 +869,80 @@ pub async fn price_list(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: PriceListId) -> Resu
     .ok_or_else(|| Error::not_found("price list"))
 }
 
+/// The predicates the page and the count share.
+const PRICE_LIST_FILTER: &str = "
+         where scope = $1
+           and deleted_at is null
+           and ($2::text is null or status = $2)
+           and ($3::text is null or type = $3)
+           and ($4::text is null or title ilike $4)
+";
+
+/// What a back office can ask a list of price lists.
+#[derive(Debug, Clone, Default)]
+pub struct PriceListFilter {
+    /// As the column's check constraint writes it. An unknown one matches
+    /// nothing; the API layer refuses it before it reaches here.
+    pub status: Option<String>,
+    pub kind: Option<String>,
+    /// Matched against the title. Not the description — a sale is looked for
+    /// by its name.
+    pub search: Option<Search>,
+    pub order: Order,
+}
+
 pub async fn price_lists(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
+    filter: PriceListFilter,
     paging: Paging,
 ) -> Result<Page<PriceList>> {
     let _: Permit = ctx.permit(Action::View, Resource::Pricing)?;
 
-    let rows = sqlx::query_as::<_, PriceList>(
+    let beyond = filter.order.beyond();
+    let direction = filter.order.direction();
+
+    let rows = sqlx::query_as::<_, PriceList>(&format!(
         "select id, title, description, type, status, starts_at, ends_at,
                 rules_count, created_at
-         from price_list
-         where scope = $1
-           and deleted_at is null
-           and ($2::timestamptz is null or (created_at, id) > ($2, $3))
-         order by created_at, id
-         limit $4",
-    )
+         from price_list{PRICE_LIST_FILTER}
+           and ($5::timestamptz is null or (created_at, id) {beyond} ($5, $6))
+         order by created_at {direction}, id {direction}
+         limit $7"
+    ))
     .bind(ctx.scope.0)
+    .bind(filter.status.as_deref())
+    .bind(filter.kind.as_deref())
+    .bind(filter.search.as_ref().map(Search::pattern))
     .bind(paging.after.as_ref().and_then(Cursor::timestamp))
     .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| {
+    let total = if paging.counts() {
+        let (count,): (i64,) = sqlx::query_as(&format!(
+            "select count(*) from price_list{PRICE_LIST_FILTER}"
+        ))
+        .bind(ctx.scope.0)
+        .bind(filter.status.as_deref())
+        .bind(filter.kind.as_deref())
+        .bind(filter.search.as_ref().map(Search::pattern))
+        .fetch_one(&mut **tx)
+        .await?;
+        Some(count)
+    } else {
+        None
+    };
+
+    let page = Page::build(rows, paging, |row| {
         Cursor::at(row.created_at, row.id.as_uuid())
-    }))
+    });
+
+    Ok(match total {
+        Some(total) => page.counting(total),
+        None => page,
+    })
 }
 
 pub async fn set_price_preference(

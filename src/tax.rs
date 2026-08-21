@@ -18,7 +18,7 @@ use uuid::Uuid;
 use crate::error::{Error, Result};
 use crate::id::{CartId, CustomerId, TaxRateId, TaxRegionId};
 use crate::money::{Money, allocate};
-use crate::page::{Cursor, Page, Paging};
+use crate::page::{Cursor, Order, Page, Paging, Search};
 use crate::ports::{Action, AuditEntry, Ctx, Permit, Resource, Tx};
 use crate::store;
 
@@ -845,34 +845,81 @@ pub async fn update_tax_rate(
     Ok(rate)
 }
 
+/// The predicates the page and the count share.
+const TAX_RATE_FILTER: &str = "
+         where scope = $1
+           and ($2::uuid is null or tax_region_id = $2)
+           and ($3::boolean is null or is_default = $3)
+           and ($4::boolean is null or is_combinable = $4)
+           and ($5::text is null or name ilike $5 or code ilike $5)
+";
+
+/// What a back office can ask a list of tax rates.
+#[derive(Debug, Clone, Default)]
+pub struct TaxRateFilter {
+    pub region: Option<TaxRegionId>,
+    /// One default per region, and the rest stack on it — telling the two
+    /// apart is most of what somebody opens this list for.
+    pub default: Option<bool>,
+    pub combinable: Option<bool>,
+    /// Matched against the name and the code, which are the two things a
+    /// rate is recognised by.
+    pub search: Option<Search>,
+    pub order: Order,
+}
+
 pub async fn tax_rates(
     tx: &mut Tx<'_>,
     ctx: &Ctx<'_>,
-    region: Option<TaxRegionId>,
+    filter: TaxRateFilter,
     paging: Paging,
 ) -> Result<Page<TaxRate>> {
     let _: Permit = ctx.permit(Action::View, Resource::Tax)?;
 
-    let rows = sqlx::query_as::<_, TaxRate>(
+    let beyond = filter.order.beyond();
+    let direction = filter.order.direction();
+
+    let rows = sqlx::query_as::<_, TaxRate>(&format!(
         "select id, tax_region_id, rate, code, name, is_default, is_combinable, created_at
-         from tax_rate
-         where scope = $1
-           and ($2::uuid is null or tax_region_id = $2)
-           and ($3::timestamptz is null or (created_at, id) > ($3, $4))
-         order by created_at, id
-         limit $5",
-    )
+         from tax_rate{TAX_RATE_FILTER}
+           and ($6::timestamptz is null or (created_at, id) {beyond} ($6, $7))
+         order by created_at {direction}, id {direction}
+         limit $8"
+    ))
     .bind(ctx.scope.0)
-    .bind(region.map(TaxRegionId::as_uuid))
+    .bind(filter.region.map(TaxRegionId::as_uuid))
+    .bind(filter.default)
+    .bind(filter.combinable)
+    .bind(filter.search.as_ref().map(Search::pattern))
     .bind(paging.after.as_ref().and_then(Cursor::timestamp))
     .bind(paging.after.as_ref().map(|c| c.id))
     .bind(paging.probe())
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(Page::build(rows, paging, |row| {
+    let total = if paging.counts() {
+        let (count,): (i64,) =
+            sqlx::query_as(&format!("select count(*) from tax_rate{TAX_RATE_FILTER}"))
+                .bind(ctx.scope.0)
+                .bind(filter.region.map(TaxRegionId::as_uuid))
+                .bind(filter.default)
+                .bind(filter.combinable)
+                .bind(filter.search.as_ref().map(Search::pattern))
+                .fetch_one(&mut **tx)
+                .await?;
+        Some(count)
+    } else {
+        None
+    };
+
+    let page = Page::build(rows, paging, |row| {
         Cursor::at(row.created_at, row.id.as_uuid())
-    }))
+    });
+
+    Ok(match total {
+        Some(total) => page.counting(total),
+        None => page,
+    })
 }
 
 pub async fn delete_tax_rate(tx: &mut Tx<'_>, ctx: &Ctx<'_>, id: TaxRateId) -> Result<()> {
